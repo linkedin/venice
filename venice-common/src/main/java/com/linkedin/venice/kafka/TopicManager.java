@@ -30,6 +30,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -113,14 +114,28 @@ public class TopicManager implements Closeable {
         topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(Long.MAX_VALUE));
       } // TODO: else apply buffer topic configured retention.
       topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
-      AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
       long startTime = System.currentTimeMillis();
+      boolean asyncCreateOperationSucceeded = false;
+      while (!asyncCreateOperationSucceeded) {
+        try {
+            AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
+            asyncCreateOperationSucceeded = true;
+        } catch (InvalidReplicationFactorException e) {
+          if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
+            throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.", e);
+          } else {
+            logger.error("Kafka failed to kick off topic creation because it appears to be under-replicated... Will treat it as a transient error and attempt to ride over it.", e);
+            Utils.sleep(200);
+          }
+        }
+      }
       while (!containsTopic(topicName, numPartitions)) {
         if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
           throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ".  Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.");
         }
         Utils.sleep(200);
       }
+      logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
     } catch (TopicExistsException e) {
       logger.warn("Met error when creating kakfa topic: " + topicName, e);
     }

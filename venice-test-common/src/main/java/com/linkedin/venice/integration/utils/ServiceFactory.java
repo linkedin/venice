@@ -73,8 +73,12 @@ public class ServiceFactory {
     return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
   }
 
-  static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper destinationKafka) {
+  public static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper destinationKafka) {
     return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, destinationKafka));
+  }
+
+  public static MirrorMakerWrapper getKafkaMirrorMaker(String sourceZkAdr, String destinationZkAdr, String destinationKafkaAdr, String whitelist, Properties consumerProps, Properties producerProps) {
+    return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceZkAdr, destinationZkAdr, destinationKafkaAdr, whitelist, consumerProps, producerProps));
   }
 
   public static BrooklinWrapper getBrooklinWrapper(KafkaBrokerWrapper kafka){
