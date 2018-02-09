@@ -60,12 +60,13 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   public void refresh() {
     zkClient.subscribeDataChanges(getRouterRootPath(), this);
     zkClient.subscribeChildChanges(getRouterRootPath(), this);
-    routersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
+    RoutersClusterConfig newRoutersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
     // No config found in ZK, use the default config.
-    if (routersClusterConfig == null) {
+    if (newRoutersClusterConfig == null) {
       createRouterClusterConfig();
-      routersClusterConfig = new RoutersClusterConfig();
+      newRoutersClusterConfig = new RoutersClusterConfig();
     }
+    routersClusterConfig = newRoutersClusterConfig;
     zkClient.subscribeStateChanges(zkStateListener);
   }
 
@@ -230,15 +231,14 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   @Override
   public void createRouterClusterConfig() {
+    /**
+     * {@link ZkBaseDataAccessor#set} will try to create the ZNode if it doesn't exist.
+     * If the ZNode already exists, it will just simply update the content.
+     */
     boolean createConfigSuccess =
-        dataAccessor.create(getRouterRootPath(), new RoutersClusterConfig(), AccessOption.PERSISTENT);
+        dataAccessor.set(getRouterRootPath(), new RoutersClusterConfig(), AccessOption.PERSISTENT);
     if (!createConfigSuccess) {
-      if (dataAccessor.exists(getRouterRootPath(), AccessOption.PERSISTENT)) {
-        // The creation fail because the config has been created by other manager.
-        return;
-      } else {
-        throw new VeniceException("Could not create router cluster config.");
-      }
+      throw new VeniceException("Could not create router cluster config.");
     }
   }
 
@@ -316,7 +316,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     clear();
   }
 
-  private String getRouterRootPath() {
+  protected String getRouterRootPath() {
     return HelixUtils.getHelixClusterZkPath(clusterName) + PREFIX_PATH;
   }
 
