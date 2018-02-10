@@ -27,10 +27,11 @@ D2_CLUSTER=`echo $FIND_CLUSTER_RESULT | jq '.d2Service'| tr -d '"'`
 
 echo "Find a Venice router in d2 cluster: $D2_CLUSTER in fabric: $FABRIC through D2..."
 FIND_ROUTER_RESULT=`curli --fabric $FABRIC d2://d2Clusters/$D2_CLUSTER`
-# choose a router from d2 cluster
-ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '[.uris[]| select(.URI|contains("http:"))][0].URI'`
+# choose a router from d2 cluster. Only pick up the https URL.
+ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '[.uris[]| select(.URI|contains("https:"))][0].URI'`
 
 echo ""
 echo "Will send a request to $ROUTER_URL, Store $STORE_NAME, Key string: $KEY_STRING..."
 
-java -jar $BASE_DIR/build/libs/venice-thin-client-0.1.jar $STORE_NAME $KEY_STRING $ROUTER_URL $IS_VSON_STORE
+SSL_CONFIG="$BASE_DIR/config/sslconfig.properties"
+java -jar $BASE_DIR/build/libs/venice-thin-client-0.1.jar $STORE_NAME $KEY_STRING $ROUTER_URL $IS_VSON_STORE $SSL_CONFIG
