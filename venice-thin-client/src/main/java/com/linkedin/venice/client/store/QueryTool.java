@@ -11,6 +11,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -51,16 +52,7 @@ public class QueryTool {
     String sslConfigFilePath = removeQuotes(args[SSL_CONFIG_FILE_PATH]);
     System.out.println();
 
-    Properties sslProperties = loadSSLConfig(sslConfigFilePath);
-    SSLEngineComponentFactory factory = getSSLEngineComponentFactory(sslProperties);
-
-    // Verify the ssl engine is set up correctly.
-    if(url.toLowerCase().trim().startsWith("https") && factory.getSSLContext() == null){
-      System.err.println("ERROR: The SSL configuration is not valid to send a request to "+url);
-      System.exit(1);
-    }
-
-    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, factory);
+    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore, Optional.of(sslConfigFilePath));
     outputMap.entrySet().stream().forEach(System.out::println);
   }
 
@@ -95,11 +87,23 @@ public class QueryTool {
     }
   }
 
-  public static Map<String, String> queryStoreForKey(String store, String keyString, String url, boolean isVsonStore, SSLEngineComponentFactory sslEngineComponentFactory)
-      throws VeniceClientException, ExecutionException, InterruptedException {
+  public static Map<String, String> queryStoreForKey(String store, String keyString, String url, boolean isVsonStore, Optional<String> sslConfigFile)
+      throws Exception {
+
+    SSLEngineComponentFactory factory = null;
+    if(sslConfigFile.isPresent()) {
+      Properties sslProperties = loadSSLConfig(sslConfigFile.get());
+      factory = getSSLEngineComponentFactory(sslProperties);
+    }
+
+    // Verify the ssl engine is set up correctly.
+    if(url.toLowerCase().trim().startsWith("https") && (factory == null || factory.getSSLContext() == null)){
+      throw new VeniceException("ERROR: The SSL configuration is not valid to send a request to "+url);
+    }
+
     Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url).setVsonClient(isVsonStore).setSslEngineComponentFactory(sslEngineComponentFactory))) {
+        ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url).setVsonClient(isVsonStore).setSslEngineComponentFactory(factory))) {
       AbstractAvroStoreClient<Object, Object> castClient =
           (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client).getInnerStoreClient();
       SchemaReader schemaReader = castClient.getSchemaReader();

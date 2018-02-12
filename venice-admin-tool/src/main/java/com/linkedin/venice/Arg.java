@@ -45,6 +45,8 @@ public enum Arg {
   KAFKA_TOPIC_NAME("kafka-topic-name", "ktn", true, "Kafka topic name"),
   KAFKA_SSL_CONFIG_FILE("kafka-ssl-config-file", "ksc", true, "Configuration file for SSL (optional, if plain-text is available)"),
   KAFKA_OPERATION_TIMEOUT("kafka-operation-timeout", "kot", true, "Timeout in seconds for Kafka operations (default: 30 sec)"),
+  VENICE_CLIENT_SSL_CONFIG_FILE("venice-client-ssl-config-file", "vcsc", true,
+      "Configuration file for querying key in Venice client through SSL."),
 
   FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),

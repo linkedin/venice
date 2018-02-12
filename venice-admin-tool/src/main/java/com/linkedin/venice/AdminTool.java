@@ -47,6 +47,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
@@ -81,7 +82,7 @@ public class AdminTool {
   private static ControllerClient controllerClient;
 
   public static void main(String args[])
-      throws ParseException, IOException, InterruptedException, ExecutionException, VeniceClientException {
+      throws Exception {
 
     /* Command Options are split up for help text formatting, see printUsageAndExit() */
     Options options = new Options();
@@ -313,11 +314,14 @@ public class AdminTool {
   }
 
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
-      throws VeniceClientException, ExecutionException, InterruptedException {
+      throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
+    String sslConfigFileStr = getOptionalArgument(cmd, Arg.VENICE_CLIENT_SSL_CONFIG_FILE);
     boolean isVsonStore = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
-    printObject(QueryTool.queryStoreForKey(store, keyString, routerHosts, isVsonStore));
+    Optional<String> sslConfigFile =
+        Utils.isNullOrEmpty(sslConfigFileStr) ? Optional.empty() : Optional.of(sslConfigFileStr);
+    printObject(QueryTool.queryStoreForKey(store, keyString, routerHosts, isVsonStore, sslConfigFile));
   }
 
   private static void showSchemas(CommandLine cmd){

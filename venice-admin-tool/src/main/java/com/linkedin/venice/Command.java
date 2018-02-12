@@ -64,7 +64,7 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORAGE_NODE}),
   QUERY("query", "Query a store that has a simple key schema",
       new Arg[] {URL, CLUSTER, STORE, KEY},
-      new Arg[]{VSON_STORE}),
+      new Arg[]{VSON_STORE, VENICE_CLIENT_SSL_CONFIG_FILE}),
   SHOW_SCHEMAS("schemas", "Show the key and value schemas for a store",
       new Arg[] {URL, CLUSTER, STORE}),
   DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store",
