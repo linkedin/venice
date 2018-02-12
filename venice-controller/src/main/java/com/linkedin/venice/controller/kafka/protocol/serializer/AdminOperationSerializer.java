@@ -18,7 +18,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 15;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 16;
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */
@@ -52,7 +52,7 @@ public class AdminOperationSerializer {
     }
   }
 
-  private static Map<Integer, Schema> initProtocolMap() {
+  public static Map<Integer, Schema> initProtocolMap() {
     try {
       Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
       for (int i=1; i<= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION; i++){
