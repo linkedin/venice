@@ -8,24 +8,16 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import spark.Route;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
@@ -187,7 +179,9 @@ public class CreateVersion {
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor, true);
+        //Temporary fix until we can make #incrementVersionIdempotent work from the parent controller for versions beyond the first
+        //Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor, true);
+        Version version = admin.incrementVersion(clusterName, storeName, partitionNum, replicationFactor); //TEMP
         int versionNumber = version.getNumber();
 
         responseObject.setCluster(clusterName);
