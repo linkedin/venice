@@ -407,17 +407,34 @@ public class TopicManager implements Closeable {
                 if (offsetOptional.isPresent()){
                   return offsetOptional.get();
                 } else {
-                  return getOffsetByTimeIfOutOfRange(partitionToOffset, timestamp);
+                  return getOffsetByTimeIfOutOfRange(partitionToOffset.getKey(), timestamp);
                 }
               }));
       // The given timestamp exceed the timestamp of the last message. So return the last offset.
-      // TODO we might get partial result that the map does not have offset for some partition, we need a way to fix it.
       if (result.isEmpty()) {
+        logger.warn("Offsets result is empty. Will complement with the last offsets.");
         result = getConsumer().endOffsets(timestampsToSearch.keySet())
             .entrySet()
             .stream()
             .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
                 partitionToOffset -> partitionToOffset.getValue()));
+      } else if (result.size() != partitionInfoList.size()) {
+        Map<TopicPartition, Long>  endOffests = getConsumer().endOffsets(timestampsToSearch.keySet());
+        // Get partial offsets result.
+        logger.warn("Missing offsets for some partitions. Partition Number should be :" + partitionInfoList.size()
+            + " but only got: " + result.size()+". Will complement with the last offsets.");
+
+        for (PartitionInfo partitionInfo : partitionInfoList) {
+          int partitionId = partitionInfo.partition();
+          if (!result.containsKey(partitionId)) {
+            result.put(partitionId, endOffests.get(new TopicPartition(topic, partitionId)));
+          }
+        }
+      }
+      if (result.size() < partitionInfoList.size()) {
+        throw new VeniceException(
+            "Failed to get offsets for all partitions. Got offsets for " + result.size() + " partitions, should be: "
+                + partitionInfoList.size());
       }
       return result;
     }
@@ -428,8 +445,7 @@ public class TopicManager implements Closeable {
    * the last record.  This method queries the time of the last message and compares it to the requested
    * timestamp in order to return either offset 0 or the last offset.
    */
-  private synchronized long getOffsetByTimeIfOutOfRange(Map.Entry<TopicPartition, OffsetAndTimestamp> partitionToOffset, long timestamp){
-    TopicPartition topicPartition = partitionToOffset.getKey();
+  private synchronized long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp){
     long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition());
     if (latestOffset <= 0) {
       return 0L;
