@@ -6,6 +6,8 @@ import java.io.Closeable;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.avro.Schema;
+
 
 /**
  * Venice avro generic client to communicate with Venice backend for key-value lookup.
@@ -46,4 +48,19 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
   void close(); /* removes exception that Closeable can throw */
 
   String getStoreName();
+
+  /**
+   * Get key schema.
+   * @return
+   */
+  Schema getKeySchema();
+
+  /**
+   * Get the latest value schema known in current store client.
+   * This function doesn't guarantee it will return the latest schema if you add a new value schema
+   * when current store client is running.
+   *
+   * @return
+   */
+  Schema getLatestValueSchema();
 }

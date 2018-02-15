@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.EncodingUtils;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 
 import javax.validation.constraints.NotNull;
@@ -327,5 +328,15 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   // For testing usage.
   protected void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery){
     this.d2ServiceDiscovery = d2ServiceDiscovery;
+  }
+
+  @Override
+  public Schema getKeySchema() {
+    return schemaReader.getKeySchema();
+  }
+
+  @Override
+  public Schema getLatestValueSchema() {
+    return schemaReader.getLatestValueSchema();
   }
 }
