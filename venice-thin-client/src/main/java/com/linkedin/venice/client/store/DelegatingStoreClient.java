@@ -5,6 +5,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.avro.Schema;
+
 
 public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private final InternalAvroStoreClient<K, V> innerStoreClient;
@@ -41,6 +43,16 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   @Override
   public String getStoreName() {
     return innerStoreClient.getStoreName();
+  }
+
+  @Override
+  public Schema getKeySchema() {
+    return innerStoreClient.getKeySchema();
+  }
+
+  @Override
+  public Schema getLatestValueSchema() {
+    return innerStoreClient.getLatestValueSchema();
   }
 
   // for testing

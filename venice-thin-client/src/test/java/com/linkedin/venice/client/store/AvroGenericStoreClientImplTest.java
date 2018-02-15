@@ -103,6 +103,35 @@ public class AvroGenericStoreClientImplTest {
   }
 
   @Test
+  public void getSchemaTest() throws Exception {
+    int valueSchemaId = 1;
+    String valueSchemaStr = "{\n" +
+        "\t\"type\": \"record\",\n" +
+        "\t\"name\": \"test\",\n" +
+        "\t\"fields\" : [\n" +
+        "\t \t{\"name\": \"a\", \"type\": \"long\"},\n" +
+        "\t\t{\"name\": \"b\", \"type\": \"string\"}\n" +
+        "\t]\n" +
+        "}";
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
+
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    String valueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+
+    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+      logger.info("Execute test for transport client: " + entry.getKey());
+      Assert.assertEquals(entry.getValue().getKeySchema(), Schema.parse(defaultKeySchemaStr));
+      Assert.assertEquals(entry.getValue().getLatestValueSchema(), Schema.parse(valueSchemaStr));
+    }
+  }
+
+  @Test
   public void getByRequestPathTest() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String keySchemaPath = SchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
