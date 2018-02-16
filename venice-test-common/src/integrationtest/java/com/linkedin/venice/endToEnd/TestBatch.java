@@ -23,7 +23,15 @@ import java.util.*;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.hadoop.conf.*;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.io.SequenceFile;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.*;
@@ -99,6 +107,50 @@ public class TestBatch {
     }, (avroClient, vsonClient) -> {
       for (int i = 0; i < 100; i ++) {
         Assert.assertEquals(vsonClient.get((byte) i).get(), (short) (i - 50));
+      }
+    });
+  }
+
+  @Test
+  public void testVsonStoreMultiLevelRecordsSchema() throws Exception {
+    testBatchStore(inputDir -> {
+      Pair<Schema, Schema> schemas = writeMultiLevelVsonFile(inputDir);
+      return new Pair<>(schemas.getFirst(), schemas.getSecond());
+    }, props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.setProperty(VALUE_FIELD_PROP, "");
+    }, (avroClient, vsonClient) -> {
+      for (int i = 0; i < 100; i++) {
+        GenericRecord record1 = (GenericRecord) ((GenericRecord) (avroClient.get(i).get())).get("level1");
+        GenericRecord record21 = (GenericRecord) record1.get("level21");
+        Assert.assertEquals(record21.get("field1"), i + 100);
+
+        HashMap<String, Object> map = (HashMap<String, Object>) vsonClient.get(i).get();
+        HashMap<String, Object> map1 = (HashMap<String, Object>) map.get("level1");
+        HashMap<String, Object> map21 = (HashMap<String, Object>) map1.get("level21");
+        Assert.assertEquals(map21.get("field1"), i + 100);
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreMultiLevelRecordsSchema() throws Exception {
+    testBatchStore(inputDir -> {
+      Pair<Schema, Schema> schemas = writeMultiLevelVsonFile(inputDir);
+      return new Pair<>(schemas.getFirst(), schemas.getSecond());
+    }, props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.setProperty(VALUE_FIELD_PROP, "");
+    }, (avroClient, vsonClient) -> {
+      for (int i = 0; i < 100; i++) {
+        GenericRecord record1 = (GenericRecord) ((GenericRecord) (avroClient.get(i).get())).get("level1");
+        GenericRecord record21 = (GenericRecord) record1.get("level21");
+        Assert.assertEquals(record21.get("field1"), i + 100);
+
+        HashMap<String, Object> map = (HashMap<String, Object>) vsonClient.get(i).get();
+        HashMap<String, Object> map1 = (HashMap<String, Object>) map.get("level1");
+        HashMap<String, Object> map21 = (HashMap<String, Object>) map1.get("level21");
+        Assert.assertEquals(map21.get("field1"), i + 100);
       }
     });
   }
