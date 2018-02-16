@@ -61,7 +61,7 @@ public class TestBatch {
     }
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT*3)
   public void testVsonStoreWithSimpleRecords() throws Exception {
     testBatchStore(inputDir -> writeSimpleVsonFile(inputDir), props -> {
           props.setProperty(KEY_FIELD_PROP, "");
@@ -112,6 +112,28 @@ public class TestBatch {
   }
 
   @Test
+  public void testVsonStoreMultiLevelRecordsSchema() throws Exception {
+    testBatchStore(inputDir -> {
+      Pair<Schema, Schema> schemas = writeMultiLevelVsonFile(inputDir);
+      return new Pair<>(schemas.getFirst(), schemas.getSecond());
+    }, props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.setProperty(VALUE_FIELD_PROP, "");
+    }, (avroClient, vsonClient) -> {
+      for (int i = 0; i < 100; i++) {
+        GenericRecord record1 = (GenericRecord) ((GenericRecord) (avroClient.get(i).get())).get("level1");
+        GenericRecord record21 = (GenericRecord) record1.get("level21");
+        Assert.assertEquals(record21.get("field1"), i + 100);
+
+        HashMap<String, Object> map = (HashMap<String, Object>) vsonClient.get(i).get();
+        HashMap<String, Object> map1 = (HashMap<String, Object>) map.get("level1");
+        HashMap<String, Object> map21 = (HashMap<String, Object>) map1.get("level21");
+        Assert.assertEquals(map21.get("field1"), i + 100);
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreMultiLevelRecordsSchema() throws Exception {
     testBatchStore(inputDir -> {
       Pair<Schema, Schema> schemas = writeMultiLevelVsonFile(inputDir);
