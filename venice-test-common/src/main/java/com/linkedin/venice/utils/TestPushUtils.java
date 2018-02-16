@@ -180,6 +180,29 @@ public class TestPushUtils {
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
+  public static Pair<Schema, Schema> writeMultiLevelVsonFile(File parentDir) throws IOException{
+    String vsonKeyStr = "\"int32\"";
+    String vsonValueStr = "{\"level1\":{\"level21\":{\"field1\":\"int32\"}, \"level22\":{\"field2\":\"int32\"}}}";
+    Map<String, Object> record = new HashMap<>();
+    writeVsonFile(vsonKeyStr, vsonValueStr, parentDir,  "multilevel_vson-file",
+        (keySerializer, valueSerializer, writer) ->{
+          for (int i = 0; i < 100; i++) {
+            Map<String,Object> record21 = new HashMap<>();
+            record21.put("field1", i+100);
+            Map<String, Object> record22 = new HashMap<>();
+            record22.put("field2", i+100);
+            Map<String,Object> record1 = new HashMap<>();
+            record1.put("level21", record21);
+            record1.put("level22", record22);
+            record.put("level1", record1);
+
+            writer.append(new BytesWritable(keySerializer.toBytes(i)),
+                new BytesWritable(valueSerializer.toBytes(record)));
+          }
+        });
+    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonKeyStr), VsonAvroSchemaAdapter.parse(vsonValueStr));
+  }
+
   private static Pair<Schema, Schema> writeVsonFile(String keySchemaStr,
       String valueSchemStr,  File parentDir, String fileName, VsonFileWriter fileWriter) throws IOException {
     SequenceFile.Metadata metadata = new SequenceFile.Metadata();

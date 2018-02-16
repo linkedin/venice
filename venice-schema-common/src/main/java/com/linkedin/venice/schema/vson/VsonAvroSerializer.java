@@ -28,8 +28,8 @@ public class VsonAvroSerializer {
 
   private final VsonSchema schema;
 
-  //A cache for that catches the mapping between Vson schema string and Avro Schema
-  private Map<String, Schema> cachedSchemaMap;
+  private final Schema avroSchema;
+
 
   public static VsonAvroSerializer fromSchemaStr(String vsonSchemaStr) {
     return new VsonAvroSerializer(VsonSchema.parse(vsonSchemaStr));
@@ -37,7 +37,7 @@ public class VsonAvroSerializer {
 
   private VsonAvroSerializer(VsonSchema schema) {
     this.schema = schema;
-    this.cachedSchemaMap = new HashMap<>();
+    this.avroSchema = VsonAvroSchemaAdapter.parse(schema.toString());
   }
 
   public String toString(Object object) {
@@ -86,7 +86,7 @@ public class VsonAvroSerializer {
   }
 
   private Object bytesToAvro(DataInputStream input) throws IOException {
-    return readToAvro(input, schema);
+    return readToAvro(input, schema, avroSchema);
   }
 
   @SuppressWarnings("unchecked")
@@ -147,12 +147,12 @@ public class VsonAvroSerializer {
     }
   }
 
-  private Object readToAvro(DataInputStream stream, VsonSchema vsonSchema) throws IOException {
+  private Object readToAvro(DataInputStream stream, VsonSchema vsonSchema, Schema avroSchema) throws IOException {
     Object vsonSchemaType = vsonSchema.getType();
     if (vsonSchemaType instanceof Map) {
-      return readMapToAvro(stream, vsonSchema);
+      return readMapToAvro(stream, vsonSchema, avroSchema);
     } else if (vsonSchemaType instanceof List) {
-      return readListToAvro(stream, vsonSchema);
+      return readListToAvro(stream, vsonSchema, avroSchema);
     } else {
       //vson primitive type
       switch ((VsonTypes) vsonSchemaType) {
@@ -178,46 +178,45 @@ public class VsonAvroSerializer {
           return string == null ? null : new Utf8(string);
         case DATE:
           throw new VsonSerializationException("Converting Date to Avro is not supported");
-          default:
-            throw new VsonSerializationException("Unknown type of class " + vsonSchemaType.getClass());
+        default:
+          throw new VsonSerializationException("Unknown type of class " + vsonSchemaType.getClass());
 
       }
     }
   }
 
-  private GenericData.Record readMapToAvro(DataInputStream stream, VsonSchema vsonSchema) throws IOException {
+  private GenericData.Record readMapToAvro(DataInputStream stream, VsonSchema vsonSchema, Schema avroSchema) throws IOException {
     if (stream.readByte() == -1) {
       return null;
     }
 
-    String vsonSchemaStr = vsonSchema.toString();
-    Schema avroSchema = cachedSchemaMap.computeIfAbsent(vsonSchemaStr, schemaStr ->
-        VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(schemaStr)));
+    Schema curAvroSchema = VsonAvroSchemaAdapter.stripFromUnion(avroSchema);
 
-    GenericData.Record record = new GenericData.Record(avroSchema);
+    GenericData.Record record = new GenericData.Record(curAvroSchema);
 
     Map<String, Object> mapSchemaType = (Map<String, Object>) vsonSchema.getType();
 
-    for(Map.Entry<String, Object> field: mapSchemaType.entrySet()) {
-      record.put(field.getKey(), readToAvro(stream, vsonSchema.recordSubtype(field.getKey())));
+    for (Map.Entry<String, Object> field : mapSchemaType.entrySet()) {
+      String fieldName = field.getKey();
+      VsonSchema fieldVsonSchema = vsonSchema.recordSubtype(fieldName);
+      Schema fieldAvroSchema = curAvroSchema.getField(fieldName).schema();
+      record.put(fieldName, readToAvro(stream, fieldVsonSchema, fieldAvroSchema));
     }
 
     return record;
   }
 
-  private GenericData.Array readListToAvro(DataInputStream stream, VsonSchema vsonSchema) throws IOException {
+  private GenericData.Array readListToAvro(DataInputStream stream, VsonSchema vsonSchema, Schema avroSchema) throws IOException {
     int size = readLength(stream);
     if (size < 0) {
       return null;
     }
 
-    String vsonSchemaStr = vsonSchema.toString();
-    Schema avroSchema = cachedSchemaMap.computeIfAbsent(vsonSchemaStr,
-        schemaStr -> VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(schemaStr)));
+    Schema curAvroSchema = VsonAvroSchemaAdapter.stripFromUnion(avroSchema);
 
-    GenericData.Array array = new GenericData.Array(size, avroSchema);
+    GenericData.Array array = new GenericData.Array(size, curAvroSchema);
     for (int i = 0; i < size; i ++) {
-      array.add(readToAvro(stream, vsonSchema.listSubtype()));
+      array.add(readToAvro(stream, vsonSchema.listSubtype(), curAvroSchema.getElementType()));
     }
 
     return array;
