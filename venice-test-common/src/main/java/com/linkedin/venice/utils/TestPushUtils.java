@@ -184,7 +184,7 @@ public class TestPushUtils {
     String vsonKeyStr = "\"int32\"";
     String vsonValueStr = "{\"level1\":{\"level21\":{\"field1\":\"int32\"}, \"level22\":{\"field2\":\"int32\"}}}";
     Map<String, Object> record = new HashMap<>();
-    writeVsonFile(vsonKeyStr, vsonValueStr, parentDir,  "multilevel_vson-file",
+    writeVsonFile(vsonKeyStr, vsonValueStr, parentDir,  "multilevel_vson_file",
         (keySerializer, valueSerializer, writer) ->{
           for (int i = 0; i < 100; i++) {
             Map<String,Object> record21 = new HashMap<>();
