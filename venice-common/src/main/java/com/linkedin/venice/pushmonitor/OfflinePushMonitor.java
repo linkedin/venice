@@ -378,6 +378,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
     if (store.isHybrid()) {
       if (offlinePushStatus.isReadyToStartBufferReplay()) {
+        logger.info(offlinePushStatus.getKafkaTopic()+" is ready to start buffer replay.");
         Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();
         if (topicReplicatorOptional.isPresent()) {
           try {
@@ -394,6 +395,8 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         } else {
           logger.error("The TopicReplicator was not properly initialized!");
         }
+      } else {
+        logger.info(offlinePushStatus.getKafkaTopic()+" is not ready to start buffer relay.");
       }
     }
   }
@@ -424,7 +427,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     try {
       storeCleaner.retireOldStoreVersions(clusterName, storeName);
     } catch (Exception e) {
-      logger.warn("Could not retire the old versions for store: " + storeName + " in cluster: " + clusterName);
+      logger.warn("Could not retire the old versions for store: " + storeName + " in cluster: " + clusterName, e);
     }
     logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " is completed.");
   }
