@@ -48,7 +48,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -444,7 +443,7 @@ public class TestVeniceHelixAdmin {
         () -> veniceAdmin.getOffLinePushStatus(clusterName, deletedVersion.kafkaTopicName()).getExecutionStatus()
             .equals(ExecutionStatus.NOT_CREATED));
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      Assert.assertFalse(veniceAdmin.getTopicManager().containsTopic(deletedVersion.kafkaTopicName()));
+      Assert.assertTrue(veniceAdmin.isTopicTruncated(deletedVersion.kafkaTopicName()));
     });
   }
 
@@ -1092,11 +1091,13 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.setStoreReadability(clusterName, storeName, true);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getCurrentVersion(), Store.NON_EXISTING_VERSION,
         "No version should be available to read");
-    Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(lastVersion.kafkaTopicName()),
-        "Kafka topic should be kept for the uncompleted version.");
-    Assert.assertFalse(
-        veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, lastVersion.getNumber() - 1)),
-        "Kafka topic should be deleted for the completed version.");
+    String uncompletedTopic = lastVersion.kafkaTopicName();
+    Assert.assertTrue(veniceAdmin.isTopicTruncated(uncompletedTopic),
+        "Kafka topic: " + uncompletedTopic + " should be truncated for the uncompleted version.");
+    String completedTopic = Version.composeKafkaTopic(storeName, lastVersion.getNumber() - 1);
+    Assert.assertTrue(
+        veniceAdmin.isTopicTruncated(completedTopic),
+        "Kafka topic: " + completedTopic + " should be truncated for the completed version.");
   }
 
   @Test
@@ -1180,7 +1181,7 @@ public class TestVeniceHelixAdmin {
         veniceAdmin.getVeniceHelixResource(clusterName).getStoreGraveyard().getLargestUsedVersionNumber(storeName),
         version.getNumber(), "LargestUsedVersionNumber should be kept in graveyard.");
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST, TimeUnit.MILLISECONDS,
-        () -> !veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())));
+        () -> veniceAdmin.isTopicTruncated(Version.composeKafkaTopic(storeName, version.getNumber())));
   }
 
   @Test
@@ -1447,7 +1448,7 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void leakyTopicDeletion() {
+  public void leakyTopicTruncation() {
     TopicManager topicManager = veniceAdmin.getTopicManager();
 
     // 5 stores, 10 topics and 2 active versions each.
@@ -1493,19 +1494,17 @@ public class TestVeniceHelixAdmin {
     }
 
     Store storeToCleanUp = stores.get(0);
-    veniceAdmin.deleteOldKafkaTopics(storeToCleanUp);
-
-    int unusedKafkaTopicsToKeep = 2; // hard-coded... if we change the default, we would need to update this test...
-    int maxTopicToDelete = NUMBER_OF_VERSIONS - unusedKafkaTopicsToKeep;
+    veniceAdmin.truncateOldKafkaTopics(storeToCleanUp, false);
 
     // verify that the storeToCleanUp has its topics cleaned up, and the others don't
+    // verify all the topics of 'storeToCleanup' without corresponding active versions have been cleaned up
     for (Store store: stores) {
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
         String topicName = Version.composeKafkaTopic(store.getName(), versionNumber);
-        if (store.equals(storeToCleanUp) && !store.containsVersion(versionNumber) && versionNumber <= maxTopicToDelete) {
-          Assert.assertFalse(topicManager.containsTopic(topicName), "Topic '" + topicName + "' should NOT exist.");
+        if (store.equals(storeToCleanUp) && !store.containsVersion(versionNumber)) {
+          Assert.assertTrue(veniceAdmin.isTopicTruncated(topicName), "Topic '" + topicName + "' should be truncated.");
         } else {
-          Assert.assertTrue(topicManager.containsTopic(topicName),
+          Assert.assertTrue(!veniceAdmin.isTopicTruncated(topicName),
               "Topic '" + topicName + "' should exist when active versions are: " +
                   store.getVersions().stream()
                       .map(version -> Integer.toString(version.getNumber()))

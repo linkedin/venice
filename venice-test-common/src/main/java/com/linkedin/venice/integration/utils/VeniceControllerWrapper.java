@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Version;
 
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -80,8 +79,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress())
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
-            .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress()
-            );
+            .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
+            // To speed up topic cleanup
+            .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 1);
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
@@ -174,6 +174,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   public boolean isMasterController(String clusterName) {
     Admin admin = service.getVeniceControllerService().getVeniceHelixAdmin();
     return admin.isMasterController(clusterName);
+  }
+
+  public boolean isMasterControllerForControllerCluster() {
+    Admin admin = service.getVeniceControllerService().getVeniceHelixAdmin();
+    return admin.isMasterControllerOfControllerCluster();
   }
 
   public Admin getVeniceAdmin() {

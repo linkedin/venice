@@ -27,7 +27,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
   private final boolean enableTopicReplicator;
-  private final boolean enableLeakyKafkaTopicCleanup;
   private Map<String, String> childClusterMap = null;
   private String d2ServiceName;
   private Map<String, String> childClusterD2Map = null;
@@ -35,8 +34,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long adminConsumptionTimeoutMinutes;
   private final double storageEngineOverheadRatio;
   private final long topicCreationThrottlingTimeWindowMs;
-  private final long failedJobTopicRetentionMs;
-  private final boolean parentControllerEnableTopicDeletion;
+  private final long deprecatedJobTopicRetentionMs;
+  private final long deprecatedJobTopicMaxRetentionMs;
+  private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
   private final int topicManagerKafkaOperationTimeOutMs;
   private final boolean enableTopicReplicatorSSL;
   private int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -70,15 +70,17 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.enableTopicReplicatorSSL = props.getBoolean(ENABLE_TOPIC_REPLICATOR_SSL, false);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
-    // The default retention '0' will allow Kafka remove as much data as possible.
-    this.failedJobTopicRetentionMs = props.getLong(FAILED_JOB_TOPIC_RETENTION_MS, 0);
-
-    // disable topic deletion in parent controller by default
-    this.parentControllerEnableTopicDeletion = props.getBoolean(PARENT_CONTROLLER_ENABLE_TOPIC_DELETION, false);
+    // The default retention will allow Kafka remove as much data as possible.
+    this.deprecatedJobTopicRetentionMs = props.getLong(DEPRECATED_TOPIC_RETENTION_MS, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
+    this.deprecatedJobTopicMaxRetentionMs = props.getLong(DEPRECATED_TOPIC_MAX_RETENTION_MS, TimeUnit.SECONDS.toMillis(60)); // 1 min
+    if (this.deprecatedJobTopicMaxRetentionMs < this.deprecatedJobTopicRetentionMs) {
+      throw new VeniceException("Config: " + DEPRECATED_TOPIC_MAX_RETENTION_MS + " with value: " + this.deprecatedJobTopicMaxRetentionMs +
+          " should be larger than config: " + DEPRECATED_TOPIC_RETENTION_MS + " with value: " + this.deprecatedJobTopicRetentionMs);
+    }
+    this.topicCleanupSleepIntervalBetweenTopicListFetchMs = props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30 seconds
 
     this.topicManagerKafkaOperationTimeOutMs = props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
 
-    this.enableLeakyKafkaTopicCleanup = props.getBoolean(ENABLE_LEAKY_KAFKA_TOPIC_CLEAN_UP, true);
     this.minNumberOfUnusedKafkaTopicsToPreserve = props.getInt(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 2);
     this.minNumberOfStoreVersionsToPreserve = props.getInt(MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE, 2);
     if (minNumberOfStoreVersionsToPreserve < 1) {
@@ -112,8 +114,16 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return topicCreationThrottlingTimeWindowMs;
   }
 
-  public long getFailedJobTopicRetentionMs() {
-    return failedJobTopicRetentionMs;
+  public long getDeprecatedJobTopicRetentionMs() {
+    return deprecatedJobTopicRetentionMs;
+  }
+
+  public long getDeprecatedJobTopicMaxRetentionMs() {
+    return deprecatedJobTopicMaxRetentionMs;
+  }
+
+  public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
+    return topicCleanupSleepIntervalBetweenTopicListFetchMs;
   }
 
   /**
@@ -140,10 +150,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return parentControllerWaitingTimeForConsumptionMs;
   }
 
-  public boolean isParentControllerEnableTopicDeletion() {
-    return parentControllerEnableTopicDeletion;
-  }
-
   public long getAdminConsumptionTimeoutMinutes(){
     return adminConsumptionTimeoutMinutes;
   }
@@ -162,10 +168,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getTopicManagerKafkaOperationTimeOutMs() {
     return topicManagerKafkaOperationTimeOutMs;
-  }
-
-  public boolean isLeakyKafkaTopicCleanupEnabled() {
-    return enableLeakyKafkaTopicCleanup;
   }
 
   public int getMinNumberOfUnusedKafkaTopicsToPreserve() {

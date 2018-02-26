@@ -4,7 +4,7 @@ import com.google.common.collect.Ordering;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
@@ -38,7 +38,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
@@ -113,10 +112,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
-  /**
-   * Whether parent controller should delete topic when job finishes.
-   */
-  private final boolean enableTopicDeletion;
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -135,7 +130,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
         veniceHelixAdmin.getAdapterSerializer());
-    this.enableTopicDeletion = multiClusterConfigs.isParentControllerEnableTopicDeletion();
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -416,7 +410,7 @@ public class VeniceParentHelixAdmin implements Admin {
      */
     if (latestKafkaTopic.isPresent()) {
       logger.debug("Latest kafka topic for store: " + storeName + " is " + latestKafkaTopic.get());
-      if (!getTopicManager().isTopicRetentionZero(latestKafkaTopic.get())) {
+      if (!isTopicTruncated(latestKafkaTopic.get())) {
         /**
          * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
          * job status by sending requests to each individual datacenter.
@@ -449,10 +443,12 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         if (!jobStatus.isTerminal()) {
           logger.info(
-              "Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic + " is not terminal, extra info: " + extraInfo);
+              "Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic.get() + " is not terminal, extra info: " + extraInfo);
           return latestKafkaTopic;
         } else {
-          logger.info("Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic + " is terminal, so just ignore it");
+          logger.info("Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic.get() + " is terminal, so just ignore it");
+          logger.info("Will truncate topic: " + latestKafkaTopic.get() + " since the corresponding job status is terminal");
+          truncateKafkaTopic(latestKafkaTopic.get());
         }
       }
     }
@@ -933,22 +929,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return controllerClients;
   }
 
-  private void internalDeleteTopic(TopicManager topicManager, String topicName) {
-    if (enableTopicDeletion) {
-      try {
-        topicManager.ensureTopicIsDeletedAndBlock(topicName);
-        logger.info("Topic: " + topicName + " is deleted");
-      } catch (VeniceOperationAgainstKafkaTimedOut e) {
-        logger.error("Timed out during internalDeleteTopic. Will proceed.", e);
-      }
-    } else {
-      // Update retention to be 0 to free Kafka disk space
-      topicManager.updateTopicRetentionToBeZero(topicName);
-      logger.info("Topic deletion is disabled in parent controller, "
-          + "so it will just update topic retention for topic: " + topicName + " to be 0 to free Kafka disk space");
-    }
-  }
-
   /**
    * Queries child clusters for status.
    * Of all responses, return highest of (in order) NOT_CREATED, NEW, STARTED, PROGRESS.
@@ -1027,8 +1007,8 @@ public class VeniceParentHelixAdmin implements Admin {
       // COMPLETED -> ONLINE
       // ERROR -> ERROR
 
-      logger.info("Deleting kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
-      internalDeleteTopic(topicManager, kafkaTopic);
+      logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
+      truncateKafkaTopic(kafkaTopic);
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo);
@@ -1162,9 +1142,8 @@ public class VeniceParentHelixAdmin implements Admin {
       veniceHelixAdmin.checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
       logger.info("Killing offline push job for topic: " + kafkaTopic + " in cluster: " + clusterName);
       // Remove Kafka topic
-      TopicManager topicManager = getTopicManager();
-      logger.info("Deleting topic when kill offline push job, topic: " + kafkaTopic);
-      internalDeleteTopic(topicManager, kafkaTopic);
+      logger.info("Truncating topic when kill offline push job, topic: " + kafkaTopic);
+      truncateKafkaTopic(kafkaTopic);
 
       // TODO: Set parent controller's version status (to ERROR, most likely?)
 
@@ -1285,7 +1264,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public VeniceControllerConsumerFactotry getVeniceConsumerFactory() {
+  public VeniceControllerConsumerFactory getVeniceConsumerFactory() {
     return veniceHelixAdmin.getVeniceConsumerFactory();
   }
 
@@ -1308,5 +1287,24 @@ public class VeniceParentHelixAdmin implements Admin {
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
     veniceHelixAdmin.close();
+  }
+
+  @Override
+  public boolean isMasterControllerOfControllerCluster() {
+    return veniceHelixAdmin.isMasterControllerOfControllerCluster();
+  }
+
+  @Override
+  public boolean isTopicTruncated(String kafkaTopicName) {
+    return veniceHelixAdmin.isTopicTruncated(kafkaTopicName);
+  }
+
+  @Override
+  public boolean isTopicTruncatedBasedOnRetention(long retention) {
+    return veniceHelixAdmin.isTopicTruncatedBasedOnRetention(retention);
+  }
+
+  public void truncateKafkaTopic(String kafkaTopicName) {
+    veniceHelixAdmin.truncateKafkaTopic(kafkaTopicName);
   }
 }

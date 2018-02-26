@@ -3,7 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
@@ -100,20 +100,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final ZkWhitelistAccessor whitelistAccessor;
     private final ExecutionIdAccessor executionIdAccessor;
     private final Optional<TopicReplicator> topicReplicator;
-    private final long failedJobTopicRetentionMs;
+    private final long deprecatedJobTopicRetentionMs;
+    private final long deprecatedJobTopicMaxRetentionMs;
     private final ZkStoreConfigAccessor storeConfigAccessor;
     private final VeniceWriterFactory veniceWriterFactory;
-    private final VeniceControllerConsumerFactotry veniceConsumerFactory;
-    private final boolean isLeakyKafkaTopicCleanupEnabled;
+    private final VeniceControllerConsumerFactory veniceConsumerFactory;
     private final int minNumberOfUnusedKafkaTopicsToPreserve;
     private final int minNumberOfStoreVersionsToPreserve;
 
 
   /**
-     * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
+     * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
      */
     private HelixManager manager;
+    /**
+     * Builder used to build the data path to access Helix internal data of level-1 cluster.
+     */
+    private PropertyKey.Builder level1KeyBuilder;
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
@@ -125,8 +129,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
         this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
         this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
-        this.failedJobTopicRetentionMs = multiClusterConfigs.getFailedJobTopicRetentionMs();
-        this.isLeakyKafkaTopicCleanupEnabled = multiClusterConfigs.isLeakyKafkaTopicCleanupEnabled();
+        this.deprecatedJobTopicRetentionMs = multiClusterConfigs.getDeprecatedJobTopicRetentionMs();
+        this.deprecatedJobTopicMaxRetentionMs = multiClusterConfigs.getDeprecatedJobTopicMaxRetentionMs();
+
         this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
         this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
 
@@ -136,7 +141,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
             ZkClient.DEFAULT_CONNECTION_TIMEOUT);
         this.adapterSerializer = new HelixAdapterSerializer();
-        veniceConsumerFactory = new VeniceControllerConsumerFactotry(commonConfig);
+        veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
         this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(),
             multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(), veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
@@ -173,6 +178,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.error(errorMessage, ex);
             throw new VeniceException(errorMessage, ex);
         }
+        level1KeyBuilder = new PropertyKey.Builder(manager.getClusterName());
     }
 
     public ZkClient getZkClient() {
@@ -317,9 +323,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Delete All versions
             deleteAllVersionsInStore(clusterName, storeName);
-            topicManager.ensureTopicIsDeletedAndBlock(Version.composeRealTimeTopic(storeName));
+            // Clean up topics
+            truncateKafkaTopic(Version.composeRealTimeTopic(storeName));
             if (store != null) {
-                deleteOldKafkaTopics(store);
+                truncateOldKafkaTopics(store, true);
             } else {
                 // Defensive coding: This should never happen, unless someone adds a catch block to the above try/finally clause...
                 logger.error("Unexpected null store instance...!");
@@ -713,7 +720,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
         if (deletedVersion.isPresent()) {
-            deleteKafkaTopicForVersion(clusterName, deletedVersion.get());
+            String topicNameForDeletedVersion = deletedVersion.get().kafkaTopicName();
+            truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
         }
         stopMonitorOfflinePush(clusterName, resourceName);
 
@@ -731,7 +739,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
 
-        deleteOldKafkaTopics(store);
+        truncateOldKafkaTopics(store, false);
     }
 
     /***
@@ -763,45 +771,40 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    protected void deleteKafkaTopicForVersion(String clusterName, Version version) {
-        String kafkaTopicName = version.kafkaTopicName();
-        boolean isCompleted = false;
-        if (VersionStatus.isBootstrapTerminated(version.getStatus())) {
-            // Only delete kafka topic after consumption is completed. In that case, there is no more data will
-            // be produced from Kafka MM. Otherwise, deleting would cause Kafka MM crashed.
-            isCompleted = true;
-        }
+    @Override
+    public boolean isTopicTruncated(String kafkaTopicName) {
+        return getTopicManager().isTopicTruncated(kafkaTopicName, deprecatedJobTopicMaxRetentionMs);
+    }
 
-        if (isCompleted || getVeniceHelixResource(clusterName).getConfig()
-            .isEnableTopicDeletionForUncompletedJob()) {
-            logger.info("Deleting topic: " + kafkaTopicName);
-            getTopicManager().ensureTopicIsDeletedAsync(kafkaTopicName);
-            logger.info("Deleted topic: " + kafkaTopicName);
+    @Override
+    public boolean isTopicTruncatedBasedOnRetention(long retention) {
+        return getTopicManager().isRetentionBelowTruncatedThreshold(retention, deprecatedJobTopicMaxRetentionMs);
+    }
+
+    @Override
+    public void truncateKafkaTopic(String kafkaTopicName) {
+        if (getTopicManager().containsTopic(kafkaTopicName)) {
+            getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs);
+            logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
         } else {
-            // TODO an async task is needed to collect topics later to prevent resource leaking.
-            logger.warn("Could not delete Kafka topic: " + kafkaTopicName
-                + "Because the offline push for this version has not been completed, and topic deletion for uncompleted push is disabled. Version status:"
-                + version.getStatus());
-            logger.info("Will update topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
-            getTopicManager().updateTopicRetention(kafkaTopicName, failedJobTopicRetentionMs);
-            logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
+            logger.info("Topic: " + kafkaTopicName + " doesn't exist, will skip the truncation");
         }
     }
 
     /**
-     * Clean up old unused Kafka topics. These could arise from resource leaking of topics during certain
+     * Truncate old unused Kafka topics. These could arise from resource leaking of topics during certain
      * scenarios.
+     *
+     * If it is for store deletion, this function will truncate all the topics;
+     * Otherwise, it will only truncate topics without corresponding active version.
      *
      * N.B.: visibility is package-private to ease testing...
      *
      * @param store for which to clean up old topics
+     * @param forStoreDeletion
+     *
      */
-    void deleteOldKafkaTopics(Store store) {
-        if (!isLeakyKafkaTopicCleanupEnabled) {
-            logger.info("Leaky topic clean up is disabled.");
-            return;
-        }
-
+    void truncateOldKafkaTopics(Store store, boolean forStoreDeletion) {
         Set<Integer> currentlyKnownVersionNumbers = store.getVersions().stream()
             .map(version -> version.getNumber())
             .collect(Collectors.toSet());
@@ -818,30 +821,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Searched for old topics belonging to store '" + store.getName() + "', and did not find any.");
             return;
         }
+        List<String> oldTopicsToTruncate = allTopicsRelatedToThisStore;
+        if (!forStoreDeletion) {
+            // For store version deprecation, controller will truncate all the topics without corresponding versions.
+            oldTopicsToTruncate = allTopicsRelatedToThisStore.stream().
+                filter((topic) -> !currentlyKnownVersionNumbers.contains(Version.parseVersionFromKafkaTopicName(topic)))
+                .collect(Collectors.toList());
+        }
 
-        int maxVersion = allTopicsRelatedToThisStore.stream()
-            .map(t -> Version.parseVersionFromKafkaTopicName(t))
-            .max(Integer::compare)
-            .get();
-
-        final long maxVersionNumberToDelete = maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
-
-        List<String> oldTopicsToDelete = allTopicsRelatedToThisStore.stream()
-            /** Consider only topics Venice doesn't know about */
-            .filter(t -> !currentlyKnownVersionNumbers.contains(Version.parseVersionFromKafkaTopicName(t)))
-            /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
-            .filter(t -> Version.parseVersionFromKafkaTopicName(t) <= maxVersionNumberToDelete)
-            .collect(Collectors.toList());
-
-        if (oldTopicsToDelete.isEmpty()) {
+        if (oldTopicsToTruncate.isEmpty()) {
             logger.info("Searched for old topics belonging to store '" + store.getName() + "', and did not find any.");
         } else {
-            logger.info("Detected the following old topics to delete: " + String.join(", ", oldTopicsToDelete));
-            oldTopicsToDelete.stream()
-                .forEach(t -> topicManager.ensureTopicIsDeletedAndBlock(t));
-            logger.info("Finished deleting old topics for store '" + store.getName() + "'.");
+            logger.info("Detected the following old topics to truncate: " + String.join(", ", oldTopicsToTruncate));
+            oldTopicsToTruncate.stream()
+                .forEach(t -> truncateKafkaTopic(t));
+            logger.info("Finished truncating old topics for store '" + store.getName() + "'.");
         }
     }
+
 
     /***
      * If you need to do mutations on the store, then you must hold onto the lock until you've persisted your mutations.
@@ -1985,7 +1982,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public VeniceControllerConsumerFactotry getVeniceConsumerFactory() {
+    public VeniceControllerConsumerFactory getVeniceConsumerFactory() {
         return veniceConsumerFactory;
     }
 
@@ -2069,5 +2066,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * be updated by metadataRepository
          */
         Store update(Store store);
+    }
+
+    /**
+     * This function is used to detect whether current node is the master controller of controller cluster.
+     *
+     * Be careful to use this function since it will talk to Zookeeper directly every time.
+     *
+     * @return
+     */
+    @Override
+    public boolean isMasterControllerOfControllerCluster() {
+        LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
+        return leader.getId().equals(this.controllerName);
     }
 }

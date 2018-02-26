@@ -28,10 +28,10 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.common.PartitionInfo;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -64,6 +64,10 @@ public class TopicManager implements Closeable {
   private static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
   private static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
+  protected static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = TimeUnit.DAYS.toMillis(5); // 5 days
+  protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
+
 
   public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
       VeniceConsumerFactory veniceConsumerFactory) {
@@ -109,8 +113,10 @@ public class TopicManager implements Closeable {
        */
       Properties topicProperties = new Properties();
       if (eternal) {
-        topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(Long.MAX_VALUE));
-      } // TODO: else apply buffer topic configured retention.
+        topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(ETERNAL_TOPIC_RETENTION_POLICY_MS));
+      }  else {
+        topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(DEFAULT_TOPIC_RETENTION_POLICY_MS));
+      }
       topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
       long startTime = System.currentTimeMillis();
       boolean asyncCreateOperationSucceeded = false;
@@ -135,7 +141,10 @@ public class TopicManager implements Closeable {
       }
       logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
     } catch (TopicExistsException e) {
-      logger.warn("Met error when creating kakfa topic: " + topicName, e);
+      long retentionPolicyInMs = eternal ? ETERNAL_TOPIC_RETENTION_POLICY_MS : DEFAULT_TOPIC_RETENTION_POLICY_MS;
+      logger.info("Topic: " + topicName + " already exists, will update retention policy.");
+      updateTopicRetention(topicName, retentionPolicyInMs);
+      logger.info("Updated retention policy to be " + retentionPolicyInMs + "ms for topic: " + topicName);
     }
   }
 
@@ -144,7 +153,7 @@ public class TopicManager implements Closeable {
    * occur asynchronously.
    * @param topicName
    */
-  public void ensureTopicIsDeletedAsync(String topicName) {
+  private void ensureTopicIsDeletedAsync(String topicName) {
     if (!isTopicFullyDeleted(topicName, false)) {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
@@ -178,23 +187,36 @@ public class TopicManager implements Closeable {
     }
   }
 
-  public void updateTopicRetentionToBeZero(String topicName) {
-    updateTopicRetention(topicName, 0);
+  public Map<String, Long> getAllTopicRetentions() {
+    scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
+    Map<String, Long> topicRetentions = new HashMap<>();
+    Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.asJavaMap(allTopicConfigs);
+    allTopicConfigsJavaMap.forEach( (topic, topicProperties) -> {
+      if (topicProperties.containsKey(LogConfig.RetentionMsProp())) {
+        topicRetentions.put(topic, Long.valueOf(topicProperties.getProperty(LogConfig.RetentionMsProp())));
+      } else {
+        topicRetentions.put(topic, UNKNOWN_TOPIC_RETENTION);
+      }
+    });
+    return topicRetentions;
   }
 
-  /**
-   * Check whether current topic retention is 0
-   * @param topicName
-   * @return
-   */
-  public synchronized boolean isTopicRetentionZero(String topicName) {
+  public long getTopicRetention(String topicName) {
     Properties topicProperties = getTopicConfig(topicName);
     if (topicProperties.containsKey(LogConfig.RetentionMsProp())) {
-      long retention = Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp()));
-      return retention == 0;
+      return Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp()));
     }
-    return false;
+    return UNKNOWN_TOPIC_RETENTION;
   }
+
+  public boolean isTopicTruncated(String topicName, long truncatedTopicMaxRetentionMs) {
+    return isRetentionBelowTruncatedThreshold(getTopicRetention(topicName), truncatedTopicMaxRetentionMs);
+  }
+
+  public boolean isRetentionBelowTruncatedThreshold(long retention, long truncatedTopicMaxRetentionMs) {
+    return retention != UNKNOWN_TOPIC_RETENTION && retention <= truncatedTopicMaxRetentionMs;
+  }
+
 
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
@@ -223,6 +245,14 @@ public class TopicManager implements Closeable {
    * @param topicName
    */
   public synchronized void ensureTopicIsDeletedAndBlock(String topicName) {
+    if (!containsTopic(topicName)) {
+      // Topic doesn't exist
+      return;
+    }
+    // This is trying to guard concurrent topic deletion in Kafka.
+    if (getZkUtils().getChildrenParentMayNotExist(ZkUtils.DeleteTopicsPath()).size() > 0) {
+      throw new VeniceException("Delete operation already in progress! Try again later.");
+    }
     ensureTopicIsDeletedAsync(topicName);
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
     final int SLEEP_MS = 100;

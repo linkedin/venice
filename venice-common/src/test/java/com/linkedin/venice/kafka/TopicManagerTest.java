@@ -9,10 +9,8 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import kafka.log.LogConfig;
@@ -65,18 +63,46 @@ public class TopicManagerTest {
 
   @Test
   public void testCreateTopic() throws Exception {
-    String topicName = getTopic();
-    manager.createTopic(topicName, 1, 1, true); /* should be noop */
-    Assert.assertTrue(manager.containsTopic(topicName));
+    String topicNameWithEternalRetentionPolicy = getTopic();
+    manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
+    Assert.assertTrue(manager.containsTopic(topicNameWithEternalRetentionPolicy));
+    Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+
+    String topicNameWithDefaultRetentionPolicy = getTopic();
+    manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
+    Assert.assertTrue(manager.containsTopic(topicNameWithDefaultRetentionPolicy));
+    Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+  }
+
+  @Test
+  public void testCreateTopicWhenTopicExists() throws Exception {
+    String topicNameWithEternalRetentionPolicy = getTopic();
+    String topicNameWithDefaultRetentionPolicy = getTopic();
+
+    // Create topic with zero retention policy
+    manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, false);
+    manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false);
+    manager.updateTopicRetention(topicNameWithEternalRetentionPolicy, 0);
+    manager.updateTopicRetention(topicNameWithDefaultRetentionPolicy, 0);
+    Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), 0);
+    Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), 0);
+
+    // re-create those topics with different retention policy
+
+    manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
+    Assert.assertTrue(manager.containsTopic(topicNameWithEternalRetentionPolicy));
+    Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+
+    manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
+    Assert.assertTrue(manager.containsTopic(topicNameWithDefaultRetentionPolicy));
+    Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
 
   @Test
   public void testDeleteTopic() throws InterruptedException {
     String topicName = getTopic();
-    manager.ensureTopicIsDeletedAsync(topicName);
-    // (delete is async)
-    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.SECONDS,
-        () -> Assert.assertFalse(manager.containsTopic(topicName)));
+    manager.ensureTopicIsDeletedAndBlock(topicName);
+    Assert.assertFalse(manager.containsTopic(topicName));
   }
 
   @Test
@@ -187,13 +213,32 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testUpdateTopicRetentionToBeZero() throws InterruptedException {
-    String topic = TestUtils.getUniqueString("topic");
-    manager.createTopic(topic, 1, 1, true);
-    manager.updateTopicRetentionToBeZero(topic);
-    Properties topicProperties = manager.getTopicConfig(topic);
-    Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
-    Assert.assertTrue(manager.isTopicRetentionZero(topic));
-  }
+  public void testGetAllTopicRetentions() {
+    String topic1 = TestUtils.getUniqueString("topic");
+    String topic2 = TestUtils.getUniqueString("topic");
+    String topic3 = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic1, 1, 1, true);
+    manager.createTopic(topic2, 1, 1, false);
+    manager.createTopic(topic3, 1, 1, false);
+    manager.updateTopicRetention(topic3, 5000);
 
+    Map<String, Long> topicRetentions = manager.getAllTopicRetentions();
+    Assert.assertTrue(topicRetentions.size() > 3, "There should be at least 3 topics, "
+        + "which were created by this test");
+    Assert.assertEquals(topicRetentions.get(topic1).longValue(), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
+    Assert.assertEquals(topicRetentions.get(topic2).longValue(), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+    Assert.assertEquals(topicRetentions.get(topic3).longValue(), 5000);
+
+    long deprecatedTopicRetentionMaxMs = 5000;
+    Assert.assertFalse(manager.isTopicTruncated(topic1, deprecatedTopicRetentionMaxMs),
+        "Topic1 should not be deprecated because of unlimited retention policy");
+    Assert.assertFalse(manager.isTopicTruncated(topic2, deprecatedTopicRetentionMaxMs),
+        "Topic2 should not be deprecated because of unknown retention policy");
+    Assert.assertTrue(manager.isTopicTruncated(topic3, deprecatedTopicRetentionMaxMs),
+        "Topic3 should be deprecated because of low retention policy");
+
+    Assert.assertFalse(manager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs + 1, deprecatedTopicRetentionMaxMs));
+    Assert.assertFalse(manager.isRetentionBelowTruncatedThreshold(TopicManager.UNKNOWN_TOPIC_RETENTION, deprecatedTopicRetentionMaxMs));
+    Assert.assertTrue(manager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs - 1, deprecatedTopicRetentionMaxMs));
+  }
 }

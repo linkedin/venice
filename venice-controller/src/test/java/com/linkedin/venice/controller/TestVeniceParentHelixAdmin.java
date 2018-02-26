@@ -127,9 +127,6 @@ public class TestVeniceParentHelixAdmin {
     doReturn(storeRepo).when(resources)
         .getMetadataRepository();
 
-    // enable topic deletion by default
-    doReturn(true).when(config).isParentControllerEnableTopicDeletion();
-
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
@@ -604,15 +601,15 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
+    doReturn(new HashSet<>(Arrays.asList(kafkaTopic)))
         .when(topicManager).listTopics();
 
     parentAdmin.killOfflinePush(clusterName, kafkaTopic);
 
     verify(internalAdmin)
         .checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
-    verify(topicManager)
-        .ensureTopicIsDeletedAndBlock(kafkaTopic);
+    verify(internalAdmin)
+        .truncateKafkaTopic(kafkaTopic);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -926,7 +923,7 @@ public class TestVeniceParentHelixAdmin {
         offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
-    verify(topicManager, timeout(TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock("topic1");
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -935,7 +932,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic2");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic2");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -947,7 +944,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic3");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic3");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
@@ -955,7 +952,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic4");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic4");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
@@ -964,28 +961,28 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic5");;
+    verify(internalAdmin, never()).truncateKafkaTopic("topic5");;
     Assert.assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic6");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic6");
     Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.END_OF_PUSH_RECEIVED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic7");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic7");
     Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.END_OF_PUSH_RECEIVED.toString());
 
     progressMap.put("cluster13", clientMap.get(ExecutionStatus.COMPLETED));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic8");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic8");
     Assert.assertEquals(extraInfo.get("cluster13"), ExecutionStatus.COMPLETED.toString());
 
     // 1 in 4 failures is ERROR
@@ -997,7 +994,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    verify(topicManager, timeout(TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock("topic8");
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic8");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -1309,22 +1306,24 @@ public class TestVeniceParentHelixAdmin {
 
     String latestTopic = storeName + "_v1";
     doReturn(Optional.of(latestTopic)).when(mockParentAdmin).getLatestKafkaTopic(storeName);
+
     doReturn(topicManager).when(mockParentAdmin).getTopicManager();
 
-    // When there is a topic with zero retention policy
-    doReturn(true).when(topicManager).isTopicRetentionZero(latestTopic);
+    // When there is a deprecated topic
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(latestTopic);
     Assert.assertFalse(mockParentAdmin.getCurrentPushJob(clusterName, storeName).isPresent());
     verify(mockParentAdmin, never()).getOffLinePushStatus(clusterName, latestTopic);
 
-    // When there is a topic with non-zero retention policy and the job status is terminal
+    // When there is a regular topic and the job status is terminal
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED))
         .when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
-    doReturn(false).when(topicManager).isTopicRetentionZero(latestTopic);
+    doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
     Assert.assertFalse(mockParentAdmin.getCurrentPushJob(clusterName, storeName).isPresent());
     verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
+    verify(mockParentAdmin, times(1)).truncateKafkaTopic(latestTopic);
 
-    // When there is a topic with non-zero retention policy and the job status is not terminal
+    // When there is a regular topic and the job status is not terminal
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS))
         .when(mockParentAdmin)
         .getOffLinePushStatus(clusterName, latestTopic);
@@ -1332,8 +1331,10 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
+    // No topic  truncation this round, so the invocation times should be same as before
+    verify(mockParentAdmin, times(1)).truncateKafkaTopic(latestTopic);
 
-    // When there is a topic with non-zero retention policy and the job status is 'UNKNOWN' in some colo,
+    // When there is a regular topic and the job status is 'UNKNOWN' in some colo,
     // but overall status is 'COMPLETED'
     Map<String, String> extraInfo = new HashMap<>();
     extraInfo.put("cluster1", ExecutionStatus.UNKNOWN.toString());
@@ -1345,8 +1346,10 @@ public class TestVeniceParentHelixAdmin {
     currentPush = mockParentAdmin.getCurrentPushJob(clusterName, storeName);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
+    // Topic truncation should be called, so the invocation times should be previous value + 1
+    verify(mockParentAdmin, times(2)).truncateKafkaTopic(latestTopic);
 
-    // When there is a topic with non-zero retention policy and the job status is 'UNKNOWN' in some colo,
+    // When there is a regular topic and the job status is 'UNKNOWN' in some colo,
     // but overall status is 'PROGRESS'
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
         .when(mockParentAdmin)
@@ -1355,8 +1358,10 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
+    // No topic truncation this round, so the invocation times should be same as before
+    verify(mockParentAdmin, times(2)).truncateKafkaTopic(latestTopic);
 
-    // When there is a topic with non-zero retention policy and the job status is 'UNKNOWN' in some colo for the first time,
+    // When there is a regular topic and the job status is 'UNKNOWN' in some colo for the first time,
     // but overall status is 'PROGRESS'
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
         .when(mockParentAdmin)
@@ -1368,6 +1373,8 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
+    // No topic truncation this round, so the invocation times should be same as before
+    verify(mockParentAdmin, times(2)).truncateKafkaTopic(latestTopic);
   }
 
   @Test (expectedExceptions = VeniceException.class)
