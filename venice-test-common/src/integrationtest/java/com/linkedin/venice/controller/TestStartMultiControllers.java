@@ -47,6 +47,7 @@ public class TestStartMultiControllers {
     //Find the one which did not join the cluster and test whether it can get master controller correctly.
     for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
       String instanceId = Utils.getHelixNodeIdentifier(controller.getPort());
+
       if (!controllerToStateMap.containsKey(instanceId)) {
         // The controller which did not join the cluster.
         String masterInstanceId = controller.getVeniceAdmin().getMasterController(clusterName).getNodeId();
@@ -57,6 +58,16 @@ public class TestStartMultiControllers {
         break;
       }
     }
+    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS, () -> {
+      int masterControllerCntForControllerCluster = 0;
+      for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
+        if (controller.isMasterControllerForControllerCluster()) {
+          masterControllerCntForControllerCluster++;
+        }
+      }
+      Assert.assertEquals(masterControllerCntForControllerCluster, 1, "There should be only one"
+          + " master controller for controller cluster");
+    });
     String instanceIdOfControllerNotInCluster = Utils.getHelixNodeIdentifier(controllerNotInCluster.getPort());
     //Stop master controller and make sure the controller which did not join in is join in cluster right now.
     cluster.stopMasterVeniceControler();
@@ -64,6 +75,7 @@ public class TestStartMultiControllers {
       ExternalView exView = getExternViewOfCluster(cluster, manager);
       return exView.getStateMap(partitionName).containsKey(instanceIdOfControllerNotInCluster);
     });
+
     manager.disconnect();
     cluster.close();
   }

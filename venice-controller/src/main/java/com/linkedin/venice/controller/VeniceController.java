@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.kafka.TopicCleanupService;
+import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -10,9 +11,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.apache.log4j.Logger;
 
 
@@ -27,6 +26,7 @@ public class VeniceController {
   VeniceControllerService controllerService;
   AdminSparkServer adminServer;
   TopicMonitor topicMonitor;
+  TopicCleanupService topicCleanupService;
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
@@ -68,6 +68,11 @@ public class VeniceController {
           new TopicMonitor(controllerService.getVeniceHelixAdmin(), multiClusterConfigs.getTopicMonitorPollIntervalMs(),
               controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory());
     }
+    if (multiClusterConfigs.isParent()) {
+      topicCleanupService = new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
+    } else {
+      topicCleanupService = new TopicCleanupService(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
+    }
   }
 
   public void start() {
@@ -79,12 +84,14 @@ public class VeniceController {
     if (null != topicMonitor) {
       topicMonitor.start();
     }
+    topicCleanupService.start();
     logger.info("Controller is started.");
   }
 
 
   public void stop(){
     //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
+    AbstractVeniceService.stopIfNotNull(topicCleanupService);
     AbstractVeniceService.stopIfNotNull(topicMonitor);
     AbstractVeniceService.stopIfNotNull(adminServer);
     AbstractVeniceService.stopIfNotNull(controllerService);

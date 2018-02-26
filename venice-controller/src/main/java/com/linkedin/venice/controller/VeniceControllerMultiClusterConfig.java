@@ -76,8 +76,16 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getKafkaZkAddress();
   }
 
-  public long getFailedJobTopicRetentionMs() {
-    return getCommonConfig().getFailedJobTopicRetentionMs();
+  public long getDeprecatedJobTopicRetentionMs() {
+    return getCommonConfig().getDeprecatedJobTopicRetentionMs();
+  }
+
+  public long getDeprecatedJobTopicMaxRetentionMs() {
+    return getCommonConfig().getDeprecatedJobTopicMaxRetentionMs();
+  }
+
+  public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
+    return getCommonConfig().getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
   }
 
   public String getControllerClusterZkAddresss() {
@@ -96,20 +104,12 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicCreationThrottlingTimeWindowMs();
   }
 
-  public boolean isParentControllerEnableTopicDeletion() {
-    return getCommonConfig().isParentControllerEnableTopicDeletion();
-  }
-
   public Map<String,String> getClusterToD2Map(){
     return getCommonConfig().getClusterToD2Map();
   }
 
   public int getTopicManagerKafkaOperationTimeOutMs() {
     return getCommonConfig().getTopicManagerKafkaOperationTimeOutMs();
-  }
-
-  public boolean isLeakyKafkaTopicCleanupEnabled() {
-    return getCommonConfig().isLeakyKafkaTopicCleanupEnabled();
   }
 
   public int getMinNumberOfUnusedKafkaTopicsToPreserve() {

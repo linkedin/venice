@@ -70,7 +70,6 @@ public class ConfigKeys {
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
-  public static final String ENABLE_TOPIC_DELETION_FOR_UNCOMPLETED_JOB = "enable.topic.deletion.for.uncompleted.job";
   public static final String MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER = "min.required.online.replica.to.stop.server";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
@@ -92,12 +91,25 @@ public class ConfigKeys {
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
   /**
-   * The retention policy for the topic, whose corresponding job fails.
-   * This config is used to reduce the Kafka disk footprint for unused topics.
-   * Once we come up with a good way to delete unused topics without crashing Kafka MM,
-   * this config and related logic could be removed.
+   * The retention policy for deprecated topics, which includes topics for both failed jobs and retired store versions.
    */
-  public static final String FAILED_JOB_TOPIC_RETENTION_MS = "failed.job.topic.retention.ms";
+  public static final String DEPRECATED_TOPIC_RETENTION_MS = "deprecated.topic.retention.ms";
+
+  /**
+   * This config is to indicate the max retention policy we have setup for deprecated jobs currently and in the past.
+   * And this is used to decide whether the topic is deprecated or not during topic cleanup.
+   *
+   * The reason to have this config instead of using {@link #DEPRECATED_TOPIC_RETENTION_MS} since the retention
+   * policy for deprecated jobs could change from time to time, and we need to use a max threshold to cover all the
+   * historical deprecated job topics.
+   */
+  public static final String DEPRECATED_TOPIC_MAX_RETENTION_MS = "deprecated.topic.max.retention.ms";
+
+  /**
+   * Sleep interval between each topic list fetch from Kafka ZK in TopicCleanup service.
+   * We don't want to hit Kafka Zookeeper too frequently.
+   */
+  public static final String TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS = "topic.cleanup.sleep.interval.between.topic.list.fetch.ms";
 
   public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
   public static final String ENABLE_TOPIC_REPLICATOR_SSL = "controller.enable.topic.replicator.ssl";
@@ -235,25 +247,6 @@ public class ConfigKeys {
   /** Timeout for create topic and delete topic operations. */
   public static final String TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS = "topic.manager.kafka.operation.timeout.ms";
 
-  /**
-   * This enables a routine which cleans up leaked Kafka topics. This routine is kicked off when:
-   *
-   * 1. Old store-versions are retired following the end of a push job.
-   * 2. A store is deleted.
-   *
-   * Leaky topics can arise accidentally due to Kafka issues, or can be left behind intentionally in order to
-   * side-step a bug in Mirror Maker. Mirror Maker can fail when its destination topic gets deleted while
-   * there is still some data in its buffer. This behavior of intentionally leaking topics occurs when the
-   * following setting is set to false:
-   *
-   * {@link #ENABLE_TOPIC_DELETION_FOR_UNCOMPLETED_JOB}
-   *
-   * In order to control how aggressively the leaky topic clean up routine works, configure the following
-   * setting:
-   *
-   * @see #MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE
-   */
-  public static final String ENABLE_LEAKY_KAFKA_TOPIC_CLEAN_UP = "enable.leaky.kafka.topic.cleanup";
 
   /**
    * This is the minimum number of Kafka topics that are guaranteed to be preserved by the leaky topic clean
@@ -270,7 +263,7 @@ public class ConfigKeys {
    * and clean up the older leaky topics successfully. This edge case is deemed a small enough concern for
    * now, though it could be addressed with a more significant redesign of the replication pipeline.
    *
-   * @see #ENABLE_LEAKY_KAFKA_TOPIC_CLEAN_UP
+   * @see #TOPIC_CLEANUP_SERVICE_ENABLED
    */
   public static final String MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE = "min.number.of.unused.kafka.topics.to.preserve";
 
@@ -285,10 +278,6 @@ public class ConfigKeys {
 
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
-  /**
-   * Whether enable topic deletion after job finishes in parent controller
-   */
-  public static final String PARENT_CONTROLLER_ENABLE_TOPIC_DELETION = "parent.controller.enable.topic.deletion";
 
   /**
    * Only required when controller.parent.mode=true

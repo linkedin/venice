@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
@@ -196,6 +197,13 @@ public class Version implements Comparable<Version> {
 
   public static String composeRealTimeTopic(String storeName){
     return storeName + REAL_TIME_TOPIC_SUFFIX;
+  }
+
+  public static String parseStoreFromRealTimeTopic(String kafkaTopic) {
+    if (!isRealTimeTopic(kafkaTopic)) {
+      throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
+    }
+    return kafkaTopic.substring(0, kafkaTopic.length() - REAL_TIME_TOPIC_SUFFIX.length());
   }
 
   public static boolean isRealTimeTopic(String kafkaTopic) {

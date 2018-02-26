@@ -10,9 +10,9 @@ import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 
 
-public class VeniceControllerConsumerFactotry extends VeniceConsumerFactory {
+public class VeniceControllerConsumerFactory extends VeniceConsumerFactory {
   private final VeniceControllerConfig controllerConfig;
-  public VeniceControllerConsumerFactotry(VeniceControllerConfig controllerConfig){
+  public VeniceControllerConsumerFactory(VeniceControllerConfig controllerConfig){
     this.controllerConfig = controllerConfig;
   }
 

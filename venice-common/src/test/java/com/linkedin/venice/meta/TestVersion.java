@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import org.testng.Assert;
@@ -68,6 +69,19 @@ public class TestVersion {
     Version legacyParsedVersion = fasterXmlMapper.readValue(missingFieldSerialized, Version.class);
     Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
     Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
+  }
+
+  @Test
+  public void testParseStoreFromRealTimeTopic() {
+    String validRealTimeTopic = "abc_rt";
+    Assert.assertEquals(Version.parseStoreFromRealTimeTopic(validRealTimeTopic), "abc");
+    String invalidRealTimeTopic = "abc";
+    try {
+      Version.parseStoreFromRealTimeTopic(invalidRealTimeTopic);
+      Assert.fail("VeniceException should be thrown for invalid real-time topic");
+    } catch (VeniceException e) {
+
+    }
   }
 
 }

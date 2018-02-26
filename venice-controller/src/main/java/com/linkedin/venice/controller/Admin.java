@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
@@ -384,7 +384,21 @@ public interface Admin {
 
     VeniceWriterFactory getVeniceWriterFactory();
 
-    VeniceControllerConsumerFactotry getVeniceConsumerFactory();
+    VeniceControllerConsumerFactory getVeniceConsumerFactory();
 
     void close();
+
+    /**
+     * This function can be used to perform cluster-wide operations which need to be performed by a single process
+     * only in the whole cluster. There could be a race condition during master controller failover,
+     * and so long operation should have some way of guarding against that.
+     * @return
+     */
+    boolean isMasterControllerOfControllerCluster();
+
+    boolean isTopicTruncated(String topicName);
+
+    boolean isTopicTruncatedBasedOnRetention(long retention);
+
+    void truncateKafkaTopic(String topicName);
 }
