@@ -338,7 +338,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long currentTime = System.currentTimeMillis();
     long sourceTopicMaxOffset = pcs.getSourceTopicMaxOffset();
     if (currentTime - pcs.getLastTimeOfSourceTopicOffsetLookup() > sourceTopicOffsetCheckInterval) {
-      sourceTopicMaxOffset = topicManager.getLatestOffset(sobr.sourceTopicName.toString(), partition);
+      sourceTopicMaxOffset = topicManager.getLatestOffsetAndRetry(sobr.sourceTopicName.toString(), partition, 3);
       pcs.setLastTimeOfSourceTopicOffsetLookup(currentTime);
       pcs.setSourceTopicMaxOffset(sourceTopicMaxOffset);
     }
