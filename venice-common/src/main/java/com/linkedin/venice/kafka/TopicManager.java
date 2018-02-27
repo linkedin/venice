@@ -15,7 +15,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
@@ -29,11 +28,10 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
-import org.apache.kafka.common.errors.InvalidReplicationFactorException;
-import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.InvalidReplicationFactorException;
+import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -357,6 +355,26 @@ public class TopicManager implements Closeable {
     return latestOffsets;
   }
 
+  public long getLatestOffsetAndRetry(String topic, int partition, int retries) {
+    int attempt = 0;
+    long offset;
+    VeniceOperationAgainstKafkaTimedOut lastException = new VeniceOperationAgainstKafkaTimedOut("This exception should not be thrown");
+    while (attempt < retries){
+      try {
+        offset = getLatestOffset(topic, partition);
+        return offset;
+      } catch (VeniceOperationAgainstKafkaTimedOut e){// topic and partition is listed in the exception object
+        logger.warn("Failed to get latest offset.  Retries remaining: " + (retries - attempt), e);
+        lastException = e;
+        attempt ++;
+      }
+    }
+    throw lastException;
+  }
+
+  /**
+   * This method is synchronized because it calls #getConsumer()
+   */
   public synchronized long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
     return getLatestOffset(getConsumer(), topic, partition, true);
   }
@@ -369,10 +387,16 @@ public class TopicManager implements Closeable {
       throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
     }
     TopicPartition topicPartition = new TopicPartition(topic, partition);
-    consumer.assign(Arrays.asList(topicPartition));
-    consumer.seekToEnd(Arrays.asList(topicPartition));
-    long latestOffset = consumer.position(topicPartition);
-    consumer.assign(Arrays.asList());
+    long latestOffset;
+    try {
+      consumer.assign(Arrays.asList(topicPartition));
+      consumer.seekToEnd(Arrays.asList(topicPartition));
+      latestOffset = consumer.position(topicPartition);
+      consumer.assign(Arrays.asList());
+    } catch (org.apache.kafka.common.errors.TimeoutException ex) {
+      throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to end to get latest offset"
+          + " for topic: " + topic + " and partition: " + partition, ex);
+    }
     return latestOffset;
   }
 

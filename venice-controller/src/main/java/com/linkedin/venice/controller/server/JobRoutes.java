@@ -6,18 +6,17 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-
+import java.util.HashMap;
 import java.util.Map;
+import org.apache.log4j.Logger;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
-import static com.linkedin.venice.controllerapi.ControllerRoute.KILL_OFFLINE_PUSH_JOB;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class JobRoutes {
+  private static final Logger logger = Logger.getLogger(JobRoutes.class);
+
   public static Route jobStatus(Admin admin) {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
@@ -43,7 +42,13 @@ public class JobRoutes {
     String kafkaTopicName = version.kafkaTopicName();
 
     //Available offsets
-    Map<Integer, Long> offsets = admin.getTopicManager().getLatestOffsets(kafkaTopicName);
+    Map<Integer, Long> offsets;
+    try {
+      offsets = admin.getTopicManager().getLatestOffsets(kafkaTopicName);
+    } catch (Exception ex) {
+      logger.error("Failed to get latest offsets from Kafka for topic: " + kafkaTopicName, ex);
+      offsets = new HashMap<>();
+    }
     int replicationFactor = admin.getReplicationFactor(cluster, store);
     int clusterCount = admin.getDatacenterCount(cluster);
     long aggregateOffsets = 0;
