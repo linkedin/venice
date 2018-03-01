@@ -170,9 +170,9 @@ public class TopicCleanupService extends AbstractVeniceService {
        */
       if (topicRetentions.containsKey(realTimeTopic)) {
         if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
-          LOGGER.info("Real-time topic: " + realTimeTopic + " is deprecated, will remove it");
+          LOGGER.info("Real-time topic: " + realTimeTopic + " is deprecated, will delete it");
           getTopicManager().ensureTopicIsDeletedAndBlock(realTimeTopic);
-          LOGGER.info("Real-time topic: " + realTimeTopic + " was removed");
+          LOGGER.info("Real-time topic: " + realTimeTopic + " was deleted");
         }
         topicRetentions.remove(realTimeTopic);
       }
@@ -180,12 +180,12 @@ public class TopicCleanupService extends AbstractVeniceService {
       List<String> oldTopicsToDelete = extractVeniceTopicsToCleanup(topicRetentions);
 
       if (oldTopicsToDelete.isEmpty()) {
-        LOGGER.info("Searched for old topics belonging to store '" + storeName + "', and did not find any.");
+        LOGGER.debug("Searched for old topics belonging to store '" + storeName + "', and did not find any.");
       } else {
-        LOGGER.info("Detected the following old topics to truncate: " + String.join(", ", oldTopicsToDelete));
+        LOGGER.info("Detected the following old topics to delete: " + String.join(", ", oldTopicsToDelete));
         oldTopicsToDelete.stream()
             .forEach(t -> getTopicManager().ensureTopicIsDeletedAndBlock(t));
-        LOGGER.info("Finished truncating old topics for store '" + storeName + "'.");
+        LOGGER.info("Finished deleting old topics for store '" + storeName + "'.");
       }
     });
   }
@@ -200,13 +200,13 @@ public class TopicCleanupService extends AbstractVeniceService {
         .max(Integer::compare)
         .get();
 
-    final long maxVersionNumberToTruncate = maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
+    final long maxVersionNumberToDelete = maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
 
     return veniceTopics.stream()
         /** Consider only truncated topics */
         .filter(t -> admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
-        .filter(t -> Version.parseVersionFromKafkaTopicName(t) <= maxVersionNumberToTruncate)
+        .filter(t -> Version.parseVersionFromKafkaTopicName(t) <= maxVersionNumberToDelete)
         .collect(Collectors.toList());
   }
 }
