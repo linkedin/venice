@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
@@ -15,6 +16,7 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -25,7 +27,9 @@ import static org.testng.Assert.*;
 
 public class TestDeleteStoreDeletesRealtimeTopic {
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  private static final Logger LOGGER = Logger.getLogger(TestDeleteStoreDeletesRealtimeTopic.class);
+
+  @Test
   public void deletingHybridStoreDeletesRealtimeTopic(){
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
@@ -70,8 +74,20 @@ public class TestDeleteStoreDeletesRealtimeTopic {
       return controllerClient.getStore(storeName).isError(); //error because store no longer exists
     });
 
+    LOGGER.info("Delete store has completed...");
+
     //verify realtime topic does not exist
-    Assert.assertFalse(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    String realTimeTopicName = Version.composeRealTimeTopic(storeName);
+    try {
+      boolean isTruncated = topicManager.isTopicTruncated(realTimeTopicName, 60000);
+      Assert.assertTrue(isTruncated,"Real-time buffer topic should be truncated: " + realTimeTopicName
+          + " but retention is set to: " + topicManager.getTopicRetention(realTimeTopicName) + ".");
+      LOGGER.info("Confirmed truncation of real-time topic: " + realTimeTopicName);
+    } catch (TopicDoesNotExistException e) {
+      LOGGER.info("Caught a TopicDoesNotExistException for real-time topic: " + realTimeTopicName + ", which is fine.");
+    } catch (Exception e) {
+      LOGGER.error(e);
+    }
 
     IOUtils.closeQuietly(topicManager);
     client.close();

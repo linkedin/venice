@@ -34,6 +34,7 @@ public class StatsHandler extends ChannelDuplexHandler {
    * This is mostly to bypass the issue that stat callback could be triggered multiple times for one single request.
    */
   private boolean statCallbackExecuted = false;
+  private double storageExecutionSubmissionWaitTime;
 
   public void setResponseStatus(HttpResponseStatus status) {
     this.responseStatus = status;
@@ -67,6 +68,10 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.bdbQueryLatency = latency;
   }
 
+  public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
+    this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
+  }
+
   public boolean isAssembledMultiChunkLargeValue() {
     return multiChunkLargeValueCount > 0;
   }
@@ -91,6 +96,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       responseStatus = null;
       statCallbackExecuted = false;
       bdbQueryLatency = -1;
+      storageExecutionSubmissionWaitTime = -1;
       requestKeyCount = -1;
       successRequestKeyCount = -1;
       multiChunkLargeValueCount = -1;
@@ -141,6 +147,9 @@ public class StatsHandler extends ChannelDuplexHandler {
     if (null != storeName) {
       if (bdbQueryLatency >= 0) {
         currentStats.recordBdbQueryLatency(storeName, bdbQueryLatency, isAssembledMultiChunkLargeValue());
+      }
+      if (storageExecutionSubmissionWaitTime >= 0) {
+        currentStats.recordStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
       }
       if (multiChunkLargeValueCount > 0) {
         // We only record this metric for requests where large values occurred

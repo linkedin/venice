@@ -17,9 +17,13 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
+import java.text.DecimalFormat;
 import java.util.*;
 
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.LongBinaryOperator;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
@@ -160,7 +164,7 @@ public class TestBatch {
     int maxValueSize = 3 * 1024 * 1024; // 3 MB apiece
     int numberOfRecords = 10;
     testBatchStore(inputDir -> {
-          Schema recordSchema = writeSimpleAvroFileWithLargeValues(inputDir, numberOfRecords, maxValueSize);
+          Schema recordSchema = writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, 0, maxValueSize);
           return new Pair<>(recordSchema.getField("id").schema(),
                             recordSchema.getField("name").schema());
         }, props -> {},
@@ -219,6 +223,113 @@ public class TestBatch {
         },
         false,
         isChunkingAllowed);
+  }
+
+  private static class StatCounter extends AtomicLong {
+    final long initialValue;
+    final LongBinaryOperator accumulator;
+
+    public StatCounter(long initialValue, LongBinaryOperator accumulator) {
+      super(initialValue);
+      this.initialValue = initialValue;
+      this.accumulator = accumulator;
+    }
+    public void add(long newDataPoint) {
+      accumulateAndGet(newDataPoint, accumulator);
+    }
+    public void reset() {
+      set(initialValue);
+    }
+  }
+  private static class MaxLong extends StatCounter {
+    public MaxLong() {
+      super(Integer.MIN_VALUE, (left, right) -> Math.max(left, right));
+    }
+  }
+  private static class MinLong extends StatCounter {
+    public MinLong() {
+      super(Integer.MAX_VALUE, (left, right) -> Math.min(left, right));
+    }
+  }
+  private static class TotalLong extends StatCounter {
+    public TotalLong() {
+      super(0, (left, right) -> left + right);
+    }
+  }
+
+  @Test(enabled = false) // disabled because performance testing is not very amenable to the unit test environment
+  public void stressTestLargeMultiGet() throws Exception {
+    int valueSize = 40; // 40 bytes
+    int numberOfRecords = 1000000; // 1 million records
+    testBatchStore(inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, valueSize, valueSize);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        }, props -> {},
+        (avroClient, vsonClient) -> {
+          // Batch-get
+
+          int numberOfBatchesOfConcurrentCalls = 20;
+          int numberOfConcurrentCallsPerBatch = 100;
+          int numberOfCalls = numberOfConcurrentCallsPerBatch * numberOfBatchesOfConcurrentCalls;
+          int keysPerCall = 2000;
+          final StatCounter minQueryTimeMs = new MinLong();
+          final StatCounter maxQueryTimeMs = new MaxLong();
+          final StatCounter totalQueryTimeMs = new TotalLong();
+          final StatCounter globalMinQueryTimeMs = new MinLong();
+          final StatCounter globalMaxQueryTimeMs = new MaxLong();
+          final StatCounter globalTotalQueryTimeMs = new TotalLong();
+          CompletableFuture[] futures = new CompletableFuture[numberOfConcurrentCallsPerBatch];
+          long firstQueryStartTime = System.currentTimeMillis();
+          for (int call = 0; call < numberOfCalls; call++) {
+            final int finalCall = call;
+            Set<String> keys = new HashSet(keysPerCall);
+            for (int key = 0; key < keysPerCall; key++) {
+              int keyToQuery = (call * keysPerCall + key) % numberOfRecords;
+              keys.add(new Integer(keyToQuery).toString());
+            }
+            final long startTime = System.nanoTime();
+            futures[call % numberOfConcurrentCallsPerBatch] = avroClient.batchGet(keys).thenAccept(o -> {
+              long endTime = System.nanoTime();
+              Map<String, Utf8> utf8Results = (Map<String, Utf8>) o;
+              Assert.assertEquals(utf8Results.size(), keysPerCall, "Not enough records returned!");
+              long queryTimeNs = endTime - startTime;
+              long queryTimeMs = queryTimeNs / Time.NS_PER_MS;
+              LOGGER.info("Call #" + finalCall + ": " + queryTimeNs + " ns (" + queryTimeMs + " ms).");
+              minQueryTimeMs.add(queryTimeMs);
+              maxQueryTimeMs.add(queryTimeMs);
+              totalQueryTimeMs.add(queryTimeMs);
+              globalMinQueryTimeMs.add(queryTimeMs);
+              globalMaxQueryTimeMs.add(queryTimeMs);
+              globalTotalQueryTimeMs.add(queryTimeMs);
+            });
+            if (call > 0 && call % numberOfConcurrentCallsPerBatch == 0) {
+              CompletableFuture.allOf(futures).thenAccept(aVoid -> {
+                LOGGER.info("Min query time: " + minQueryTimeMs + " ms.");
+                LOGGER.info("Max query time: " + maxQueryTimeMs + " ms.");
+                LOGGER.info("Average query time: " + (totalQueryTimeMs.get() / numberOfConcurrentCallsPerBatch) + " ms.");
+                minQueryTimeMs.reset();
+                maxQueryTimeMs.reset();
+                totalQueryTimeMs.reset();
+              }).get();
+            }
+          }
+          CompletableFuture.allOf(futures).thenAccept(aVoid -> {
+            long allQueriesFinishTime = System.currentTimeMillis();
+            double totalQueryTime = allQueriesFinishTime - firstQueryStartTime;
+            LOGGER.info("Total query time: " + totalQueryTime + " ms for "
+                + numberOfCalls + " total queries in "
+                + numberOfBatchesOfConcurrentCalls + " batches of "
+                + numberOfConcurrentCallsPerBatch + " calls each.");
+            DecimalFormat decimalFormat = new DecimalFormat("0.0");
+            LOGGER.info("Throughput: " + decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)) + " queries / sec");
+            LOGGER.info("Global min query time: " + globalMinQueryTimeMs + " ms.");
+            LOGGER.info("Global max query time: " + globalMaxQueryTimeMs + " ms.");
+            LOGGER.info("Global average query time: " + (globalTotalQueryTimeMs.get() / numberOfCalls) + " ms.");
+          }).get();
+        },
+        false,
+        false);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

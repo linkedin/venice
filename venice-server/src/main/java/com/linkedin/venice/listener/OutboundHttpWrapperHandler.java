@@ -44,6 +44,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       if (msg instanceof ReadResponse) {
         ReadResponse obj = (ReadResponse) msg;
         statsHandler.setBdbQueryLatency(obj.getBdbQueryLatency());
+        statsHandler.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
         statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
         statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
         compressionStrategy = obj.getCompressionStrategy();

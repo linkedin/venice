@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.venice.router.httpclient.CachedDnsResolver;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.net.InetAddress;
@@ -100,7 +101,7 @@ public class TestCachedDnsResolver {
     Assert.assertEquals(InetAddress.getByName("127.0.2.2"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST3)[0]);
   }
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testRefreshCacheEntries() throws UnknownHostException {
     Assert.assertEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {

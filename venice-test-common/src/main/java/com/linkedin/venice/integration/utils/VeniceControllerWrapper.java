@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -81,7 +82,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
             // To speed up topic cleanup
-            .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100);
+            .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
+            .put(PERSISTENCE_TYPE, PersistenceType.BDB);
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());

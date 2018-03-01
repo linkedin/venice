@@ -40,7 +40,7 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String remote = ctx.channel().remoteAddress().toString(); //ip and port
       String method = req.method().name();
       String errLine = remote + " requested " + method + " " + req.uri();
-      logger.error("Got an unexpected non-ssl request: " + errLine);
+      logger.debug("Got an unexpected non-ssl request: " + errLine);
       if (enforce) {
         NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
         return;
