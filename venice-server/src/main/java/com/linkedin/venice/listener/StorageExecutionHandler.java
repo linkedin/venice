@@ -31,7 +31,6 @@ import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import javax.validation.constraints.NotNull;
 
@@ -44,7 +43,7 @@ import javax.validation.constraints.NotNull;
 @ChannelHandler.Sharable
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final ExecutorService executor;
-  private StoreRepository storeRepository;
+  private final StoreRepository storeRepository;
   private final MetadataRetriever metadataRetriever;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(false);
@@ -58,107 +57,110 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
-    if (message instanceof RouterRequest) {
-      RouterRequest request = (RouterRequest) message;
-      try {
-        switch (request.getRequestType()) {
-          case SINGLE_GET:
-            handleSingleGetRequest(context, (GetRouterRequest) request);
-            break;
-          case MULTI_GET:
-            handleMultiGetRequest(context, (MultiGetRouterRequestWrapper) request);
-            break;
-          default:
-            throw new VeniceException("Unknown request type: " + request.getRequestType());
-        }
-      } catch (Exception e) {
-        context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
-      }
-    } else {
-      context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
-          HttpResponseStatus.INTERNAL_SERVER_ERROR));
-    }
-  }
+    final long preSubmissionTimeNs = System.nanoTime();
 
-  private void handleSingleGetRequest(ChannelHandlerContext context, GetRouterRequest request) {
+    /**
+     * N.B.: This is the only place in the entire class where we submit things into the {@link executor}.
+     *
+     * The reason for this is two-fold:
+     *
+     * 1. We want to make the {@link StorageExecutionHandler} fully non-blocking as far as Netty (which
+     *    is the one calling this function) is concerned. Therefore, it is beneficial to fork off the
+     *    work into the executor from the very beginning.
+     * 2. By making the execution asynchronous from the beginning, we can simplify the rest of the class
+     *    by making every other function a blocking one. If there is a desire to introduce additional
+     *    concurrency in the rest of the class (i.e.: to make batch gets or large value re-assembly
+     *    parallel), then it would be good to carefully consider whether this is a premature optimization,
+     *    and if not, whether these additional operations should be performed in the same executor or in
+     *    a secondary one, so as to not starve the primary requests. Furthermore, it should be considered
+     *    whether it might be more beneficial to do streaming of these large response use cases, rather
+     *    than parallel operations gated behind a synchronization barrier before any of the response can
+     *    be sent out.
+     */
     executor.submit(() -> {
-      int partition = request.getPartition();
-      String topic = request.getResourceName();
-      boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
-      byte[] key = request.getKeyBytes();
-
-      AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
-
-      Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partition);
-      long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
-      StorageResponseObject response = new StorageResponseObject();
-      response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
-
-      long queryStartTimeInNS = System.nanoTime();
-      CompletableFuture<ValueRecord> valueRecordCompletableFuture = getValueRecord(store, partition, key, isChunked, response);
-      valueRecordCompletableFuture.handle((valueRecord, throwable) -> {
+      double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+      if (message instanceof RouterRequest) {
+        RouterRequest request = (RouterRequest) message;
+        ReadResponse response;
         try {
-          double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
-          response.setValueRecord(valueRecord);
-          response.setOffset(offset);
-          response.setBdbQueryLatency(bdbQueryLatency);
+          switch (request.getRequestType()) {
+            case SINGLE_GET:
+              response = handleSingleGetRequest((GetRouterRequest) request);
+              break;
+            case MULTI_GET:
+              response = handleMultiGetRequest((MultiGetRouterRequestWrapper) request);
+              break;
+            default:
+              throw new VeniceException("Unknown request type: " + request.getRequestType());
+          }
+          response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
           context.writeAndFlush(response);
         } catch (Exception e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
-        return valueRecord;
-      });
+      } else {
+        context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
+            HttpResponseStatus.INTERNAL_SERVER_ERROR));
+      }
     });
   }
 
-  private void handleMultiGetRequest(ChannelHandlerContext context, MultiGetRouterRequestWrapper request) {
+  private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
+    int partition = request.getPartition();
+    String topic = request.getResourceName();
+    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
+    byte[] key = request.getKeyBytes();
+
+    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+
+    Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partition);
+    long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
+    StorageResponseObject response = new StorageResponseObject();
+    response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+
+    long queryStartTimeInNS = System.nanoTime();
+    ValueRecord valueRecord = getValueRecord(store, partition, key, isChunked, response);
+    double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
+    response.setValueRecord(valueRecord);
+    response.setOffset(offset);
+    response.setBdbQueryLatency(bdbQueryLatency);
+    return response;
+  }
+
+  private ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
 
     long queryStartTimeInNS = System.nanoTime();
+
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
-    CompletableFuture<MultiGetResponseRecordV1>[] futureArray = new CompletableFuture[request.getKeyCount()];
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
-    int i = 0;
     for (MultiGetRouterRequestKeyV1 key : keys) {
-      int partitionId = key.partitionId;
-      futureArray[i++] = getMultiGetResponseRecordV1(store, partitionId, key.keyBytes, key.keyIndex, isChunked, responseWrapper);
+      MultiGetResponseRecordV1 record =
+          getMultiGetResponseRecordV1(store, key.partitionId, key.keyBytes, key.keyIndex, isChunked, responseWrapper);
+      if (null != record) {
+        responseWrapper.addRecord(record);
+      }
     }
 
-    // Wait for all the lookup requests to complete (note: this is completed in the last future's thread)
-    CompletableFuture<Void> allDoneFuture = CompletableFuture.allOf(futureArray);
-    allDoneFuture.handle( (aVoid, throwable) -> {
-      for (CompletableFuture<MultiGetResponseRecordV1> future : futureArray) {
-        try {
-          MultiGetResponseRecordV1 record = future.get();
-          if (null != record) {
-            responseWrapper.addRecord(record);
-          }
-        } catch (Exception e) {
-          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
-          break;
-        }
+    double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
+    responseWrapper.setBdbQueryLatency(bdbQueryLatency);
+
+    // Offset data
+    Set<Integer> partitionIdSet = new HashSet<>();
+    keys.forEach(routerRequestKey -> {
+      int partitionId = routerRequestKey.partitionId;
+      if (!partitionIdSet.contains(partitionId)) {
+        partitionIdSet.add(partitionId);
+        Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partitionId);
+        long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
+        responseWrapper.addPartitionOffsetMapping(partitionId, offset);
       }
-      double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
-      responseWrapper.setBdbQueryLatency(bdbQueryLatency);
-
-      // Offset data
-      Set<Integer> partitionIdSet = new HashSet<>();
-      keys.forEach( routerRequestKey -> {
-        int partitionId = routerRequestKey.partitionId;
-        if (!partitionIdSet.contains(partitionId)) {
-          partitionIdSet.add(partitionId);
-          Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partitionId);
-          long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
-          responseWrapper.addPartitionOffsetMapping(partitionId, offset);
-        }
-      });
-
-      context.writeAndFlush(responseWrapper);
-      return aVoid;
     });
+
+    return responseWrapper;
   }
 
   /**
@@ -167,20 +169,21 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
    *
    * This is used by the batch get code path.
    */
-  private CompletableFuture<MultiGetResponseRecordV1> getMultiGetResponseRecordV1(
+  private MultiGetResponseRecordV1 getMultiGetResponseRecordV1(
       AbstractStorageEngine store,
       int partition,
       ByteBuffer key,
-      int keyIndex,
+      final int keyIndex,
       boolean isChunked,
       MultiGetResponseWrapper response) {
+
     byte[] bytesArrayKey;
     if (isChunked) {
       bytesArrayKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key);
     } else {
       bytesArrayKey = key.array();
     }
-    CompletableFuture<MultiGetResponseRecordV1> futureResponse = getFromStorage(
+    MultiGetResponseRecordV1 record = getFromStorage(
         store,
         partition,
         bytesArrayKey,
@@ -190,13 +193,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         addChunkIntoNioByteBuffer,
         getSizeOfNioByteBuffer,
         containerToMultiGetResponseRecord);
-    return futureResponse.thenApply(multiGetResponseRecordV1 -> {
-      if (multiGetResponseRecordV1 != null) {
-        multiGetResponseRecordV1.keyIndex = keyIndex;
-      }
-      return multiGetResponseRecordV1;
-    });
+    if (record != null) {
+      record.keyIndex = keyIndex;
+    }
+    return record;
   }
+
   private static final FullBytesToValue fullBytesToMultiGetResponseRecordV1 = (schemaId, fullBytes) -> {
     MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
     /** N.B.: Does not need any repositioning, as opposed to {@link containerToMultiGetResponseRecord} */
@@ -233,7 +235,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
    *
    * This is used by the single get code path.
    */
-  private CompletableFuture<ValueRecord> getValueRecord(AbstractStorageEngine store, int partition, byte[] key, boolean isChunked, StorageResponseObject response) {
+  private ValueRecord getValueRecord(AbstractStorageEngine store, int partition, byte[] key, boolean isChunked, StorageResponseObject response) {
     if (isChunked) {
       key = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key);
     }
@@ -311,7 +313,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
    * This code makes use of several functional interfaces in order to abstract away the different needs
    * of the single get and batch get query paths.
    */
-  private <VALUE, ASSEMBLED_VALUE_CONTAINER> CompletableFuture<VALUE> getFromStorage(
+  private <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getFromStorage(
       AbstractStorageEngine store,
       int partition,
       byte[] key,
@@ -322,75 +324,55 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       GetSizeOfContainer getSizeFromContainerFunction,
       ContainerToValue<ASSEMBLED_VALUE_CONTAINER, VALUE> containerToValueFunction) {
 
-    byte[] value = store.get(partition, key); // This is the only blocking call of the function...
+    byte[] value = store.get(partition, key);
     if (null == value) {
-      return CompletableFuture.completedFuture(null);
+      return null;
     }
     int schemaId = ValueRecord.parseSchemaId(value);
 
     if (schemaId > 0) {
       // User-defined schema, thus not a chunked value. Early termination.
-      return CompletableFuture.completedFuture(fullBytesToValueFunction.construct(schemaId, value));
+      return fullBytesToValueFunction.construct(schemaId, value);
     } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
     }
 
-    // End of initial sanity checks. Now we need to fetch all chunks
+    // End of initial sanity checks. We have chunked value, so we need to fetch all chunks
 
     ChunkedValueManifest chunkedValueManifest = chunkedValueManifestSerializer.deserialize(value, schemaId);
-
-    CompletableFuture<byte[]>[] futureArray = new CompletableFuture[chunkedValueManifest.keysWithChunkIdSuffix.size()];
-    for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
-      int finalChunkIndex = chunkIndex; // Must be final to be accessible from within the future.
-      futureArray[finalChunkIndex] = CompletableFuture.supplyAsync(() -> {
-        byte[] valueChunk = store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(finalChunkIndex).array());
-
-        if (null == valueChunk) {
-          throw new VeniceException("Chunk not found in "
-              + getExceptionMessageDetails(store, partition, finalChunkIndex));
-        } else if (ValueRecord.parseSchemaId(valueChunk) != AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-          throw new VeniceException("Did not get the chunk schema ID while attempting to retrieve a chunk! "
-              + "Instead, got schema ID: " + ValueRecord.parseSchemaId(valueChunk) + " from "
-              + getExceptionMessageDetails(store, partition, finalChunkIndex));
-        }
-        return valueChunk;
-      }, executor);
-    }
-
-    // Re-assemble fetched chunks
-
     ASSEMBLED_VALUE_CONTAINER assembledValueContainer = constructAssembledValueContainer.construct(chunkedValueManifest);
 
-    CompletableFuture<Void> allDoneFuture = CompletableFuture.allOf(futureArray);
-    CompletableFuture<VALUE> valueRecordCompletableFuture = allDoneFuture.handle((aVoid, throwable) -> {
-      for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
-        CompletableFuture<byte[]> future = futureArray[chunkIndex];
-        try {
-          byte[] valueChunk = future.get();
-          addChunkIntoContainerFunction.add(assembledValueContainer, chunkIndex, valueChunk);
-        } catch (VeniceException e) {
-          throw e;
-        } catch (Exception e) {
-          throw new VeniceException("Caught an exception while trying to fetch chunk from "
-              + getExceptionMessageDetails(store, partition, chunkIndex), e);
-        }
+    for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
+      // N.B.: This is done sequentially. Originally, each chunk was fetched concurrently in the same executor
+      // as the main queries, but this might cause deadlocks, so we are now doing it sequentially. If we want to
+      // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
+      // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
+      // premature optimization, we are not addressing it right now.
+      byte[] valueChunk = store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array());
+
+      if (null == valueChunk) {
+        throw new VeniceException(
+            "Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
+      } else if (ValueRecord.parseSchemaId(valueChunk) != AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
+        throw new VeniceException(
+            "Did not get the chunk schema ID while attempting to retrieve a chunk! " + "Instead, got schema ID: " + ValueRecord.parseSchemaId(valueChunk) + " from "
+                + getExceptionMessageDetails(store, partition, chunkIndex));
       }
 
-      // Sanity check based on size...
-      int actualSize = getSizeFromContainerFunction.sizeOf(assembledValueContainer);
-      if (actualSize != chunkedValueManifest.size) {
-        throw new VeniceException("The fully assembled large value does not have the expected size! "
-            + "actualSize: " + actualSize
-            + ", chunkedValueManifest.size: " + chunkedValueManifest.size
-            + ", " + getExceptionMessageDetails(store, partition, null));
-      }
+      addChunkIntoContainerFunction.add(assembledValueContainer, chunkIndex, valueChunk);
+    }
 
-      response.incrementMultiChunkLargeValueCount();
+    // Sanity check based on size...
+    int actualSize = getSizeFromContainerFunction.sizeOf(assembledValueContainer);
+    if (actualSize != chunkedValueManifest.size) {
+      throw new VeniceException(
+          "The fully assembled large value does not have the expected size! " + "actualSize: " + actualSize + ", chunkedValueManifest.size: " + chunkedValueManifest.size
+              + ", " + getExceptionMessageDetails(store, partition, null));
+    }
 
-      return containerToValueFunction.construct(chunkedValueManifest.schemaId, assembledValueContainer);
-    });
+    response.incrementMultiChunkLargeValueCount();
 
-    return valueRecordCompletableFuture;
+    return containerToValueFunction.construct(chunkedValueManifest.schemaId, assembledValueContainer);
   }
 
   private String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {

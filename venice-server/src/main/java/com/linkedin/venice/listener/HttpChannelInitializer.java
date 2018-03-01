@@ -26,8 +26,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   private final ThreadPoolExecutor executor;
   protected final StorageExecutionHandler storageExecutionHandler;
-  private final AggServerHttpRequestStats singleGetStats;
-  private final AggServerHttpRequestStats multiGetStats;
+  private final AggServerHttpRequestStats singleGetStats, multiGetStats;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<ServerAclHandler> aclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();

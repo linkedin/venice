@@ -106,11 +106,13 @@ public class TestPushUtils {
         });
   }
 
-  public static Schema writeSimpleAvroFileWithLargeValues(File parentDir, int numberOfRecords, int maxValueSize) throws IOException {
+
+  public static Schema writeSimpleAvroFileWithCustomSize(File parentDir, int numberOfRecords, int minValueSize, int maxValueSize) throws IOException {
     return writeAvroFile(parentDir, "large_values.avro", USER_SCHEMA_STRING,
         (recordSchema, avroFileWriter) -> {
+          int sizeRange = maxValueSize - minValueSize;
           for (int i = 0; i < numberOfRecords; i++) {
-            int sizeForThisRecord = maxValueSize / numberOfRecords * (i + 1);
+            int sizeForThisRecord = minValueSize + sizeRange / numberOfRecords * (i + 1);
             GenericRecord user = new GenericData.Record(recordSchema);
             user.put("id", Integer.toString(i)); //"id" is the key
             char[] chars = new char[sizeForThisRecord];
@@ -352,6 +354,8 @@ public class TestPushUtils {
         new UpdateStoreQueryParams()
             .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
+            .setBatchGetLimit(2000)
+            .setReadQuotaInCU(1000000000)
             .setChunkingEnabled(chunkingEnabled));
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());

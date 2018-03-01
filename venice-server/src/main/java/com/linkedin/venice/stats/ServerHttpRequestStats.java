@@ -8,10 +8,7 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
-import io.tehuti.metrics.stats.SampledCount;
-import io.tehuti.metrics.stats.SampledTotal;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 
@@ -26,6 +23,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor multiChunkLargeValueCountSensor;
   private final Sensor requestKeyCountSensor;
   private final Sensor successRequestKeyCountSensor;
+  private final Sensor storageExecutionHandlerSubmissionWaitTime;
 
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
@@ -57,6 +55,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_query_latency_for_small_value")));
     bdbQueryLatencyForLargeValueSensor = registerSensor("storage_engine_query_latency_for_large_value",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_query_latency_for_large_value")));
+
+    storageExecutionHandlerSubmissionWaitTime = registerSensor("storage_execution_handler_submission_wait_time",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_execution_handler_submission_wait_time")),
+        new Max(), new Avg());
 
     List<MeasurableStat> largeValueLookupStats = new ArrayList();
 
@@ -139,5 +141,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
   public void recordMultiChunkLargeValueCount(int multiChunkLargeValueCount) {
     multiChunkLargeValueCountSensor.record(multiChunkLargeValueCount);
+  }
+
+  public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
+    storageExecutionHandlerSubmissionWaitTime.record(submissionWaitTime);
   }
 }

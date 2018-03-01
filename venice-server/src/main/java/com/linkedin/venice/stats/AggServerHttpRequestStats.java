@@ -57,4 +57,8 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     totalStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
     getStoreStats(storeName).recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
   }
+
+  public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
+    totalStats.recordStorageExecutionHandlerSubmissionWaitTime(submissionWaitTime);
+  }
 }
