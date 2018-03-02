@@ -124,7 +124,10 @@ public enum Command {
       "Start a local Mirror Maker process, to forklift data between Kafka clusters.",
       new Arg[]{KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE, KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION,
           KAFKA_BOOTSTRAP_SERVERS_DESTINATION, KAFKA_TOPIC_WHITELIST},
-      new Arg[]{KAFKA_CONSUMER_CONFIG_FILE, KAFKA_PRODUCER_CONFIG_FILE});
+      new Arg[]{KAFKA_CONSUMER_CONFIG_FILE, KAFKA_PRODUCER_CONFIG_FILE}),
+  DUMP_ADMIN_MESSAGES("dump-admin-messages",
+      "Dump admin messages",
+      new Arg[] {CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE});
 
   private final String commandName;
   private final String description;
