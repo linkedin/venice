@@ -123,9 +123,8 @@ public class AdminTool {
       MultiStoreResponse storeResponse;
       ControllerResponse response;
 
-      // Almost all commands require both URL and Cluster, but some don't, so we check whether they do.
-      // N.B.: There are no commands which require only one of these two params, but not the other.
-      if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.URL) || arg.equals(Arg.CLUSTER))) {
+      if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.URL)) &&
+          Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.CLUSTER))) {
         routerHosts = getRequiredArgument(cmd, Arg.URL);
         clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
         controllerClient = new ControllerClient(clusterName, routerHosts);
@@ -291,6 +290,10 @@ public class AdminTool {
           break;
         case START_MIRROR_MAKER:
           startMirrorMaker(cmd);
+          break;
+        case DUMP_ADMIN_MESSAGES:
+          dumpAdminMessages(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -663,6 +666,18 @@ public class AdminTool {
     while (mirrorMakerWrapper.isRunning()) {
       Utils.sleep(1000);
     }
+  }
+
+  private static void dumpAdminMessages(CommandLine cmd) {
+    Properties consumerProperties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    List<DumpAdminMessages.AdminOperationInfo> adminMessages = DumpAdminMessages.dumpAdminMessages(
+        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
+        getRequiredArgument(cmd, Arg.CLUSTER),
+        consumerProperties,
+        Long.parseLong(getRequiredArgument(cmd, Arg.STARTING_OFFSET)),
+        Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT))
+    );
+    printObject(adminMessages);
   }
 
   /* Things that are not commands */

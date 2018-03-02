@@ -28,4 +28,6 @@ dependencies {
     compile (libraries.avro) {
       exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     }
+
+    compile project(':venice-controller')
 }

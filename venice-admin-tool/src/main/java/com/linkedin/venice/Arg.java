@@ -52,6 +52,8 @@ public enum Arg {
   KAFKA_OPERATION_TIMEOUT("kafka-operation-timeout", "kot", true, "Timeout in seconds for Kafka operations (default: 30 sec)"),
   VENICE_CLIENT_SSL_CONFIG_FILE("venice-client-ssl-config-file", "vcsc", true,
       "Configuration file for querying key in Venice client through SSL."),
+  STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
+  MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
 
   FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
