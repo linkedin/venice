@@ -66,6 +66,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
    */
   public void loadAllPushes() {
     synchronized (lock) {
+      logger.info("Start loading pushes for cluster: " + clusterName);
       List<OfflinePushStatus> offlinePushes = accessor.loadOfflinePushStatusesAndPartitionStatuses();
       Map<String, OfflinePushStatus> newTopicToPushMap = new HashMap<>();
       for (OfflinePushStatus status : offlinePushes) {
@@ -84,10 +85,16 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
             if(routingDataRepository.containsKafkaTopic(offlinePush.getKafkaTopic())) {
               routingDataRepository.subscribeRoutingDataChange(offlinePush.getKafkaTopic(), this);
               ExecutionStatus status = checkPushStatus(offlinePush, routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
-              terminateOfflinePush(offlinePush, status);
+              if (status.isTerminal()) {
+                logger.info(
+                    "Found a offline pushes could be terminated: " + offlinePush.getKafkaTopic() + " status: " + status
+                        .toString());
+                terminateOfflinePush(offlinePush, status);
+              }
             } else {
               // In any case, we found the offline push status is STARTED, but the related version could not be found.
               // We should collect this legacy offline push status.
+              logger.info("Found a legacy offline pushes: " + offlinePush.getKafkaTopic());
               legacyOfflinePushes.add(offlinePush);
             }
           });
@@ -97,13 +104,14 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
           topicToPushMap.remove(legacyOfflinePush.getKafkaTopic());
           accessor.deleteOfflinePushStatusAndItsPartitionStatuses(legacyOfflinePush);
         }catch(Exception e){
-          logger.warn("Could not delete legacy push status: "+legacyOfflinePush.getKafkaTopic());
+          logger.warn("Could not delete legacy push status: "+legacyOfflinePush.getKafkaTopic(), e);
         }
       }
       //Delete old error pushes.
       Set<String> storeNames =
           topicToPushMap.keySet().stream().map(Version::parseStoreFromKafkaTopicName).collect(Collectors.toSet());
       storeNames.forEach(this::cleanOlderErrorPushes);
+      logger.info("Loaded offline pushes for cluster: " + clusterName);
     }
   }
 
@@ -446,7 +454,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
     } catch (Exception e) {
       logger.warn("Could not delete error version: " + versionNumber + " for store: " + storeName + " in cluster: "
-          + clusterName);
+          + clusterName, e);
     }
     logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " fails.");
   }
