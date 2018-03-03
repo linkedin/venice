@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -53,6 +54,13 @@ public class OfflinePushStatus {
       throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
     }
   }
+
+  protected long getStartTimeSec() {
+    String timeString = statusHistory.get(0).getTime();
+    LocalDateTime time = LocalDateTime.parse(timeString);
+    return time.atZone(ZoneId.systemDefault()).toEpochSecond();
+  }
+
 
   /**
    * Judge whether current status could be transferred to the new status.

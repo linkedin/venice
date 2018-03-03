@@ -81,7 +81,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
             // To speed up topic cleanup
-            .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 1);
+            .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100);
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
