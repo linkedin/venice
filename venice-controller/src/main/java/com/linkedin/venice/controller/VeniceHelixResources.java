@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
@@ -52,7 +53,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
-        metadataRepository);
+        metadataRepository, new AggPushHealthStats(clusterName, metricsRepository));
     storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
     routersClusterManager =

@@ -42,18 +42,21 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   private final ReadWriteStoreRepository metadataRepository;
   private final StoreCleaner storeCleaner;
   private final Object lock;
+  private final AggPushHealthStats aggPushHealthStats;
 
   private Map<String, OfflinePushStatus> topicToPushMap;
   private Optional<TopicReplicator> topicReplicator = Optional.empty();
 
   public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
-      OfflinePushAccessor accessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository) {
+      OfflinePushAccessor accessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
+      AggPushHealthStats aggPushHealthStats) {
     this.clusterName = clusterName;
     this.routingDataRepository = routingDataRepository;
     this.accessor = accessor;
     this.topicToPushMap = new HashMap<>();
     this.storeCleaner = storeCleaner;
     this.metadataRepository = metadataRepository;
+    this.aggPushHealthStats = aggPushHealthStats;
 
     // This is the VeniceHelixAdmin.  Any locking should be done on this object.  If we just use
     // the synchronized keyword to lock on the OfflinePushMonitor itself, then we have a deadlock
@@ -284,8 +287,10 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       while(!decider.hasEnoughNodesToStartPush(pushStatus, resourceAssignment)){
         if(System.currentTimeMillis() - startTime >= offlinePushWaitTimeInMilliseconds){
           // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
-          throw new VeniceException(
-              "After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource '" + topic + "' still could not get enough nodes.");
+          aggPushHealthStats.recordPushPrepartionDuration(Version.parseStoreFromKafkaTopicName(topic),
+              offlinePushWaitTimeInMilliseconds / 1000);
+          throw new VeniceException("After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource '" + topic
+              + "' still could not get enough nodes.");
         }
         // How long we spent on waiting and calculating totally.
         long spentTime = System.currentTimeMillis() - startTime;
@@ -296,8 +301,10 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         resourceAssignment = routingDataRepository.getResourceAssignment();
       }
       // TODO add a metric to track waiting time.
+      long spentTime = System.currentTimeMillis() - startTime;
       logger.info(
-          "After waiting: " + (System.currentTimeMillis() - startTime) + "ms, resource allocation is completed for '" + topic + "'.");
+          "After waiting: " + spentTime + "ms, resource allocation is completed for '" + topic + "'.");
+      aggPushHealthStats.recordPushPrepartionDuration(Version.parseStoreFromKafkaTopicName(topic), spentTime / 1000);
     }
   }
 
@@ -309,6 +316,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
     updatePushStatus(status, ExecutionStatus.ERROR);
+    aggPushHealthStats.recordFailedPush(Version.parseStoreFromKafkaTopicName(topic), getDurationInSec(status));
   }
 
   @Override
@@ -422,6 +430,11 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
+  private long getDurationInSec(OfflinePushStatus pushStatus) {
+    long start = pushStatus.getStartTimeSec();
+    return System.currentTimeMillis() / 1000 - start;
+  }
+
   private void handleCompletedPush(OfflinePushStatus pushStatus) {
     logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " old status: "
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
@@ -430,6 +443,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
+    aggPushHealthStats.recordSuccessfulPush(storeName, getDurationInSec(pushStatus));
     // If we met some error to retire the old version, we should not throw the exception out to fail this operation,
     // because it will be collected once a new push is completed for this store.
     try {
@@ -449,6 +463,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     try {
       updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
+      aggPushHealthStats.recordFailedPush(storeName, getDurationInSec(pushStatus));
       // If we met some error to delete error version, we should not throw the exception out to fail this operation,
       // because it will be collected once a new push is completed for this store.
       storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);

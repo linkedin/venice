@@ -15,12 +15,14 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.any;
 
@@ -31,6 +33,7 @@ public class OfflinePushMonitorTest {
   private OfflinePushMonitor monitor;
   private ReadWriteStoreRepository mockStoreRepo;
   private StoreCleaner mockStoreCleaner;
+  private AggPushHealthStats mockPushHealthStats;
   private int numberOfPartition = 1;
   private int replicationFactor = 3;
 
@@ -40,8 +43,9 @@ public class OfflinePushMonitorTest {
     mockAccessor = Mockito.mock(OfflinePushAccessor.class);
     mockStoreCleaner = Mockito.mock(StoreCleaner.class);
     mockStoreRepo = Mockito.mock(ReadWriteStoreRepository.class);
+    mockPushHealthStats = Mockito.mock(AggPushHealthStats.class);
     monitor = new OfflinePushMonitor("OfflinePushMonitorTest", mockRoutingDataRepo, mockAccessor, mockStoreCleaner,
-        mockStoreRepo);
+        mockStoreRepo, mockPushHealthStats);
   }
 
   @Test
@@ -340,6 +344,11 @@ public class OfflinePushMonitorTest {
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
     monitor.onRoutingDataChanged(partitionAssignment);
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), expectedStatus);
+    if (expectedStatus.equals(ExecutionStatus.COMPLETED)) {
+      Mockito.verify(mockPushHealthStats, Mockito.times(1)).recordSuccessfulPush(eq("testOnRoutingDataChanged"), anyLong());
+    } else if (expectedStatus.equals(ExecutionStatus.ERROR)) {
+      Mockito.verify(mockPushHealthStats, Mockito.times(1)).recordFailedPush(eq("testOnRoutingDataChanged"), anyLong());
+    }
   }
 
   @Test
@@ -359,13 +368,13 @@ public class OfflinePushMonitorTest {
     monitor.onRoutingDataDeleted(topic);
     // Job should be terminated in error status.
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
-
+    Mockito.verify(mockPushHealthStats, Mockito.times(1)).recordFailedPush(eq("testOnRoutingDataDeleted"), anyLong());
    }
 
   @Test
   public void testWaitUntilNodesAreAssignedForResource()
       throws InterruptedException {
-    String topic = "testWaitUntilNodesAreAssignedForResource";
+    String topic = "testWaitUntilNodesAreAssignedForResource_v1";
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     // Make push failed after 1s.
@@ -379,6 +388,7 @@ public class OfflinePushMonitorTest {
 
     try {
       monitor.waitUntilNodesAreAssignedForResource(topic, 3000l);
+      Mockito.verify(mockPushHealthStats, Mockito.times(1)).recordFailedPush(eq("testOnRoutingDataDeleted"), anyLong());
       Assert.fail("The waiting should be interrupted. As the push will fail.");
     } catch (VeniceException e) {
       //expected
