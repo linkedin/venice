@@ -242,9 +242,18 @@ public class TopicManager implements Closeable {
    * non-existing topic operations.
    * Once Kafka addresses the hanging issue of non-existing topic operations, we can safely revert back
    * to use the async version: {@link #ensureTopicIsDeletedAsync(String)}
+   *
+   * It is intentional to make this function to be non-synchronized since it could lock
+   * {@link TopicManager} for a pretty long time (up to 30 seconds) if topic deletion is slow.
+   * When topic deletion slowness happens, it will cause other operations, such as {@link #getLatestOffsets(String)}
+   * to be blocked for a long time, and this could cause push job failure.
+   *
+   * Even with non-synchronized function, Venice could still guarantee there will be only one topic
+   * deletion at one time since all the topic deletions are handled by topic cleanup service serially.
+   *
    * @param topicName
    */
-  public synchronized void ensureTopicIsDeletedAndBlock(String topicName) {
+  public void ensureTopicIsDeletedAndBlock(String topicName) {
     if (!containsTopic(topicName)) {
       // Topic doesn't exist
       return;

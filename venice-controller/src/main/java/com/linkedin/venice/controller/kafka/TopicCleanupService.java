@@ -68,7 +68,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     cleanupThread.start();
-    return false;
+    return true;
   }
 
   @Override
