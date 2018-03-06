@@ -14,7 +14,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private Collection<RouterKey> partitionKeys;
   private final String storeName;
   private int versionNumber;
-  private String selectedHost;
+  private boolean retryRequest = false;
 
   public VenicePath(String resourceName) {
     this.resourceName = resourceName;
@@ -24,18 +24,6 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   protected void setPartitionKeys(Collection<RouterKey> keys) {
     this.partitionKeys = keys;
-  }
-
-  public void setSelectedHost(String selectedHost) {
-    this.selectedHost = selectedHost;
-  }
-
-  public String getSelectedHost() {
-    return this.selectedHost;
-  }
-
-  public boolean isFirstTry() {
-    return this.selectedHost == null;
   }
 
   @Nonnull
@@ -64,6 +52,15 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public String getStoreName() {
     return this.storeName;
+  }
+
+  @Override
+  public void setRetryRequest() {
+    this.retryRequest = true;
+  }
+
+  public boolean isRetryRequest() {
+    return this.retryRequest;
   }
 
   public abstract RequestType getRequestType();

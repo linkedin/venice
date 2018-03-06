@@ -149,6 +149,28 @@ public class ConfigKeys {
   public static final String ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS = "router.long.tail.retry.for.single.get.threshold.ms";
 
   /**
+   * After this amount of time, DDS Router will retry once for the slow storage node request.
+   *
+   * The configured format will be like this way:
+   * "1-10:20,11-50:50,51-200:80,201-:1000"
+   *
+   * Let me explain the config by taking one example:
+   * If the request key count for a batch-get request is '32', and it fails into this key range: [11-50], so the retry
+   * threshold for this batch-get request is 50ms.
+   *
+   * That is a limitation here:
+   * The retry threshold is actually for each scatter-gather request, but this config is not strictly with the actual key count
+   * inside each scatter-gather request, which means even if there is only one key in a scatter-gather request with
+   * the above example, Router will wait for 50ms to retry this scatter-gather request.
+   *
+   * For now, it is not big issue since for now we mostly want to use this config to skip the storage node, which
+   * is experiencing long GC pause.
+   * So coarse-grained config should be good enough.
+   *
+   */
+  public static final String ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS = "router.long.tail.retry.for.batch.get.threshold.ms";
+
+  /**
    * The max key count allowed in one multi-get request.
    * For now, it is configured in host level, and we could consider to configure it in store level.
    */

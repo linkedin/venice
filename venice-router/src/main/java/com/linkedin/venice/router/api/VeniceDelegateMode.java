@@ -77,24 +77,8 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
             INTERNAL_SERVER_ERROR, "Unknown request type: " + venicePath.getRequestType());
     }
-
-    HostHealthMonitor<H> actualHostHealthMonitor = venicePath.isFirstTry() ? hostHealthMonitor :
-        (host, partitionName) -> {
-          /**
-           * Skip previously selected host
-           * Here we could not use the logic inside here: {@link com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry}
-           * to filter out the previous selected host because the filtering logic in DDS Router framework is happening
-           * after scattering, but Venice needs to decide the selected one inside scatter/gather mode for throttling.
-           */
-          Instance instance = (Instance)host;
-          if (instance.getNodeId().equals(venicePath.getSelectedHost())) {
-            return false;
-          }
-
-          return hostHealthMonitor.isHostHealthy(host, partitionName);
-        };
     Scatter finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder,
-        actualHostHealthMonitor, roles, metrics);
+        hostHealthMonitor, roles, metrics);
     int offlineRequestNum = scatter.getOfflineRequestCount();
     if (offlineRequestNum > 0) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
@@ -121,20 +105,13 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             INTERNAL_SERVER_ERROR, "Ready-to-serve host must be an 'Instance'");
       }
       Instance veniceInstance = (Instance)host;
-      if (venicePath.getRequestType().equals(RequestType.SINGLE_GET)) {
-        venicePath.setSelectedHost(veniceInstance.getNodeId());
-      } else {
-        /**
-         * TODO: batch-get
-         *
-         * For batch-get, the difficult part is to persist the previous selected host for each part when doing retry.
-         * And we don't know whether the retry will make it better since the retry request could scatter out several
-         * storage node requests.
-         */
-
+      if (venicePath.getRequestType().equals(RequestType.MULTI_GET) && !venicePath.isRetryRequest()) {
         /**
          * Here is the only suitable place to throttle multi-get request since we want to fail the whole request if
          * some scatter request gets throttled.
+         *
+         * Venice doesn't apply quota enforcement for retry request since retry is a way for latency guarantee,
+         * which should be transparent to customers.
          *
          * For single-get request, the throttling logic is happening in {@link VeniceDispatcher} because of caching logic.
          */

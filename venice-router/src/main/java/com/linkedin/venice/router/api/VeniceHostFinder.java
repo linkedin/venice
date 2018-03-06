@@ -124,7 +124,14 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       if (instanceHealthMonitor.isHostHealthy(instance, partitionName) && hostHealthMonitor.isHostHealthy(instance, partitionName)) {
         newHosts.add(instance);
       } else {
-        currentStats.recordFindUnhealthyHostRequest(storeName);
+        /**
+         * Router won't record unhealthy metric when {@link hostHealthMonitor} is returning unhealthy since
+         * it is only being used for retry purpose, which means when {@link hostHealthMonitor} is returning false,
+         * the current request is a retry request.
+         */
+        if (!instanceHealthMonitor.isHostHealthy(instance, partitionName)) {
+          currentStats.recordFindUnhealthyHostRequest(storeName);
+        }
       }
     }
     int hostCount = newHosts.size();
@@ -140,6 +147,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
     newHosts.sort(Comparator.comparing(Instance::getNodeId));
     int partitionId = HelixUtils.getPartitionId(partitionName);
     int chosenIndex = partitionId % hostCount;
+
     return Arrays.asList(newHosts.get(chosenIndex));
   }
 
