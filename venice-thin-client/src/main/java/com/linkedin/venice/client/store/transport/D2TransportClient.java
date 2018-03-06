@@ -83,7 +83,7 @@ public class D2TransportClient extends TransportClient {
     RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     RequestContext requestContext = new RequestContext();
-    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); //required for d2 backup requests
+    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "batchget"); //required for d2 backup requests
     d2Client.restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
