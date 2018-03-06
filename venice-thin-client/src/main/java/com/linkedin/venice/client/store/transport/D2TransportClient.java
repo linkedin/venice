@@ -3,6 +3,8 @@ package com.linkedin.venice.client.store.transport;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.r2.R2Constants;
+import com.linkedin.r2.message.RequestContext;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
@@ -69,7 +71,9 @@ public class D2TransportClient extends TransportClient {
   public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
     RestRequest request = getRestGetRequest(requestPath, headers);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
-    d2Client.restRequest(request, new D2TransportClientCallback(valueFuture));
+    RequestContext requestContext = new RequestContext();
+    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); //required for d2 backup requests
+    d2Client.restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
@@ -78,8 +82,9 @@ public class D2TransportClient extends TransportClient {
       byte[] requestBody) {
     RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
-    d2Client.restRequest(request, new D2TransportClientCallback(valueFuture));
-
+    RequestContext requestContext = new RequestContext();
+    requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); //required for d2 backup requests
+    d2Client.restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
