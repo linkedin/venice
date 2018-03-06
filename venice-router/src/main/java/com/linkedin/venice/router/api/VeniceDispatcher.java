@@ -330,6 +330,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * 2. If it is a cache miss or cache is not enabled, the request will be counted when calculating store throttler
    * and per storage node throttler as before;
    *
+   * Only apply quota enforcement for regular request, but not retry request.
+   * The reason is that retry is a way for latency guarantee, which should be transparent to customers.
+   *
    * @param path
    * @param selectedHost
    * @param responseFuture
@@ -345,8 +348,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
          * Cache throttling first
          * Only throttle in store level since the cache lookup request is not actually sending to any storage node
          */
-        readRequestThrottler.mayThrottleRead(storeName,
-            cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+        if (!path.isRetryRequest()) {
+          readRequestThrottler.mayThrottleRead(storeName, cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+        }
 
         long startTimeInNS = System.nanoTime();
         statsForSingleGet.recordCacheLookupRequest(storeName);
@@ -384,12 +388,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
            * Cache miss
            * Unset the previous per-store throttler
            */
-          readRequestThrottler.mayThrottleRead(storeName,
-               -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+          if (!path.isRetryRequest()) {
+            readRequestThrottler.mayThrottleRead(storeName, -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+          }
         }
       }
       // Caching is not enabled or cache miss
-      readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
+      if (!path.isRetryRequest()) {
+        readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
+      }
     } catch (QuotaExceededException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.SINGLE_GET),
           TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());

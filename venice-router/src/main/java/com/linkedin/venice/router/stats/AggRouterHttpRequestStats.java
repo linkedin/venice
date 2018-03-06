@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 
-public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttpRequestStats> implements Function<String, ScatterGatherStats> {
+public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttpRequestStats> {
   private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new ConcurrentHashMap<>();
 
   public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
@@ -29,6 +29,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
 
       return new RouterHttpRequestStats(metricsRepo, storeName, requestType, stats);
     });
+  }
+
+  public ScatterGatherStats getScatterGatherStatsForStore(String storeName) {
+    scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
+    return scatterGatherStatsMap.get(storeName);
   }
 
   public void recordRequest(String storeName) {
@@ -111,12 +116,6 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordFindUnhealthyHostRequest();
   }
 
-  @Override
-  public ScatterGatherStats apply(String resourceName) {
-    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
-    return scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
-  }
-
   private class AggScatterGatherStats extends ScatterGatherStats {
 
     private long getAggStats(Function<ScatterGatherStats, Long> func) {
@@ -130,6 +129,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     @Override
     public long getTotalRetries() {
       return getAggStats(stats -> stats.getTotalRetries());
+    }
+
+    @Override
+    public long getTotalRetriedKeys() {
+      return getAggStats(stats -> stats.getTotalRetriedKeys());
     }
 
     @Override

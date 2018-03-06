@@ -83,6 +83,7 @@ public class TestRead {
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 2);
     routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:2");
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
@@ -148,7 +149,7 @@ public class TestRead {
             .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
     );
     // Run multiple rounds
-    int rounds = 50;
+    int rounds = 100;
     int cur = 0;
     while (++cur <= rounds) {
       Set<String> keySet = new HashSet<>();
@@ -172,15 +173,19 @@ public class TestRead {
 
     // Check retry requests
     double singleGetRetries = 0;
+    double batchGetRetries = 0;
     for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
       MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
       Map<String, ? extends Metric> metrics = metricsRepository.metrics();
       if (metrics.containsKey(".total--retry_count.LambdaStat")) {
         singleGetRetries += metrics.get(".total--retry_count.LambdaStat").value();
       }
+      if (metrics.containsKey(".total--multiget_retry_count.LambdaStat")) {
+        batchGetRetries += metrics.get(".total--multiget_retry_count.LambdaStat").value();
+      }
     }
-    Assert.assertTrue(singleGetRetries > 0, "After " + rounds + " reads, there should be some retry requests");
-
+    Assert.assertTrue(singleGetRetries > 0, "After " + rounds + " reads, there should be some single-get retry requests");
+    Assert.assertTrue(batchGetRetries > 0, "After " + rounds + " reads, there should be some batch-get retry requests");
     /**
      * Test batch get limit
      */

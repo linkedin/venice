@@ -25,6 +25,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.acl.RouterAclHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
+import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
@@ -35,8 +36,10 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
@@ -55,6 +58,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -293,10 +297,12 @@ public class RouterServer extends AbstractVeniceService {
 
     // Fixed retry future
     AsyncFuture<LongSupplier> singleGetRetryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryForSingleGetThresholdMs());
-    LongTailRetrySupplier retrySupplier = new LongTailRetrySupplier() {
+    LongTailRetrySupplier retrySupplier = new LongTailRetrySupplier<VenicePath, RouterKey>() {
+      private TreeMap<Integer, Integer> longTailRetryConfigForBatchGet = config.getLongTailRetryForBatchGetThresholdMs();
+
       @Nonnull
       @Override
-      public AsyncFuture<LongSupplier> getLongTailRetryMilliseconds(@Nonnull String resourceName,
+      public AsyncFuture<LongSupplier> getLongTailRetryMilliseconds(@Nonnull VenicePath path,
           @Nonnull String methodName) {
         if (VeniceRouterUtils.isHttpGet(methodName)) {
           // single-get
@@ -304,9 +310,16 @@ public class RouterServer extends AbstractVeniceService {
         } else {
           /**
            * Long tail retry is not enabled for batch-get.
-           * TODO: figure out a proper way to enable long-tail retry for batch-get.
            */
-          return AsyncFuture.cancelled();
+          int keyNum = path.getPartitionKeys().size();
+          if (0 == keyNum) {
+            // Should not happen
+            throw new VeniceException("Met scatter-gather request without any keys");
+          }
+          /**
+           * Refer to {@link ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS} to get more info.
+           */
+          return new SuccessAsyncFuture<>(() -> longTailRetryConfigForBatchGet.floorEntry(keyNum).getValue());
         }
       }
     };
@@ -325,8 +338,9 @@ public class RouterServer extends AbstractVeniceService {
         .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet))
         .metricsProvider(new VeniceMetricsProvider())
         .longTailRetrySupplier(retrySupplier)
-        .scatterGatherStatsProvider(statsForSingleGet) // TODO: need to check this logic when enabling batch-get retry
+        .scatterGatherStatsProvider(new LongTailRetryStatsProvider(statsForSingleGet, statsForMultiGet))
         .enableStackTraceResponseForException(true)
+        .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
 
     VerifySslHandler nonSecureSSLEnforcement = new VerifySslHandler(config.isEnforcingSecureOnly());
