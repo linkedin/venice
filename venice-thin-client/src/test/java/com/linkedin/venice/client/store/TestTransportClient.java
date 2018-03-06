@@ -53,7 +53,7 @@ public class TestTransportClient {
     d2TransportClient.get(TEST_REQUEST);
     ArgumentCaptor<RestRequest> d2RequestCaptor = ArgumentCaptor.forClass(RestRequest.class);
 
-    verify(mockD2Client).restRequest(d2RequestCaptor.capture(), (Callback<RestResponse>) any());
+    verify(mockD2Client).restRequest(d2RequestCaptor.capture(), any(), (Callback<RestResponse>) any());
     Assert.assertEquals(D2_PREFIX + SERVICE_NAME + "/" + TEST_REQUEST,
         d2RequestCaptor.getValue().getURI().toString());
 
