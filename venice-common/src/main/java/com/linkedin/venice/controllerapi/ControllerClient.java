@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
@@ -183,6 +184,22 @@ public class ControllerClient implements Closeable {
     } catch (Exception e){
       return handleError(
           new VeniceException("Error requesting topic for store: " + storeName, e), new VersionCreationResponse());
+    }
+  }
+
+  public ControllerResponse uploadPushProperties(String storeName, int version, Properties properties) {
+    try {
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, version);
+      for (Object key : properties.keySet()) {
+        params.add(key.toString(), properties.getProperty(key.toString()));
+      }
+      String responseJson = postRequest(ControllerRoute.OFFLINE_PUSH_INFO.getPath(), params);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error uploading the push properties for store: " + storeName, e),
+          new ControllerResponse());
     }
   }
 

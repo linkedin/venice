@@ -29,6 +29,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -38,6 +39,7 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -89,6 +91,7 @@ public class TestVeniceParentHelixAdmin {
   private VeniceWriter veniceWriter;
   private VeniceParentHelixAdmin parentAdmin;
   private VeniceHelixResources resources;
+  private ParentHelixOfflinePushAccessor accessor;
 
   @BeforeMethod
   public void init() {
@@ -120,9 +123,11 @@ public class TestVeniceParentHelixAdmin {
 
     config = mockConfig(clusterName);
 
+    accessor = Mockito.mock(ParentHelixOfflinePushAccessor.class);
     resources = mockResources(config, clusterName);
 
     Store mockStore = mock(Store.class);
+    doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(mockStore).getOffLinePushStrategy();
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(mockStore).when(storeRepo).getStore(any());
     // Please override this default mock implementation if you need special store repo logic for your test
@@ -130,6 +135,7 @@ public class TestVeniceParentHelixAdmin {
         .getMetadataRepository();
 
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+    parentAdmin.setOfflinePushAccessor(accessor);
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
@@ -636,8 +642,12 @@ public class TestVeniceParentHelixAdmin {
   public void testIncrementVersionWhenNoPreviousTopics() {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
+    doReturn(new Version(storeName, 1)).when(internalAdmin)
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
     parentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
     verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    verify(accessor).createOfflinePushStatus(eq(clusterName), any());
+    verify(accessor).getAllPushNames(eq(clusterName));
   }
 
   /**
@@ -685,6 +695,8 @@ public class TestVeniceParentHelixAdmin {
         .listTopics();
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.COMPLETED);
+    doReturn(new Version(storeName, 1)).when(internalAdmin)
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
     partialMockParentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
     verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
   }
@@ -1431,5 +1443,37 @@ public class TestVeniceParentHelixAdmin {
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v7");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v8");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v10");
+  }
+
+  @Test
+  public void testCreateOfflinePushStatus(){
+    String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    doReturn(new Version(storeName, 1)).when(internalAdmin)
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    List<String> names = new ArrayList<>();
+    int count = VeniceParentHelixAdmin.MAX_PUSH_STATUS_PER_STORE_TO_KEEP+1;
+    for(int i=0;i<count;i++){
+      names.add(storeName+"_v"+i);
+    }
+    doReturn(names).when(accessor).getAllPushNames(clusterName);
+    parentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
+    verify(accessor, atLeastOnce()).createOfflinePushStatus(eq(clusterName), any());
+    // Collect the old offline push status.
+    verify(accessor).deleteOfflinePushStatus(clusterName, storeName+"_v0");
+
+  }
+
+  @Test
+  public void testUpdatePushProperties(){
+    String storeName = TestUtils.getUniqueString("testUpdatePushProperties");
+    OfflinePushStatus status = new OfflinePushStatus(storeName+"_v1", 1, 1,OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    doReturn(status).when(accessor).getOfflinePushStatus(clusterName, storeName+"_v1");
+    Map<String, String> map = new HashMap<>();
+    map.put("test","test");
+    parentAdmin.updatePushProperties(clusterName, storeName, 1, map);
+    OfflinePushStatus status1 = status.clonePushStatus();
+    status1.setPushProperties(map);
+    verify(accessor).updateOfflinePushStatus(eq(clusterName), eq(status1));
   }
 }

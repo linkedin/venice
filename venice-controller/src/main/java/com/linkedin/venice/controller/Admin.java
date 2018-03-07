@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 
 
@@ -401,4 +402,6 @@ public interface Admin {
     boolean isTopicTruncatedBasedOnRetention(long retention);
 
     void truncateKafkaTopic(String topicName);
+
+    void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties);
 }

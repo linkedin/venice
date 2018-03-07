@@ -65,7 +65,9 @@ public enum ControllerRoute {
   SET_MIGRATION_PUSH_STRATEGY("/set_push_strategy", Arrays.asList(VOLDEMORT_STORE_NAME, PUSH_STRATEGY)),
 
   CLUSTER_DISCOVERY("/discover_cluster", Arrays.asList(NAME)),
-  LIST_BOOTSTRAPPING_VERSIONS("/list_bootstrapping_versions", Arrays.asList());
+  LIST_BOOTSTRAPPING_VERSIONS("/list_bootstrapping_versions", Arrays.asList()),
+
+  OFFLINE_PUSH_INFO("/offline_push_info", Arrays.asList(NAME, VERSION));
 
   private final String path;
   private final List<String> params;

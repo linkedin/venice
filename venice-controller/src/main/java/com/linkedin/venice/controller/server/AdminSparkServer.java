@@ -167,6 +167,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(CLUSTER_DISCOVERY.getPath(), ClusterDiscovery.discoverCluster(admin));
     httpService.get(LIST_BOOTSTRAPPING_VERSIONS.getPath(), VersionRoute.listBootstrappingVersions(admin));
 
+    httpService.post(OFFLINE_PUSH_INFO.getPath(), CreateVersion.uploadPushInfo(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
 
     // There is no async process in this function, so we are completely finished with the start up process.

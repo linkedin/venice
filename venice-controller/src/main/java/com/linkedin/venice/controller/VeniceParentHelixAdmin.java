@@ -37,11 +37,13 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.offsets.OffsetManager;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -51,7 +53,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 
 import java.util.Optional;
@@ -84,6 +85,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
+  public static final int MAX_PUSH_STATUS_PER_STORE_TO_KEEP = 10;
 
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
@@ -97,6 +99,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private Time timer = new SystemTime();
 
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
+
+  private ParentHelixOfflinePushAccessor offlinePushAccessor;
 
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
@@ -145,6 +149,8 @@ public class VeniceParentHelixAdmin implements Admin {
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
         veniceHelixAdmin.getAdapterSerializer());
     this.maxErroredTopicNumToKeep = multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
+    this.offlinePushAccessor =
+        new ParentHelixOfflinePushAccessor(veniceHelixAdmin.getZkClient(), veniceHelixAdmin.getAdapterSerializer());
   }
 
   // For testing purpose
@@ -535,7 +541,30 @@ public class VeniceParentHelixAdmin implements Admin {
     Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
         numberOfPartition, replicationFactor, false);
     cleanupHistoricalVersions(clusterName, storeName);
+    createOfflinePushStatus(clusterName, storeName, newVersion.getNumber(), numberOfPartition, replicationFactor);
     return newVersion;
+  }
+
+  protected synchronized void createOfflinePushStatus(String cluster, String storeName, int version, int partitionCount, int replicationFactor){
+    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(cluster);
+    ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+    Store store = storeRepository.getStore(storeName);
+    String topicName = Version.composeKafkaTopic(storeName, version);
+    OfflinePushStatus status = new OfflinePushStatus(topicName, partitionCount, replicationFactor, store.getOffLinePushStrategy());
+    offlinePushAccessor.createOfflinePushStatus(cluster, status);
+    // Collect the old push status.
+    List<String> names = offlinePushAccessor.getAllPushNames(cluster);
+    List<Integer> versionNumbers = names
+        .stream()
+        .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
+        .map(Version::parseVersionFromKafkaTopicName)
+        .collect(Collectors.toList());
+    while (versionNumbers.size() > MAX_PUSH_STATUS_PER_STORE_TO_KEEP) {
+      int oldestVersionNumber = Collections.min(versionNumbers);
+      versionNumbers.remove(Integer.valueOf(oldestVersionNumber));
+      String oldestTopicName = Version.composeKafkaTopic(storeName, oldestVersionNumber);
+      offlinePushAccessor.deleteOfflinePushStatus(cluster, oldestTopicName);
+    }
   }
 
   /**
@@ -1369,5 +1398,23 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public void truncateKafkaTopic(String kafkaTopicName) {
     veniceHelixAdmin.truncateKafkaTopic(kafkaTopicName);
+  }
+
+  @Override
+  public void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties) {
+    veniceHelixAdmin.checkControllerMastership(cluster);
+    String topicName = Version.composeKafkaTopic(storeName, version);
+    OfflinePushStatus status = offlinePushAccessor.getOfflinePushStatus(cluster, topicName);
+    status.setPushProperties(properties);
+    offlinePushAccessor.updateOfflinePushStatus(cluster, status);
+  }
+
+  public ParentHelixOfflinePushAccessor getOfflinePushAccessor() {
+    return offlinePushAccessor;
+  }
+
+  /* Used by test only*/
+  protected void setOfflinePushAccessor(ParentHelixOfflinePushAccessor offlinePushAccessor) {
+    this.offlinePushAccessor = offlinePushAccessor;
   }
 }

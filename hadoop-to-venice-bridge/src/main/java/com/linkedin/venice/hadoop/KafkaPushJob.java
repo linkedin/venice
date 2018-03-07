@@ -539,6 +539,13 @@ public class KafkaPushJob extends AbstractJob {
     partitionCount = versionCreationResponse.getPartitions();
     sslToKafka = versionCreationResponse.isEnableSSL();
     compressionStrategy = versionCreationResponse.getCompressionStrategy();
+    // Upload the properties to controller, as it's not in the critical path, so if it's failed, just log the error
+    // but do not thrown the exception.
+    ControllerResponse response =
+        controllerClient.uploadPushProperties(storeName, versionCreationResponse.getVersion(), props.toProperties());
+    if (response.isError()) {
+      logger.warn("Could not upload properties of this job to the controlelr. Error: " + response.getError());
+    }
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
