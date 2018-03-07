@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
@@ -30,12 +31,15 @@ public class OfflinePushStatus {
   private List<StatusSnapshot> statusHistory;
   private List<PartitionStatus> partitionStatuses;
 
+  private Map<String, String> pushProperties;
+
   public OfflinePushStatus(String kafkaTopic, int numberOfPartition, int replicationFactor,
       OfflinePushStrategy strategy) {
     this.kafkaTopic = kafkaTopic;
     this.numberOfPartition = numberOfPartition;
     this.replicationFactor = replicationFactor;
     this.strategy = strategy;
+    this.pushProperties = new HashMap<>();
     statusHistory = new ArrayList<>();
     addHistoricStatus(currentStatus);
     //initialize partition status for each partition.
@@ -168,6 +172,7 @@ public class OfflinePushStatus {
     // As same as status history, there is no way update properties inside Partition status object. So only
     // copy list is enough here.
     clonePushStatus.setPartitionStatuses(new ArrayList<>(partitionStatuses));
+    clonePushStatus.setPushProperties(new HashMap<>(pushProperties));
     return clonePushStatus;
   }
 
@@ -227,6 +232,14 @@ public class OfflinePushStatus {
             .anyMatch(replicaStatus -> replicaStatus.getCurrentStatus() == ExecutionStatus.END_OF_PUSH_RECEIVED));
   }
 
+  public Map<String, String> getPushProperties() {
+    return pushProperties;
+  }
+
+  public void setPushProperties(Map<String, String> pushProperties) {
+    this.pushProperties = pushProperties;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -256,6 +269,9 @@ public class OfflinePushStatus {
     if (!statusHistory.equals(that.statusHistory)) {
       return false;
     }
+    if (!pushProperties.equals(that.pushProperties)) {
+      return false;
+    }
     return partitionStatuses.equals(that.partitionStatuses);
   }
 
@@ -268,6 +284,7 @@ public class OfflinePushStatus {
     result = 31 * result + currentStatus.hashCode();
     result = 31 * result + statusHistory.hashCode();
     result = 31 * result + partitionStatuses.hashCode();
+    result = 31 * result + pushProperties.hashCode();
     return result;
   }
 

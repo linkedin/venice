@@ -140,6 +140,35 @@ public class CreateVersion {
     };
   }
 
+  public static Route uploadPushInfo(Admin admin){
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
+
+        //Query params
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+
+        String versionString = request.queryParams(VERSION);
+        int versionNumber = Integer.parseInt(versionString);
+        Map<String, String> properties = new HashMap<>();
+        for (String key : request.queryParams()) {
+          properties.put(key, request.queryParams(key));
+        }
+        admin.updatePushProperties(clusterName, storeName, versionNumber, properties);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+
+    };
+  }
+
   public static Route writeEndOfPush(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();

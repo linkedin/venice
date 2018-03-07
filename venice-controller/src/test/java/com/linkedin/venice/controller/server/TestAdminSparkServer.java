@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -696,5 +697,16 @@ public class TestAdminSparkServer {
     Assert.assertEquals(
         ControllerClient.discoverCluster(venice.getMasterVeniceController().getControllerUrl(), storeName).getCluster(),
         venice.getClusterName(), "Should be able to find the cluster which the given store belongs to.");
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void controllerCLientCanUploadPushProperties() {
+    String storeName = "controllerCLientCanUploadPushProperties";
+    int version = 1;
+    Properties p = new Properties();
+    for(int i=0;i<100;i++){
+      p.setProperty(i+"venice.push.properteis.xyz"+i, "http://testinfo.url"+i);
+    }
+    controllerClient.uploadPushProperties(storeName, version, p);
   }
 }

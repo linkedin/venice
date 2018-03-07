@@ -25,6 +25,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -837,6 +838,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 .forEach(t -> truncateKafkaTopic(t));
             logger.info("Finished truncating old topics for store '" + store.getName() + "'.");
         }
+    }
+
+    @Override
+    public void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties) {
+        throw new VeniceUnsupportedOperationException("update push properties only supports in the paraent admin.");
     }
 
 
@@ -2025,7 +2031,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      *
      * @param clusterName
      */
-    private void checkControllerMastership(String clusterName) {
+    protected void checkControllerMastership(String clusterName) {
         if (!isMasterController(clusterName)) {
             throw new VeniceException("This controller:" + controllerName + " is not the master of '" + clusterName
                 + "'. Can not handle the admin request.");
