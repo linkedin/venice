@@ -3,6 +3,7 @@ package com.linkedin.venice.integration;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -23,7 +24,7 @@ public class StorageNodeServiceTest {
     Utils.thisIsLocalhost();
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(sslTrue);
     VeniceServerWrapper sslServer = venice.getVeniceServers().get(0);
-    CloseableHttpAsyncClient client = SslUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()));
+    CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()));
     client.start();
 
     // This should work, talking ssl to an ssl storage node

@@ -20,11 +20,12 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.cache.RouterCache;
+import com.linkedin.venice.router.httpclient.CachedDnsResolver;
+import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.SslUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -96,7 +97,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    */
   public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
       Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository storeRepository,
-      Optional<RouterCache> routerCache, AggRouterHttpRequestStats statsForSingleGet) {
+      Optional<RouterCache> routerCache, AggRouterHttpRequestStats statsForSingleGet,
+      Optional<CachedDnsResolver> dnsResolver) {
     this.healthMonitor = healthMonitor;
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
     this.storeRepository = storeRepository;
@@ -118,7 +120,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     int totalMaxConnPerClient = (int)Math.ceil(((double)maxConn) / clientPoolSize);
     clientPool = new ArrayList<>();
     for (int i = 0; i < clientPoolSize; ++i) {
-      CloseableHttpAsyncClient client = SslUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient, totalMaxConnPerClient, sslFactory);
+      CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient,
+          totalMaxConnPerClient, sslFactory, dnsResolver);
       client.start();
       clientPool.add(client);
     }

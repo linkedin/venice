@@ -12,6 +12,7 @@ import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
 import org.apache.http.config.RegistryBuilder;
+import org.apache.http.conn.DnsResolver;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
@@ -78,77 +79,5 @@ public class SslUtils {
       }
     }
     return file.getAbsolutePath();
-  }
-
-  public static SSLIOSessionStrategy getSslStrategy(SSLEngineComponentFactory sslFactory) {
-    SSLContext sslContext = sslFactory.getSSLContext();
-    SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
-    return sslSessionStrategy;
-  }
-
-  public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(ioThreadNum, maxConnPerRoute, maxConnTotal, sslFactory);
-    reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
-    return HttpAsyncClients.createMinimal(connectionManager);
-  }
-
-  public static PoolingNHttpClientConnectionManager createConnectionManager(int ioThreadNum, int perRoute, int total, Optional<SSLEngineComponentFactory> sslFactory) {
-    IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
-        .setSoKeepAlive(true)
-        .setIoThreadCount(ioThreadNum)
-        .build();
-    ConnectingIOReactor ioReactor = null;
-    try {
-      ioReactor = new DefaultConnectingIOReactor(ioReactorConfig);
-    } catch (IOReactorException e) {
-      throw new VeniceException("Router failed to create an IO Reactor", e);
-    }
-    PoolingNHttpClientConnectionManager connMgr;
-    if(sslFactory.isPresent()) {
-      SSLIOSessionStrategy sslStrategy = getSslStrategy(sslFactory.get());
-      RegistryBuilder<SchemeIOSessionStrategy> registryBuilder = RegistryBuilder.create();
-      registryBuilder.register(HTTPS, sslStrategy).register(HTTP, NoopIOSessionStrategy.INSTANCE);
-      connMgr = new PoolingNHttpClientConnectionManager(ioReactor, registryBuilder.build());
-    } else {
-      connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
-    }
-    connMgr.setMaxTotal(total);
-    connMgr.setDefaultMaxPerRoute(perRoute);
-
-    //TODO: Configurable
-    reapIdleConnections(connMgr, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
-
-    return connMgr;
-  }
-
-  public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, sslFactory);
-  }
-
-  /**
-   * Creates a new thread that automatically cleans up idle connections on the specified connection manager.
-   * @param connectionManager  Connection manager with idle connections that should be reaped
-   * @param sleepTime how frequently to wake up and reap idle connections
-   * @param sleepTimeUnits
-   * @param maxIdleTime how long a connection must be idle in order to be eligible for reaping
-   * @param maxIdleTimeUnits
-   * @return started daemon thread that is doing the reaping.  Interrupt this thread to halt reaping or ignore the return value.
-   */
-  private static Thread reapIdleConnections(PoolingNHttpClientConnectionManager connectionManager,
-    long sleepTime, TimeUnit sleepTimeUnits,
-    long maxIdleTime, TimeUnit maxIdleTimeUnits) {
-    Thread idleConnectionReaper = new Thread(()->{
-      while (true){
-        try {
-          Thread.sleep(sleepTimeUnits.toMillis(sleepTime));
-          connectionManager.closeIdleConnections(maxIdleTime, maxIdleTimeUnits);
-        } catch (InterruptedException e){
-          break;
-        }
-      }
-    }, "ConnectionManagerIdleReaper");
-    idleConnectionReaper.setDaemon(true);
-    idleConnectionReaper.start();
-    return idleConnectionReaper;
   }
 }

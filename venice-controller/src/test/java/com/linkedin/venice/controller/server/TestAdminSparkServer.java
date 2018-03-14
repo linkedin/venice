@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -34,7 +33,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -57,7 +56,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import scala.collection.script.Update;
 
 
 /**
@@ -149,7 +147,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
 
     // ensure creating a duplicate store throws a http 409, status code isn't exposed in controllerClient
-   CloseableHttpAsyncClient httpClient = SslUtils.getMinimalHttpClient(1,1, Optional.empty());
+   CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.empty());
     httpClient.start();
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));

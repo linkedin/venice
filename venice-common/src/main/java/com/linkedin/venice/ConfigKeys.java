@@ -245,6 +245,22 @@ public class ConfigKeys {
   public static final String ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT = "router.cache.hit.request.throttle.weight";
 
   /**
+   * Whether to enable customized dns cache in router or not.
+   * This is mostly to address slow DNS lookup issue.
+   */
+  public static final String ROUTER_DNS_CACHE_ENABLED = "router.dns.cache.enabled";
+
+  /**
+   * The host matching the configured host pattern will be cached if {@link #ROUTER_DNS_CACHE_ENABLED} is true.
+   */
+  public static final String ROUTE_DNS_CACHE_HOST_PATTERN = "router.dns.cache.host.pattern";
+
+  /**
+   * Refresh interval of cached dns entries if {@link #ROUTER_DNS_CACHE_ENABLED} is true.
+   */
+  public static final String ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS = "router.dns.cache.refresh.interval.ms";
+
+  /**
    * Netty graceful shutdown period considering the following factors:
    * 1. D2 de-announcement could take some time;
    * 2. Client could take some  time to receive/apply the zk update event from D2 server about router shutdown;
@@ -285,7 +301,7 @@ public class ConfigKeys {
    * and clean up the older leaky topics successfully. This edge case is deemed a small enough concern for
    * now, though it could be addressed with a more significant redesign of the replication pipeline.
    *
-   * @see #TOPIC_CLEANUP_SERVICE_ENABLED
+   * @see
    */
   public static final String MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE = "min.number.of.unused.kafka.topics.to.preserve";
 

@@ -4,8 +4,8 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.utils.SslUtils;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +36,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
       int heartbeatTimeoutMillis, Optional<SSLEngineComponentFactory> sslFactory){
     int maxConnectionsPerRoute = 2;
     int maxConnections = 100;
-    httpClient = SslUtils.getMinimalHttpClient(maxConnectionsPerRoute, maxConnections, sslFactory);
+    httpClient = HttpClientUtils.getMinimalHttpClient(maxConnectionsPerRoute, maxConnections, sslFactory);
     Runnable runnable = () -> {
       boolean running = true;
 
