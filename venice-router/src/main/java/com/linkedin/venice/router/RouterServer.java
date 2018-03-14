@@ -38,7 +38,9 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.cache.RouterCache;
+import com.linkedin.venice.router.httpclient.CachedDnsResolver;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.DnsLookupStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
@@ -276,8 +278,17 @@ public class RouterServer extends AbstractVeniceService {
       // Tracking cache metrics
       new RouterCacheStats(metricsRepository, "router_cache", routerCache.get());
     }
+    Optional<CachedDnsResolver> dnsResolver = Optional.empty();
+    // Whether to enable DNS cache
+    if (config.isDnsCacheEnabled()) {
+      DnsLookupStats dnsLookupStats = new DnsLookupStats(metricsRepository, "dns_lookup");
+      dnsResolver = Optional.of(new CachedDnsResolver(config.getHostPatternForDnsCache(), config.getDnsCacheRefreshIntervalInMs(), dnsLookupStats));
+      logger.info("CachedDnsResolver is enabled, cached host pattern: " + config.getHostPatternForDnsCache() +
+          ", refresh interval: " + config.getDnsCacheRefreshIntervalInMs() + "ms");
+    }
+
     dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests, metadataRepository, routerCache,
-        statsForSingleGet);
+        statsForSingleGet, dnsResolver);
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler =
@@ -435,6 +446,7 @@ public class RouterServer extends AbstractVeniceService {
     if (routerCache.isPresent()) {
       routerCache.get().close();
     }
+
     logger.info(this.toString() + " is stopped");
   }
 

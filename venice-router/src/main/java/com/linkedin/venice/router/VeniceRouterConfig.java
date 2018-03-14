@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -49,6 +50,9 @@ public class VeniceRouterConfig {
   private double cacheHitRequestThrottleWeight;
   private int routerNettyGracefulShutdownPeriodSeconds;
   private boolean enforceSecureOnly;
+  private boolean dnsCacheEnabled;
+  private String hostPatternForDnsCache;
+  private long dnsCacheRefreshIntervalInMs;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -104,6 +108,11 @@ public class VeniceRouterConfig {
     cacheHitRequestThrottleWeight = props.getDouble(ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT, 1);
     routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30s
     enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
+
+    // This only needs to be enabled in some DC, where slow DNS lookup happens.
+    dnsCacheEnabled = props.getBoolean(ROUTER_DNS_CACHE_ENABLED, false);
+    hostPatternForDnsCache = props.getString(ROUTE_DNS_CACHE_HOST_PATTERN, ".*prod.linkedin.com");
+    dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3)); // 3 mins
   }
 
   public String getClusterName() {
@@ -224,6 +233,18 @@ public class VeniceRouterConfig {
 
   public TreeMap<Integer, Integer> getLongTailRetryForBatchGetThresholdMs() {
     return longTailRetryForBatchGetThresholdMs;
+  }
+
+  public boolean isDnsCacheEnabled() {
+    return dnsCacheEnabled;
+  }
+
+  public String getHostPatternForDnsCache() {
+    return hostPatternForDnsCache;
+  }
+
+  public long getDnsCacheRefreshIntervalInMs() {
+    return dnsCacheRefreshIntervalInMs;
   }
 
   /**

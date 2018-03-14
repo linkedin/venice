@@ -49,4 +49,5 @@ dependencies {
   testCompile libraries.tehuti
 
   testCompile project(':venice-test-common')
+  testCompile project(':venice-router')
 }

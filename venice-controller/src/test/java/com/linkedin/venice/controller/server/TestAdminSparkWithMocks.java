@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -64,7 +65,7 @@ public class TestAdminSparkWithMocks {
 
     //make request, parse response
     VersionCreationResponse responseObject;
-    try (CloseableHttpAsyncClient httpClient = SslUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()))) {
+    try (CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()))) {
       httpClient.start();
       HttpResponse response = httpClient.execute(post, null).get();
       String json = IOUtils.toString(response.getEntity().getContent());

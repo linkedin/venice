@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
@@ -20,7 +21,6 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -93,7 +93,7 @@ public class ConcurrentRouterTests {
       String sslUrl = venice.getRandomRouterSslURL();
       int timeout = 5000;
       for (int i=0; i<200; i++){
-        CloseableHttpAsyncClient client = SslUtils.getMinimalHttpClient(2,2, Optional.of(SslUtils.getLocalSslFactory()));
+        CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(2,2, Optional.of(SslUtils.getLocalSslFactory()));
         client.start();
         HttpGet request = new HttpGet((i >= 100 ? url : sslUrl) + "/master_controller"); //half normal, half ssl
         Thread t = new Thread(()-> {
