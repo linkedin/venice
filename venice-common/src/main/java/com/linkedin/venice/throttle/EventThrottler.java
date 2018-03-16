@@ -22,7 +22,7 @@ import org.apache.log4j.Logger;
  * full window, and one in-flight window. Each window is bounded to the provided
  * interval in ms, therefore, the total interval measured over is up to twice
  * the provided interval parameter. If the current event rate exceeds the maximum,
- * the call to {@link #maybeThrottle(int)} will handle this case based on the given
+ * the call to {@link #maybeThrottle(double)} will handle this case based on the given
  * throttling strategy.
  *
  * This is a generalized IoThrottler as it existed before, which can be used to

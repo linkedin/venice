@@ -43,6 +43,16 @@ public class ConfigKeys {
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
   public static final String KAFKA_FETCH_QUOTA_BYTES_PER_SECOND = "kafka.fetch.quota.bytes.per.second";
+  /**
+   * How many records that one server could consume from Kafka at most in one second.
+   * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.
+   */
+  public static final String KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "kafka.fetch.quota.records.per.second";
+  /**
+   * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
+   * compare with the quota accumulated in the time window to see whether the usage exceeds quota or not.
+   */
+  public static final String KAFKA_FETCH_QUOTA_TIME_WINDOW_MS = "kafka.fetch.quota.time.window.ms";
   // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
   // ssl config

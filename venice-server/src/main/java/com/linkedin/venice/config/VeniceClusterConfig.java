@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
@@ -33,6 +34,8 @@ public class VeniceClusterConfig {
   private String kafkaBootstrapServers;
   private String kafkaZkAddress;
   private long KafkaFetchQuotaBytesPerSecond = 0;
+  private long kafkaFetchQuotaTimeWindow;
+  private long kafkaFetchQuotaRecordPerSecond;
   private int statusMessageRetryCount;
   private long statusMessageRetryDurationMs ;
   private int offsetManagerLogFileMaxBytes;
@@ -43,6 +46,7 @@ public class VeniceClusterConfig {
   private long kafkaFetchMaxSizePerSecond;
   private long kafkaFetchMaxTimeMS;
   private long kafkaFetchPartitionMaxSizePerSecond;
+
 
   private String kafkaSecurityProtocol;
   // SSL related config
@@ -77,6 +81,8 @@ public class VeniceClusterConfig {
     }
     kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
     KafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, 0);
+    kafkaFetchQuotaRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, 0);
+    kafkaFetchQuotaTimeWindow = clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5)); //5sec
     statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
 
@@ -193,5 +199,13 @@ public class VeniceClusterConfig {
 
   public long getKafkaFetchPartitionMaxSizePerSecond() {
     return kafkaFetchPartitionMaxSizePerSecond;
+  }
+
+  public long getKafkaFetchQuotaTimeWindow() {
+    return kafkaFetchQuotaTimeWindow;
+  }
+
+  public long getKafkaFetchQuotaRecordPerSecond() {
+    return kafkaFetchQuotaRecordPerSecond;
   }
 }
