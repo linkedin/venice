@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
-import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
@@ -17,8 +16,9 @@ public class VeniceVsonMapper extends AbstractVeniceMapper<BytesWritable, BytesW
   private VsonAvroSerializer keyDeserializer;
   private VsonAvroSerializer valueDeserializer;
 
-  private String keyVsonSchemaStr;
-  private String valueSchemaStr;
+  private String keyAvroSchemaStr;
+  private String valueAvroSchemaStr;
+
 
   private String keyField;
   private String valueField;
@@ -43,12 +43,12 @@ public class VeniceVsonMapper extends AbstractVeniceMapper<BytesWritable, BytesW
 
   @Override
   protected String getKeySchemaStr() {
-    return VsonAvroSchemaAdapter.parse(keyVsonSchemaStr).toString();
+    return keyAvroSchemaStr;
   }
 
   @Override
   protected String getValueSchemaStr() {
-    return VsonAvroSchemaAdapter.parse(valueSchemaStr).toString();
+    return valueAvroSchemaStr;
   }
 
   @Override
@@ -61,16 +61,18 @@ public class VeniceVsonMapper extends AbstractVeniceMapper<BytesWritable, BytesW
 
     keyField = props.getString(KEY_FIELD_PROP, "");
     if (keyField.isEmpty()) {
-      keyVsonSchemaStr = fileVsonKeySchemaStr;
+      keyAvroSchemaStr = VsonAvroSchemaAdapter.parse(fileVsonKeySchemaStr).toString();
     } else {
-      keyVsonSchemaStr = VsonSchema.parse(fileVsonKeySchemaStr).recordSubtype(keyField).toString();
+      keyAvroSchemaStr = VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(fileVsonKeySchemaStr))
+          .getField(keyField).schema().toString();
     }
 
     valueField = props.getString(VALUE_FIELD_PROP, "");
     if (valueField.isEmpty()) {
-      valueSchemaStr = fileVsonValueSchemaStr;
+      valueAvroSchemaStr = VsonAvroSchemaAdapter.parse(fileVsonValueSchemaStr).toString();
     } else {
-      valueSchemaStr = VsonSchema.parse(fileVsonValueSchemaStr).recordSubtype(valueField).toString();
+      valueAvroSchemaStr = VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(fileVsonValueSchemaStr))
+          .getField(valueField).schema().toString();
     }
   }
 }

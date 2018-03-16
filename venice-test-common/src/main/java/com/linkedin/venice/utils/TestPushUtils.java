@@ -14,11 +14,14 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
+import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -163,7 +166,7 @@ public class TestPushUtils {
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonByte), VsonAvroSchemaAdapter.parse(vsonShort));
   }
 
-  public static Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException{
+  public static Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException {
     String vsonInteger = "\"int32\"";
     String vsonString = "{\"member_id\":\"int32\", \"score\":\"float32\"}";;
 
@@ -180,7 +183,7 @@ public class TestPushUtils {
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
-  public static Pair<Schema, Schema> writeMultiLevelVsonFile(File parentDir) throws IOException{
+  public static Pair<Schema, Schema> writeMultiLevelVsonFile(File parentDir) throws IOException {
     String vsonKeyStr = "\"int32\"";
     String vsonValueStr = "{\"level1\":{\"level21\":{\"field1\":\"int32\"}, \"level22\":{\"field2\":\"int32\"}}}";
     Map<String, Object> record = new HashMap<>();
@@ -201,6 +204,35 @@ public class TestPushUtils {
           }
         });
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonKeyStr), VsonAvroSchemaAdapter.parse(vsonValueStr));
+  }
+
+  public static Pair<VsonSchema, VsonSchema> writeMultiLevelVsonFile2(File parentDir) throws IOException {
+    String vsonKeyStr = "\"int32\"";
+    String vsonValueStr = "{\"keys\":[{\"type\":\"string\", \"value\":\"string\"}], \"recs\":[{\"member_id\":\"int32\", \"score\":\"float32\"}]}";
+    writeVsonFile(vsonKeyStr, vsonValueStr, parentDir,  "multilevel_vson_file2",
+        (keySerializer, valueSerializer, writer) ->{
+          for (int i = 0; i < 100; i++) {
+            //construct value
+            Map<String, Object> valueRecord = new HashMap<>();
+            List<Map<String, Object>> innerList1 = new ArrayList<>();
+            List<Map<String, Object>> innerList2 = new ArrayList<>();
+            Map<String, Object> innerMap1 = new HashMap<>();
+            Map<String, Object> innerMap2 = new HashMap<>();
+
+            innerMap1.put("type", String.valueOf(i));
+            innerMap1.put("value", String.valueOf(i + 100));
+            innerList1.add(innerMap1);
+            innerMap2.put("member_id", i);
+            innerMap2.put("score", (float) i);
+            innerList2.add(innerMap2);
+            valueRecord.put("keys", innerList1);
+            valueRecord.put("recs", innerList2);
+
+            writer.append(new BytesWritable(keySerializer.toBytes(i)),
+                new BytesWritable(valueSerializer.toBytes(valueRecord)));
+          }
+        });
+    return new Pair<>(VsonSchema.parse(vsonKeyStr), VsonSchema.parse(vsonValueStr));
   }
 
   private static Pair<Schema, Schema> writeVsonFile(String keySchemaStr,

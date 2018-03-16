@@ -15,6 +15,7 @@ import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
@@ -856,28 +857,28 @@ public class KafkaPushJob extends AbstractJob {
       Schema avroSchema = checkAvroSchemaConsistency(fileStatuses);
 
       fileSchemaString = avroSchema.toString();
-      keySchemaString = extractSubSchema(avroSchema, this.keyField, false).toString();
-      valueSchemaString = extractSubSchema(avroSchema, this.valueField, false).toString();
+      keySchemaString = extractAvroSubSchema(avroSchema, this.keyField).toString();
+      valueSchemaString = extractAvroSubSchema(avroSchema, this.valueField).toString();
     } else {
       logger.info("Detected Vson input format, will convert to Avro automatically.");
       //key / value fields are optional for Vson input
       keyField = props.getString(KEY_FIELD_PROP, "");
       valueField = props.getString(VALUE_FIELD_PROP, "");
 
-      Pair<Schema, Schema> vsonSchemaPair = checkVsonSchemaConsistency(fileStatuses);
+      Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fileStatuses);
 
-      keySchemaString = extractSubSchema(vsonSchemaPair.getKey(), this.keyField, true).toString();
-      valueSchemaString = extractSubSchema(vsonSchemaPair.getValue(), this.valueField, true).toString();
+      VsonSchema vsonKeySchema = Utils.isNullOrEmpty(this.keyField) ?
+          vsonSchemaPair.getKey() : vsonSchemaPair.getKey().recordSubtype(this.keyField);
+      VsonSchema vsonValueSchema = Utils.isNullOrEmpty(this.valueField) ?
+          vsonSchemaPair.getValue() : vsonSchemaPair.getValue().recordSubtype(this.valueField);
+
+      keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
+      valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
     }
   }
 
-  private Schema extractSubSchema(Schema origin, String fieldName, boolean isVsonSchema) {
-    if (Utils.isNullOrEmpty(fieldName)) {
-      return origin;
-    }
-
-    Schema.Field field =
-        isVsonSchema ? VsonAvroSchemaAdapter.stripFromUnion(origin).getField(fieldName) : origin.getField(fieldName);
+  private Schema extractAvroSubSchema(Schema origin, String fieldName) {
+    Schema.Field field = origin.getField(fieldName);
 
     if (field == null) {
       throw new VeniceSchemaFieldNotFoundException(fieldName, "Could not find field: " + fieldName + " from " + origin.toString());
@@ -904,21 +905,21 @@ public class KafkaPushJob extends AbstractJob {
     return schema;
   }
 
-  private Pair<Schema, Schema> getVsonFileHeader(Path path) {
+  private Pair<VsonSchema, VsonSchema> getVsonFileHeader(Path path) {
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, path);
     if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
       throw new VeniceException("Can't find Vson schema from file: " + path.getName());
     }
 
-    return new Pair<>(VsonAvroSchemaAdapter.parse(fileMetadata.get(FILE_KEY_SCHEMA)),
-                      VsonAvroSchemaAdapter.parse(fileMetadata.get(FILE_VALUE_SCHEMA)));
+    return new Pair<>(VsonSchema.parse(fileMetadata.get(FILE_KEY_SCHEMA)),
+        VsonSchema.parse(fileMetadata.get(FILE_VALUE_SCHEMA)));
   }
 
   //Vson-based file store key / value schema string as separated properties in file header
-  private Pair<Schema, Schema> checkVsonSchemaConsistency(FileStatus[] fileStatusList) {
-    Pair<Schema, Schema> vsonSchema = null;
+  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileStatus[] fileStatusList) {
+    Pair<VsonSchema, VsonSchema> vsonSchema = null;
     for (FileStatus status : fileStatusList) {
-      Pair newSchema = getVsonFileHeader(status.getPath());
+      Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(status.getPath());
       if (vsonSchema == null) {
         vsonSchema = newSchema;
       } else {
