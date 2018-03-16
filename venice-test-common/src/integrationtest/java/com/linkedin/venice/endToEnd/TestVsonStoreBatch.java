@@ -7,11 +7,14 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
@@ -136,6 +139,30 @@ public class TestVsonStoreBatch {
       }
     });
   }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreMultiLevelRecordsSchemaWithSelectedField() throws Exception {
+    testBatchStore(inputDir -> {
+      Pair<VsonSchema, VsonSchema> schemas = writeMultiLevelVsonFile2(inputDir);
+      Schema keySchema = VsonAvroSchemaAdapter.parse(schemas.getFirst().toString());
+      Schema selectedValueSchema = VsonAvroSchemaAdapter.parse(schemas.getSecond().recordSubtype("recs").toString());
+      return new Pair<>( keySchema, selectedValueSchema);
+    }, props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.setProperty(VALUE_FIELD_PROP, "recs");
+    }, (avroClient, vsonClient) -> {
+      for (int i = 0; i < 100; i ++) {
+        GenericRecord valueInnerRecord = (GenericRecord) ((List) avroClient.get(i).get()).get(0);
+        Assert.assertEquals(valueInnerRecord.get("member_id"), i);
+        Assert.assertEquals(valueInnerRecord.get("score"), (float) i);
+
+        HashMap<String, Object> vsonValueInnerMap = (HashMap<String, Object>) ((List) vsonClient.get(i).get()).get(0);
+        Assert.assertEquals(vsonValueInnerMap.get("member_id"), i);
+        Assert.assertEquals(vsonValueInnerMap.get("score"), (float) i);
+      }
+    });
+  }
+
   private void testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);

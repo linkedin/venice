@@ -13,7 +13,6 @@ public class VsonSchema implements Serializable {
 
   private static final long serialVersionUID = 1;
 
-  private String schemaStr;
   private Object type;
 
   protected VsonSchema(Object type) {
