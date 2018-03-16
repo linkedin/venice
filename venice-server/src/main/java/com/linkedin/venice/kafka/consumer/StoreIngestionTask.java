@@ -102,7 +102,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   private final StorageMetadataService storageMetadataService;
   private final TopicManager topicManager;
-  private final EventThrottler throttler;
+  private final EventThrottler bandWidthThrottler;
+  private final EventThrottler recordsThrottler;
   /** Per-partition consumption state map */
   private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
   private final StoreBufferService storeBufferService;
@@ -136,7 +137,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull StoreRepository storeRepository,
                             @NotNull StorageMetadataService storageMetadataService,
                             @NotNull Queue<VeniceNotifier> notifiers,
-                            @NotNull EventThrottler throttler,
+                            @NotNull EventThrottler bandWidthThrottler,
+                            @NotNull EventThrottler recordsThrottler,
                             @NotNull String topic,
                             @NotNull ReadOnlySchemaRepository schemaRepo,
                             @NotNull TopicManager topicManager,
@@ -152,7 +154,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
-    this.throttler = throttler;
+    this.bandWidthThrottler = bandWidthThrottler;
+    this.recordsThrottler = recordsThrottler;
     this.topic = topic;
     this.schemaRepo = schemaRepo;
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
@@ -774,7 +777,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
     if (processedRecordNum >= OFFSET_THROTTLE_INTERVAL ||
         partitionConsumptionState.isEndOfPushReceived()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
-      throttler.maybeThrottle(processedRecordSize);
+      bandWidthThrottler.maybeThrottle(processedRecordSize);
+      recordsThrottler.maybeThrottle(processedRecordNum);
       // Report metrics
       if (emitMetrics.get()) {
         storeIngestionStats.recordBytesConsumed(storeNameWithoutVersionInfo, processedRecordSize);

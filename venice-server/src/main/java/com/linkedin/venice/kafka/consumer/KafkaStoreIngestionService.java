@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
@@ -82,7 +81,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final Map<String, StoreIngestionTask> topicNameToIngestionTaskMap;
-  private final EventThrottler throttler;
+  private final EventThrottler consumptionBandwidthThrottler;
+  private final EventThrottler consumptionRecordsCountThrottler;
 
   private ExecutorService consumerExecutorService;
 
@@ -107,8 +107,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
-    long maxKafkaFetchBytesPerSecond = serverConfig.getKafkaFetchQuotaBytesPerSecond();
-    this.throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
+    this.consumptionBandwidthThrottler =
+        new EventThrottler(serverConfig.getKafkaFetchQuotaBytesPerSecond(), serverConfig.getKafkaFetchQuotaTimeWindow(),
+            "Kafka_consumption_bandwidth", false, EventThrottler.BLOCK_STRATEGY);
+    this.consumptionRecordsCountThrottler = new EventThrottler(serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(), "kafka_consumption_records_count", false, EventThrottler.BLOCK_STRATEGY);
     this.topicManager = new TopicManager(serverConfig.getKafkaZkAddress(), veniceConsumerFactory);
 
     VeniceNotifier notifier = new LogNotifier();
@@ -156,7 +159,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
-        storageMetadataService, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager,
+        storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler, veniceStore.getStoreName(), schemaRepo, topicManager,
         ingestionStats, versionedDIVStats, storeBufferService, isStoreVersionCurrent, hybridStoreConfig,
         veniceStore.getSourceTopicOffsetCheckIntervalMs(), veniceStore.getKafkaReadCycleDelayMs());
   }

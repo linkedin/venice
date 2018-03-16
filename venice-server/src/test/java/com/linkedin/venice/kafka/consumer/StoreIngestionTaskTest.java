@@ -130,7 +130,8 @@ public class StoreIngestionTaskTest {
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
   private AbstractStorageEngine mockAbstractStorageEngine;
-  private EventThrottler mockThrottler;
+  private EventThrottler mockBandWidthThrottler;
+  private EventThrottler mockRecordsThrottler;
   private ReadOnlySchemaRepository mockSchemaRepo;
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
@@ -211,7 +212,8 @@ public class StoreIngestionTaskTest {
 
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
-    mockThrottler = mock(EventThrottler.class);
+    mockBandWidthThrottler = mock(EventThrottler.class);
+    mockRecordsThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
     mockTopicManager = mock(TopicManager.class);
@@ -296,9 +298,10 @@ public class StoreIngestionTaskTest {
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     storeIngestionTaskUnderTest =
-        new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler,
-            topic, mockSchemaRepo, mockTopicManager, mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService,
-            isCurrentVersion, hybridStoreConfig, 0, READ_CYCLE_DELAY_MS);
+        new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
+            mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
+            mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0,
+            READ_CYCLE_DELAY_MS);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -598,8 +601,9 @@ public class StoreIngestionTaskTest {
     veniceWriter.delete(deleteKeyFoo);
 
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
-      verify(mockThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(putKeyFoo.length + putValue.length);
-      verify(mockThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(deleteKeyFoo.length);
+      verify(mockBandWidthThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(putKeyFoo.length + putValue.length);
+      verify(mockBandWidthThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(deleteKeyFoo.length);
+      verify(mockRecordsThrottler, timeout(TEST_TIMEOUT).atLeast(2)).maybeThrottle(1);
     });
   }
 
