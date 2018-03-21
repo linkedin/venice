@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.api.listeners.ControllerChangeListener;
+import org.apache.helix.api.listeners.IdealStateChangeListener;
 import org.apache.helix.api.listeners.LiveInstanceChangeListener;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
@@ -41,7 +42,7 @@ import org.apache.log4j.Logger;
  * instances in other state, could add them in the further.
  */
 
-public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository, ControllerChangeListener, LiveInstanceChangeListener {
+public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository, ControllerChangeListener, LiveInstanceChangeListener, IdealStateChangeListener {
     private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class);
     /**
      * Manager used to communicate with Helix.
@@ -62,6 +63,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
 
     private volatile Map<String, Instance> liveInstancesMap;
 
+    private volatile Map<String, Integer> resourceToIdealPartitionCountMap;
+
     private long masterControllerChangeTime = -1;
 
     public HelixRoutingDataRepository(SafeHelixManager manager) {
@@ -78,6 +81,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         try {
             // After adding the listener, helix will initialize the callback which will get the entire external view
             // and trigger the external view change event. In other words, venice will read the newest external view immediately.
+            manager.addIdealStateChangeListener(this);
             manager.addLiveInstanceChangeListener(this);
             manager.addExternalViewChangeListener(this);
             manager.addControllerListener(this);
@@ -94,6 +98,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         manager.removeListener(keyBuilder.controller(), this);
         manager.removeListener(keyBuilder.externalViews(), this);
         manager.removeListener(keyBuilder.liveInstances(), this);
+        manager.removeListener(keyBuilder.idealStates(), this);
     }
 
     /**
@@ -145,19 +150,19 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     public Instance getMasterController() {
         if (masterController == null) {
             throw new VeniceException(
-                "There are not master controller for this controller or we have not received master changed event from helix.");
+                    "There is no master controller for this controller or we have not received master changed event from helix.");
         }
         return masterController;
     }
 
     @Override
     public void subscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
-        listenerManager.subscribe(kafkaTopic,listener);
+        listenerManager.subscribe(kafkaTopic, listener);
     }
 
     @Override
     public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
-        listenerManager.unsubscribe(kafkaTopic,listener);
+        listenerManager.unsubscribe(kafkaTopic, listener);
     }
 
     @Override
@@ -180,26 +185,39 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         // Create a snapshot to prevent live instances map being changed during this method execution.
         Map<String, Instance> liveInstanceSnapshot = liveInstancesMap;
         //Get number of partitions from Ideal state category in ZK.
-        Set<String> resourcesInExternalView =
-            externalViewList.stream().map(ExternalView::getResourceName).collect(Collectors.toSet());
-        Map<String, Integer> resourceToPartitionCountMap;
-        try {
-            resourceToPartitionCountMap = getNumberOfPartitionsFromIdealState(resourcesInExternalView);
-        } catch (HelixMetaDataAccessException e) {
-            logger.error(
-                "Caught HelixMetaDataAccessException when trying to getNumberOfPartitionsFromIdealState(). "
-                + "Will abort onExternalViewChange().", e);
-            return;
-        }
+        Map<String, Integer> resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
         ResourceAssignment newResourceAssignment = new ResourceAssignment();
+        Set<String> resourcesInExternalView =
+                externalViewList.stream().map(ExternalView::getResourceName).collect(Collectors.toSet());
+
+        if (!resourceToPartitionCountMapSnapshot.keySet().containsAll(resourcesInExternalView)) {
+            logger.info("Found the inconsistent data between the external view and ideal state of cluster: " + manager
+                .getClusterName() + ". Reading the latest ideal state from zk.");
+
+                List<PropertyKey> keys =
+                    externalViewList.stream().map(ev -> keyBuilder.idealStates(ev.getResourceName()))
+                        .collect(Collectors.toList());
+            try {
+                List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
+                refreshResourceToIdealPartitionCountMap(idealStates);
+                resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
+                logger.info("Ideal state of cluster: " + manager.getClusterName() + " is updated to date from zk");
+            } catch (HelixMetaDataAccessException e) {
+                logger.error("Failed to update the ideal state of cluster: " + manager.getClusterName()
+                    + " because we could not access to zk.", e);
+                return;
+            }
+        }
+
         for (ExternalView externalView : externalViewList) {
             String resourceName = externalView.getResourceName();
-            if(!resourceToPartitionCountMap.containsKey(resourceName)) {
-                logger.info(resourceName + "has been deleted from ideal state. Ignore its external view update.");
+            if (!resourceToPartitionCountMapSnapshot.containsKey(resourceName)) {
+                logger.warn("Count not find resource: " + resourceName + "in ideal state. Ideal state is up to date,"
+                        + " so the resource has been deleted from ideal state. Ignore its external view update.");
                 continue;
             }
             PartitionAssignment partitionAssignment =
-                new PartitionAssignment(resourceName, resourceToPartitionCountMap.get(resourceName));
+                    new PartitionAssignment(resourceName, resourceToPartitionCountMapSnapshot.get(resourceName));
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
                 Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
@@ -211,8 +229,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                         try {
                             state = HelixState.valueOf(instanceStateMap.get(instanceName));
                         } catch (Exception e) {
-                            logger.warn("Instance:" + instanceName + " unrecognized state:" + instanceStateMap.get(
-                                instanceName));
+                            logger.warn("Instance:" + instanceName + " unrecognized state:" + instanceStateMap.get(instanceName));
                             continue;
                         }
                         if (!stateToInstanceMap.containsKey(state.toString())) {
@@ -258,25 +275,6 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         }
     }
 
-    private Map<String, Integer> getNumberOfPartitionsFromIdealState(Set<String> newResourceNames)
-        throws HelixMetaDataAccessException {
-        List<PropertyKey> keys = newResourceNames.stream().map(keyBuilder::idealStates).collect(Collectors.toList());
-        // Number of partition should be get from ideal state configuration instead of getting from external view.
-        // Because if there is not participant in some partition, partition number in external view will be different from ideal state.
-        // But here the semantic should be give me the number of partition assigned when creating resource.
-        // As in Venice, the number of partition can not be modified after resource being created. So we do not listen the change of IDEASTATE to sync up.
-        List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
-        Map<String, Integer> newResourceNamesToNumberOfParitions = new HashMap<>();
-        for (IdealState idealState : idealStates) {
-            if (idealState == null) {
-                logger.warn("Some resource is deleted after getting the externalViewChanged event.");
-            } else {
-                newResourceNamesToNumberOfParitions.put(idealState.getResourceName(), idealState.getNumPartitions());
-            }
-        }
-        return newResourceNamesToNumberOfParitions;
-    }
-
     @Override
     public long getMasterControllerChangeTime() {
         return this.masterControllerChangeTime;
@@ -289,7 +287,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             //Finalized notification, listener will be removed.
             return;
         }
-        logger.info("Got notification type:" + changeContext.getType() +". Master controller is changed.");
+        logger.info("Got notification type:" + changeContext.getType() + ". Master controller is changed.");
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
         if (leader == null) {
             this.masterController = null;
@@ -323,11 +321,25 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             Instance instance = createInstanceFromLiveInstance(helixLiveInstance);
             instancesMap.put(instance.getNodeId(), instance);
         }
-        this.liveInstancesMap= Collections.unmodifiableMap(instancesMap);
+        this.liveInstancesMap = Collections.unmodifiableMap(instancesMap);
     }
 
     private static Instance createInstanceFromLiveInstance(LiveInstance liveInstance) {
         return new Instance(liveInstance.getId(), Utils.parseHostFromHelixNodeIdentifier(liveInstance.getId()),
-            Utils.parsePortFromHelixNodeIdentifier(liveInstance.getId()));
+                Utils.parsePortFromHelixNodeIdentifier(liveInstance.getId()));
+    }
+
+    @Override
+    public void onIdealStateChange(List<IdealState> idealStates, NotificationContext changeContext)
+            throws InterruptedException {
+        refreshResourceToIdealPartitionCountMap(idealStates);
+    }
+
+    private void refreshResourceToIdealPartitionCountMap(List<IdealState> idealStates) {
+        HashMap<String, Integer> partitionCountMap = new HashMap<>();
+        for (IdealState idealState : idealStates) {
+            partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());
+        }
+        this.resourceToIdealPartitionCountMap = Collections.unmodifiableMap(partitionCountMap);
     }
 }
