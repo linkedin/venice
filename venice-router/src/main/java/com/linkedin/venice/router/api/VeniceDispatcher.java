@@ -23,6 +23,7 @@ import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.CachedDnsResolver;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -33,6 +34,7 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -90,6 +92,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    */
   private ReadRequestThrottler readRequestThrottler;
 
+  private final HttpConnectionPoolStats poolStats;
+
   /**
    *
    * @param healthMonitor
@@ -98,7 +102,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
       Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository storeRepository,
       Optional<RouterCache> routerCache, AggRouterHttpRequestStats statsForSingleGet,
-      Optional<CachedDnsResolver> dnsResolver) {
+      Optional<CachedDnsResolver> dnsResolver, MetricsRepository metricsRepository) {
     this.healthMonitor = healthMonitor;
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
     this.storeRepository = storeRepository;
@@ -111,6 +115,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     int maxConnPerRoute = config.getMaxOutgoingConnPerRoute();
     int maxConn = config.getMaxOutgoingConn();
 
+    this.poolStats = new HttpConnectionPoolStats(metricsRepository, "connection_pool");
+
     /**
      * Using a client pool to reduce lock contention introduced by {@link org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager#requestConnection}
      * and {@link org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager#releaseConnection}.
@@ -121,7 +127,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     clientPool = new ArrayList<>();
     for (int i = 0; i < clientPoolSize; ++i) {
       CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient,
-          totalMaxConnPerClient, sslFactory, dnsResolver);
+          totalMaxConnPerClient, sslFactory, dnsResolver, Optional.of(poolStats));
       client.start();
       clientPool.add(client);
     }
