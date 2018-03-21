@@ -186,6 +186,37 @@ public class TestRead {
     }
     Assert.assertTrue(singleGetRetries > 0, "After " + rounds + " reads, there should be some single-get retry requests");
     Assert.assertTrue(batchGetRetries > 0, "After " + rounds + " reads, there should be some batch-get retry requests");
+    // Check Router connection pool metrics
+    double totalMaxConnectionCount = 0;
+    double connectionLeaseRequestLatencyMax = 0;
+    double totalActiveConnectionCount = 0;
+    double totalIdleConnectionCount = 0;
+    double totalPendingConnectionRequestCount = 0;
+    for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
+      MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+      if (metrics.containsKey(".connection_pool--total_max_connection_count.LambdaStat")) {
+        totalMaxConnectionCount += metrics.get(".connection_pool--total_max_connection_count.LambdaStat").value();
+      }
+      if (metrics.containsKey(".connection_pool--connection_lease_request_latency.Max")) {
+        double routerConnectionLeaseRequestLatencyMax = metrics.get(".connection_pool--connection_lease_request_latency.Max").value();
+        connectionLeaseRequestLatencyMax = Math.max(connectionLeaseRequestLatencyMax, routerConnectionLeaseRequestLatencyMax);
+      }
+      if (metrics.containsKey(".connection_pool--total_active_connection_count.LambdaStat")) {
+        totalActiveConnectionCount += metrics.get(".connection_pool--total_active_connection_count.LambdaStat").value();
+      }
+      if (metrics.containsKey(".connection_pool--total_pending_connection_request_count.LambdaStat")) {
+        totalPendingConnectionRequestCount += metrics.get(".connection_pool--total_pending_connection_request_count.LambdaStat").value();
+      }
+      if (metrics.containsKey(".connection_pool--total_idle_connection_count.LambdaStat")) {
+        totalIdleConnectionCount += metrics.get(".connection_pool--total_idle_connection_count.LambdaStat").value();
+      }
+    }
+    Assert.assertTrue(totalMaxConnectionCount > 0, "Max connection count must be positive");
+    Assert.assertTrue(connectionLeaseRequestLatencyMax > 0, "Connection lease max latency should be positive");
+    Assert.assertTrue(totalActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
+    Assert.assertTrue(totalPendingConnectionRequestCount == 0, "Pending connection request count should be 0 since test queries are finished");
+    Assert.assertTrue(totalIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
     /**
      * Test batch get limit
      */
