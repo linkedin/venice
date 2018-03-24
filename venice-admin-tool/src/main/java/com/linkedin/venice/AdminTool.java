@@ -1,7 +1,7 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.client.store.QueryTool;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -27,7 +27,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
@@ -36,6 +35,8 @@ import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -52,7 +53,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.StringJoiner;
-import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.avro.Schema;
@@ -64,11 +64,12 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
+
+import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
 
 
 public class AdminTool {
@@ -293,6 +294,9 @@ public class AdminTool {
           break;
         case DUMP_ADMIN_MESSAGES:
           dumpAdminMessages(cmd);
+          break;
+        case DUMP_CONTROL_MESSAGES:
+          dumpControlMessages(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -678,6 +682,23 @@ public class AdminTool {
         Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT))
     );
     printObject(adminMessages);
+  }
+
+
+  private static void dumpControlMessages(CommandLine cmd) {
+    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    String kafkaUrl = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+
+    consumerProps.setProperty(BOOTSTRAP_SERVERS_CONFIG, kafkaUrl);
+    consumerProps.setProperty(KEY_DESERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
+    consumerProps.setProperty(VALUE_DESERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+
+    String kafkaTopic = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    int partitionNumber = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_TOPIC_PARTITION));
+    int startingOffset = Integer.parseInt(getRequiredArgument(cmd, Arg.STARTING_OFFSET));
+    int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
+
+    new ControlMessageDumper(consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
   }
 
   /* Things that are not commands */
