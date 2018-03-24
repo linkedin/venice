@@ -127,7 +127,9 @@ public enum Command {
       new Arg[]{KAFKA_CONSUMER_CONFIG_FILE, KAFKA_PRODUCER_CONFIG_FILE}),
   DUMP_ADMIN_MESSAGES("dump-admin-messages",
       "Dump admin messages",
-      new Arg[] {CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE});
+      new Arg[] {CLUSTER, KAFKA_BOOTSTRAP_SERVERS, STARTING_OFFSET, MESSAGE_COUNT, KAFKA_CONSUMER_CONFIG_FILE}),
+  DUMP_CONTROL_MESSAGES("dump-control-messages", "Dump control messages in a partition",
+      new Arg[] {KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION, STARTING_OFFSET, MESSAGE_COUNT});
 
   private final String commandName;
   private final String description;
