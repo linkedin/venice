@@ -43,7 +43,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import java.util.Optional;
@@ -1003,7 +1005,7 @@ public class TestVeniceParentHelixAdmin {
     // 3 in 6 failures is PROGRESS (so it keeps trying)
     failCompleteMap.put("failcluster2", clientMap.get(null));
     failCompleteMap.put("failcluster3", clientMap.get(null));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic9", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     Assert.assertEquals(extraInfo.get("failcluster2"), ExecutionStatus.UNKNOWN.toString());
@@ -1011,19 +1013,30 @@ public class TestVeniceParentHelixAdmin {
 
     Map<String, ControllerClient> errorMap = new HashMap<>();
     errorMap.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic10", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic10");
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertEquals(extraInfo.get("cluster-err"), ExecutionStatus.ERROR.toString());
 
     errorMap.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic11", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic11");
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertEquals(extraInfo.get("cluster-complete"), ExecutionStatus.COMPLETED.toString());
 
+    // Test whether errored topics will be truncated or not when 'maxErroredTopicNumToKeep' is > 0.
+    parentAdmin.setMaxErroredTopicNumToKeep(2);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic12", errorMap, topicManager);
+    extraInfo = offlineJobStatus.getExtraInfo();
+    verify(internalAdmin, never()).truncateKafkaTopic("topic12");
+    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    // Reset
+    parentAdmin.setMaxErroredTopicNumToKeep(0);
+
     errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NEW));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic13", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?  limitation of ordering used in aggregation code
     Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
@@ -1321,7 +1334,6 @@ public class TestVeniceParentHelixAdmin {
     doReturn(false).when(mockParentAdmin).isTopicTruncated(latestTopic);
     Assert.assertFalse(mockParentAdmin.getCurrentPushJob(clusterName, storeName).isPresent());
     verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
-    verify(mockParentAdmin, times(1)).truncateKafkaTopic(latestTopic);
 
     // When there is a regular topic and the job status is not terminal
     doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS))
@@ -1331,8 +1343,6 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
-    // No topic  truncation this round, so the invocation times should be same as before
-    verify(mockParentAdmin, times(1)).truncateKafkaTopic(latestTopic);
 
     // When there is a regular topic and the job status is 'UNKNOWN' in some colo,
     // but overall status is 'COMPLETED'
@@ -1346,8 +1356,6 @@ public class TestVeniceParentHelixAdmin {
     currentPush = mockParentAdmin.getCurrentPushJob(clusterName, storeName);
     Assert.assertFalse(currentPush.isPresent());
     verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
-    // Topic truncation should be called, so the invocation times should be previous value + 1
-    verify(mockParentAdmin, times(2)).truncateKafkaTopic(latestTopic);
 
     // When there is a regular topic and the job status is 'UNKNOWN' in some colo,
     // but overall status is 'PROGRESS'
@@ -1358,8 +1366,6 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
-    // No topic truncation this round, so the invocation times should be same as before
-    verify(mockParentAdmin, times(2)).truncateKafkaTopic(latestTopic);
 
     // When there is a regular topic and the job status is 'UNKNOWN' in some colo for the first time,
     // but overall status is 'PROGRESS'
@@ -1373,8 +1379,6 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(currentPush.isPresent());
     Assert.assertEquals(currentPush.get(), latestTopic);
     verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
-    // No topic truncation this round, so the invocation times should be same as before
-    verify(mockParentAdmin, times(2)).truncateKafkaTopic(latestTopic);
   }
 
   @Test (expectedExceptions = VeniceException.class)
@@ -1384,5 +1388,48 @@ public class TestVeniceParentHelixAdmin {
     doReturn(Optional.of(storeName + "v1")).when(mockParentAdmin).getCurrentPushJob(clusterName, storeName);
     doCallRealMethod().when(mockParentAdmin).incrementVersion(any(), any(), any(), anyInt(), anyInt());
     mockParentAdmin.incrementVersion(clusterName, storeName, "", 64, 3);
+  }
+
+  @Test
+  public void testTruncateTopicsBasedOnMaxErroredTopicNumToKeep() {
+    String storeName = TestUtils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    List<String> topics = new ArrayList<>();
+    topics.add(storeName + "_v1");
+    topics.add(storeName + "_v10");
+    topics.add(storeName + "_v8");
+    topics.add(storeName + "_v5");
+    topics.add(storeName + "_v7");
+    doReturn(topics).when(mockParentAdmin).existingTopicsForStore(storeName);
+    // isTopicTruncated will return false for other topics
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName + "_v8");
+    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any());
+    doCallRealMethod().when(mockParentAdmin).setMaxErroredTopicNumToKeep(anyInt());
+    mockParentAdmin.setMaxErroredTopicNumToKeep(2);
+    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
+
+    verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v1");
+    verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v5");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v7");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v8");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v10");
+
+    // Test with more truncated topics
+    String storeName1 = TestUtils.getUniqueString("test-store");
+    List<String> topics1 = new ArrayList<>();
+    topics.add(storeName1 + "_v1");
+    topics.add(storeName1 + "_v10");
+    topics.add(storeName1 + "_v8");
+    topics.add(storeName1 + "_v5");
+    topics.add(storeName1 + "_v7");
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "v10");
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "v7");
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "v8");
+    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName1);
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v1");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v5");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v7");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v8");
+    verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v10");
   }
 }

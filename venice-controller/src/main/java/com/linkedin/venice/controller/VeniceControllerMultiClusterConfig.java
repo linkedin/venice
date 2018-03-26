@@ -120,6 +120,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getMinNumberOfStoreVersionsToPreserve();
   }
 
+  public int getParentControllerMaxErroredTopicNumToKeep() {
+    return getCommonConfig().getParentControllerMaxErroredTopicNumToKeep();
+  }
+
   public VeniceControllerConfig getCommonConfig() {
     return clusterToConfigMap.values().iterator().next();
   }

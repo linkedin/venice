@@ -51,11 +51,13 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 
 import java.util.Optional;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -97,6 +99,18 @@ public class VeniceParentHelixAdmin implements Admin {
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
 
   /**
+   * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
+   * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, TopicManager)} won't truncate them;
+   * 2. For errored topics, {@link #killOfflinePush(String, String)} won't truncate them;
+   * 3. {@link #getCurrentPushJob(String, String)} will truncate the errored topics based on {@link #maxErroredTopicNumToKeep};
+   *
+   * It means error topic retiring is only be triggered by next push.
+   *
+   * When {@link #maxErroredTopicNumToKeep} is 0, errored topics will be truncated right away when job is finished.
+   */
+  private int maxErroredTopicNumToKeep;
+
+  /**
    * Variable to store offset of last message for each cluster.
    * Before executing any request, this class will check whether last offset has been consumed or not:
    * If not, the current request will return with error after some time;
@@ -130,6 +144,12 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
         veniceHelixAdmin.getAdapterSerializer());
+    this.maxErroredTopicNumToKeep = multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
+  }
+
+  // For testing purpose
+  protected void setMaxErroredTopicNumToKeep(int maxErroredTopicNumToKeep) {
+    this.maxErroredTopicNumToKeep = maxErroredTopicNumToKeep;
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -356,7 +376,7 @@ public class VeniceParentHelixAdmin implements Admin {
  * For the 1st case, it is expected to refuse the new data push,
  * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
  **/
-  private List<String> existingTopicsForStore(String storeName) {
+  protected List<String> existingTopicsForStore(String storeName) {
     List<String> outputList = new ArrayList<>();
     TopicManager topicManager = getTopicManager();
     Set<String> topics = topicManager.listTopics();
@@ -446,13 +466,44 @@ public class VeniceParentHelixAdmin implements Admin {
               "Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic.get() + " is not terminal, extra info: " + extraInfo);
           return latestKafkaTopic;
         } else {
-          logger.info("Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic.get() + " is terminal, so just ignore it");
-          logger.info("Will truncate topic: " + latestKafkaTopic.get() + " since the corresponding job status is terminal");
-          truncateKafkaTopic(latestKafkaTopic.get());
+          /**
+           * If the job status of latestKafkaTopic is terminal, it will be truncated in {@link #getOffLinePushStatus(String, String)}.
+           */
+          /**
+           * Truncate topics based on {@link #maxErroredTopicNumToKeep}.
+           */
+          truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
         }
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * Only keep {@link #maxErroredTopicNumToKeep} non-truncated topics ordered by version
+   */
+  protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(String storeName) {
+    List<String> topics = existingTopicsForStore(storeName);
+    // Based on current logic, only 'errored' topics were not truncated.
+    List<String> sortedNonTruncatedTopics = topics.stream().filter(topic -> !isTopicTruncated(topic)).sorted((t1, t2) -> {
+      int v1 = Version.parseVersionFromKafkaTopicName(t1);
+      int v2 = Version.parseVersionFromKafkaTopicName(t2);
+      return v1 - v2;
+    }).collect(Collectors.toList());
+    if (sortedNonTruncatedTopics.size() <= maxErroredTopicNumToKeep) {
+      logger.info("Non-truncated topics size: " + sortedNonTruncatedTopics.size() +
+          " isn't bigger than maxErroredTopicNumToKeep: " + maxErroredTopicNumToKeep + ", so no topic will be truncated this time");
+      return;
+    }
+    int topicNumToTruncate = sortedNonTruncatedTopics.size() - maxErroredTopicNumToKeep;
+    int truncatedTopicCnt = 0;
+    for (String topic: sortedNonTruncatedTopics) {
+      if (++truncatedTopicCnt > topicNumToTruncate) {
+        break;
+      }
+      truncateKafkaTopic(topic);
+      logger.info("Errored topic: " + topic + " got truncated");
+    }
   }
 
   // TODO: this function isn't able to block parallel push in theory since it is not synchronized.
@@ -1006,9 +1057,13 @@ public class VeniceParentHelixAdmin implements Admin {
       // TODO: Set parent controller's version status based on currentReturnStatus
       // COMPLETED -> ONLINE
       // ERROR -> ERROR
-
-      logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
-      truncateKafkaTopic(kafkaTopic);
+      if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
+        logger.info("The errored kafka topic: " + kafkaTopic + " won't be truncated since it will be used to investigate"
+            + "some Kafka related issue");
+      } else {
+        logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
+        truncateKafkaTopic(kafkaTopic);
+      }
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo);
@@ -1141,9 +1196,17 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       veniceHelixAdmin.checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
       logger.info("Killing offline push job for topic: " + kafkaTopic + " in cluster: " + clusterName);
-      // Remove Kafka topic
-      logger.info("Truncating topic when kill offline push job, topic: " + kafkaTopic);
-      truncateKafkaTopic(kafkaTopic);
+      /**
+       * When parent controller wants to keep some errored topics, this function won't remove topic,
+       * but relying on the next push to clean up this topic if it hasn't been removed by {@link #getOffLineJobStatus}.
+       *
+       * The reason is that every errored push will call this function.
+       */
+      if (0 == maxErroredTopicNumToKeep) {
+        // Truncate Kafka topic
+        logger.info("Truncating topic when kill offline push job, topic: " + kafkaTopic);
+        truncateKafkaTopic(kafkaTopic);
+      }
 
       // TODO: Set parent controller's version status (to ERROR, most likely?)
 

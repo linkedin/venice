@@ -328,6 +328,13 @@ public class ConfigKeys {
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
 
   /**
+   * This config is used to control how many errored topics we are going to keep in parent cluster.
+   * This is mostly used to investigate the Kafka missing message issue.
+   * If the issue gets resolved, we could change this config to be '0'.
+   */
+  public static final String PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP = "parent.controller.max.errored.topic.num.to.keep";
+
+  /**
    * Only required when controller.parent.mode=true
    * This prefix specifies the location of every child cluster that is being fed by this parent cluster.
    * The format for key/value would be like "key=child.cluster.url.ei-ltx1, value=url1;url2;url3"
