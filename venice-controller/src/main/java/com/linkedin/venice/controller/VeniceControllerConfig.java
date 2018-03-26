@@ -41,6 +41,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean enableTopicReplicatorSSL;
   private int minNumberOfUnusedKafkaTopicsToPreserve;
   private int minNumberOfStoreVersionsToPreserve;
+  private final int parentControllerMaxErroredTopicNumToKeep;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -86,6 +87,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     if (minNumberOfStoreVersionsToPreserve < 1) {
       throw new VeniceException("The minimal acceptable value for '" + MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE + "' is 1.");
     }
+    // By default, keep 2 errored topics per store
+    this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 2);
   }
 
   public int getAdminPort() {
@@ -176,6 +179,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getMinNumberOfStoreVersionsToPreserve() {
     return minNumberOfStoreVersionsToPreserve;
+  }
+
+  public int getParentControllerMaxErroredTopicNumToKeep() {
+    return parentControllerMaxErroredTopicNumToKeep;
   }
 
   /**

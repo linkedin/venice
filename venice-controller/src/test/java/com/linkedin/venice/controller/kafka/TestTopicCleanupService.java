@@ -151,7 +151,8 @@ public class TestTopicCleanupService {
 
     Map<String, Long> storeTopics3 = new HashMap<>();
 
-    when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(storeTopics2).thenReturn(storeTopics3);
+    when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(storeTopics2)
+        .thenReturn(storeTopics3).thenReturn(new HashMap<>());
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
@@ -212,7 +213,7 @@ public class TestTopicCleanupService {
     storeTopics1.put(storeName1 + "_rt", Long.MAX_VALUE);
     storeTopics1.put("non_venice_topic1", Long.MAX_VALUE);
 
-    when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1);
+    when(topicManager.getAllTopicRetentions()).thenReturn(storeTopics1).thenReturn(new HashMap<>());
 
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
