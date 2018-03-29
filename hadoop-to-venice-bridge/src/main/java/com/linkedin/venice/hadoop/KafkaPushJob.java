@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
@@ -90,10 +91,11 @@ public class KafkaPushJob extends AbstractJob {
   //veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public final static String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
 
-  // kafka.acks.config == 0, the producer don't wait for any acknowledgement from Kafka
-  // kafka.acks.config == 1, the producer wait for the primary broker to respond
-  // kafka.acks.config == -1, the producer wait for all brokers to respond
-  public final static String KAFKA_ACKS_CONFIG = "kafka.acks";
+  public final static String KAFKA_PRODUCER_REQUEST_TIMEOUT_MS
+      = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + "request.timeout.ms"; // kafka.request.timeout.ms
+  public final static String KAFKA_PRODUCER_RETRIES_CONFIG
+      = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + "retries"; //kafka.retries
+  public final static String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -305,16 +307,6 @@ public class KafkaPushJob extends AbstractJob {
         throw new VeniceException("Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
       }
       vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
-    }
-
-    if (!vanillaProps.containsKey(KAFKA_ACKS_CONFIG)) {
-      throw new VeniceException("Missing the require Kafka acks config: " + KAFKA_ACKS_CONFIG);
-    } else {
-      String kafkaAcksConfig = vanillaProps.getProperty(KAFKA_ACKS_CONFIG).trim();
-      List<String> validKafkaAcksConfig = Arrays.asList("1", "0", "-1");
-      if (!validKafkaAcksConfig.contains(kafkaAcksConfig)) {
-        throw new VeniceException("The Kafka acks config is not valid! Valid configs are \"1\", \"0\" and \"-1\"");
-      }
     }
 
     String[] requiredSSLPropertiesNames = new String[]{SSL_KEY_PASSWORD_PROPERTY_NAME,SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME,SSL_TRUST_STORE_PROPERTY_NAME};
@@ -573,6 +565,12 @@ public class KafkaPushJob extends AbstractJob {
           throw new VeniceException("Could not get user credential for kafka push job for topic" + topic);
         }
       }
+      if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
+        veniceWriterProperties.setProperty(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
+      }
+      if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
+        veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
+      }
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
 
       VeniceWriter<KafkaKey, byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(topic);
@@ -622,8 +620,9 @@ public class KafkaPushJob extends AbstractJob {
         case STARTED:
         case END_OF_PUSH_RECEIVED:
         case PROGRESS:
-          /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
-          JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(veniceControllerUrl, clusterName, topic, 3);
+          /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts by default */
+          int retryAttempts = this.props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
+          JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(veniceControllerUrl, clusterName, topic, retryAttempts);
           /*  Note: .isError means the status could not be queried.  This may be due to a communication error, or
               a caught exception.
            */
@@ -749,6 +748,13 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME));
     conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
     conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+
+    if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
+      conf.set(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
+    }
+    if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
+      conf.set(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
+    }
 
     return conf;
   }

@@ -19,3 +19,7 @@ venice.urls=http://ltx1-app1005.stg.linkedin.com:1576,http://ltx1-app1365.stg.li
 venice.store.name=venice_h2v_test_100
 venice.store.owners=venice-eng@linkedin.com
 cluster.name=test-cluster
+
+kafka.request.timeout.ms=300000
+kafka.retries=50
+poll.status.retry.attempts=3
