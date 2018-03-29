@@ -28,6 +28,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.List;
 import java.util.TreeMap;
 import javafx.util.Pair;
 import joptsimple.OptionParser;
@@ -88,6 +89,11 @@ public class KafkaPushJob extends AbstractJob {
 
   //veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public final static String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
+
+  // kafka.acks.config == 0, the producer don't wait for any acknowledgement from Kafka
+  // kafka.acks.config == 1, the producer wait for the primary broker to respond
+  // kafka.acks.config == -1, the producer wait for all brokers to respond
+  public final static String KAFKA_ACKS_CONFIG = "kafka.acks";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -299,6 +305,16 @@ public class KafkaPushJob extends AbstractJob {
         throw new VeniceException("Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
       }
       vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
+    }
+
+    if (!vanillaProps.containsKey(KAFKA_ACKS_CONFIG)) {
+      throw new VeniceException("Missing the require Kafka acks config: " + KAFKA_ACKS_CONFIG);
+    } else {
+      String kafkaAcksConfig = vanillaProps.getProperty(KAFKA_ACKS_CONFIG).trim();
+      List<String> validKafkaAcksConfig = Arrays.asList("1", "0", "-1");
+      if (!validKafkaAcksConfig.contains(kafkaAcksConfig)) {
+        throw new VeniceException("The Kafka acks config is not valid! Valid configs are \"1\", \"0\" and \"-1\"");
+      }
     }
 
     String[] requiredSSLPropertiesNames = new String[]{SSL_KEY_PASSWORD_PROPERTY_NAME,SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME,SSL_TRUST_STORE_PROPERTY_NAME};

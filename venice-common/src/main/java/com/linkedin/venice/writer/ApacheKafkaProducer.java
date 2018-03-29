@@ -63,8 +63,6 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     // This is to guarantee ordering, even in the face of failures.
     ensureMandatoryProp(properties, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
 
-    // This will ensure the durability on Kafka broker side
-    ensureMandatoryProp(properties, ProducerConfig.ACKS_CONFIG, "1");
     // Hard-coded retry number
     ensureMandatoryProp(properties, ProducerConfig.RETRIES_CONFIG, "100");
     // Hard-coded backoff config to be 1 sec
