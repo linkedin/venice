@@ -37,6 +37,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor cachePutRequestSensor;
   private final Sensor cachePutLatencySensor;
   private final Sensor keyNumSensor;
+  // Reflect the real request usage, e.g count each key as an unit of request usage.
+  private final Sensor requestUsageSensor;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
@@ -84,6 +86,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max());
+    requestUsageSensor = registerSensor("request_usage", new Count(), new OccurrenceRate());
   }
 
   public void recordRequest() {
@@ -166,5 +169,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordKeyNum(int keyNum) {
     keyNumSensor.record(keyNum);
+  }
+
+  public void recordRequestUsage(int usage) {
+    requestUsageSensor.record(usage);
   }
 }
