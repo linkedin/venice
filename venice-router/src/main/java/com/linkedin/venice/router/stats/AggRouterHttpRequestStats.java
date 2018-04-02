@@ -181,4 +181,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordKeyNum(keyNum);
     getStoreStats(storeName).recordKeyNum(keyNum);
   }
+
+  public void recordRequestUsage(String storeName, int usage) {
+    totalStats.recordRequestUsage(usage);
+    getStoreStats(storeName).recordRequestUsage(usage);
+  }
 }

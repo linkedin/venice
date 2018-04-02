@@ -94,6 +94,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     String method = fullHttpRequest.method().name();
     VenicePath path = null;
     AggRouterHttpRequestStats stats = null;
+    int keyNum = 1;
     if (VeniceRouterUtils.isHttpGet(method)) {
       // single-get request
       path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
@@ -105,11 +106,15 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       /**
        * Here we only track key num for batch-get request, since single-get request will be always 1.
        */
-      stats.recordKeyNum(storeName, path.getPartitionKeys().size());
+      keyNum = path.getPartitionKeys().size();
+      stats.recordKeyNum(storeName, keyNum);
     } else {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
           BAD_REQUEST, "Method: " + method + " is not allowed");
     }
+    // Always record request usage in the single get stats, so we could compare it with the quota easily.
+    // Right now we use key num as request usage, in the future we might consider the Capacity unit.
+    statsForSingleGet.recordRequestUsage(storeName, keyNum);
     stats.recordRequest(storeName);
     stats.recordRequestSize(storeName, path.getRequestSize());
     return path;
