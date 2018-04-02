@@ -87,8 +87,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     if (minNumberOfStoreVersionsToPreserve < 1) {
       throw new VeniceException("The minimal acceptable value for '" + MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE + "' is 1.");
     }
-    // By default, keep 2 errored topics per store
-    this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 2);
+    // By default, keep 0 errored topics per store in parent controller
+    this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 0);
   }
 
   public int getAdminPort() {
