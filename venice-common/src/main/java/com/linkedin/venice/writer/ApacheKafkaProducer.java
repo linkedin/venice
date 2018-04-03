@@ -71,8 +71,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       properties.setProperty(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG, "300000");
     }
     if (!properties.containsKey(ProducerConfig.RETRIES_CONFIG)) {
-      // if not specified, set default request retry times as 100
-      properties.setProperty(ProducerConfig.RETRIES_CONFIG, "100");
+      // if not specified, set default request retry times as 2
+      properties.setProperty(ProducerConfig.RETRIES_CONFIG, "2");
     }
 
     // Hard-coded backoff config to be 1 sec
