@@ -162,18 +162,9 @@ public class StoresRoutes {
 
   public static Route setPartitionCount(Admin admin) {
     return new VeniceRouteHandler<PartitionResponse>(PartitionResponse.class) {
-
       @Override
       public void internalHandle(Request request, PartitionResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, SET_PARTITION_COUNT.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        int partitionNum = Utils.parseIntFromString(request.queryParams(PARTITION_COUNT), "partition-count");
-        admin.setStorePartitionCount(clusterName, storeName, partitionNum);
-
-        veniceResponse.setCluster(clusterName);
-        veniceResponse.setName(storeName);
-        veniceResponse.setPartitionCount(partitionNum);
+        veniceResponse.setError("This operation is no longer supported, please use the update store endpoint");
       }
     };
   }

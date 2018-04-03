@@ -35,6 +35,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
@@ -59,6 +60,8 @@ import java.util.Optional;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.stream.Collectors;
+import org.apache.http.HttpStatus;
+import org.apache.http.protocol.HTTP;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -875,6 +878,9 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
       setStore.owner = owner.isPresent() ? owner.get() : store.getOwner();
+      if (partitionCount.isPresent() && store.isHybrid()){
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
+      }
       setStore.partitionNum = partitionCount.isPresent() ? partitionCount.get() : store.getPartitionCount();
       setStore.enableReads = readability.isPresent() ? readability.get() : store.isEnableReads();
       setStore.enableWrites = writeability.isPresent() ? writeability.get() : store.isEnableWrites();
