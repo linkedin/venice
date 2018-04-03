@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -61,6 +62,7 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
+import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 
 
@@ -976,17 +978,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
         VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
         storeMetadataUpdate(clusterName, storeName, store -> {
-            int desiredPartitionCount = partitionCount;
+            if (store.isHybrid()){
+                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for a hybrid store");
+            } else {
+                int desiredPartitionCount = partitionCount;
 
-            if (desiredPartitionCount > clusterConfig.getMaxNumberOfPartition()) {
-                desiredPartitionCount = clusterConfig.getMaxNumberOfPartition();
-            } else if (desiredPartitionCount < clusterConfig.getNumberOfPartition()) {
-                desiredPartitionCount = clusterConfig.getNumberOfPartition();
+                if (desiredPartitionCount > clusterConfig.getMaxNumberOfPartition()) {
+                    desiredPartitionCount = clusterConfig.getMaxNumberOfPartition();
+                } else if (desiredPartitionCount < clusterConfig.getNumberOfPartition()) {
+                    desiredPartitionCount = clusterConfig.getNumberOfPartition();
+                }
+
+                store.setPartitionCount(desiredPartitionCount);
+                return store;
             }
-
-            store.setPartitionCount(desiredPartitionCount);
-
-            return store;
         });
     }
 

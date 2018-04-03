@@ -373,9 +373,12 @@ public class TestAdminSparkServer {
     Assert.assertFalse(ownerRes.isError(), ownerRes.getError());
     Assert.assertEquals(ownerRes.getOwner(), owner);
 
-    PartitionResponse partitionRes = controllerClient.setStorePartitionCount(storeName, String.valueOf(partitionCount));
+    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setPartitionCount(partitionCount);
+    ControllerResponse partitionRes = controllerClient.updateStore(storeName, updateStoreQueryParams);
     Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
-    Assert.assertEquals(partitionRes.getPartitionCount(), partitionCount);
+
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getPartitionCount(), partitionCount);
   }
 
   @Test(timeOut = TIME_OUT)
