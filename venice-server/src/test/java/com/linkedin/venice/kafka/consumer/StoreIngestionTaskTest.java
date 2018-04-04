@@ -110,6 +110,7 @@ public class StoreIngestionTaskTest {
   private static final long TEST_TIMEOUT;
   private static final int RUN_TEST_FUNCTION_TIMEOUT = 10;
   private static final long READ_CYCLE_DELAY_MS = 5;
+  private static final long EMPTY_POLL_SLEEP_MS = 0;
 
   static {
     StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
@@ -301,7 +302,7 @@ public class StoreIngestionTaskTest {
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
             mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0,
-            READ_CYCLE_DELAY_MS);
+            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;

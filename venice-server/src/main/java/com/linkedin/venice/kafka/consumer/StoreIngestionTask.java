@@ -60,6 +60,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static java.util.concurrent.TimeUnit.*;
+
 
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
@@ -121,6 +123,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final int sourceTopicOffsetCheckInterval;
   private final Function<GUID, ProducerTracker> producerTrackerCreator;
   private final long readCycleDelayMs;
+  private final long emptyPollSleepMs;
 
   // Non-final
   private KafkaConsumerWrapper consumer;
@@ -148,8 +151,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull BooleanSupplier isCurrentVersion,
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
                             int sourceTopicOffsetCheckIntervalMs,
-                            long readCycleDelayMs) {
+                            long readCycleDelayMs,
+                            long emptyPollSleepMs) {
     this.readCycleDelayMs = readCycleDelayMs;
+    this.emptyPollSleepMs = emptyPollSleepMs;
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -226,7 +231,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     try {
       // Check whether the task is really killed
       while (isRunning() && currentAttempts < MAX_KILL_CHECKING_ATTEMPTS) {
-        TimeUnit.MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPTS);
+        MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPTS);
         currentAttempts ++;
       }
     } catch (InterruptedException e) {
@@ -388,9 +393,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
       }
 
       if (pollResultNum == 0) {
-        //This is the first time we polled and got an empty response set
-        if (recordsPolled) {
+        if (recordsPolled) {     //This is the first time we polled and got an empty response set
           versionedDIVStats.resetCurrentIdleTime(storeNameWithoutVersionInfo, storeVersion);
+        } else { //On subsequent empty polls, sleep to reduce thread contention
+          Thread.sleep(emptyPollSleepMs);
         }
         recordsPolled = false;
         versionedDIVStats.recordCurrentIdleTime(storeNameWithoutVersionInfo, storeVersion);
