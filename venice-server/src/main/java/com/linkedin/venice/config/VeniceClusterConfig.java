@@ -42,6 +42,7 @@ public class VeniceClusterConfig {
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
   private long kafkaReadCycleDelayMs;
+  private long kafkaEmptyPollSleepMs;
   private long kafkaFetchMinSizePerSecond;
   private long kafkaFetchMaxSizePerSecond;
   private long kafkaFetchMaxTimeMS;
@@ -106,6 +107,7 @@ public class VeniceClusterConfig {
     refreshIntervalForZkReconnectInMs =
         clusterProps.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
     kafkaReadCycleDelayMs = clusterProps.getLong(KAFKA_READ_CYCLE_DELAY_MS, 1000);
+    kafkaEmptyPollSleepMs = clusterProps.getLong(KAFKA_EMPTY_POLL_SLEEP_MS, 0);
     // get fetching related from config or use the kafka default values.
     kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MIN_SIZE_PER_SEC, 1);
     kafkaFetchMaxSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
@@ -183,6 +185,10 @@ public class VeniceClusterConfig {
 
   public long getKafkaReadCycleDelayMs() {
     return kafkaReadCycleDelayMs;
+  }
+
+  public long getKafkaEmptyPollSleepMs() {
+    return kafkaEmptyPollSleepMs;
   }
 
   public long getKafkaFetchMinSizePerSecond() {
