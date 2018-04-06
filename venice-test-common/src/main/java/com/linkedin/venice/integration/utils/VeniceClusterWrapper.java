@@ -411,7 +411,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public VersionCreationResponse getNewStoreVersion() {
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
-    long storeSize = 10 * 1024 * 1024;
+    long storeSize =  1024;
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     // Create new store

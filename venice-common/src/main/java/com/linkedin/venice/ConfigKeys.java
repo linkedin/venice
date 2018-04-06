@@ -421,4 +421,6 @@ public class ConfigKeys {
    * and will log storage requests on the non-ssl port even if set to false;
    */
   public static final String ENFORCE_SECURE_ROUTER = "router.enforce.ssl";
+
+  public static final String HELIX_REBALANCE_ALG = "helix.rebalance.alg";
 }

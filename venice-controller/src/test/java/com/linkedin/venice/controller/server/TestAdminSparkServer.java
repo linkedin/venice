@@ -66,12 +66,11 @@ import org.testng.annotations.Test;
 public class TestAdminSparkServer {
   /**
    * Seems that Helix has limit on the number of resource each node is able to handle.
-   * You might want to increase the number of SN in the future if new tests are kept adding
-   * to this class. In the current, 2 nodes seems to be enough.
+   * If the test case needs more than one storage node like testing failover etc, please put it into {@link TestAdminSparkServerWithMultiServers}
    *
-   * A typical exception for the short of SN looks like "Failed to create helix resource."
+   * And please collect the store and version you created in the end of your test case.
    */
-  private static final int STORAGE_NODE_COUNT = 6;
+  private static final int STORAGE_NODE_COUNT = 1;
   private static final int TIME_OUT = 10 * Time.MS_PER_SECOND;
 
   private VeniceClusterWrapper venice;
@@ -108,26 +107,35 @@ public class TestAdminSparkServer {
 
   @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryReplicasOnAStorageNode(){
-    venice.getNewStoreVersion();
-    MultiNodeResponse nodeResponse = controllerClient.listStorageNodes();
-    String nodeId = nodeResponse.getNodes()[0];
-    MultiReplicaResponse replicas = controllerClient.listStorageNodeReplicas(nodeId);
-    Assert.assertFalse(replicas.isError(), replicas.getError());
+    String storeName = venice.getNewStoreVersion().getName();
+    try {
+      MultiNodeResponse nodeResponse = controllerClient.listStorageNodes();
+      String nodeId = nodeResponse.getNodes()[0];
+      MultiReplicaResponse replicas = controllerClient.listStorageNodeReplicas(nodeId);
+      Assert.assertFalse(replicas.isError(), replicas.getError());
+    }finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryReplicasForTopic(){
     VersionCreationResponse versionCreationResponse = venice.getNewStoreVersion();
-    Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
-    String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
-    Assert.assertNotNull(kafkaTopic, "venice.getNewStoreVersion() should not return a null topic name\n" + versionCreationResponse.toString());
+    String storeName = versionCreationResponse.getName();
+    try {
+      Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
+      String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
+      Assert.assertNotNull(kafkaTopic, "venice.getNewStoreVersion() should not return a null topic name\n" + versionCreationResponse.toString());
 
-    String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    MultiReplicaResponse response = controllerClient.listReplicas( store, version);
-    Assert.assertFalse(response.isError(), response.getError());
-    int totalReplicasCount = versionCreationResponse.getPartitions() * versionCreationResponse.getReplicas();
-    Assert.assertEquals(response.getReplicas().length, totalReplicasCount, "Replica count does not match");
+      String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+      int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      MultiReplicaResponse response = controllerClient.listReplicas(store, version);
+      Assert.assertFalse(response.isError(), response.getError());
+      int totalReplicasCount = versionCreationResponse.getPartitions() * versionCreationResponse.getReplicas();
+      Assert.assertEquals(response.getReplicas().length, totalReplicasCount, "Replica count does not match");
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TIME_OUT)
@@ -297,15 +305,19 @@ public class TestAdminSparkServer {
   public void controllerClientCanGetStoreInfo(){
     String topic = venice.getNewStoreVersion().getKafkaTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+    try {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
 
-    StoreInfo store = storeResponse.getStore();
-    Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
-    Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
-    Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
-    List<Version> versions = store.getVersions();
-    Assert.assertEquals(versions.size(), 1, "Store from new store-version should only have one version");
+      StoreInfo store = storeResponse.getStore();
+      Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
+      Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
+      Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
+      List<Version> versions = store.getVersions();
+      Assert.assertEquals(versions.size(), 1, " Store from new store-version should only have one version");
+    }finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TIME_OUT)
@@ -313,15 +325,18 @@ public class TestAdminSparkServer {
       throws InterruptedException {
     String topic = venice.getNewStoreVersion().getKafkaTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    try {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      Assert.assertTrue(store.isEnableStoreWrites(), "Store should NOT be disabled after creating new store-version");
 
-    StoreInfo store = controllerClient.getStore(storeName).getStore();
-    Assert.assertTrue(store.isEnableStoreWrites(), "Store should NOT be disabled after creating new store-version");
+      ControllerResponse response = controllerClient.enableStoreWrites(storeName, false);
+      Assert.assertFalse(response.isError(), response.getError());
 
-    ControllerResponse response = controllerClient.enableStoreWrites(storeName, false);
-    Assert.assertFalse(response.isError(), response.getError());
-
-    store = controllerClient.getStore(storeName).getStore();
-    Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
+      store = controllerClient.getStore(storeName).getStore();
+      Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
+    } finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TIME_OUT)
@@ -347,17 +362,20 @@ public class TestAdminSparkServer {
     String topic = venice.getNewStoreVersion().getKafkaTopic();
 
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    try {
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      Assert.assertTrue(store.isEnableStoreReads(), "Store should NOT be disabled after creating new store-version");
+      Assert.assertTrue(store.isEnableStoreWrites(), "Store should NOT be disabled after creating new store-version");
 
-    StoreInfo store = controllerClient.getStore(storeName).getStore();
-    Assert.assertTrue(store.isEnableStoreReads(), "Store should NOT be disabled after creating new store-version");
-    Assert.assertTrue(store.isEnableStoreWrites(), "Store should NOT be disabled after creating new store-version");
+      ControllerResponse response = controllerClient.enableStoreReadWrites(storeName, false);
+      Assert.assertFalse(response.isError(), response.getError());
 
-    ControllerResponse response = controllerClient.enableStoreReadWrites(storeName, false);
-    Assert.assertFalse(response.isError(), response.getError());
-
-    store = controllerClient.getStore(storeName).getStore();
-    Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
-    Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
+      store = controllerClient.getStore(storeName).getStore();
+      Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
+      Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
+    }finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TIME_OUT)
@@ -477,23 +495,6 @@ public class TestAdminSparkServer {
   }
 
   @Test(timeOut = TIME_OUT)
-  public void controllerClientCanRemoveNodeFromCluster() {
-    Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
-    VeniceServerWrapper server = venice.getVeniceServers().get(0);
-    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
-    // Trying to remove a live node.
-    ControllerResponse response = controllerClient.removeNodeFromCluster(nodeId);
-    Assert.assertTrue(response.isError(), "Node is still connected to cluster, could not be removed.");
-
-    // Remove a disconnected node.
-    venice.stopVeniceServer(server.getPort());
-    response = controllerClient.removeNodeFromCluster(nodeId);
-    Assert.assertFalse(response.isError(), "Node is already disconnected, could be removed.");
-    Assert.assertFalse(admin.getStorageNodes(venice.getClusterName()).contains(nodeId),
-        "Node should be removed from the cluster.");
-  }
-
-  @Test(timeOut = TIME_OUT)
   public void controllerClientCanUpdateWhiteList() {
     Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
 
@@ -573,7 +574,6 @@ public class TestAdminSparkServer {
 
       storeName = venice.getNewStoreVersion().getName();
       ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
-
       ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setPartitionCount(partitionCount)
           .setCurrentVersion(current)
@@ -586,7 +586,7 @@ public class TestAdminSparkServer {
       Assert.assertEquals(store.isEnableReads(), enableReads);
     } finally {
       if (null != storeName) {
-        controllerClient.deleteStore(storeName);
+        deleteStore(storeName);
       }
     }
   }
@@ -607,12 +607,14 @@ public class TestAdminSparkServer {
   @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetStorageEngineOverheadRatio() {
     String storeName = venice.getNewStoreVersion().getName();
-    StorageEngineOverheadRatioResponse response =
-        controllerClient.getStorageEngineOverheadRatio(storeName);
+    try {
+      StorageEngineOverheadRatioResponse response = controllerClient.getStorageEngineOverheadRatio(storeName);
 
-    Assert.assertFalse(response.isError(), response.getError());
-    Assert.assertEquals(response.getStorageEngineOverheadRatio(),
-                        VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+      Assert.assertFalse(response.isError(), response.getError());
+      Assert.assertEquals(response.getStorageEngineOverheadRatio(), VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+    }finally {
+      deleteStore(storeName);
+    }
   }
 
   @Test(timeOut = TIME_OUT)
@@ -711,5 +713,10 @@ public class TestAdminSparkServer {
       p.setProperty(i+"venice.push.properteis.xyz"+i, "http://testinfo.url"+i);
     }
     controllerClient.uploadPushProperties(storeName, version, p);
+  }
+
+  private void deleteStore(String storeName){
+    controllerClient.enableStoreReadWrites(storeName, false);
+    controllerClient.deleteStore(storeName);
   }
 }

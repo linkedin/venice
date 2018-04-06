@@ -1,12 +1,15 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
@@ -35,7 +38,7 @@ public class TestAdminSparkServerWithMultiServers {
 
   private VeniceClusterWrapper venice;
   private ControllerClient controllerClient;
-  private final int numberOfServer = 6;
+  private final int numberOfServer = 3;
 
   @BeforeClass
   public void setUp() {
@@ -49,14 +52,11 @@ public class TestAdminSparkServerWithMultiServers {
     venice.close();
   }
 
-  /**
-   * TODO: This test should be fixed. It is flaky, especially on a slow or heavily loaded machine.
-   */
   @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = TIME_OUT)
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
-      storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));
+      storeNames.add(venice.getNewStore(TestUtils.getUniqueString("venice-store")).getName());
     }
 
     MultiStoreResponse storeResponse = controllerClient.queryStoreList();
@@ -164,10 +164,26 @@ public class TestAdminSparkServerWithMultiServers {
     int newVersion = versionResponse.getVersion();
     Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
     controllerClient.writeEndOfPush(storeName, newVersion);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), newVersion, "Writing end of push must flip the version to current");
     });
-    controllerClient.close();
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void controllerClientCanRemoveNodeFromCluster() {
+    Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
+    VeniceServerWrapper server = venice.getVeniceServers().get(0);
+    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+    // Trying to remove a live node.
+    ControllerResponse response = controllerClient.removeNodeFromCluster(nodeId);
+    Assert.assertTrue(response.isError(), "Node is still connected to cluster, could not be removed.");
+
+    // Remove a disconnected node.
+    venice.stopVeniceServer(server.getPort());
+    response = controllerClient.removeNodeFromCluster(nodeId);
+    Assert.assertFalse(response.isError(), "Node is already disconnected, could be removed.");
+    Assert.assertFalse(admin.getStorageNodes(venice.getClusterName()).contains(nodeId),
+        "Node should be removed from the cluster.");
   }
 }

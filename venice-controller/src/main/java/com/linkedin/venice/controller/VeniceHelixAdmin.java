@@ -1329,8 +1329,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // the delayed reblance time
             idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
             idealState.setMinActiveReplicas(config.getMinActiveReplica());
-            // Use crush alg to allocate resources
-            idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
+            idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
             admin.setResourceIdealState(clusterName, kafkaTopic, idealState);
             logger.info("Enabled delayed re-balance for resource:" + kafkaTopic);
             admin.rebalance(clusterName, kafkaTopic, replicationFactor);
