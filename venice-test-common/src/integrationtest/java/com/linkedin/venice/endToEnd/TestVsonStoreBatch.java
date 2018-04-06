@@ -1,8 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.ddsstorage.io.IOUtils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -17,6 +19,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -36,10 +39,13 @@ public class TestVsonStoreBatch {
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   private VeniceClusterWrapper veniceCluster;
+  private ControllerClient controllerClient;
 
   @BeforeClass
   public void setup() {
     veniceCluster = ServiceFactory.getVeniceCluster();
+    controllerClient = new ControllerClient(veniceCluster.getClusterName(),
+        veniceCluster.getMasterVeniceController().getControllerUrl());
   }
 
   @AfterClass
@@ -167,22 +173,31 @@ public class TestVsonStoreBatch {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = TestUtils.getUniqueString("store");
+    AvroGenericStoreClient avroClient = null;
+    AvroGenericStoreClient vsonClient = null;
 
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    extraProps.accept(props);
+    try {
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+      extraProps.accept(props);
 
-    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, false, false);
+      createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, false,
+          false);
 
-    KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
-    job.run();
+      KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
+      job.run();
+      avroClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
+      vsonClient = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultVsonGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
 
-    AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-        .setVeniceURL(veniceCluster.getRandomRouterURL()));
-    AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultVsonGenericClientConfig(storeName)
-        .setVeniceURL(veniceCluster.getRandomRouterURL()));
-
-    dataValidator.validate(avroClient, vsonClient);
+      dataValidator.validate(avroClient, vsonClient);
+    } finally {
+      IOUtils.closeQuietly(avroClient);
+      IOUtils.closeQuietly(vsonClient);
+      controllerClient.enableStoreReadWrites(storeName, false);
+      controllerClient.deleteStore(storeName);
+    }
   }
 
 }

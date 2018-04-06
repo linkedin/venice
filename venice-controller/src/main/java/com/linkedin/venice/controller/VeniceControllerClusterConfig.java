@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
 
@@ -74,6 +75,11 @@ public class VeniceControllerClusterConfig {
    * Address of zookeeper that kafka used. It may be different from what Helix used.
    */
   private String kafkaZkAddress;
+
+  /**
+   * Alg used by helix to decide the mapping between replicas and nodes.
+   */
+  private String helixRebalanceAlg;
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
@@ -150,6 +156,7 @@ public class VeniceControllerClusterConfig {
     enableOfflinePushSSLWhitelist = props.getBoolean(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, true);
     enableNearlinePushSSLWhitelist = props.getBoolean(ENABLE_HYBRID_PUSH_SSL_WHITELIST, true);
     pushSSLWhitelist = props.getList(PUSH_SSL_WHITELIST, new ArrayList<>());
+    helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
   }
 
   public VeniceProperties getProps() {
@@ -271,5 +278,9 @@ public class VeniceControllerClusterConfig {
 
   public boolean isEnableNearlinePushSSLWhitelist() {
     return enableNearlinePushSSLWhitelist;
+  }
+
+  public String getHelixRebalanceAlg() {
+    return helixRebalanceAlg;
   }
 }
