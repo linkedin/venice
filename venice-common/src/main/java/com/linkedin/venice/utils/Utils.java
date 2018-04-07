@@ -395,4 +395,18 @@ public class Utils {
     int scale = (int) Math.pow(10, precision);
     return (double) Math.round(value * scale) / scale;
   }
+
+  private static final String[] LARGE_NUMBER_SUFFIXES = {"", "K", "M", "B", "T"};
+
+  public static String makeLargeNumberPretty(long largeNumber) {
+    if (largeNumber < 2) {
+      return "" + largeNumber;
+    }
+    double doubleNumber = (double) largeNumber;
+    double numberOfDigits = Math.ceil(Math.log10(doubleNumber));
+    int suffixIndex = Math.min((int) Math.floor((numberOfDigits - 1) / 3), LARGE_NUMBER_SUFFIXES.length - 1);
+    double divider = Math.pow(1000, suffixIndex);
+    int prettyNumber = (int) Math.round(doubleNumber / divider);
+    return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
+  }
 }

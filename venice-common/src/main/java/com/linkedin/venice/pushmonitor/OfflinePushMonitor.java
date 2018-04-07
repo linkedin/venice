@@ -11,6 +11,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -21,9 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.linkedin.venice.replication.TopicReplicator;
 import org.apache.log4j.Logger;
-
 
 /**
  * Monitor used to track all of offline push statuses. Monitor would watch the routing data(eg Helix external view) for
@@ -87,12 +88,12 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
           .forEach(offlinePush -> {
             if(routingDataRepository.containsKafkaTopic(offlinePush.getKafkaTopic())) {
               routingDataRepository.subscribeRoutingDataChange(offlinePush.getKafkaTopic(), this);
-              ExecutionStatus status = checkPushStatus(offlinePush, routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
-              if (status.isTerminal()) {
+              Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePush, routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
+              if (status.getFirst().isTerminal()) {
                 logger.info(
                     "Found a offline pushes could be terminated: " + offlinePush.getKafkaTopic() + " status: " + status
                         .toString());
-                terminateOfflinePush(offlinePush, status);
+                terminateOfflinePush(offlinePush, status.getFirst(), status.getSecond());
               }
             } else {
               // In any case, we found the offline push status is STARTED, but the related version could not be found.
@@ -214,11 +215,16 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
    * Get the status for the given offline push E.g. STARTED, COMPLETED.
    */
   public ExecutionStatus getOfflinePushStatus(String topic) {
+    return getOfflinePushStatusAndDetails(topic).getFirst();
+  }
+
+  public Pair<ExecutionStatus, Optional<String>> getOfflinePushStatusAndDetails(String topic) {
     synchronized (lock) {
       if (topicToPushMap.containsKey(topic)) {
-        return topicToPushMap.get(topic).getCurrentStatus();
+        OfflinePushStatus offlinePushStatus = topicToPushMap.get(topic);
+        return new Pair<>(offlinePushStatus.getCurrentStatus(), offlinePushStatus.getOptionalStatusDetails());
       } else {
-        return ExecutionStatus.NOT_CREATED;
+        return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Kafka topic not detected yet."));
       }
     }
   }
@@ -263,8 +269,8 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         return false;
       } else {
         OfflinePushStatus offlinePush = topicToPushMap.get(topic);
-        ExecutionStatus status = checkPushStatus(offlinePush, partitionAssignment);
-        return status.equals(ExecutionStatus.ERROR);
+        Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePush, partitionAssignment);
+        return status.getFirst().equals(ExecutionStatus.ERROR);
       }
     }
   }
@@ -284,7 +290,13 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       long nextWaitTime = offlinePushWaitTimeInMilliseconds;
       PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());
       ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-      while(!decider.hasEnoughNodesToStartPush(pushStatus, resourceAssignment)){
+      while (true) {
+        Optional<String> reasonForNotBeingReady = decider.hasEnoughNodesToStartPush(pushStatus, resourceAssignment);
+        if (!reasonForNotBeingReady.isPresent()) {
+          break;
+        } else {
+          updatePushStatus(pushStatus, ExecutionStatus.STARTED, reasonForNotBeingReady);
+        }
         if(System.currentTimeMillis() - startTime >= offlinePushWaitTimeInMilliseconds){
           // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
           aggPushHealthStats.recordPushPrepartionDuration(Version.parseStoreFromKafkaTopicName(topic),
@@ -300,6 +312,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         lock.wait(nextWaitTime);
         resourceAssignment = routingDataRepository.getResourceAssignment();
       }
+      updatePushStatus(pushStatus, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
       // TODO add a metric to track waiting time.
       long spentTime = System.currentTimeMillis() - startTime;
       logger.info(
@@ -308,14 +321,14 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
-  public void markOfflinePushAsError(String topic){
+  public void markOfflinePushAsError(String topic, String statusDetails){
     OfflinePushStatus status = topicToPushMap.get(topic);
     if(status == null){
       logger.warn("Could not found offline push status for topic: "+topic+". Ignore the request of marking status as ERROR.");
       return;
     }
     routingDataRepository.unSubscribeRoutingDataChange(topic, this);
-    updatePushStatus(status, ExecutionStatus.ERROR);
+    updatePushStatus(status, ExecutionStatus.ERROR, Optional.of(statusDetails));
     aggPushHealthStats.recordFailedPush(Version.parseStoreFromKafkaTopicName(topic), getDurationInSec(status));
   }
 
@@ -341,17 +354,19 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       logger.info("Received the routing data changed notification for topic:" + partitionAssignment.getTopic());
       String kafkaTopic = partitionAssignment.getTopic();
       OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
-      if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)
-          || pushStatus.getCurrentStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
-        ExecutionStatus status = checkPushStatus(pushStatus, partitionAssignment);
+      ExecutionStatus[] statusesThatRequireNotifyingTheLock = {
+          ExecutionStatus.STARTED,
+          ExecutionStatus.END_OF_PUSH_RECEIVED};
+      if (pushStatus != null && Utils.verifyTransition(pushStatus.getCurrentStatus(), statusesThatRequireNotifyingTheLock)) {
+        Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
         if (!status.equals(pushStatus.getCurrentStatus())) {
           logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
-          terminateOfflinePush(pushStatus, status);
+          terminateOfflinePush(pushStatus, status.getFirst(), status.getSecond());
         }
         // Notify the thread waiting on the waitUntilNodesAreAssignedForResource method.
         lock.notifyAll();
       } else {
-        logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification.");
+        logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic() + ", ignore the routing data changed notification. OfflinePushStatus: " + pushStatus);
       }
     }
   }
@@ -367,8 +382,9 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     synchronized (lock) {
       OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
       if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
-        logger.info("Resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.");
-        handleErrorPush(pushStatus);
+        String statusDetails = "Helix resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.";
+        logger.info(statusDetails);
+        handleErrorPush(pushStatus, statusDetails);
       }
     }
   }
@@ -402,14 +418,19 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
                 Version.composeRealTimeTopic(storeName),
                 offlinePushStatus.getKafkaTopic(),
                 store);
-            updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED);
-            logger.info("Successfully kicked off buffer replay for offlinePushStatus: " + offlinePushStatus.toString());
+            String newStatusDetails = "kicked off buffer replay";
+            updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
+            logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString());
           } catch (Exception e) {
             // TODO: Figure out a better error handling...
-            logger.error("Failed to kick off the buffer replay for offlinePushStatus: " + offlinePushStatus.toString(), e);
+            String newStatusDetails = "Failed to kick off the buffer replay";
+            updatePushStatus(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
+            logger.error(newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString(), e);
           }
         } else {
-          logger.error("The TopicReplicator was not properly initialized!");
+          String newStatusDetails = "The TopicReplicator was not properly initialized!";
+          updatePushStatus(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
+          logger.error(newStatusDetails);
         }
       } else {
         logger.info(offlinePushStatus.getKafkaTopic()+" is not ready to start buffer relay.");
@@ -417,16 +438,23 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
-  private ExecutionStatus checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
+  private Pair<ExecutionStatus, Optional<String>> checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
     PushStatusDecider statusDecider = PushStatusDecider.getDecider(pushStatus.getStrategy());
-    return statusDecider.checkPushStatus(pushStatus, partitionAssignment);
+    return statusDecider.checkPushStatusAndDetails(pushStatus, partitionAssignment);
   }
 
-  private void terminateOfflinePush(OfflinePushStatus pushStatus, ExecutionStatus status) {
+  private void terminateOfflinePush(OfflinePushStatus pushStatus, ExecutionStatus status, Optional<String> statusDetails) {
     if (status.equals(ExecutionStatus.COMPLETED)) {
       handleCompletedPush(pushStatus);
     } else if (status.equals(ExecutionStatus.ERROR)) {
-      handleErrorPush(pushStatus);
+      String statusDetailsString = "STATUS DETAILS ABSENT.";
+      if (statusDetails.isPresent()) {
+        statusDetailsString = statusDetails.get();
+      } else {
+        logger.error("Status details should be provided in order to terminateOfflinePush, but they are missing.",
+            new VeniceException("Unthrown exception, for stacktrace logging purposes."));
+      }
+      handleErrorPush(pushStatus, statusDetailsString);
     }
   }
 
@@ -439,7 +467,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " old status: "
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
-    updatePushStatus(pushStatus, ExecutionStatus.COMPLETED);
+    updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
@@ -454,11 +482,11 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " is completed.");
   }
 
-  private void handleErrorPush(OfflinePushStatus pushStatus) {
+  private void handleErrorPush(OfflinePushStatus pushStatus, String statusDetails) {
     logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " is now "
-        + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.ERROR);
+        + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.ERROR + ", statusDetails: " + statusDetails);
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
-    updatePushStatus(pushStatus, ExecutionStatus.ERROR);
+    updatePushStatus(pushStatus, ExecutionStatus.ERROR, Optional.of(statusDetails));
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     try {
@@ -504,9 +532,9 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
-  private void updatePushStatus(OfflinePushStatus pushStatus, ExecutionStatus status){
+  private void updatePushStatus(OfflinePushStatus pushStatus, ExecutionStatus newStatus, Optional<String> newStatusDetails){
     OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
-    clonedPushStatus.updateStatus(status);
+    clonedPushStatus.updateStatus(newStatus, newStatusDetails);
     // Update remote storage
     accessor.updateOfflinePushStatus(clonedPushStatus);
     // Update local copy

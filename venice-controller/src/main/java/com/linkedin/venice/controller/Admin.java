@@ -26,19 +26,43 @@ public interface Admin {
     class OfflinePushStatusInfo {
         private ExecutionStatus executionStatus;
         private Map<String, String> extraInfo;
+        private Optional<String> statusDetails;
+        private Map<String, String> extraDetails;
 
+        /** N.B.: Test-only constructor ): */
         public OfflinePushStatusInfo(ExecutionStatus executionStatus) {
             this(executionStatus, new HashMap<>());
         }
+
+        /** N.B.: Test-only constructor ): */
         public OfflinePushStatusInfo(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
+            this(executionStatus, extraInfo, Optional.empty(), new HashMap<>());
+        }
+
+        /** Used by single datacenter (child) controllers, hence, no extra info nor extra details */
+        public OfflinePushStatusInfo(ExecutionStatus executionStatus, Optional<String> statusDetails) {
+            this(executionStatus, new HashMap<>(), statusDetails, new HashMap<>());
+        }
+
+
+        /** Used by the parent controller, hence, there is extra info and details about the child */
+        public OfflinePushStatusInfo(ExecutionStatus executionStatus, Map<String, String> extraInfo, Optional<String> statusDetails, Map<String, String> extraDetails) {
             this.executionStatus = executionStatus;
             this.extraInfo = extraInfo;
+            this.statusDetails = statusDetails;
+            this.extraDetails = extraDetails;
         }
         public ExecutionStatus getExecutionStatus() {
             return executionStatus;
         }
         public Map<String, String> getExtraInfo() {
             return extraInfo;
+        }
+        public Optional<String> getStatusDetails() {
+            return statusDetails;
+        }
+        public Map<String, String> getExtraDetails() {
+            return extraDetails;
         }
     }
     void start(String clusterName);

@@ -13,7 +13,12 @@ public enum ExecutionStatus {
   /** Job doesn't yet exist */
   NOT_CREATED(true, false, false, false),
 
-  /** Job/Task just created. */
+  /**
+   * Legacy status.
+   *
+   * Now only used as the initial value for an {@link ExecutionStatus} in VeniceParentHelixAdmin, but should
+   * never actually be returned to the push job, under normal circumstances...
+   */
   NEW(true, true, false, false),
 
   /** Job/Task is started and start consuming data from Kafka */

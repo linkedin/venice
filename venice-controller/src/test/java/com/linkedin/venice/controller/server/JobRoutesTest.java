@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,6 +19,8 @@ import static org.mockito.Mockito.*;
 
 
 public class JobRoutesTest {
+
+  private static final Logger LOGGER = Logger.getLogger(JobRoutesTest.class);
 
   @Test
   public void testPopulateJobStatus() throws Exception {
@@ -52,7 +55,15 @@ public class JobRoutesTest {
     Long available = response.getMessagesAvailable();
     Long consumed = response.getMessagesConsumed();
 
-    Assert.assertNotNull(response.getExtraInfo());
+    Map<String, String> extraInfo = response.getExtraInfo();
+    LOGGER.info("extraInfo: " + extraInfo);
+    Assert.assertNotNull(extraInfo);
+
+    Map<String, String> extraDetails = response.getExtraDetails();
+    LOGGER.info("extraDetails: " + extraDetails);
+    Assert.assertNotNull(extraDetails);
+
+
     Assert.assertTrue(consumed <= available, "Messages consumed: " + consumed + " must be less than or equal to available messages: " + available);
 
   }

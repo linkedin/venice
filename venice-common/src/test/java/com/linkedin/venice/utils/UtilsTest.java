@@ -6,7 +6,12 @@ import static org.testng.Assert.*;
 import static org.apache.avro.Schema.*;
 
 import com.linkedin.venice.meta.Store;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import org.apache.avro.generic.GenericData;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
@@ -94,6 +99,35 @@ public class UtilsTest {
 
     assertListEqualityBothWays(javaUtilArrayList3, javaUtilArrayList4,
         "We cannot compare java.util.ArrayList<Object> by content equality properly!");
+  }
+
+  @Test
+  public void testMakeLargeNumberPretty() {
+    Map<Long, String> inputOutput = new TreeMap<>();
+    inputOutput.put(0L, "0");
+    inputOutput.put(1L, "1");
+    inputOutput.put(21L, "21");
+    inputOutput.put(321L, "321");
+    inputOutput.put(4321L, "4K");
+    inputOutput.put(54321L, "54K");
+    inputOutput.put(654321L, "654K");
+    inputOutput.put(7654321L, "8M");
+    inputOutput.put(87654321L, "88M");
+    inputOutput.put(987654321L, "988M");
+    inputOutput.put(1987654321L, "2B");
+    inputOutput.put(21987654321L, "22B");
+    inputOutput.put(321987654321L, "322B");
+    inputOutput.put(4321987654321L, "4T");
+    inputOutput.put(54321987654321L, "54T");
+    inputOutput.put(654321987654321L, "654T");
+    inputOutput.put(7654321987654321L, "7654T");
+    inputOutput.put(87654321987654321L, "87654T");
+
+    inputOutput.entrySet().stream()
+        .forEach(entry -> Assert.assertEquals(
+            Utils.makeLargeNumberPretty(entry.getKey()),
+            entry.getValue(),
+            entry.getKey() + " does not get converted properly!"));
   }
 
   private void populateIntegerList(List<Integer> list) {

@@ -1,6 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.Map;
+import java.util.Optional;
+import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 /**
@@ -10,12 +13,14 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
 
   private int version;
   private String status;
+  private String statusDetails;
   private long messagesConsumed;
   private long messagesAvailable;
   private Map<String, Long> perTaskProgress;
   private Map<Integer, Long> perPartitionCapacity;
   private boolean availableFinal;
   private Map<String, String> extraInfo;
+  private Map<String, String> extraDetails;
 
   public int getVersion() {
     return version;
@@ -31,6 +36,26 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  /**
+   * N.B.: Older versions of the controller did not support these details, so the optional can be empty.
+   */
+  @JsonIgnore
+  public Optional<String> getOptionalStatusDetails() {
+    return Optional.ofNullable(statusDetails);
+  }
+
+  /**
+   * @deprecated Only used for JSON serialization purposes. Use {@link #getOptionalExtraDetails()} instead.
+   */
+  @Deprecated
+  public String getStatusDetails() {
+    return statusDetails;
+  }
+
+  public void setStatusDetails(String statusDetails) {
+    this.statusDetails = statusDetails;
   }
 
   /**
@@ -87,12 +112,39 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
     this.perPartitionCapacity = perPartitionCapacity;
   }
 
+  /**
+   * N.B.: The values in this map conform to {@link ExecutionStatus} values.
+   *
+   * @return A map of datacenter -> status, which can be returned by a parent controller.
+   */
   public Map<String, String> getExtraInfo() {
     return extraInfo;
   }
 
   public void setExtraInfo(Map<String, String> extraInfo) {
     this.extraInfo = extraInfo;
+  }
+
+  /**
+   * N.B.: Older versions of the controller did not support these details, so the optional can be empty.
+   *
+   * @return A map of datacenter -> status details, which can be returned by a parent controller.
+   */
+  @JsonIgnore
+  public Optional<Map<String, String>> getOptionalExtraDetails() {
+    return Optional.ofNullable(extraDetails);
+  }
+
+  /**
+   * @deprecated Only used for JSON serialization purposes. Use {@link #getOptionalExtraDetails()} instead.
+   */
+  @Deprecated
+  public Map<String, String> getExtraDetails() {
+    return extraDetails;
+  }
+
+  public void setExtraDetails(Map<String, String> extraDetails) {
+    this.extraDetails = extraDetails;
   }
 
   public static JobStatusQueryResponse createErrorResponse(String errorMessage) {

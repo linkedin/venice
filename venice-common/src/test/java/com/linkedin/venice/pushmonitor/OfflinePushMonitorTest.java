@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -169,7 +170,8 @@ public class OfflinePushMonitorTest {
     Mockito.doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(Mockito.eq(topic));
     Mockito.doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
     PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
-    Mockito.doReturn(ExecutionStatus.COMPLETED).when(decider).checkPushStatus(pushStatus, partitionAssignment);
+    Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.COMPLETED, Optional.empty());
+    Mockito.doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
 
     monitor.loadAllPushes();
@@ -194,7 +196,8 @@ public class OfflinePushMonitorTest {
     Mockito.doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(Mockito.eq(topic));
     Mockito.doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
     PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
-    Mockito.doReturn(ExecutionStatus.ERROR).when(decider).checkPushStatus(pushStatus, partitionAssignment);
+    Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.ERROR, Optional.empty());
+    Mockito.doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
     Mockito.doThrow(new VeniceException("Could not delete.")).when(mockStoreCleaner)
         .deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
@@ -340,7 +343,8 @@ public class OfflinePushMonitorTest {
     PartitionAssignment partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
     PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
-    Mockito.doReturn(expectedStatus).when(decider).checkPushStatus(pushStatus, partitionAssignment);
+    Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(expectedStatus, Optional.empty());
+    Mockito.doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
     monitor.onRoutingDataChanged(partitionAssignment);
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), expectedStatus);
@@ -383,7 +387,7 @@ public class OfflinePushMonitorTest {
         Thread.sleep(1000l);
       } catch (InterruptedException e) {
       }
-      monitor.markOfflinePushAsError(topic);
+      monitor.markOfflinePushAsError(topic, "synthetic error");
     }).run();
 
     try {

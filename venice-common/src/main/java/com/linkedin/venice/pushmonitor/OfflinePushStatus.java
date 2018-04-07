@@ -2,8 +2,6 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -12,7 +10,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
+import java.util.Optional;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
@@ -28,6 +26,10 @@ public class OfflinePushStatus {
   private final OfflinePushStrategy strategy;
 
   private ExecutionStatus currentStatus = STARTED;
+  /**
+   * The initial status details will be overridden later, when the Helix resource is created.
+   */
+  private Optional<String> statusDetails = Optional.of("Helix Resource not created.");
   private List<StatusSnapshot> statusHistory;
   private List<PartitionStatus> partitionStatuses;
 
@@ -51,8 +53,13 @@ public class OfflinePushStatus {
  }
 
   public void updateStatus(ExecutionStatus newStatus) {
+    updateStatus(newStatus, Optional.empty());
+  }
+
+  public void updateStatus(ExecutionStatus newStatus, Optional<String> newStatusDetails) {
     if (validatePushStatusTransition(newStatus)) {
-      currentStatus = newStatus;
+      this.currentStatus = newStatus;
+      this.statusDetails = newStatusDetails;
       addHistoricStatus(newStatus);
     } else {
       throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
@@ -71,6 +78,9 @@ public class OfflinePushStatus {
    * <p>
    * Push's state machine:
    * <ul>
+   *   <li>NOT_STARTED->STARTED</li>
+   *   <li>NOT_STARTED->ERROR</li>
+   *   <li>STARTED->STARTED</li>
    *   <li>STARTED->COMPLETED</li>
    *   <li>STARTED->ERROR</li>
    *   <li>STARTED->END_OF_PUSH_RECEIVED</li>
@@ -85,8 +95,11 @@ public class OfflinePushStatus {
   public boolean validatePushStatusTransition(ExecutionStatus newStatus) {
     boolean isValid;
     switch (currentStatus) {
+      case NOT_CREATED:
+        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR);
+        break;
       case STARTED:
-        isValid = Utils.verifyTransition(newStatus, ERROR, COMPLETED, END_OF_PUSH_RECEIVED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, COMPLETED, END_OF_PUSH_RECEIVED);
         break;
       case ERROR:
       case COMPLETED:
@@ -116,6 +129,28 @@ public class OfflinePushStatus {
         break;
       }
     }
+    updateStatusDetails();
+  }
+
+  private void updateStatusDetails() {
+    PushStatusDecider decider = PushStatusDecider.getDecider(strategy);
+    Long finishedPartitions = getPartitionStatuses().stream()
+        // For all partitions, look at their replicas
+        .map(partitionStatus -> partitionStatus.getReplicaStatuses().stream()
+            // Find the finished replicas
+            .filter(replicaStatus -> replicaStatus.getCurrentStatus().isTerminal())
+            // Count how many finished replicas each partition has
+            .count())
+        .map(aLong -> aLong.intValue())
+        // Determine if partition is considered complete or not
+        .map(finishedReplicaInPartition -> decider.hasEnoughReplicasForOnePartition(finishedReplicaInPartition, replicationFactor))
+        // Compute the sum of finished partitions
+        .filter(partitionIsFinished -> partitionIsFinished)
+        .count();
+
+    if (finishedPartitions > 0) {
+      setStatusDetails(finishedPartitions + "/" + numberOfPartition + " partitions completed.");
+    }
   }
 
   public String getKafkaTopic() {
@@ -142,6 +177,21 @@ public class OfflinePushStatus {
     this.currentStatus = currentStatus;
   }
 
+  @JsonIgnore
+  public Optional<String> getOptionalStatusDetails() {
+    return statusDetails;
+  }
+
+  /** Necessary for the JSON serde */
+  public String getStatusDetails() {
+    return statusDetails.orElse(null);
+  }
+
+  /** Necessary for the JSON serde */
+  public void setStatusDetails(String statusDetails) {
+    this.statusDetails = Optional.ofNullable(statusDetails);
+  }
+
   public List<StatusSnapshot> getStatusHistory() {
     return statusHistory;
   }
@@ -160,12 +210,14 @@ public class OfflinePushStatus {
         this.partitionStatuses.add(ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
       }
     }
+    updateStatusDetails();
   }
 
   public OfflinePushStatus clonePushStatus() {
     OfflinePushStatus clonePushStatus =
         new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     clonePushStatus.setCurrentStatus(currentStatus);
+    clonePushStatus.setStatusDetails(statusDetails.orElse(null));
     // Status history is append-only. So here we don't need to deep copy each object in this list. Simply copy the list
     // itself is able to avoid affecting the object while updating the cloned one.
     clonePushStatus.setStatusHistory(new ArrayList<>(statusHistory));
@@ -266,6 +318,9 @@ public class OfflinePushStatus {
     if (currentStatus != that.currentStatus) {
       return false;
     }
+    if (!statusDetails.equals(that.statusDetails)) {
+      return false;
+    }
     if (!statusHistory.equals(that.statusHistory)) {
       return false;
     }
@@ -282,6 +337,7 @@ public class OfflinePushStatus {
     result = 31 * result + replicationFactor;
     result = 31 * result + strategy.hashCode();
     result = 31 * result + currentStatus.hashCode();
+    result = 31 * result + statusDetails.hashCode();
     result = 31 * result + statusHistory.hashCode();
     result = 31 * result + partitionStatuses.hashCode();
     result = 31 * result + pushProperties.hashCode();
@@ -296,6 +352,7 @@ public class OfflinePushStatus {
         ", replicationFactor=" + replicationFactor +
         ", strategy=" + strategy +
         ", currentStatus=" + currentStatus +
+        ", statusDetails=" + statusDetails +
         '}';
   }
 }
