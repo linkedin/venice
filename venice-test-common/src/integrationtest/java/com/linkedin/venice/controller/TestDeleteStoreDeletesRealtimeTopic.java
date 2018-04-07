@@ -20,6 +20,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -30,10 +31,23 @@ public class TestDeleteStoreDeletesRealtimeTopic {
 
   private static final Logger LOGGER = Logger.getLogger(TestDeleteStoreDeletesRealtimeTopic.class);
 
+  private VeniceClusterWrapper venice = null;
+  private AvroGenericStoreClient client = null;
+  private ControllerClient controllerClient = null;
+  private TopicManager topicManager = null;
+
+  @AfterMethod
+  public void cleanUp() {
+    IOUtils.closeQuietly(topicManager);
+    IOUtils.closeQuietly(client);
+    IOUtils.closeQuietly(venice);
+    IOUtils.closeQuietly(controllerClient);
+  }
+
   @Test
   public void deletingHybridStoreDeletesRealtimeTopic(){
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
-    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+    venice = ServiceFactory.getVeniceCluster();
+    controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
 
     String storeName = TestUtils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
@@ -66,7 +80,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     });
 
     //verify realtime topic exists
-    TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    topicManager = new TopicManager(venice.getKafka().getZkAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     Assert.assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
 
     //disable store
@@ -94,9 +108,5 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     } catch (Exception e) {
       LOGGER.error(e);
     }
-
-    IOUtils.closeQuietly(topicManager);
-    client.close();
-    venice.close();
   }
 }

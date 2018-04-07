@@ -114,7 +114,8 @@ public class TestMultiDataCenterPush {
           Assert.assertEquals(actual, expected);
         }
 
-        JobStatusQueryResponse jobStatus = ControllerClient.queryJobStatus(routerUrl, veniceCluster.getClusterName(), job.getKafkaTopic());
+        ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+        JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
         Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
             "After job is complete, status should reflect that");
         // In this test we are allowing the progress to not reach the full capacity, but we still want to make sure

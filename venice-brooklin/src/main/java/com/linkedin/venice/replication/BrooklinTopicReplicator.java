@@ -12,12 +12,14 @@ import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
 import com.linkedin.r2.transport.http.client.HttpClientFactory;
 import com.linkedin.restli.client.RestClient;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
+import com.linkedin.restli.client.RestLiResponseException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -183,6 +185,15 @@ public class BrooklinTopicReplicator extends TopicReplicator {
         client.waitTillDatastreamIsDeleted(name, Duration.ofSeconds(30).toMillis());
       } catch (InterruptedException e) {
         logger.warn("Interrupted while waiting for datastream " + name + " to be deleted.", e);
+      } catch (Exception e) {
+        if (e instanceof RestLiResponseException) {
+          RestLiResponseException restLiResponseException = (RestLiResponseException) e;
+          if (restLiResponseException.getStatus() == HttpResponseStatus.NOT_FOUND.code()) {
+            logger.info("Brooklin returned a 404, meaning the datastream we intend to have deleted cannot be found. Good enough...");
+            return;
+          }
+        }
+        throw new VeniceException("Caught an exception from Brooklin client's waitTillDatastreamIsDeleted()", e);
       }
     } else {
       logger.error("Cannot delete brooklin replication stream named " + name + " because it does not exist");

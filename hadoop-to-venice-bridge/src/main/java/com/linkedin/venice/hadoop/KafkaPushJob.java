@@ -26,10 +26,12 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.text.DecimalFormat;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
+import java.util.Optional;
 import java.util.TreeMap;
 import javafx.util.Pair;
 import joptsimple.OptionParser;
@@ -157,6 +159,8 @@ public class KafkaPushJob extends AbstractJob {
    */
   public static final int INPUT_DATA_SIZE_FACTOR = 2;
 
+  private static final DecimalFormat PERCENT_FORMAT = new DecimalFormat("##.#%");
+
   // Immutable state
   private final VeniceProperties props;
   private final String id;
@@ -207,6 +211,12 @@ public class KafkaPushJob extends AbstractJob {
   private CompressionStrategy compressionStrategy;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
   private boolean isChunkingEnabled;
+
+  /** Datacenter-specific details. Stored in memory to avoid printing repetitive details. */
+  Map<String, String> previousExtraDetails = new HashMap<>();
+  /** Overall job details. Stored in memory to avoid printing repetitive details. */
+  String previousOverallDetails = null;
+
 
   // This main method is not called by azkaban, this is only for testing purposes.
   //TODO: the main method is out-of-dated. We should remove
@@ -606,18 +616,14 @@ public class KafkaPushJob extends AbstractJob {
    * exception and fail the job.
    */
   private void pollStatusUntilComplete(){
+    /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts by default */
+    int retryAttempts = this.props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
     ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
     while (keepChecking){
       Utils.sleep(5000); /* TODO better polling policy */
       keepChecking = false;
       switch (currentStatus) {
-        /* Note that we're storing a status of ERROR if the response object .isError() returns true.
-           If .isError() is false and the response object's status is ERROR we throw an exception since the job has failed
-           Otherwise we store the response object's status.
-           This is a potentially confusing overloaded use of the ERROR status, since it means something different
-             in the response object compared to the stored perDatacenterStatus.
-         */
         case COMPLETED: /* jobs done */
         case ARCHIVED: /* This shouldn't happen, but presumably wont change on further polls */
           continue;
@@ -627,31 +633,17 @@ public class KafkaPushJob extends AbstractJob {
         case STARTED:
         case END_OF_PUSH_RECEIVED:
         case PROGRESS:
-          /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts by default */
-          int retryAttempts = this.props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
-          JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(veniceControllerUrl, clusterName, topic, retryAttempts);
-          /*  Note: .isError means the status could not be queried.  This may be due to a communication error, or
-              a caught exception.
+          JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(topic, retryAttempts);
+          /**
+           * Note: {@link JobStatusQueryResponse#isError()} means the status could not be queried.
+           * This may be due to a communication error.
            */
           if (response.isError()){
-            if (currentStatus.equals(ExecutionStatus.ERROR)){ // give up if we are already errored.  For connection issues means 3 minutes of issues
-              throw new RuntimeException("Failed to connect to: " + veniceControllerUrl + " to query job status.");
-            } else {
-              logger.error("Error querying job status from: " + veniceControllerUrl + ", error message: " + response.getError());
-              currentStatus = ExecutionStatus.ERROR; /* Note: overloading usage of ERROR */
-            }
+            throw new RuntimeException("Failed to connect to: " + veniceControllerUrl + " to query job status, after " + retryAttempts + " attempts.");
           } else {
-            ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
-            long messagesConsumed = response.getMessagesConsumed();
-            long messagesAvailable = response.getMessagesAvailable();
-            String logMessage = "Overall status: " + status;
-            Map<String, String> extraInfo = response.getExtraInfo();
-            if (null != extraInfo && !extraInfo.isEmpty()) {
-              logMessage += ". Specific status: " + extraInfo;
-            }
-            logMessage += ". Consumed approximately " + messagesConsumed + " out of " + messagesAvailable + " total records.";
-            logger.info(logMessage);
+            printJobStatus(response);
 
+            ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
             /* Status of ERROR means that the job status was queried, and the job is in an error status */
             if (status.equals(ExecutionStatus.ERROR)){
               throw new RuntimeException("Push job triggered error for: " + veniceControllerUrl);
@@ -663,14 +655,63 @@ public class KafkaPushJob extends AbstractJob {
         default:
           throw new VeniceException("Unexpected status returned by job status poll: " + veniceControllerUrl);
       }
-
     }
-      /* At this point either reported success, or had connection issues */
+    /* At this point either reported success, or had connection issues */
     if (currentStatus.equals(ExecutionStatus.COMPLETED)){
       logger.info("Successfully pushed");
     } else {
       throw new VeniceException("Push failed with execution status: " + currentStatus.toString());
     }
+  }
+
+  private void printJobStatus(JobStatusQueryResponse response) {
+    String fullStatus = response.getStatus();
+    ExecutionStatus status = ExecutionStatus.valueOf(fullStatus);
+    long messagesConsumed = response.getMessagesConsumed();
+    long messagesAvailable = response.getMessagesAvailable();
+    String logMessage = "Overall status: " + fullStatus;
+    Map<String, String> extraInfo = response.getExtraInfo();
+    if (null != extraInfo && !extraInfo.isEmpty()) {
+      logMessage += ". Specific status: " + extraInfo;
+    }
+    logMessage += ". Consumed ";
+    if (status != ExecutionStatus.COMPLETED) {
+      double fractionOfMessagesConsumed = (double) messagesConsumed / (double) messagesAvailable;
+      logMessage += "~" + PERCENT_FORMAT.format(fractionOfMessagesConsumed) + " of ";
+    }
+    logMessage += Utils.makeLargeNumberPretty(messagesAvailable) + " total records.";
+    logger.info(logMessage);
+
+    Optional<String> details = response.getOptionalStatusDetails();
+    if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
+      logger.info("\t\tNew overall details: " + details.get());
+      previousOverallDetails = details.get();
+    }
+
+    Optional<Map<String, String>> extraDetails = response.getOptionalExtraDetails();
+    if (extraDetails.isPresent()) {
+      // Non-upgraded controllers will not provide these details, in which case, this will be null.
+      for (Map.Entry<String, String> entry: extraDetails.get().entrySet()) {
+        String cluster = entry.getKey();
+        String previous = previousExtraDetails.get(cluster);
+        String current = entry.getValue();
+
+        if (detailsAreDifferent(previous, current)) {
+          logger.info("\t\tNew specific details for " + cluster + ": " + current);
+          previousExtraDetails.put(cluster, current);
+        }
+      }
+    }
+  }
+
+  /**
+   * @return true if the details are different
+   */
+  private boolean detailsAreDifferent(String previous, String current) {
+    // Criteria for printing the current details:
+    boolean detailsPresentWhenPreviouslyAbsent = (null == previous && null != current);
+    boolean detailsDifferentFromPreviously = (null != previous && !previous.equals(current));
+    return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
   }
 
   private JobConf setupMRConf() {

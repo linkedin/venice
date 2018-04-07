@@ -31,6 +31,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.HelixUtils;
@@ -403,9 +404,13 @@ public class TestVeniceHelixAdmin {
 
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
     int versionNumber = version.getNumber();
-    veniceAdmin.handleVersionCreationFailure(clusterName, storeName, versionNumber);
+    String statusDetails = "synthetic error message";
+    veniceAdmin.handleVersionCreationFailure(clusterName, storeName, versionNumber, statusDetails);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);
-    Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber)).getExecutionStatus(), ExecutionStatus.ERROR);
+    Admin.OfflinePushStatusInfo offlinePushStatus = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
+    Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.ERROR);
+    Assert.assertTrue(offlinePushStatus.getStatusDetails().isPresent());
+    Assert.assertEquals(offlinePushStatus.getStatusDetails().get(), statusDetails);
   }
 
   @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)

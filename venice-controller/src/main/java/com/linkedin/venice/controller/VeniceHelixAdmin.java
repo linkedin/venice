@@ -20,6 +20,7 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.meta.*;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -491,8 +492,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // may not exist, When storage node is trying to consume the new created topic.
 
                 // We need to prepare to monitor before creating helix resource.
-                startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor,
-                    strategy);
+                startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
                 createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
             }
             return version;
@@ -501,7 +501,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             try {
                 if (version != null) {
                     failedVersionNumber = version.getNumber();
-                    handleVersionCreationFailure(clusterName, storeName, failedVersionNumber);
+                    String statusDetails = "Version creation failure, caught:\n" + ExceptionUtils.stackTraceToString(e);
+                    handleVersionCreationFailure(clusterName, storeName, failedVersionNumber, statusDetails);
                 }
             } catch (Throwable e1) {
                 logger.error("Exception occured while handling version creation failure!", e1);
@@ -514,10 +515,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
 
-    protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber){
+    protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails){
         // Mark offline push job as Error and clean up resources because add version failed.
         OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
-        offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber));
+        offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber), statusDetails);
         deleteOneStoreVersion(clusterName, storeName, versionNumber);
     }
 
@@ -1513,7 +1514,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
         OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
-        return new OfflinePushStatusInfo(monitor.getOfflinePushStatus(kafkaTopic));
+        Pair<ExecutionStatus, Optional<String>> statusAndDetails = monitor.getOfflinePushStatusAndDetails(kafkaTopic);
+        return new OfflinePushStatusInfo(statusAndDetails.getFirst(), statusAndDetails.getSecond());
     }
 
     @Override

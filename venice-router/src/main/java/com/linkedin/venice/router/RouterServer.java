@@ -482,7 +482,7 @@ public class RouterServer extends AbstractVeniceService {
         logger.error(this.toString() + " got an exception while trying to connectHelixManager()", ve);
         logger.error(this.toString() + " is about to exit");
 
-        System.exit(1);
+        System.exit(1); // TODO: Clean up all System.exit() calls... this is not proper.
       }
       // Should refresh after Helix cluster is setup
       liveInstanceMonitor.refresh();

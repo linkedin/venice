@@ -305,6 +305,25 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public JobStatusQueryResponse queryJobStatusWithRetry(String kafkaTopic, int attempts){
+    if (attempts < 1){
+      throw new VeniceException("Querying with retries requires at least one attempt, called with " + attempts + " attempts");
+    }
+    int attemptsRemaining = attempts;
+    JobStatusQueryResponse response = JobStatusQueryResponse.createErrorResponse("Request was not attempted");
+    while (attemptsRemaining > 0){
+      response = queryJobStatus(kafkaTopic); /* should always return a valid object */
+      if (! response.isError()){
+        return response;
+      } else {
+        attemptsRemaining--;
+        logger.warn("Error querying job status: " + response.getError() + " -- Retrying " + attemptsRemaining + " more times...");
+        Utils.sleep(2000);
+      }
+    }
+    return response;
+  }
+
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
@@ -317,35 +336,6 @@ public class ControllerClient implements Closeable {
     } catch (Exception e){
       return handleError(new VeniceException("Error querying job status for topic: " + kafkaTopic, e), new JobStatusQueryResponse());
     }
-  }
-
-  @Deprecated
-  public static JobStatusQueryResponse queryJobStatus(String urlsToFindMasterController, String clusterName, String kafkaTopic){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryJobStatus(kafkaTopic);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error querying job status for topic: " + kafkaTopic, e), new JobStatusQueryResponse());
-    }
-  }
-
-  //TODO: make this a class method
-  public static JobStatusQueryResponse queryJobStatusWithRetry(String urlsToFindMasterController, String clusterName, String kafkaTopic, int attempts){
-    if (attempts < 1){
-      throw new VeniceException("Querying with retries requires at least one attempt, called with " + attempts + " attempts");
-    }
-    int attemptsRemaining = attempts;
-    JobStatusQueryResponse response = JobStatusQueryResponse.createErrorResponse("Request was not attempted");
-    while (attemptsRemaining > 0){
-      response = queryJobStatus(urlsToFindMasterController, clusterName, kafkaTopic); /* should always return a valid object */
-      if (! response.isError()){
-        return response;
-      } else {
-        attemptsRemaining--;
-        logger.warn("Error querying job status: " + response.getError() + " -- Retrying " + attemptsRemaining + " more times...");
-        Utils.sleep(2000);
-      }
-    }
-    return response;
   }
 
   public MultiStoreResponse queryStoreList() {

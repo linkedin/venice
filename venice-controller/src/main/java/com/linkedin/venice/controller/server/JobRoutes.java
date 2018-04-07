@@ -75,9 +75,10 @@ public class JobRoutes {
      * delete current topic
      */
     Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(cluster, kafkaTopicName);
-    String jobStatus = offlineJobStatus.getExecutionStatus().toString();
-    responseObject.setStatus(jobStatus);
+    responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
+    responseObject.setStatusDetails(offlineJobStatus.getStatusDetails().orElse(null));
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
+    responseObject.setExtraDetails(offlineJobStatus.getExtraDetails());
 
     //TODO: available offsets finalized
     responseObject.setAvailableFinal(false);

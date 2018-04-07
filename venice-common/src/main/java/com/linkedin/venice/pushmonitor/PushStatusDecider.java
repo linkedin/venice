@@ -5,8 +5,13 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.Pair;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+import java.util.StringJoiner;
 import org.apache.log4j.Logger;
 
 
@@ -27,6 +32,10 @@ public abstract class PushStatusDecider {
    * Check the push status based on the current routing data which includes all of replicas statuses.
    */
   public ExecutionStatus checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
+    return checkPushStatusAndDetails(pushStatus, partitionAssignment).getFirst();
+  }
+
+  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetails(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
     boolean isAllPartitionCompleted = true;
     // If there are not enough partitions assigned, push could not be completed.
     // Continue to decide whether push is failed or not.
@@ -47,11 +56,10 @@ public abstract class PushStatusDecider {
 
       // Is push failed due to there is enough number of error replicas.
       if (!hasEnoughReplicasForOnePartition(replicationFactor - errorReplicasCount, replicationFactor)) {
-        logger.warn(
-            "Push for topic:" + pushStatus.getKafkaTopic() + " should fail due to too many error replicas. Partition:"
-                + partition.getId() + " strategy:" + getStrategy() + " replicationFactor:" + replicationFactor
-                + " errorReplicas:" + errorReplicasCount);
-        return ExecutionStatus.ERROR;
+        String statusDetails = "too many ERROR replicas (" + errorReplicasCount + "/" + replicationFactor
+            + ") in partition " + partition.getId() + " for OfflinePushStrategy:" + getStrategy();
+        logger.warn("Push for topic:" + pushStatus.getKafkaTopic() + " should fail because of " + statusDetails);
+        return new Pair(ExecutionStatus.ERROR, statusDetails);
       }
 
       // Is the partition has enough number of completed replicas.
@@ -65,31 +73,45 @@ public abstract class PushStatusDecider {
         isAllPartitionCompleted = false;
       }
     }
-    return isAllPartitionCompleted ? ExecutionStatus.COMPLETED : ExecutionStatus.STARTED;
+    if (isAllPartitionCompleted) {
+      return new Pair<>(ExecutionStatus.COMPLETED, Optional.empty());
+    } else {
+      return new Pair<>(ExecutionStatus.STARTED, Optional.empty());
+    }
   }
 
-  public boolean hasEnoughNodesToStartPush(OfflinePushStatus offlinePushStatus, ResourceAssignment resourceAssignment) {
+  /**
+   * @return status details: if empty, push has enough replicas in every partition, otherwise, message contains details
+   */
+  public Optional<String> hasEnoughNodesToStartPush(OfflinePushStatus offlinePushStatus, ResourceAssignment resourceAssignment) {
     if (!resourceAssignment.containsResource(offlinePushStatus.getKafkaTopic())) {
-      logger.info(
-          "Routing data repository has not create assignment for resource: " + offlinePushStatus.getKafkaTopic());
-      return false;
+      String reason = "not yet in EXTERNALVIEW";
+      logger.info("Routing data repository has not created assignment for resource: " + offlinePushStatus.getKafkaTopic()
+              + "(" + reason + ")");
+      return Optional.of(reason);
     }
     PartitionAssignment partitionAssignment =
         resourceAssignment.getPartitionAssignment(offlinePushStatus.getKafkaTopic());
     if (!partitionAssignment.hasEnoughAssignedPartitions()) {
-      logger.info("There are not enough partitions assigned to resource: " + offlinePushStatus.getKafkaTopic());
-      return false;
+      String reason = "not enough partitions in EXTERNALVIEW";
+      logger.info("There are " + reason + " assigned to resource: " + offlinePushStatus.getKafkaTopic());
+      return Optional.of(reason);
     }
-    boolean hasEnoughNodes = true;
+    ArrayList<Integer> underReplicatedPartition = new ArrayList<>();
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (!this.hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(),
           offlinePushStatus.getReplicationFactor())) {
+        underReplicatedPartition.add(partition.getId());
         logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + offlinePushStatus.getKafkaTopic());
-        hasEnoughNodes = false;
-        break;
       }
     }
-    return hasEnoughNodes;
+    if (underReplicatedPartition.isEmpty()) {
+      return Optional.empty();
+    } else {
+      String reason = underReplicatedPartition.size() + " partitions under-replicated in EXTERNALVIEW";
+      logger.info(reason + " for resource '" + offlinePushStatus.getKafkaTopic() + "': " + underReplicatedPartition.toString());
+      return Optional.of(reason);
+    }
   }
 
   public abstract OfflinePushStrategy getStrategy();

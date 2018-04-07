@@ -1038,20 +1038,28 @@ public class VeniceParentHelixAdmin implements Admin {
   protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
       Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
     Set<String> childClusters = controllerClients.keySet();
-    ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
+    ExecutionStatus currentReturnStatus = ExecutionStatus.NEW; // This status is not used for anything... Might make sense to remove it, but anyhow.
+    Optional<String> currentReturnStatusDetails = Optional.empty();
     List<ExecutionStatus> statuses = new ArrayList<>();
     Map<String, String> extraInfo = new HashMap<>();
+    Map<String, String> extraDetails = new HashMap<>();
     int failCount = 0;
     for (String cluster : childClusters){
-      JobStatusQueryResponse response = controllerClients.get(cluster).queryJobStatus(kafkaTopic);
+      ControllerClient controllerClient = controllerClients.get(cluster);
+      JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(kafkaTopic, 2); // TODO: Make retry count configurable
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
         extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
+        extraDetails.put(cluster, response.getError());
       } else {
-        ExecutionStatus thisStatus = ExecutionStatus.valueOf(response.getStatus());
-        statuses.add(thisStatus);
-        extraInfo.put(cluster, thisStatus.toString());
+        ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
+        statuses.add(status);
+        extraInfo.put(cluster, response.getStatus());
+        Optional<String> statusDetails = response.getOptionalStatusDetails();
+        if (statusDetails.isPresent()) {
+          extraDetails.put(cluster, statusDetails.get());
+        }
       }
     }
 
@@ -1087,21 +1095,25 @@ public class VeniceParentHelixAdmin implements Admin {
       // then put the topic delete into an else block under `if (failcount > 0)`
       if (failCount > 0){
         currentReturnStatus = ExecutionStatus.ERROR;
+        currentReturnStatusDetails = Optional.of(failCount + "/" + childClusters.size() + " DCs unreachable. ");
       }
 
       // TODO: Set parent controller's version status based on currentReturnStatus
       // COMPLETED -> ONLINE
       // ERROR -> ERROR
       if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
+        currentReturnStatusDetails = Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic won't be truncated");
         logger.info("The errored kafka topic: " + kafkaTopic + " won't be truncated since it will be used to investigate"
             + "some Kafka related issue");
       } else {
         logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
         truncateKafkaTopic(kafkaTopic);
+        currentReturnStatusDetails = Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
+
       }
     }
 
-    return new OfflinePushStatusInfo(currentReturnStatus, extraInfo);
+    return new OfflinePushStatusInfo(currentReturnStatus, extraInfo, currentReturnStatusDetails, extraDetails);
   }
 
   /**

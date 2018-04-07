@@ -52,9 +52,9 @@ public class TestRestartController {
     int versionNum = response.getVersion();
 
     VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getRandomRouterURL());
     Assert.assertEquals(
-        ControllerClient.queryJobStatusWithRetry(cluster.getRandomRouterURL(), cluster.getClusterName(), topicName,
-            1).getStatus(), ExecutionStatus.STARTED.toString());
+        controllerClient.queryJobStatusWithRetry(topicName,1).getStatus(), ExecutionStatus.STARTED.toString());
 
     // push some data
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -70,8 +70,7 @@ public class TestRestartController {
     // After stopping origin master, the new master could handle the push status report correctly.
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       JobStatusQueryResponse jobStatusQueryResponse =
-          ControllerClient.queryJobStatusWithRetry(cluster.getMasterVeniceController().getControllerUrl(),
-              cluster.getClusterName(), topicName, 1);
+          controllerClient.queryJobStatusWithRetry(topicName, 1);
       if (jobStatusQueryResponse.getError() != null) {
         return false;
       }
@@ -83,8 +82,7 @@ public class TestRestartController {
     String newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
     Assert.assertEquals(
-        ControllerClient.queryJobStatusWithRetry(cluster.getRandomRouterURL(), cluster.getClusterName(),
-            newTopicName, 1).getStatus(), ExecutionStatus.STARTED.toString());
+        controllerClient.queryJobStatusWithRetry(newTopicName, 1).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum + 1);
 
@@ -95,8 +93,7 @@ public class TestRestartController {
     newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
     Assert.assertEquals(
-        ControllerClient.queryJobStatusWithRetry(cluster.getRandomRouterURL(), cluster.getClusterName(),
-            newTopicName, 1).getStatus(), ExecutionStatus.STARTED.toString());
+        controllerClient.queryJobStatusWithRetry(newTopicName, 1).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum + 2);
   }

@@ -49,8 +49,8 @@ public class OfflinePushStatusTest {
 
   @Test
   public void testUpdateStatusFromSTARTED() {
-    testValidTargetStatuses(STARTED, COMPLETED, ERROR, END_OF_PUSH_RECEIVED);
-    testInvalidTargetStatuses(STARTED, STARTED, ARCHIVED, STARTED);
+    testValidTargetStatuses(STARTED, STARTED, COMPLETED, ERROR, END_OF_PUSH_RECEIVED);
+    testInvalidTargetStatuses(STARTED, ARCHIVED);
   }
 
   @Test
