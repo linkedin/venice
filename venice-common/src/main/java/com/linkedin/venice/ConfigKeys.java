@@ -423,4 +423,9 @@ public class ConfigKeys {
   public static final String ENFORCE_SECURE_ROUTER = "router.enforce.ssl";
 
   public static final String HELIX_REBALANCE_ALG = "helix.rebalance.alg";
+
+  /**
+   * Whether to establish SSL connection to Brooklin.
+   */
+  public static final String BROOKLIN_SSL_ENABLED  = "brooklin.ssl.enabled";
 }
