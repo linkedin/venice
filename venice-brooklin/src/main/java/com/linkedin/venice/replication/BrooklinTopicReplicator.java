@@ -7,7 +7,13 @@ import com.linkedin.datastream.common.Datastream;
 import com.linkedin.datastream.common.DatastreamDestination;
 import com.linkedin.datastream.common.DatastreamMetadataConstants;
 import com.linkedin.datastream.common.DatastreamSource;
+import com.linkedin.datastream.common.RestliUtils;
+import com.linkedin.r2.transport.common.bridge.client.TransportClientAdapter;
+import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.restli.client.RestClient;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -20,6 +26,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLParameters;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -50,36 +58,70 @@ public class BrooklinTopicReplicator extends TopicReplicator {
    * @param topicManager
    * @param veniceProperties
    */
-  public BrooklinTopicReplicator(TopicManager topicManager, VeniceProperties veniceProperties, VeniceWriterFactory veniceWriterFactory) {
-    this(veniceProperties.getString(BROOKLIN_CONNECTION_STRING),
+  public BrooklinTopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory, VeniceProperties veniceProperties) {
+    this(topicManager, veniceWriterFactory, veniceProperties.getString(BROOKLIN_CONNECTION_STRING),
         veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false)
             ? veniceProperties.getString(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, // ssl kafka address
                 () -> veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS))  //fall-back
             : veniceProperties.getString(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, // non-ssl kafka address
                 () -> veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS) // fall-back
             ),
-        topicManager,
         veniceProperties.getString(ConfigKeys.CLUSTER_NAME),
         veniceProperties.getString(BROOKLIN_CONNECTION_APPLICATION_ID),
-        veniceWriterFactory,
-        veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false));
+        veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false),
+        veniceProperties.getBoolean(ConfigKeys.BROOKLIN_SSL_ENABLED, false)
+            ? Optional.of(new SSLConfig(veniceProperties))
+            : Optional.empty()
+    );
   }
 
-    /**
-     * Strongly-typed constructor. Used in unit tests...
-     *
-     * @param brooklinConnectionString For connecting to the brooklin cluster, http://host:port or d2://service
-     * @param destKafkaBootstrapServers For connecting to kafka brokers, host:port
-     * @param topicManager TopicManager for checking information about the Kafka topics.
-     * @param veniceCluster Name of the venice cluster, used to create unique datastream names
-     * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
-     */
-  public BrooklinTopicReplicator(String brooklinConnectionString, String destKafkaBootstrapServers, TopicManager topicManager, String veniceCluster, String applicationId, VeniceWriterFactory veniceWriterFactory, boolean isKafkaSSL){
+  /**
+   * Strongly-typed constructor. Used in unit tests...
+   *
+   * @param brooklinConnectionString For connecting to the brooklin cluster, http://host:port or d2://service
+   * @param destKafkaBootstrapServers For connecting to kafka brokers, host:port
+   * @param topicManager TopicManager for checking information about the Kafka topics.
+   * @param veniceCluster Name of the venice cluster, used to create unique datastream names
+   * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
+   * @param sslConfig Configs required for SSL connection to Brooklin
+   */
+  public BrooklinTopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory,
+      String brooklinConnectionString, String destKafkaBootstrapServers, String veniceCluster, String applicationId,
+      boolean isKafkaSSL, Optional<SSLConfig> sslConfig) {
     super(topicManager, destKafkaBootstrapServers, veniceWriterFactory);
-    this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString);
     this.veniceCluster = veniceCluster;
     this.applicationId = applicationId;
     this.isSSLToKafka = isKafkaSSL;
+
+    if (sslConfig.isPresent()) {
+      SSLContext sslContext;
+      SSLParameters sslParameters;
+
+      try {
+        SSLEngineComponentFactoryImpl sslEngine = new SSLEngineComponentFactoryImpl(sslConfig.get().getSslEngineComponentConfig());
+        sslContext = sslEngine.getSSLContext();
+        sslParameters = sslEngine.getSSLParameters();
+      } catch (Exception e) {
+        logger.error("Failed to create ssl context and parameters", e);
+        throw new VeniceException(e);
+      }
+
+      Map<String, Object> httpConfig = new HashMap<>();
+      httpConfig.put(HttpClientFactory.HTTP_SSL_CONTEXT, sslContext);
+      httpConfig.put(HttpClientFactory.HTTP_SSL_PARAMS, sslParameters);
+
+      String canonicalUri = RestliUtils.sanitizeUri(brooklinConnectionString);
+      if (!canonicalUri.startsWith("https://")) {
+        throw new VeniceException("Expect URL starts with \"https://\", actual = " + canonicalUri);
+      }
+      RestClient restClient = new RestClient(new TransportClientAdapter(new HttpClientFactory().getClient(httpConfig)), canonicalUri);
+      DatastreamRestClientFactory.registerRestClient(canonicalUri, restClient);
+
+      this.client = DatastreamRestClientFactory.getClient(canonicalUri);
+    } else {
+      // The original non-SSL client
+      this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString);
+    }
   }
 
   @Override

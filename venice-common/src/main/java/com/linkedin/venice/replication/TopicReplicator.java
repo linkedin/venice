@@ -156,12 +156,12 @@ public abstract class TopicReplicator implements Closeable {
 
       Class<? extends TopicReplicator> topicReplicatorClass = ReflectUtils.loadClass(className);
       Class<TopicManager> param1Class = ReflectUtils.loadClass(TopicManager.class.getName());
-      Class<VeniceProperties> param2Class = ReflectUtils.loadClass(VeniceProperties.class.getName());
-      Class<VeniceWriterFactory> param3Class = ReflectUtils.loadClass(VeniceWriterFactory.class.getName());
+      Class<VeniceWriterFactory> param2Class = ReflectUtils.loadClass(VeniceWriterFactory.class.getName());
+      Class<VeniceProperties> param3Class = ReflectUtils.loadClass(VeniceProperties.class.getName());
       TopicReplicator topicReplicator = ReflectUtils.callConstructor(
           topicReplicatorClass,
           new Class[]{param1Class, param2Class, param3Class},
-          new Object[]{topicManager, veniceProperties, veniceWriterFactory});
+          new Object[]{topicManager, veniceWriterFactory, veniceProperties});
 
       return Optional.of(topicReplicator);
     } catch (Exception e) {

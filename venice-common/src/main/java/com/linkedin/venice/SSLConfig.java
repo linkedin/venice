@@ -1,8 +1,8 @@
 package com.linkedin.venice;
 
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -48,5 +48,17 @@ public class SSLConfig {
     kafkaSSLConfig.setProperty(SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG, sslSecureRandomImplementation);
 
     return kafkaSSLConfig;
+  }
+
+  public SSLEngineComponentFactoryImpl.Config getSslEngineComponentConfig(){
+    SSLEngineComponentFactoryImpl.Config config = new SSLEngineComponentFactoryImpl.Config();
+    config.setSslEnabled(true);
+    config.setKeyStoreFilePath(sslKeyStoreLocation);
+    config.setKeyStorePassword(sslKeyStorePassword);
+    config.setKeyStoreType(sslKeyStoreType);
+    config.setTrustStoreFilePassword(sslTrustStorePassword);
+    config.setTrustStoreFilePath(sslTrustStoreLocation);
+
+    return config;
   }
 }

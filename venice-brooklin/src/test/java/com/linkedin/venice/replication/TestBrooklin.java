@@ -44,34 +44,32 @@ public class TestBrooklin {
   public void testGetKafkaURL() {
     String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    String topic = "test-topic";
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     TopicManager topicManager =
         new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
-    Properties sslProps = new Properties();
-    sslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, brooklin.getBrooklinDmsUri());
-    sslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "true");
-    sslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, kafka.getSSLAddress());
-    sslProps.setProperty(ConfigKeys.CLUSTER_NAME, dummyVeniceClusterName);
-    sslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "venice-test-service");
-    sslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
 
-    VeniceProperties properties = new VeniceProperties(sslProps);
     //enable ssl
+    Properties kafkaSslProps = new Properties();
+    kafkaSslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, brooklin.getBrooklinDmsUri());
+    kafkaSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "true");
+    kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, kafka.getSSLAddress());
+    kafkaSslProps.setProperty(ConfigKeys.CLUSTER_NAME, dummyVeniceClusterName);
+    kafkaSslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "venice-test-service");
+    kafkaSslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
+
     BrooklinTopicReplicator replicator =
-        new BrooklinTopicReplicator(topicManager, properties, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()));
-    String topic = "test-topic";
-    Assert.assertEquals(replicator.getKafkaURL(topic),
-        "kafkassl://" + kafka.getSSLAddress() + "/" + topic);
+        new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaSslProps));
+    Assert.assertEquals(replicator.getKafkaURL(topic), "kafkassl://" + kafka.getSSLAddress() + "/" + topic);
+
     //disable ssl
-    Properties nonSslProps = new Properties();
-    nonSslProps.putAll(sslProps);
-    nonSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "false");
-    properties = new VeniceProperties(nonSslProps);
+    Properties kafkaNonSslProps = new Properties();
+    kafkaNonSslProps.putAll(kafkaSslProps);
+    kafkaNonSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "false");
 
     replicator =
-        new BrooklinTopicReplicator(topicManager, properties, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()));
-    Assert.assertEquals(replicator.getKafkaURL(topic),
-        "kafka://" + kafka.getAddress() + "/" + topic);
+        new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), new VeniceProperties(kafkaNonSslProps));
+    Assert.assertEquals(replicator.getKafkaURL(topic), "kafka://" + kafka.getAddress() + "/" + topic);
   }
 
   @Test
@@ -81,8 +79,9 @@ public class TestBrooklin {
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     TopicReplicator replicator =
-        new BrooklinTopicReplicator(brooklin.getBrooklinDmsUri(), kafka.getAddress(), topicManager,
-            dummyVeniceClusterName, "venice-test-service", TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), false);
+        new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
+            brooklin.getBrooklinDmsUri(), kafka.getAddress(), dummyVeniceClusterName, "venice-test-service", false,
+            Optional.empty());
 
     //Create topics
     int partitionCount = 1;
