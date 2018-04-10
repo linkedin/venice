@@ -830,26 +830,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * @return the total lag for all subscribed partitions between store-version topic and this consumption task.
-   */
-  public long getOffsetLag() {
-    if (!emitMetrics.get()) {
-      return STORE_VERSION_SHOULD_NOT_EMIT_METRICS.code;
-    }
-
-    if (partitionConsumptionStateMap.isEmpty()) {
-      return NO_SUBSCRIBED_PARTITION.code;
-    }
-
-    Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
-    long offsetLag = partitionConsumptionStateMap.entrySet().stream()
-        .map(entry -> latestOffsets.get(entry.getKey()) - entry.getValue().getOffsetRecord().getOffset())
-        .reduce(0l, (lag1, lag2) -> lag1 + lag2);
-
-    return minZeroLag(offsetLag);
-  }
-
-  /**
    * @return the total lag for all subscribed partitions between the real-time buffer topic and this consumption task.
    */
   public long getRealTimeBufferOffsetLag() {

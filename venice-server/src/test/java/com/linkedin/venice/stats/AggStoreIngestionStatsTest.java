@@ -27,7 +27,6 @@ public class AggStoreIngestionStatsTest {
     stats = new AggStoreIngestionStats(metricsRepository);
 
     StoreIngestionTask task = Mockito.mock(StoreIngestionTask.class);
-    Mockito.doReturn(1l).when(task).getOffsetLag();
     Mockito.doReturn(true).when(task).isRunning();
 
     stats.updateStoreConsumptionTask(STORE_FOO, task);
@@ -45,6 +44,5 @@ public class AggStoreIngestionStatsTest {
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--kafka_poll_result_num.Total").value(), 1d);
     Assert.assertEquals(reporter.query("." + STORE_BAR + "--kafka_poll_result_num.Total").value(), 2d);
     Assert.assertEquals(reporter.query(".total--kafka_poll_result_num.Avg").value(), 1.5d);
-    Assert.assertEquals(reporter.query("." + STORE_FOO + "--kafka_offset_lag.StoreIngestionStatsCounter").value(), 1d);
   }
 }
