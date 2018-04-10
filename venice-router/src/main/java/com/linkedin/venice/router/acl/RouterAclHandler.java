@@ -86,7 +86,10 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
                   .collect(Collectors.toList()) + "\nAccess-controlled stores: "
                   + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
               NettyUtils.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR,
-                  "ACL not found!\nPlease report the error!".getBytes(), false, ctx);
+                  ("ACL not found!\n"
+                      + "Either it has not been created, or can not be loaded.\n"
+                      + "Please create the ACL, or report the error if you know for sure that ACL exists for this store: "
+                      + storeName).getBytes(), false, ctx);
             } else {
               // Case B
               // Conditions:
