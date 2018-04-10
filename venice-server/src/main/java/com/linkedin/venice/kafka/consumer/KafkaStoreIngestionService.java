@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -163,7 +164,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
         isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs(),
         veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs(),
-        veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(), veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode());
+        veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(),
+        veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode());
   }
 
   /**
@@ -367,8 +369,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
     kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
         KafkaKeySerializer.class.getName());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
-        KafkaValueSerializer.class.getName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
         String.valueOf(storeConfig.getKafkaFetchMinSizePerSecond()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,

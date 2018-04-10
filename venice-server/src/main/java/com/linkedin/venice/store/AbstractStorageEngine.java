@@ -8,6 +8,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Map;
+import java.nio.ByteBuffer;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
@@ -226,39 +227,36 @@ public abstract class AbstractStorageEngine implements Store {
     adjustStoragePartition(storagePartitionConfig);
   }
 
-  public void put(Integer logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
+  private void validatePartitionForKey(Integer logicalPartitionId, byte[] key, String operationType) {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = "PUT request failed for Key: " + ByteUtils.toLogString(key) + " . Invalid partition id: "
-        + logicalPartitionId + " Store " + getName();
+      String errorMessage = operationType + " request failed for Key: " + ByteUtils.toLogString(key) + " . Invalid partition id: "
+          + logicalPartitionId + " Store " + getName();
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }
+  }
+
+  public void put(Integer logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
+    validatePartitionForKey(logicalPartitionId, key, "Put");
+    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    partition.put(key, value);
+  }
+
+  public void put(Integer logicalPartitionId, byte[] key, ByteBuffer value) throws VeniceException {
+    validatePartitionForKey(logicalPartitionId, key, "Put");
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
     partition.put(key, value);
   }
 
   public void delete(Integer logicalPartitionId, byte[] key) throws VeniceException {
-    Utils.notNull(key, "Key cannot be null.");
-    if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = "DELETE request failed for key: " + ByteUtils.toLogString(key) + " . Invalid partition id: "
-        + logicalPartitionId + " Store " + getName();
-      logger.error(errorMessage);
-      throw new PersistenceFailureException(errorMessage);
-    }
+    validatePartitionForKey(logicalPartitionId, key, "Delete");
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
     partition.delete(key);
   }
 
   public byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException {
-    Utils.notNull(key, "Key cannot be null.");
-    if (!containsPartition(logicalPartitionId)) {
-      String errorMessage =
-        "GET request failed for key " + ByteUtils.toLogString(key) + " . Invalid partition id: " + logicalPartitionId
-            + " Store " + getName();
-      logger.error(errorMessage);
-      throw new PersistenceFailureException(errorMessage);
-    }
+    validatePartitionForKey(logicalPartitionId, key, "Get");
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
     return partition.get(key);
   }

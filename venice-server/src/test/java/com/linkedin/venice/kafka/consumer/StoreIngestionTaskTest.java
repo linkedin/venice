@@ -304,7 +304,7 @@ public class StoreIngestionTaskTest {
             mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0,
             READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode);
-    doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -368,7 +368,7 @@ public class StoreIngestionTaskTest {
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       // Verify StorageEngine#Delete is invoked only once and with appropriate key.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);
@@ -393,7 +393,7 @@ public class StoreIngestionTaskTest {
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify it commits the offset to Offset Manager
@@ -423,12 +423,12 @@ public class StoreIngestionTaskTest {
       // Verify that after retrying 3 times, record with 'NON_EXISTING_SCHEMA_ID' was put into BDB.
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT).atLeast(3)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).
-        put(PARTITION_FOO, putKeyFoo, ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize());
+        put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize()));
 
       //Verify that the following record is consumed well.
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-        .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
+        .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize()));
 
       OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
@@ -455,7 +455,7 @@ public class StoreIngestionTaskTest {
       //so that the next record would never be put into BDB.
       verify(mockSchemaRepo, after(TEST_TIMEOUT).never()).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       verify(mockSchemaRepo, atLeastOnce()).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      verify(mockAbstractStorageEngine, never()).put(eq(PARTITION_FOO), any(), any());
+      verify(mockAbstractStorageEngine, never()).put(eq(PARTITION_FOO), any(), any(byte[].class));
 
       // Only two records(start_of_segment, start_of_push) offset were able to be recorded before thread being blocked
       verify(mockStorageMetadataService, atMost(2)).put(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
@@ -517,12 +517,12 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
 
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
     });
   }
 
@@ -533,7 +533,7 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
       doThrow(new UnsubscribedTopicPartitionException(topic, PARTITION_FOO))
@@ -986,14 +986,14 @@ public class StoreIngestionTaskTest {
       });
 
       // Verify that the storage engine got hit with every record.
-      verify(mockAbstractStorageEngine, atLeast(pushedRecords.size())).put(any(), any(), any());
+      verify(mockAbstractStorageEngine, atLeast(pushedRecords.size())).put(any(), any(), any(ByteBuffer.class));
 
       // Verify that every record hit the storage engine
       pushedRecords.entrySet().stream().forEach(entry -> {
         int partition = entry.getKey().getFirst();
         byte[] key = entry.getKey().getSecond().get();
         byte[] value = ValueRecord.create(SCHEMA_ID, entry.getValue().get()).serialize();
-        verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, value);
+        verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, ByteBuffer.wrap(value));
       });
     });
   }
@@ -1063,7 +1063,7 @@ public class StoreIngestionTaskTest {
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
 
       // Verify StorageEngine#Delete is invoked only once and with appropriate key.
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);

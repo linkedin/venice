@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -82,7 +83,6 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    * Whether the input is sorted or not.
    */
   private final boolean deferredWrite;
-
 
   public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir) {
     super(storagePartitionConfig.getPartitionId());
@@ -238,6 +238,21 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
     }
+  }
+
+  @Override
+  public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
+    /**
+     * The reason to create a new byte array to contain the value is that the overhead to create/release
+     * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
+     *
+     * In the future, if {@link SstFileWriter#put} supports byte array with offset/length, then we don't need
+     * to create a byte copy here.
+     * Same for {@link RocksDB#put}.
+     */
+    byte[] value = new byte[valueBuffer.remaining()];
+    System.arraycopy(valueBuffer.array(), valueBuffer.position(), value, 0, valueBuffer.remaining());
+    put(key, value);
   }
 
   @Override

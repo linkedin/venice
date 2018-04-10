@@ -1,11 +1,16 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -40,6 +45,21 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets);
 
+  /**
+   * This function is to simulate the deserialization logic in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
+   * to leave some room at the beginning of byte buffer of 'putValue'
+   * @param putValue
+   * @return
+   */
+  public static ByteBuffer enlargePutValueByteBuffer(ByteBuffer putValue) {
+    ByteBuffer enlargedByteBuffer = ByteBuffer.allocate(ByteUtils.SIZE_OF_INT + putValue.remaining());
+    enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
+    enlargedByteBuffer.put(putValue);
+    enlargedByteBuffer.position(ByteUtils.SIZE_OF_INT);
+
+    return enlargedByteBuffer;
+  }
+
   public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsets, long timeout) {
     drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
 
@@ -66,6 +86,22 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       long nextOffset = offsetRecord.getOffset() + 1;
       Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextOffset);
       if (message.isPresent()) {
+        if (! AdminTopicUtils.isAdminTopic(topic)) {
+          /**
+           * Skip putValue adjustment since admin consumer is still using {@link com.linkedin.venice.serialization.avro.KafkaValueSerializer}.
+           */
+          KafkaMessageEnvelope kafkaMessageEnvelope = message.get().value;
+          if (MessageType.valueOf(kafkaMessageEnvelope) == MessageType.PUT && !message.get().isPutValueChanged()) {
+            /**
+             * This is used to simulate the deserializtion in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
+             * to leave some room in {@link Put#putValue} byte buffer.
+             */
+            Put put = (Put) kafkaMessageEnvelope.payloadUnion;
+            put.putValue = enlargePutValueByteBuffer(put.putValue);
+            message.get().putValueChanged();
+          }
+        }
+
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = new ConsumerRecord<>(
             topic,
             partition,

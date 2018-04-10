@@ -220,7 +220,6 @@ public abstract class TestRestartServerDuringIngestion {
       CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
       CharSequence returnedValue = storeClient.get(key).get();
       Assert.assertEquals(returnedValue, expectedValue);
-      System.out.println("actual value: " + returnedValue);
     }
   }
 

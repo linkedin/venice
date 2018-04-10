@@ -3,7 +3,6 @@ package com.linkedin.venice.store.record;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
 
