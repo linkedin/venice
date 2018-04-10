@@ -35,11 +35,6 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     bytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
     recordsConsumedSensor = registerSensor("records_consumed", new Rate());
 
-    //KafkaOffsetLag is the lag of the most recent offsets between local kafka and storage node.
-    //If a storage node has multiple partitions for a store, they will be aggregated.
-    //Agg store doesn't have offset lag
-    registerSensor("kafka_offset_lag", new StoreIngestionStatsCounter(this, () -> storeIngestionTask.getOffsetLag()));
-
     // Measure latency of Kafka consumer poll request and processing returned consumer records
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
     pollRequestLatencySensor = registerSensor("kafka_poll_request_latency", new Avg());

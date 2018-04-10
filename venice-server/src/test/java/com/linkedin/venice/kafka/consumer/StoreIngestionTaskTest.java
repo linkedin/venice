@@ -609,35 +609,6 @@ public class StoreIngestionTaskTest {
   }
 
   /**
-   * In this test, we validate {@link StoreIngestionTask#getOffsetLag()}. This method is for monitoring the Kafka
-   * offset consumption rate. It pulls the most recent offsets from {@link TopicManager} and then compares it with
-   * local offset cache {@link StoreIngestionTask#partitionConsumptionStateMap}
-   */
-  @Test
-  public void testOffsetLag() throws Exception{
-    //The offset will be 4 and there will be 5 kafka messages generated for PARTITION_FOO and PARTITION_BAR
-    //start_of_segment, start_of_push, putKeyFoo/putValue, end_of_push, and end_of_segment
-    veniceWriter.broadcastStartOfPush(new HashMap<>());
-    veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
-    veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
-    veniceWriter.broadcastEndOfPush(new HashMap<>());
-
-    Map<Integer, Long> latestOffsetsMap = new HashMap<>();
-    latestOffsetsMap.put(PARTITION_FOO, 5l);
-    latestOffsetsMap.put(PARTITION_BAR, 6l);
-    //put an arbitrary partition which the consumer doesn't subscribe to
-    latestOffsetsMap.put(3, 3l);
-
-    doReturn(latestOffsetsMap).when(mockTopicManager).getLatestOffsets(topic);
-
-    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
-      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> storeIngestionTaskUnderTest.getOffsetLag() == 3);
-      verify(mockTopicManager, timeout(TEST_TIMEOUT).atLeastOnce()).getLatestOffsets(topic);
-    });
-  }
-
-  /**
    * This test crafts a couple of invalid message types, and expects the {@link StoreIngestionTask} to fail fast. The
    * message in {@link #PARTITION_FOO} will receive a bad message type, whereas the message in {@link #PARTITION_BAR}
    * will receive a bad control message type.

@@ -159,9 +159,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
-        storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler, veniceStore.getStoreName(), schemaRepo, topicManager,
-        ingestionStats, versionedDIVStats, storeBufferService, isStoreVersionCurrent, hybridStoreConfig,
-        veniceStore.getSourceTopicOffsetCheckIntervalMs(), veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs());
+        storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
+        veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
+        isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs(),
+        veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs());
   }
 
   /**
