@@ -24,6 +24,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 
 import org.apache.log4j.Logger;
+import org.bouncycastle.crypto.digests.MD5Digest;
+
 
 /**
  * This class maintains state about what an upstream producer has written into Kafka.
@@ -113,7 +115,6 @@ public class ProducerTracker {
 
     Segment segment = trackSegment(partition, messageEnvelope, endOfPushReceived);
     trackSequenceNumber(segment, messageEnvelope, endOfPushReceived, errorMetricCallback);
-
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, key, messageEnvelope);
 
@@ -128,7 +129,11 @@ public class ProducerTracker {
         state.debugInfo = new HashMap<>();
         state.checksumType = segment.getCheckSumType().getValue();
       }
-      state.checksumState = ByteBuffer.wrap(segment.getCheckSumState()); // TODO: Tune GC later
+      /**
+       * {@link MD5Digest#getEncodedState()} is allocating a byte array to contain the intermediate state,
+       * which is expensive. We should only invoke this closure when necessary.
+       */
+      state.checksumState = ByteBuffer.wrap(segment.getCheckSumState());
       state.segmentNumber = segment.getSegmentNumber();
       state.messageSequenceNumber = segment.getSequenceNumber();
       state.messageTimestamp = messageEnvelope.producerMetadata.messageTimestamp;
@@ -330,14 +335,18 @@ public class ProducerTracker {
    */
   private void trackCheckSum(Segment segment, KafkaKey key, KafkaMessageEnvelope messageEnvelope)
       throws CorruptDataException {
-
+    /**
+     * {@link Segment#addToCheckSum(KafkaKey, KafkaMessageEnvelope)} is an expensive operation because of the internal
+     * memory allocation.
+     * TODO: we could disable checksum validation if we think it is not necessary any more later on.
+     */
     if (segment.addToCheckSum(key, messageEnvelope)) {
       // The running checksum was updated successfully. Moving on.
     } else {
       /** We have consumed an {@link ControlMessageType#END_OF_SEGMENT}. Time to verify the checksum. */
       ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
       EndOfSegment incomingEndOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;
-      if (Arrays.equals(segment.getFinalCheckSum(), incomingEndOfSegment.checksumValue.array())) {
+      if (ByteBuffer.wrap(segment.getFinalCheckSum()).equals(incomingEndOfSegment.checksumValue)) {
         // We're good, the expected checksum matches the one we computed on the receiving end (:
         segment.end(incomingEndOfSegment.finalSegment);
       } else {

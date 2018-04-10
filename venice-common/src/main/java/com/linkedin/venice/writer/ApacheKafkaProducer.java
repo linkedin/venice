@@ -80,10 +80,19 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     // Block if buffer is full
     ensureMandatoryProp(properties, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
 
-    if (properties.contains(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
+    if (properties.containsKey(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
       LOGGER.info("Compression type explicitly specified by config: " + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
     } else {
-      properties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "lz4");
+      /**
+       * In general, 'gzip' compression ratio is the best among all the available codecs:
+       * 1. none
+       * 2. lz4
+       * 3. gzip
+       * 4. snappy
+       *
+       * We want to minimize the cross-COLO bandwidth usage.
+       */
+      properties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "gzip");
     }
 
     //Setup ssl config if needed.

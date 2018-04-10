@@ -1,9 +1,7 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
-import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
-import java.util.HashMap;
 import java.util.Map;
+import java.nio.ByteBuffer;
 import org.apache.log4j.Logger;
 
 
@@ -31,6 +29,8 @@ public abstract class AbstractStoragePartition {
    * Puts a value into the partition database
    */
   public abstract void put(byte[] key, byte[] value);
+
+  public abstract void put(byte[] key, ByteBuffer value);
 
   /**
    * Get a value from the partition database

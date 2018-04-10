@@ -737,11 +737,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
         if (deletedVersion.isPresent()) {
-            String topicNameForDeletedVersion = deletedVersion.get().kafkaTopicName();
             truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
         }
         stopMonitorOfflinePush(clusterName, resourceName);
-
     }
 
     @Override

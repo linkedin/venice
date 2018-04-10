@@ -1,6 +1,7 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.nio.ByteBuffer;
 
 
 /**
@@ -30,6 +31,9 @@ public interface Store extends QueryStore {
    */
   public void put(Integer logicalPartitionId, byte[] key, byte[] value)
       throws VeniceException;
+
+  public void put(Integer logicalPartitionId, byte[] key, ByteBuffer value)
+    throws VeniceException;
 
   /**
    * Delete entry corresponding to the given key

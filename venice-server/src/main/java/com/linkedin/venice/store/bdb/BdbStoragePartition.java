@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysItera
 import com.sleepycat.je.*;
 import java.util.Collections;
 import java.util.Map;
+import java.nio.ByteBuffer;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -80,16 +81,12 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     this.isOpen = new AtomicBoolean(true);
   }
 
-  public void put(byte[] key, byte[] value) throws VeniceException {
+  private void put(DatabaseEntry keyEntry, DatabaseEntry valueEntry) throws VeniceException {
     boolean succeeded = false;
     long startTimeNs = -1;
 
     if (logger.isTraceEnabled())
       startTimeNs = System.nanoTime();
-
-    DatabaseEntry keyEntry = new DatabaseEntry(key);
-    DatabaseEntry valueEntry = new DatabaseEntry(value);
-
     try {
       /* TODO: decide where to add code for conflict resolution
          if it is in propagation layer, then remove this comment;
@@ -112,15 +109,24 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       throw new VeniceException(e);
     } finally {
       if (logger.isTraceEnabled()) {
+        byte[] key = keyEntry.getData();
         logger.trace(succeeded ? "Successfully completed" : "Failed to complete"
-          + " PUT (" + getBdbDatabaseName() + ") to key " + key + " (keyRef: "
-          + System.identityHashCode(key) + " value " + value + " in "
-          + (System.nanoTime() - startTimeNs) + " ns at "
-          + System.currentTimeMillis());
+            + " PUT (" + getBdbDatabaseName() + ") to key " + key + " (keyRef: "
+            + System.identityHashCode(key) + " in "
+            + (System.nanoTime() - startTimeNs) + " ns at "
+            + System.currentTimeMillis());
       }
     }
   }
 
+  public void put(byte[] key, byte[] value) throws VeniceException {
+    put(new DatabaseEntry(key), new DatabaseEntry(value));
+  }
+
+  @Override
+  public void put(byte[] key, ByteBuffer value) {
+    put(new DatabaseEntry(key), new DatabaseEntry(value.array(), value.position(), value.remaining()));
+  }
 
   public byte[] get(byte[] key) throws VeniceException {
     boolean succeeded = true;

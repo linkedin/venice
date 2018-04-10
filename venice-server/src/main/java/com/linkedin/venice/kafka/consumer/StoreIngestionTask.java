@@ -35,11 +35,11 @@ import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
-import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -764,7 +764,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
       logger.info("Topic " + topic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
       return;
     }
-
     if(!shouldProcessRecord(record)) {
       return;
     }
@@ -829,11 +828,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void syncOffset(String topic,PartitionConsumptionState ps) {
+  private void syncOffset(String topic, PartitionConsumptionState ps) {
     int partition = ps.getPartition();
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
     Map<String, String> dbCheckpointingInfo = storageEngine.sync(partition);
     OffsetRecord offsetRecord = ps.getOffsetRecord();
+    /**
+     * The reason to transform the internal state only during checkpointing is that
+     * the intermediate checksum generation is an expensive operation.
+     * See {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+     * to find more details.
+     */
+    offsetRecord.transform();
     // Checkpointing info required by the underlying storage engine
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.topic, partition, offsetRecord);
@@ -1075,8 +1081,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
     } else {
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       if (offsetRecordTransformer.isPresent()) {
-        // This closure will have the side effect of altering the OffsetRecord
-        offsetRecord = offsetRecordTransformer.get().transform(offsetRecord);
+        /**
+         * The reason to transform the internal state only during checkpointing is that
+         * the intermediate checksum generation is an expensive operation.
+         * See {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+         * to find more details.
+         */
+        offsetRecord.setOffsetRecordTransformer(offsetRecordTransformer.get());
       } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
 
       offsetRecord.setOffset(consumerRecord.offset());
@@ -1114,22 +1125,29 @@ public class StoreIngestionTask implements Runnable, Closeable {
         Put put = (Put) kafkaValue.payloadUnion;
         // Validate schema id first
         checkValueSchemaAvail(put.schemaId);
-        byte[] valueBytes = put.putValue.array();
-        /** TODO: Right now, the concatenation part will allocate a new byte array and copy over schema id and data,
-          * which might cause some GC issue since this operation will be triggered for every 'PUT'.
-          * If this issue happens, we need to consider other ways to improve it:
-          * 1. Maybe we can do the concatenation in VeniceWriter, which is being used by KafkaPushJob;
-          * 2. Investigate whether DB can accept multiple binary arrays for 'PUT' operation;
-          * 3. ...
-          */
-        ValueRecord valueRecord = ValueRecord.create(put.schemaId, valueBytes);
-        storageEngine.put(partition, keyBytes, valueRecord.serialize());
+        ByteBuffer putValue = put.putValue;
+        int valueLen = putValue.remaining();
+        /**
+         * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
+         * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
+         */
+        if (putValue.position() < ByteUtils.SIZE_OF_INT) {
+          throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + ByteUtils.SIZE_OF_INT);
+        }
+        putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
+        ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
+        storageEngine.put(partition, keyBytes, putValue);
+        /**
+         * We still want to recover the original position to make this function idempotent.
+         */
+        putValue.position(putValue.position() + ByteUtils.SIZE_OF_INT);
+
         if (logger.isTraceEnabled()) {
           logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " +
                   ByteUtils.toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(put.putValue.array()) + " in " +
                   (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
-        return valueBytes == null ? 0 : valueBytes.length;
+        return valueLen;
 
       case DELETE:
         if (logger.isTraceEnabled()) {

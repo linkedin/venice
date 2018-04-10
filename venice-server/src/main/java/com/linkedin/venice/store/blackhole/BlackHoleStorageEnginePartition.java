@@ -2,6 +2,7 @@ package com.linkedin.venice.store.blackhole;
 
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
+import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
 
@@ -14,6 +15,11 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
   @Override
   public void put(byte[] key, byte[] value) {
     // ktnx
+  }
+
+  @Override
+  public void put(byte[] key, ByteBuffer value) {
+    // RAWR even faster than fastest
   }
 
   @Override

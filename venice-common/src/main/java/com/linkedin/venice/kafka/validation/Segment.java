@@ -13,6 +13,7 @@ import com.linkedin.venice.message.KafkaKey;
 
 import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
 
+import java.nio.ByteBuffer;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -169,7 +170,8 @@ public class Segment {
         updateCheckSum(key.getKey());
         Put putPayload = (Put) messageEnvelope.payloadUnion;
         updateCheckSum(putPayload.schemaId);
-        updateCheckSum(putPayload.putValue.array());
+        ByteBuffer putValue = putPayload.putValue;
+        updateCheckSum(putValue.array(), putValue.position(), putValue.remaining());
         return true;
       case DELETE:
         updateCheckSum(messageEnvelope.messageType);
@@ -189,8 +191,12 @@ public class Segment {
    * @param content to add into the running checksum
    */
   private void updateCheckSum(byte[] content) {
+    updateCheckSum(content, 0, content.length);
+  }
+
+  private void updateCheckSum(byte[] content, int startIndex, int length) {
     if (checkSum.isPresent()) {
-      checkSum.get().update(content);
+      checkSum.get().update(content, startIndex, length);
     }
   }
 

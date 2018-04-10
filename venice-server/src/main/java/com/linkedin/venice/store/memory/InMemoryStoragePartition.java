@@ -7,6 +7,7 @@ import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.Iterator;
@@ -33,13 +34,20 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
 
   public InMemoryStoragePartition(Integer partitionId) {
     super(partitionId);
-    partitionDb = new ConcurrentHashMap<ByteArray, ByteArray>();
+    partitionDb = new ConcurrentHashMap<>();
   }
 
   public void put(byte[] key, byte[] value) {
     ByteArray k = new ByteArray(key);
     ByteArray v = new ByteArray(value);
     partitionDb.put(k, v);
+  }
+
+  @Override
+  public void put(byte[] key, ByteBuffer valueBuffer) {
+    byte[] value = new byte[valueBuffer.remaining()];
+    System.arraycopy(valueBuffer.array(), valueBuffer.position(), value, 0, valueBuffer.remaining());
+    put(key, value);
   }
 
   public byte[] get(byte[] key)

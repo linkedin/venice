@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
@@ -233,7 +234,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
       SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(protocolVersion);
 
-      Decoder decoder = DECODER_FACTORY.createBinaryDecoder(
+      Decoder decoder = createBinaryDecoder(
           bytes,                         // The bytes array we wish to decode
           PAYLOAD_OFFSET,                // Where to start reading from in the bytes array
           bytes.length - PAYLOAD_OFFSET, // The length to read in the bytes array
@@ -249,6 +250,15 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     } catch (IOException e) {
       throw new VeniceMessageException(this.getClass().getSimpleName() + " failed to decode message from: " + ByteUtils.toHexString(bytes), e);
     }
+  }
+
+  protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset,
+      int length, BinaryDecoder reuse) {
+    return DECODER_FACTORY.createBinaryDecoder(bytes, offset, length, reuse);
+  }
+
+  protected SpecificDatumReader<SPECIFIC_RECORD> createSpecificDatumReader(Schema writer, Schema reader) {
+    return new SpecificDatumReader<>(writer, reader);
   }
 
   /**
@@ -326,13 +336,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
     /** Initialize {@link #readerMap} based on known protocol versions */
     for (Map.Entry<Integer, Schema> entry : protocolSchemaMap.entrySet()) {
-      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = new SpecificDatumReader<>();
-      specificDatumReader.setSchema(entry.getValue()); // Writer's schema
-      try {
-        specificDatumReader.setExpected(compiledProtocol); // Reader's schema
-      } catch (Exception e) {
-        throw new VeniceException("Failed to setup reader schema", e);
-      }
+      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = createSpecificDatumReader(entry.getValue(), compiledProtocol);
       this.readerMap.put(entry.getKey(), specificDatumReader);
     }
 

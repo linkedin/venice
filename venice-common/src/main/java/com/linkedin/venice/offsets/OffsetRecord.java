@@ -4,6 +4,7 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import org.apache.avro.Schema;
@@ -23,6 +24,8 @@ public class OffsetRecord {
   private static final String PARTITION_STATE_STRING = "PartitionState";
 
   private final PartitionState partitionState;
+
+  private Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
 
   public OffsetRecord(PartitionState partitionState) {
     this.partitionState = partitionState;
@@ -52,6 +55,26 @@ public class OffsetRecord {
 
   private static PartitionState deserializePartitionState(byte[] bytes) {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
+  }
+
+  /**
+   * This function will keep a reference of passed {@link OffsetRecordTransformer},
+   * which will be used in {@link #transform()}.
+   *
+   * @param transformer
+   */
+  public void setOffsetRecordTransformer(OffsetRecordTransformer transformer) {
+    offsetRecordTransformer = Optional.of(transformer);
+  }
+
+  /**
+   * {@link OffsetRecordTransformer#transform(OffsetRecord)} is quite expensive,
+   * so this function should be only invoked when necessary.
+   */
+  public void transform() {
+    if (offsetRecordTransformer.isPresent()) {
+      offsetRecordTransformer.get().transform(this);
+    }
   }
 
   public long getOffset() {
