@@ -97,7 +97,10 @@ ext.libraries = [ // Groovy map literal
                   // 2. TestAdminSparkServer.controllerClientCanDeleteOldVersion
                   // 3. TestAdminSparkServer.controllerClientCanDeleteAllVersion
                   // 4. TestBrooklin.canReplicateKafkaWithBrooklinTopicReplicator
-                  restliDocgen: 'com.linkedin.pegasus:restli-docgen:15.1.10'
+                  restliDocgen: 'com.linkedin.pegasus:restli-docgen:15.1.10',
+
+                  // RocksDB
+                  rocksdbjni: 'org.rocksdb:rocksdbjni:5.11.3'
 ]
 
 subprojects {

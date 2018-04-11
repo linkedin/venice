@@ -162,7 +162,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
         veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
         isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs(),
-        veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs());
+        veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs(),
+        veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(), veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode());
   }
 
   /**
@@ -176,18 +177,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
 
-    if (null != storeBufferService) {
-      storeBufferService.stop();
-    }
-
     if (consumerExecutorService != null) {
       consumerExecutorService.shutdown();
 
       try {
         consumerExecutorService.awaitTermination(5, TimeUnit.SECONDS);
       } catch(InterruptedException e) {
-        logger.info("Error shutting down consumer service ", e);
+        logger.info("Error shutting down consumer service", e);
       }
+    }
+
+    if (null != storeBufferService) {
+      storeBufferService.stop();
     }
 
     for(VeniceNotifier notifier: notifiers ) {

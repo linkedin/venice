@@ -160,13 +160,14 @@ public class ServiceFactory {
       boolean enableServerWhitelist, boolean autoJoinWhitelist) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist,
-            DEFAULT_SSL_TO_STORAGE_NODES, false));
+            DEFAULT_SSL_TO_STORAGE_NODES, false, new Properties()));
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean enableServerWhitelist, boolean autoJoinWhitelist, boolean ssl, boolean sslToKafka) {
+      boolean enableServerWhitelist, boolean autoJoinWhitelist, boolean ssl, boolean sslToKafka, Properties properties) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist, ssl, sslToKafka));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist,
+            ssl, sslToKafka, properties));
   }
 
   /**

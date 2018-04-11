@@ -22,6 +22,7 @@ public class BdbStoreTest extends AbstractStoreTest {
     String storeName = "store-test-bdb";
     VeniceProperties storeProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB);
     VeniceStoreConfig storeConfig = new VeniceStoreConfig(storeName, storeProps);
+    storeConfig.setStorePersistenceType(PersistenceType.BDB);
 
     // populate partitionNodeAssignment
     PartitionAssignmentRepository partitionAssignmentRepository = new PartitionAssignmentRepository();

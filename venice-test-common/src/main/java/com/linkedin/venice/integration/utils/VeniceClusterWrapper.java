@@ -111,7 +111,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       for (int i = 0; i < numberOfServers; i++) {
         VeniceServerWrapper veniceServerWrapper =
             ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist,
-                sslToStorageNodes, sslToKafka);
+                sslToStorageNodes, sslToKafka, new Properties());
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
       }
 
@@ -260,6 +260,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public VeniceServerWrapper addVeniceServer(boolean enableWhitelist, boolean enableAutoJoinWhiteList) {
     VeniceServerWrapper veniceServerWrapper =
         ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhiteList);
+    veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    return veniceServerWrapper;
+  }
+
+  public VeniceServerWrapper addVeniceServer(Properties properties) {
+    VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, false, false,
+        false, false, properties);
     veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     return veniceServerWrapper;
   }

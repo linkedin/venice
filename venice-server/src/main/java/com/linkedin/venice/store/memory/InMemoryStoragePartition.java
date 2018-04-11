@@ -8,6 +8,7 @@ import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionE
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import java.io.IOException;
 import java.util.AbstractMap;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,28 +57,14 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
-  public AbstractCloseablePartitionEntriesIterator partitionEntries() {
-    return new InMemoryPartitionIterator(this.partitionDb);
-  }
-
-  @Override
-  public CloseablePartitionKeysIterator partitionKeys() {
-    return new CloseablePartitionKeysIterator(partitionEntries());
-  }
-
-  @Override
-  public synchronized void truncate() {
-    partitionDb.clear();
-  }
-
-  @Override
-  public void sync() {
+  public Map<String, String> sync() {
     // no-op
+    return Collections.emptyMap();
   }
 
   @Override
   public void drop() {
-    truncate();
+    partitionDb.clear();
   }
 
   @Override
@@ -89,35 +76,5 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
     // no need to do any special check
     return true;
-  }
-
-  private class InMemoryPartitionIterator extends AbstractCloseablePartitionEntriesIterator {
-    final Iterator<Map.Entry<ByteArray, ByteArray>> partitionDbIterator;
-
-    InMemoryPartitionIterator(ConcurrentMap<ByteArray, ByteArray> partitionDb) {
-      this.partitionDbIterator = partitionDb.entrySet().iterator();
-    }
-
-    @Override
-    public void close()
-        throws IOException {
-      // Nothing to do here, since it is in memory implementation
-    }
-
-    @Override
-    public boolean fetchNextEntry() {
-      if (partitionDbIterator.hasNext()) {
-        Map.Entry<ByteArray, ByteArray> temp = partitionDbIterator.next();
-        this.currentEntry = new AbstractMap.SimpleEntry(temp.getKey().get(), temp.getValue().get());
-        return true;
-      } else {
-        return false;
-      }
-    }
-
-    @Override
-    public void remove() {
-      //To change body of implemented methods use File | Settings | File Templates.
-    }
   }
 }

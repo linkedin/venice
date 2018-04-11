@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -27,6 +28,9 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public static VeniceProperties getServerProperties(PersistenceType persistenceType, long flushIntervalMs) {
+    String databasePath = "/tmp/data/" + TestUtils.getUniqueString("unittest");
+    File dataBaseDir = new File(databasePath);
+    dataBaseDir.deleteOnExit();
     return new PropertyBuilder()
         .put(CLUSTER_NAME, "test_offset_manager")
         .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
@@ -40,7 +44,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(KAFKA_ZK_ADDRESS, "localhost:2181")
         .put(LISTENER_PORT , 7072)
         .put(ADMIN_PORT , 7073)
-        .put(DATA_BASE_PATH, "/tmp/data/" + TestUtils.getUniqueString("unittest"))
+        .put(DATA_BASE_PATH, databasePath)
         .build();
   }
 
@@ -52,6 +56,10 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   // creates instance for testStoreEngine
   public abstract void createStorageEngineForTest()
       throws Exception;
+
+  public AbstractStorageEngine getTestStoreEngine() {
+    return testStoreEngine;
+  }
 
   @Override
   public void createStoreForTest() {
@@ -196,5 +204,53 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     int unknownPartitionId = partitionId -10000;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
     testStoreEngine.adjustStoragePartition(partitionConfig);
+  }
+
+  @Test
+  public void testAdjustStoragePartitionFromTransactionalToDeferredWrite() {
+    String storeName = testStoreEngine.getName();
+    int newPartitionId = partitionId + 1;
+    StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
+    StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
+    deferredWritePartitionConfig.setDeferredWrite(true);
+    testStoreEngine.addStoragePartition(transactionalPartitionConfig);
+    // Current partition should be transactional
+    AbstractStoragePartition storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    Assert.assertNotNull(storagePartition);
+    Assert.assertTrue(storagePartition.verifyConfig(transactionalPartitionConfig));
+    Assert.assertFalse(storagePartition.verifyConfig(deferredWritePartitionConfig));
+
+    testStoreEngine.adjustStoragePartition(deferredWritePartitionConfig);
+
+    storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    Assert.assertNotNull(storagePartition);
+    Assert.assertFalse(storagePartition.verifyConfig(transactionalPartitionConfig));
+    Assert.assertTrue(storagePartition.verifyConfig(deferredWritePartitionConfig));
+
+    testStoreEngine.dropPartition(newPartitionId);
+  }
+
+  @Test
+  public void testAdjustStoragePartitionFromDeferredWriteToTransactional() {
+    String storeName = testStoreEngine.getName();
+    int newPartitionId = partitionId + 1;
+    StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
+    StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(storeName, newPartitionId);
+    deferredWritePartitionConfig.setDeferredWrite(true);
+    testStoreEngine.addStoragePartition(deferredWritePartitionConfig);
+    // Current partition should be deferred-write
+    AbstractStoragePartition storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    Assert.assertNotNull(storagePartition);
+    Assert.assertFalse(storagePartition.verifyConfig(transactionalPartitionConfig));
+    Assert.assertTrue(storagePartition.verifyConfig(deferredWritePartitionConfig));
+
+    testStoreEngine.adjustStoragePartition(transactionalPartitionConfig);
+
+    storagePartition = testStoreEngine.getStoragePartition(newPartitionId);
+    Assert.assertNotNull(storagePartition);
+    Assert.assertTrue(storagePartition.verifyConfig(transactionalPartitionConfig));
+    Assert.assertFalse(storagePartition.verifyConfig(deferredWritePartitionConfig));
+
+    testStoreEngine.dropPartition(newPartitionId);
   }
 }

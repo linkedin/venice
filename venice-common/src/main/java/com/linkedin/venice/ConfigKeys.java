@@ -143,6 +143,23 @@ public class ConfigKeys {
   public static final String SERVER_FAIR_STORAGE_EXECUTION_QUEUE = "server.fair.storage.execution.queue";
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
 
+  /**
+   * Database sync per bytes for transactional mode.
+   * This parameter will impact the sync frequency of database after batch push.
+   * For BDB-JE transactional mode, it won't matter since BDB-JE will persist every update in the database right away;
+   * For RocksDB transactional mode, it will impact the flush frequency of memtable to SST file, and normally we would
+   * like to have this config to be comparable to the memtable size;
+   */
+  public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE = "server.database.sync.bytes.interval.for.transactional.mode";
+  /**
+   * Database sync per bytes for deferred-write mode.
+   * This parameter will impact the sync frequency of database during batch push.
+   * For BDB-JE deferred-write mode, it will impact the sync frequency, but BDB-JE will do auto-flush if the memory is full;
+   * For RocksDB deferred-write mode, it will decide the file size of each SST file since every sync invocation will
+   * generate a new SST file;
+   */
+  public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.bytes.interval.for.deferred.write.mode";
+
 
 
   // Router specific configs
