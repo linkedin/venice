@@ -12,6 +12,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
+import com.linkedin.venice.store.rocksdb.RocksDBStorageEngineFactory;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Set;
@@ -57,6 +58,7 @@ public class StorageService extends AbstractVeniceService {
   private void initInternalStorageEngineFactories() {
     persistenceTypeToStorageEngineFactoryMap.put(BDB, new BdbStorageEngineFactory(serverConfig));
     persistenceTypeToStorageEngineFactoryMap.put(IN_MEMORY, new InMemoryStorageEngineFactory(serverConfig));
+    persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig));
   }
 
   private void restoreAllStores(VeniceConfigLoader configLoader) {
@@ -69,10 +71,9 @@ public class StorageService extends AbstractVeniceService {
       for (String storeName : storeNames) {
         logger.info("Start restoring store: " + storeName + " with type: " + pType);
         /**
-         * The logic is a little weird, since right now Venice doesn't have store-level persistence config.
-         * TODO: In case we want to specify different persistence type per store, this part might need to be changed.
-          */
-        VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+         * Setup store-level persistence type based on current database setup.
+         */
+        VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName, pType);
         AbstractStorageEngine storageEngine = openStore(storeConfig);
         Set<Integer> partitionIds = storageEngine.getPartitionIds();
         for (Integer partitionId : partitionIds) {
@@ -106,7 +107,7 @@ public class StorageService extends AbstractVeniceService {
    * @return Factory corresponding to the store.
    */
   public StorageEngineFactory getInternalStorageEngineFactory(VeniceStoreConfig storeConfig) {
-    PersistenceType persistenceType = storeConfig.getPersistenceType();
+    PersistenceType persistenceType = storeConfig.getStorePersistenceType();
     // Instantiate the factory for this persistence type if not already present
     if (persistenceTypeToStorageEngineFactoryMap.containsKey(persistenceType)) {
       return persistenceTypeToStorageEngineFactoryMap.get(persistenceType);
@@ -130,7 +131,14 @@ public class StorageService extends AbstractVeniceService {
       return engine;
     }
 
-    logger.info("Creating/Opening Storage Engine " + storeName);
+    /**
+     * For new store, it will use the storage engine configured in host level if it is not known.
+     */
+    if (!storeConfig.isStorePersistenceTypeKnown()) {
+      storeConfig.setStorePersistenceType(storeConfig.getPersistenceType());
+    }
+
+    logger.info("Creating/Opening Storage Engine " + storeName + " with type: " + storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     engine = factory.getStore(storeConfig);
     storeRepository.addLocalStorageEngine(engine);
@@ -149,9 +157,9 @@ public class StorageService extends AbstractVeniceService {
       logger.info(storeName + " Store could not be located, ignoring the remove partition message.");
       return;
     }
-
     storageEngine.dropPartition(partitionId);
     Set<Integer> assignedPartitions = storageEngine.getPartitionIds();
+    storeConfig.setStorePersistenceType(storageEngine.getType());
 
     logger.info("Dropped Partition " + partitionId + " Store " + storeName + " Remaining " + Arrays.toString(assignedPartitions.toArray()));
     if (assignedPartitions.isEmpty()) {

@@ -20,7 +20,7 @@ class PartitionConsumptionState {
    */
   private int processedRecordNum;
   private int processedRecordSize;
-  private int processedRecordNumSinceLastSync;
+  private long processedRecordSizeSinceLastSync;
 
   private long lastTimeOfSourceTopicOffsetLookup;
   private long sourceTopicMaxOffset;
@@ -43,7 +43,7 @@ class PartitionConsumptionState {
     this.completionReported = false;
     this.processedRecordNum = 0;
     this.processedRecordSize = 0;
-    this.processedRecordNumSinceLastSync = 0;
+    this.processedRecordSizeSinceLastSync = 0;
     this.lastTimeOfSourceTopicOffsetLookup = -1;
     this.sourceTopicMaxOffset = -1;
   }
@@ -90,7 +90,7 @@ class PartitionConsumptionState {
   public boolean isErrorReported() {
     return this.errorReported;
   }
-  public void incrProcessedRecordNum() {
+  public void incrementProcessedRecordNum() {
     ++this.processedRecordNum;
   }
   public int getProcessedRecordNum() {
@@ -99,7 +99,7 @@ class PartitionConsumptionState {
   public void resetProcessedRecordNum() {
     this.processedRecordNum = 0;
   }
-  public void incrProcessedRecordSize(int recordSize) {
+  public void incrementProcessedRecordSize(int recordSize) {
     this.processedRecordSize += recordSize;
   }
   public int getProcessedRecordSize() {
@@ -132,15 +132,17 @@ class PartitionConsumptionState {
         (hybrid ? ", lagCaughtUp=" + lagCaughtUp : "") +
         ", processedRecordNum=" + processedRecordNum +
         ", processedRecordSize=" + processedRecordSize +
+        ", processedRecordSizeSinceLastSync=" + processedRecordSizeSinceLastSync +
         '}';
   }
-  public int getProcessedRecordNumSinceLastSync() {
-    return this.processedRecordNumSinceLastSync;
+
+  public long getProcessedRecordSizeSinceLastSync() {
+    return this.processedRecordSizeSinceLastSync;
   }
-  public void incrProcessedRecordNumSinceLastSync() {
-    ++this.processedRecordNumSinceLastSync;
+  public void incrementProcessedRecordSizeSinceLastSync(int recordSize) {
+    this.processedRecordSizeSinceLastSync += recordSize;
   }
-  public void resetProcessedRecordNumSinceLastSync() {
-    this.processedRecordNumSinceLastSync = 0;
+  public void resetProcessedRecordSizeSinceLastSync() {
+    this.processedRecordSizeSinceLastSync = 0;
   }
 }

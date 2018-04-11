@@ -2,6 +2,7 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -23,6 +24,11 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
+  public PersistenceType getType() {
+    return PersistenceType.IN_MEMORY;
+  }
+
+  @Override
   protected Set<Integer> getPersistedPartitionIds() {
     // Nothing to return for InMemoryStorageEngine
     return new HashSet<>();
@@ -31,26 +37,5 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return  new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
-  }
-
-  public CloseableStoreEntriesIterator storeEntries() throws PersistenceFailureException {
-    return new CloseableStoreEntriesIterator(partitionIdToPartitionMap.values(), this);
-  }
-
-  public CloseableStoreKeysIterator storeKeys()
-    throws PersistenceFailureException {
-    return new CloseableStoreKeysIterator(storeEntries());
-  }
-
-  @Override
-  public boolean beginBatchWrites() {
-    // Nothing to do here. No batch mode supported in inMemory storage engine
-    return false;
-  }
-
-  @Override
-  public boolean endBatchWrites() {
-    // Nothing to do here. No batch mode supported in inMemory storage engine
-    return false;
   }
 }

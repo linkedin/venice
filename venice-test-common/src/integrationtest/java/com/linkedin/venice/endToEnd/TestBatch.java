@@ -36,16 +36,18 @@ import static com.linkedin.venice.utils.TestPushUtils.*; // TODO: remove this st
 //TODO: write a H2VWrapper that can handle the whole flow
 
 @Test(singleThreaded = true)
-public class TestBatch {
+public abstract class TestBatch {
   private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final String STRING_SCHEMA = "\"string\"";
 
   private VeniceClusterWrapper veniceCluster;
 
+  public abstract VeniceClusterWrapper initializeVeniceCluster();
+
   @BeforeClass
   public void setup() {
-    veniceCluster = ServiceFactory.getVeniceCluster();
+    veniceCluster = initializeVeniceCluster();
   }
 
   @AfterClass

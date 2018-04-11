@@ -3,6 +3,7 @@ package com.linkedin.venice.store.iterators;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.store.bdb.BdbStoragePartition;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import java.io.Closeable;
 import java.io.IOException;
@@ -18,12 +19,12 @@ import java.util.Map;
  */
 public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[], byte[]>>, Closeable {
 
-  final Iterator<AbstractStoragePartition> partitions;
+  final Iterator<BdbStoragePartition> partitions;
   AbstractCloseablePartitionEntriesIterator currentIterator = null;
   Map.Entry<byte[], byte[]> currentEntry = null;
   final AbstractStorageEngine storageEngine;
 
-  public CloseableStoreEntriesIterator(Collection<AbstractStoragePartition> storagePartitions,
+  public CloseableStoreEntriesIterator(Collection<BdbStoragePartition> storagePartitions,
       AbstractStorageEngine storageEngine) {
     partitions = storagePartitions.iterator();
     this.storageEngine = storageEngine;

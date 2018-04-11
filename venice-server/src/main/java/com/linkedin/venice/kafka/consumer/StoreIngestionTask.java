@@ -79,10 +79,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
 //  public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
   /** After processing the following number of messages, Venice SN will invoke throttling. */
   public static int OFFSET_THROTTLE_INTERVAL = 1000;
-  /** Record offset interval before persisting it in offset db for transaction mode database. */
-  public static int OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1000;
-  /** Record offset interval before persisting it in offset db for deferred write database. */
-  public static int OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 100000;
   private static final int MAX_CONTROL_MESSAGE_RETRIES = 3;
   private static final int MAX_IDLE_COUNTER  = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
@@ -134,6 +130,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
   //It's for stats measuring purpose
   private boolean recordsPolled = true;
 
+  /** Message bytes consuming interval before persisting offset in offset db for transactional mode database. */
+  private final long databaseSyncBytesIntervalForTransactionalMode;
+  /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
+  private final long databaseSyncBytesIntervalForDeferredWriteMode;
+
 
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
@@ -152,9 +153,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
                             int sourceTopicOffsetCheckIntervalMs,
                             long readCycleDelayMs,
-                            long emptyPollSleepMs) {
+                            long emptyPollSleepMs,
+                            long databaseSyncBytesIntervalForTransactionalMode,
+                            long databaseSyncBytesIntervalForDeferredWriteMode) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.emptyPollSleepMs = emptyPollSleepMs;
+    this.databaseSyncBytesIntervalForTransactionalMode = databaseSyncBytesIntervalForTransactionalMode;
+    this.databaseSyncBytesIntervalForDeferredWriteMode = databaseSyncBytesIntervalForDeferredWriteMode;
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -248,8 +253,17 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void adjustStorageEngine(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+  private void beginBatchWrite(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
+    Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
+    StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
+    partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
+    storeRepository.getLocalStorageEngine(topic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo);
+    logger.info("Started batch write to store: " + topic + ", partition: " + partitionId +
+        " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted);
+  }
+
+  private StoragePartitionConfig getStoragePartitionConfig(int partitionId, boolean sorted,
+      PartitionConsumptionState partitionConsumptionState) {
     StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(topic, partitionId);
     boolean deferredWrites;
     if (partitionConsumptionState.isEndOfPushReceived()) {
@@ -261,13 +275,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       deferredWrites = sorted;
     }
     storagePartitionConfig.setDeferredWrite(deferredWrites);
-    storageEngine.adjustStoragePartition(storagePartitionConfig);
-    partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
-
-    logger.info(consumerTaskId + " adjustStorageEngine() for partition: " + partitionId +
-        ", sorted: " + sorted +
-        ", push completed: " + partitionConsumptionState.isEndOfPushReceived() +
-        ", therefore -> deferredWrites will be set to: " + deferredWrites);
+    return storagePartitionConfig;
   }
 
   /**
@@ -486,6 +494,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
     consumer.close();
     isRunning.set(false);
+    logger.info("Store ingestion task for store: " + topic + " is closed");
   }
 
   /**
@@ -573,7 +582,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
                 " at consumer subscription time. We will generate a new StoreVersionState with sorted=" + sorted +
                 " and store it persistently.");
           }
-          adjustStorageEngine(partition, sorted, newPartitionConsumptionState);
+          /**
+           * Notify the underlying store engine about starting batch push.
+           */
+          beginBatchWrite(partition, sorted, newPartitionConsumptionState);
+
           notificationDispatcher.reportRestarted(newPartitionConsumptionState);
         }
         /**
@@ -776,8 +789,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
           + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", ex);
     }
 
-    partitionConsumptionState.incrProcessedRecordNum();
-    partitionConsumptionState.incrProcessedRecordSize(recordSize);
+    partitionConsumptionState.incrementProcessedRecordNum();
+    partitionConsumptionState.incrementProcessedRecordSize(recordSize);
 
     int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();
     if (processedRecordNum >= OFFSET_THROTTLE_INTERVAL ||
@@ -795,12 +808,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
       partitionConsumptionState.resetProcessedRecordSize();
     }
 
-    partitionConsumptionState.incrProcessedRecordNumSinceLastSync();
-    int offsetPersistInterval = partitionConsumptionState.isDeferredWrite() ?
-        OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE : OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE;
+    partitionConsumptionState.incrementProcessedRecordSizeSinceLastSync(recordSize);
+    long syncBytesInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncBytesIntervalForDeferredWriteMode
+        : databaseSyncBytesIntervalForTransactionalMode;
 
     // If the following condition is true, then we want to sync to disk.
-    boolean recordsProcessedAboveSyncIntervalThreshold = partitionConsumptionState.getProcessedRecordNumSinceLastSync() >= offsetPersistInterval;
+    boolean recordsProcessedAboveSyncIntervalThreshold = partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval;
     if (recordsProcessedAboveSyncIntervalThreshold) {
       syncOffset(topic, partitionConsumptionState);
     }
@@ -819,10 +832,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private void syncOffset(String topic,PartitionConsumptionState ps) {
     int partition = ps.getPartition();
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
-    storageEngine.sync(partition);
+    Map<String, String> dbCheckpointingInfo = storageEngine.sync(partition);
     OffsetRecord offsetRecord = ps.getOffsetRecord();
+    // Checkpointing info required by the underlying storage engine
+    offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.topic, partition, offsetRecord);
-    ps.resetProcessedRecordNumSinceLastSync();
+    ps.resetProcessedRecordSizeSinceLastSync();
   }
 
   public void setLastDrainerException(Exception e) {
@@ -892,10 +907,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
     Optional<StoreVersionState> storeVersionState;
     ControlMessageType type = ControlMessageType.valueOf(controlMessage);
     logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
     switch(type) {
       case START_OF_PUSH:
         StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-        adjustStorageEngine(partition, startOfPush.sorted, partitionConsumptionState);
+        /**
+         * Notify the underlying store engine about starting batch push.
+         */
+        beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
+
         notificationDispatcher.reportStarted(partitionConsumptionState);
         storeVersionState = storageMetadataService.getStoreVersionState(topic);
         if (!storeVersionState.isPresent()) {
@@ -916,13 +936,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
         } // else, no need to persist it once more.
         break;
       case END_OF_PUSH:
+        // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
+        partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
+
         /**
          * Right now, we assume there are no sorted message after EndOfPush control message.
          * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
          */
-        adjustStorageEngine(partition, false, partitionConsumptionState);
-        // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
-        partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
+        StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partition, false, partitionConsumptionState);
+        /**
+         * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
+         */
+        storageEngine.endBatchWrite(storagePartitionConfig);
 
         if (hybridStoreConfig.isPresent()) {
           notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);

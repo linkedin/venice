@@ -117,8 +117,6 @@ public class StoreIngestionTaskTest {
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
     StoreIngestionTask.OFFSET_THROTTLE_INTERVAL = 1;
-    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
-    StoreIngestionTask.OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 2;
     TEST_TIMEOUT = 500 * READ_CYCLE_DELAY_MS;
   }
 
@@ -144,6 +142,8 @@ public class StoreIngestionTaskTest {
   private StoreBufferService storeBufferService;
   private BooleanSupplier isCurrentVersion;
   private Optional<HybridStoreConfig> hybridStoreConfig;
+  private long databaseSyncBytesIntervalForTransactionalMode = 1;
+  private long databaseSyncBytesIntervalForDeferredWriteMode = 2;
 
   private static final String storeNameWithoutVersionInfo = "TestTopic";
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -213,6 +213,7 @@ public class StoreIngestionTaskTest {
 
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
+
     mockBandWidthThrottler = mock(EventThrottler.class);
     mockRecordsThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
@@ -302,7 +303,7 @@ public class StoreIngestionTaskTest {
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
             mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0,
-            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS);
+            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -484,20 +485,28 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
-       * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH} and
-       * an {@link ControlMessageType#END_OF_SEGMENT}, we need to add 2 to last data message offset.
+       * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
+       * we need to add 1 to last data message offset.
        */
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
-          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooLastOffset + 2, true)));
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
-          .put(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barLastOffset + 2, true)));
-
-      // After we verified that put() is called, the rest should be guaranteed to be finished, so no need for timeouts
-
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
+      /**
+       * It seems Mockito will mess up the verification if there are two functions with the same name:
+       * {@link StorageMetadataService#put(String, StoreVersionState)}
+       * {@link StorageMetadataService#put(String, int, OffsetRecord)}
+       *
+       * So if the first function gets invoked, Mockito will try to match the second function this test wanted,
+       * which is specified by the following statements, which will cause 'argument mismatch error'.
+       * For now, to bypass this issue, this test will try to wait the async consumption to be done before
+       * any {@link StorageMetadataService#put} function verification by verifying {@link VeniceNotifier#completed(String, int, long)}
+       * first.
+       */
+      verify(mockStorageMetadataService)
+          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooLastOffset + 1, true)));
+      verify(mockStorageMetadataService)
+          .put(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barLastOffset + 1, true)));
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-      verify(mockNotifier, atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockNotifier, atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
     });
   }
 
@@ -968,11 +977,11 @@ public class StoreIngestionTaskTest {
           deferredWritePartitionConfig.setDeferredWrite(true);
           // SOP control message and restart
           verify(mockAbstractStorageEngine, atLeast(totalNumberOfConsumptionRestarts + 1))
-              .adjustStoragePartition(deferredWritePartitionConfig);
+              .beginBatchWrite(eq(deferredWritePartitionConfig), any());
           StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, partition);
           // only happen after EOP control message
           verify(mockAbstractStorageEngine, times(1))
-              .adjustStoragePartition(transactionalPartitionConfig);
+              .endBatchWrite(transactionalPartitionConfig);
         }
       });
 
@@ -1006,15 +1015,17 @@ public class StoreIngestionTaskTest {
   }
 
   @Test
-  public void testReportProgressBeforeStart()
+  public void testNeverReportProgressBeforeStart()
       throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Read one message for each poll.
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
       verify(mockNotifier, after(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
-      // Because we have to report progress before receiving start of push, so the progress here should be 1 instead of 0.
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(topic, PARTITION_FOO, 1);
+      // The current behavior is only to sync offset/report progress after processing a pre-configured amount
+      // of messages in bytes, since control message is being counted as 0 bytes (no data persisted in disk),
+      // then no progress will be reported during start, but only for processed messages.
+      verify(mockNotifier, after(TEST_TIMEOUT).never()).progress(any(), anyInt(), anyInt());
     });
   }
 
@@ -1022,7 +1033,7 @@ public class StoreIngestionTaskTest {
   public void testOffsetPersistent()
       throws Exception {
     // Do not persist every message.
-    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1000;
+    databaseSyncBytesIntervalForTransactionalMode = 1000;
     List<Long> offsets = new ArrayList<>();
     offsets.add(5l);
     try {
@@ -1034,7 +1045,7 @@ public class StoreIngestionTaskTest {
         verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(2)).put(eq(topic), eq(PARTITION_FOO), any());
       });
     }finally {
-      StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
+      databaseSyncBytesIntervalForTransactionalMode = 1;
     }
 
   }
@@ -1059,11 +1070,7 @@ public class StoreIngestionTaskTest {
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset() + 1, true);
-      /**
-       * it's checked twice since {@link StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE}
-       * is set to 1 in unit test
-       */
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(2))
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message
       verify(mockStorageMetadataService, never())
@@ -1072,10 +1079,10 @@ public class StoreIngestionTaskTest {
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       deferredWritePartitionConfig.setDeferredWrite(true);
       verify(mockAbstractStorageEngine, times(1))
-          .adjustStoragePartition(deferredWritePartitionConfig);
+          .beginBatchWrite(eq(deferredWritePartitionConfig), any());
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1))
-          .adjustStoragePartition(transactionalPartitionConfig);
+          .endBatchWrite(transactionalPartitionConfig);
     });
   }
 

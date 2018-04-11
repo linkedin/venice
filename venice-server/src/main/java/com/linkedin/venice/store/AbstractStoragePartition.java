@@ -2,6 +2,8 @@ package com.linkedin.venice.store;
 
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 
@@ -43,37 +45,11 @@ public abstract class AbstractStoragePartition {
   public abstract void delete(byte[] key);
 
   /**
-   * Get an iterator over pairs of entries in the partition. The key is the first
-   * element in the pair and the value is the second element.
-   * <p/>
-   * Note that the iterator need not be threadsafe, and that it must be
-   * manually closed after use.
-   *
-   * @return An iterator over the entries in this AbstractStoragePartition.
-   */
-  public abstract AbstractCloseablePartitionEntriesIterator partitionEntries();
-
-  /**
-   * /**
-   * Get an iterator over keys in the partition.
-   * <p/>
-   * Note that the iterator need not be threadsafe, and that it must be
-   * manually closed after use.
-   *
-   * @return An iterator over the keys in this AbstractStoragePartition.
-   */
-  public abstract CloseablePartitionKeysIterator partitionKeys();
-
-  /**
-   * Truncate all entries in the partition.
-   *
-   */
-  public abstract void truncate();
-
-  /**
    * Sync current database.
+   *
+   * @return Database related info, which is required to be checkpointed.
    */
-  public abstract void sync();
+  public abstract Map<String, String> sync();
 
   /**
    * Drop when it is not required anymore.
@@ -91,4 +67,8 @@ public abstract class AbstractStoragePartition {
    * @return
    */
   public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
+
+  public void beginBatchWrite(Map<String, String> checkpointedInfo) {}
+
+  public void endBatchWrite() {}
 }

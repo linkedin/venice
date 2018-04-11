@@ -51,4 +51,9 @@ public class StoragePartitionConfig {
     result = 31 * result + (deferredWrite ? 1 : 0);
     return result;
   }
+
+  @Override
+  public String toString() {
+    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite;
+  }
 }
