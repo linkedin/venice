@@ -192,6 +192,16 @@ public class TestRead {
     double totalActiveConnectionCount = 0;
     double totalIdleConnectionCount = 0;
     double totalPendingConnectionRequestCount = 0;
+    double totalLocalhostActiveConnectionCount = 0;
+    double totalLocalhostIdleConnectionCount = 0;
+    double totalLocalhostPendingConnectionCount = 0;
+    double totalLocalhostMaxConnectionCount = 0;
+
+    double localhostResponseWaitingTimeForSingleGet = 0;
+    double localhostResponseWaitingTimeForMultiGet = 0;
+    double localhostRequestCount = 0;
+    double localhostRequestCountForMultiGet = 0;
+
     for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
       MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
       Map<String, ? extends Metric> metrics = metricsRepository.metrics();
@@ -211,12 +221,47 @@ public class TestRead {
       if (metrics.containsKey(".connection_pool--total_idle_connection_count.LambdaStat")) {
         totalIdleConnectionCount += metrics.get(".connection_pool--total_idle_connection_count.LambdaStat").value();
       }
+      if (metrics.containsKey(".localhost--active_connection_count.Gauge")) {
+        totalLocalhostActiveConnectionCount += metrics.get(".localhost--active_connection_count.Gauge").value();
+      }
+      if (metrics.containsKey(".localhost--idle_connection_count.Gauge")) {
+        totalLocalhostIdleConnectionCount += metrics.get(".localhost--idle_connection_count.Gauge").value();
+      }
+      if (metrics.containsKey(".localhost--pending_connection_request_count.Gauge")) {
+        totalLocalhostPendingConnectionCount += metrics.get(".localhost--pending_connection_request_count.Gauge").value();
+      }
+      if (metrics.containsKey(".localhost--max_connection_count.Gauge")) {
+        totalLocalhostMaxConnectionCount += metrics.get(".localhost--max_connection_count.Gauge").value();
+      }
+      if (metrics.containsKey(".localhost--response_waiting_time.50thPercentile")) {
+        localhostResponseWaitingTimeForSingleGet = metrics.get(".localhost--response_waiting_time.50thPercentile").value();
+      }
+      if (metrics.containsKey(".localhost--multiget_response_waiting_time.50thPercentile")) {
+        localhostResponseWaitingTimeForMultiGet = metrics.get(".localhost--multiget_response_waiting_time.50thPercentile").value();
+      }
+      if (metrics.containsKey(".localhost--request.Count")) {
+        localhostRequestCount += metrics.get(".localhost--request.Count").value();
+      }
+      if (metrics.containsKey(".localhost--multiget_request.Count")) {
+        localhostRequestCountForMultiGet += metrics.get(".localhost--multiget_request.Count").value();
+      }
     }
     Assert.assertTrue(totalMaxConnectionCount > 0, "Max connection count must be positive");
     Assert.assertTrue(connectionLeaseRequestLatencyMax > 0, "Connection lease max latency should be positive");
     Assert.assertTrue(totalActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
     Assert.assertTrue(totalPendingConnectionRequestCount == 0, "Pending connection request count should be 0 since test queries are finished");
     Assert.assertTrue(totalIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
+
+    Assert.assertTrue(totalLocalhostMaxConnectionCount > 0, "Max connection count must be positive");
+    Assert.assertTrue(totalLocalhostActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
+    Assert.assertTrue(totalLocalhostPendingConnectionCount == 0, "Pending connection request count should be 0 since test queries are finished");
+    Assert.assertTrue(totalLocalhostIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
+
+    Assert.assertTrue(localhostResponseWaitingTimeForSingleGet > 0);
+    Assert.assertTrue(localhostResponseWaitingTimeForMultiGet > 0);
+
+    Assert.assertTrue(localhostRequestCount > 0);
+    Assert.assertTrue(localhostRequestCountForMultiGet > 0);
     /**
      * Test batch get limit
      */

@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.server.StoreRepository;
@@ -16,13 +17,14 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
-  private final ExecutorService executor;
+  private final ThreadPoolExecutor executor;
   protected final StorageExecutionHandler storageExecutionHandler;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
@@ -36,9 +38,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       Optional<StaticAccessController> accessController) {
     this.serverConfig = serverConfig;
 
-    this.executor = Executors.newFixedThreadPool(
+    /**
+     * In the future, we could consider to assign a blocking queue per thread to reduce lock contention.
+     */
+    this.executor = new ThreadPoolExecutor(serverConfig.getRestServiceStorageThreadNum(),
         serverConfig.getRestServiceStorageThreadNum(),
-        new DaemonThreadFactory("StorageExecutionThread"));
+        0, TimeUnit.MILLISECONDS,
+        new LinkedBlockingQueue<>(), new DaemonThreadFactory("StorageExecutionThread"));
+    new ThreadPoolStats(metricsRepository, this.executor, "storage_execution_thread_pool");
 
     singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
