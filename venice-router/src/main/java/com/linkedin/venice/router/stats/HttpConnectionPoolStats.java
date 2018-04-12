@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.LambdaStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -8,15 +9,26 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
+import org.apache.http.conn.routing.HttpRoute;
 import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
 import org.apache.http.pool.PoolStats;
 
 
 public class HttpConnectionPoolStats extends AbstractVeniceStats {
   private List<PoolingNHttpClientConnectionManager> connectionManagerList = new ArrayList<>();
+  /**
+   * The following lock is used to protect {@link #connectionManagerList}.
+   * It is possible that this list will be modified and read at the same time.
+   * But for now, we don't create {@link PoolingNHttpClientConnectionManager} dynamically,
+   * but I think it is fine to still keep this lock to make it independent from the external logic.
+   */
   private ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+  private Map<String, RouteHttpConnectionPoolStats> routeConnectionPoolStatsMap = new ConcurrentHashMap<>();
 
   /**
    * Measure how much time to take to lease a connection from connection pool.
@@ -74,6 +86,14 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
     }
   }
 
+  /**
+   * This function is used to gradually populate per-route stats.
+   * @param hostName
+   */
+  public void addStatsForRoute(String hostName) {
+    routeConnectionPoolStatsMap.computeIfAbsent(hostName, k -> new RouteHttpConnectionPoolStats(getMetricsRepository(), hostName));
+  }
+
   private Long getAggStats(Function<PoolingNHttpClientConnectionManager, Integer> func) {
     rwLock.readLock().lock();
     try {
@@ -87,7 +107,72 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
     }
   }
 
+
   public void recordConnectionLeaseRequestLatency(long latency) {
     connectionLeaseRequestLatency.record(latency);
+  }
+
+  class RouteHttpConnectionPoolStats extends AbstractVeniceStats {
+    private String hostName;
+
+    public RouteHttpConnectionPoolStats(MetricsRepository metricsRepository, String hostName) {
+      super(metricsRepository, hostName.replace('.', '_'));
+      this.hostName = hostName;
+
+      /**
+       * Total connections being actively used
+       *
+       * Check {@link PoolStats#getLeased()} to get more details.
+       */
+      registerSensor("active_connection_count", new Gauge(
+          () -> getRouteAggStats(poolStats -> poolStats.getLeased())
+      ));
+      /**
+       * Total idle connections
+       *
+       * Check {@link PoolStats#getAvailable()} to get more details.
+       */
+      registerSensor("idle_connection_count", new Gauge(
+          () -> getRouteAggStats(poolStats -> poolStats.getAvailable())
+      ));
+
+      /**
+       * Total max connections
+       *
+       * Check {@link PoolStats#getMax()} to get more details.
+       */
+      registerSensor("max_connection_count", new Gauge(
+          () -> getRouteAggStats(poolStats -> poolStats.getMax())
+      ));
+
+      /**
+       * Total number of connection requests being blocked awaiting a free connection
+       *
+       * Check {@link PoolStats#getPending()} to get more details.
+       */
+      registerSensor("pending_connection_request_count", new Gauge(
+          () -> getRouteAggStats(poolStats -> poolStats.getPending())
+      ));
+    }
+
+    private Long getRouteAggStats(Function<PoolStats, Integer> func) {
+      rwLock.readLock().lock();
+      try {
+        long total = 0;
+        for (PoolingNHttpClientConnectionManager connectionManager : connectionManagerList) {
+          Set<HttpRoute> routeSet = connectionManager.getRoutes();
+          for (HttpRoute route : routeSet) {
+            if (route.getTargetHost().getHostName().equals(hostName)) {
+              PoolStats poolStats = connectionManager.getStats(route);
+              total += func.apply(poolStats);
+              break;
+            }
+          }
+        }
+        return total;
+      } finally {
+        rwLock.readLock().unlock();
+      }
+    }
   }
 }

@@ -24,6 +24,7 @@ import com.linkedin.venice.router.httpclient.CachedDnsResolver;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
+import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -94,6 +95,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private final HttpConnectionPoolStats poolStats;
 
+  private final RouteHttpStats routeStatsForSingleGet;
+  private final RouteHttpStats routeStatsForMultiGet;
+
+
   /**
    *
    * @param healthMonitor
@@ -116,6 +121,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     int maxConn = config.getMaxOutgoingConn();
 
     this.poolStats = new HttpConnectionPoolStats(metricsRepository, "connection_pool");
+    this.routeStatsForSingleGet = new RouteHttpStats(metricsRepository, RequestType.SINGLE_GET);
+    this.routeStatsForMultiGet = new RouteHttpStats(metricsRepository, RequestType.MULTI_GET);
 
     /**
      * Using a client pool to reduce lock contention introduced by {@link org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager#requestConnection}
@@ -152,6 +159,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Nonnull AsyncPromise<HttpResponseStatus> retryFuture,
       @Nonnull AsyncFuture<Void> timeoutFuture,
       @Nonnull Executor contextExecutor) throws RouterException {
+    long dispatchStartTSInNS = System.nanoTime();
     if (null == readRequestThrottler) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
           "Read request throttle has not been setup yet");
@@ -171,6 +179,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       hostSelected.setFailure(e);
       throw e;
     }
+    /**
+     * This function call is used to populate per-storage-node stats gradually since the connection pool
+     * is empty at the very beginning.
+     */
+    poolStats.addStatsForRoute(host.getHost());
 
     if (path.getRequestType().equals(RequestType.SINGLE_GET) &&
         handleCacheLookupAndThrottlingForSingleGetRequest((VeniceSingleGetPath)path, host, responseFuture, contextExecutor)) {
@@ -298,17 +311,20 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });
+        recordResponseWaitingTime(host.getHost(), path, dispatchStartTSInNS);
       }
 
       @Override
       public void failed(Exception ex) {
         completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, ex);
+        recordResponseWaitingTime(host.getHost(), path, dispatchStartTSInNS);
       }
 
       @Override
       public void cancelled() {
         completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR,
             new VeniceException("Request to storage node was cancelled"));
+        recordResponseWaitingTime(host.getHost(), path, dispatchStartTSInNS);
       }
 
       private void completeWithError(HttpResponseStatus status, Throwable e) {
@@ -329,6 +345,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         });
       }
     });
+  }
+
+  private void recordResponseWaitingTime(String hostName, VenicePath path, long dispatchStartTSInNS) {
+    double latencyInMS = LatencyUtils.getLatencyInMS(dispatchStartTSInNS);
+    if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
+      routeStatsForSingleGet.recordResponseWaitingTime(hostName, latencyInMS);
+    } else {
+      routeStatsForMultiGet.recordResponseWaitingTime(hostName, latencyInMS);
+    }
   }
 
   /**
