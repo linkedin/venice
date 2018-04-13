@@ -140,6 +140,7 @@ public class ConfigKeys {
   public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = "server.source.topic.offset.check.interval.ms";
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
+  public static final String SERVER_FAIR_STORAGE_EXECUTION_QUEUE = "server.fair.storage.execution.queue";
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
 
 

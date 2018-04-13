@@ -20,6 +20,7 @@ import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.queues.LabeledRunnable;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
@@ -77,10 +78,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
      *    than parallel operations gated behind a synchronization barrier before any of the response can
      *    be sent out.
      */
-    executor.submit(() -> {
-      double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
-      if (message instanceof RouterRequest) {
-        RouterRequest request = (RouterRequest) message;
+
+
+    if (message instanceof RouterRequest) {
+      RouterRequest request = (RouterRequest) message;
+      executor.submit(new LabeledRunnable(request.getStoreName(), ()-> {
+        double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
         ReadResponse response;
         try {
           switch (request.getRequestType()) {
@@ -98,11 +101,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         } catch (Exception e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
-      } else {
-        context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
-            HttpResponseStatus.INTERNAL_SERVER_ERROR));
-      }
-    });
+      }));
+    } else {
+      context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
+          HttpResponseStatus.INTERNAL_SERVER_ERROR));
+    }
+
   }
 
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
