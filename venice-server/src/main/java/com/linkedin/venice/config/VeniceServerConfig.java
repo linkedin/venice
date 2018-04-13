@@ -89,6 +89,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int nettyWorkerThreadCount;
 
+  /**
+   * Whether to use a fair queue for resource isolation in the storage execution handler.  Defaults to true
+   */
+  private final boolean fairStorageExecutionQueue;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -106,6 +111,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     sourceTopicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int)TimeUnit.SECONDS.toMillis(10)); // 10s
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
+    fairStorageExecutionQueue = serverProperties.getBoolean(SERVER_FAIR_STORAGE_EXECUTION_QUEUE, true);
   }
 
   public int getListenerPort() {
@@ -172,5 +178,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNettyWorkerThreadCount() {
     return nettyWorkerThreadCount;
+  }
+
+  public boolean isFairStorageExecutionQueue() {
+    return fairStorageExecutionQueue;
   }
 }

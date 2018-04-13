@@ -10,6 +10,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.queues.FairBlockingQueue;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
@@ -17,6 +18,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -37,13 +39,16 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       Optional<StaticAccessController> accessController) {
     this.serverConfig = serverConfig;
 
-    /**
-     * In the future, we could consider to assign a blocking queue per thread to reduce lock contention.
-     */
+    BlockingQueue<Runnable> executorQueue;
+    if (serverConfig.isFairStorageExecutionQueue()) {
+      executorQueue = new FairBlockingQueue<>();
+    } else {
+      executorQueue = new LinkedBlockingQueue<>();
+    }
     this.executor = new ThreadPoolExecutor(serverConfig.getRestServiceStorageThreadNum(),
         serverConfig.getRestServiceStorageThreadNum(),
         0, TimeUnit.MILLISECONDS,
-        new LinkedBlockingQueue<>(), new DaemonThreadFactory("StorageExecutionThread"));
+        executorQueue, new DaemonThreadFactory("StorageExecutionThread"));
     new ThreadPoolStats(metricsRepository, this.executor, "storage_execution_thread_pool");
 
     singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);

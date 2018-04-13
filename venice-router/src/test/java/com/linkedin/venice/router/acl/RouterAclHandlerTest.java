@@ -15,10 +15,14 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
+import java.util.List;
+import java.util.stream.Collectors;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
+import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatcher;
 import org.mockito.stubbing.Answer;
+import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -101,7 +105,7 @@ public class RouterAclHandlerTest {
     verify(ctx, times(4)).fireChannelRead(req);
 
     // 1 of the 4 rejects is due to internal error
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.INTERNAL_SERVER_ERROR)));
+    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
     // The other 3 are regular rejects
     verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
@@ -118,7 +122,7 @@ public class RouterAclHandlerTest {
     verify(ctx, times(12)).fireChannelRead(req);
 
     // 1 of the 4 rejects is due to internal error
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.INTERNAL_SERVER_ERROR)));
+    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
     // The other 3 are regular rejects
     verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
@@ -149,7 +153,7 @@ public class RouterAclHandlerTest {
   public void aclMissing() throws Exception {
     enumerate(_hasStore, _hasAcl, _hasAccess, _isAccessControlled, _isFailOpen);
 
-    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.INTERNAL_SERVER_ERROR)));
+    verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
     // One of the cases is impossible in reality. See RouterAclHandler.java comments
     verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
