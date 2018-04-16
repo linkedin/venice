@@ -52,7 +52,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private final Logger logger;
 
   // Config names
-  private static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
+  public static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
   public static final String CLOSE_TIMEOUT_MS = VENICE_WRITER_CONFIG_PREFIX + "close.timeout.ms";
   public static final String CHECK_SUM_TYPE = VENICE_WRITER_CONFIG_PREFIX + "checksum.type";
   public static final String ENABLE_CHUNKING = VENICE_WRITER_CONFIG_PREFIX + "chunking.enabled";
@@ -76,7 +76,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
 
   /**
-   * This controls both the Kafka producer's close timeout but also the timeout for sending large message chunks.
+   * This controls the Kafka producer's close timeout.
    */
   public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
@@ -107,6 +107,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       Time time,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
     super(topicName);
+
     this.keySerializer = keySerializer;
     this.valueSerializer = valueSerializer;
     this.time = time;
@@ -370,10 +371,16 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
       chunkedKafkaValue.payloadUnion = putPayload;
 
-      // We do not keep track of the chunk's future. If a chunk disappears, DIV should catch it downstream.
-      // TODO: Consider blocking on this future, or otherwise handling the errors...
       try {
-        sendMessage(kafkaKey, chunkedKafkaValue, partition, null).get(closeTimeOut, TimeUnit.MILLISECONDS);
+        /**
+         * Here are the reasons to do a blocking call of 'sendMessage' with 'null' callback:
+         * 1. We don't want the upper layer know the chunking logic here. Right now, if we pass the callback parameter,
+         * it will cause the job failure because the message count of sent/completed in 'VeniceReducer' won't match;
+         * 2. Blocking call could guarantee correctness;
+         * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
+         * such as timeout, retries and so on;
+         */
+        sendMessage(kafkaKey, chunkedKafkaValue, partition, null).get();
       } catch (Exception e) {
         throw new VeniceException("Caught an exception while attempting to produce a chunk of a large value into Kafka... "
             + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, serializedKey, serializedValue), e);

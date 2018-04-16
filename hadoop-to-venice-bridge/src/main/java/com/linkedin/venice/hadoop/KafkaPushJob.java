@@ -719,12 +719,28 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeStorageQuota));
     conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storageEngineOverheadRatio));
 
-    /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}. */
+    /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
+     *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
+     *  Allow overriding properties if their names start with {@link ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX}
+     **/
     for (String key : props.keySet()) {
       String lowerCase = key.toLowerCase();
       if (lowerCase.startsWith(HADOOP_PREFIX)) {
         String overrideKey = key.substring(HADOOP_PREFIX.length());
         conf.set(overrideKey, props.getString(key));
+      }
+      /**
+       * Pass Venice Writer related properties down to VeniceWriter instance in
+       * {@link VeniceReducer}.
+       */
+      if (lowerCase.startsWith(VeniceWriter.VENICE_WRITER_CONFIG_PREFIX)) {
+        conf.set(key, props.getString(key));
+      }
+      /**
+       * Pass Kafka related properties down to VeniceWriter instance in {@link VeniceReducer}.
+       */
+      if (lowerCase.startsWith(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX)) {
+        conf.set(key, props.getString(key));
       }
     }
 
