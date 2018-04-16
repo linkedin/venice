@@ -318,4 +318,11 @@ public class TestStore {
       //expected
     }
   }
+
+
+  @Test
+  public void testStoreLevelAcl(){
+    Store store = new Store("storeName", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Assert.assertTrue(store.isAccessControlled());
+  }
 }

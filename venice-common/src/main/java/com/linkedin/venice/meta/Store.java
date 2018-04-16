@@ -123,7 +123,7 @@ public class Store {
   /**
    * Store-level ACL switch. When disabled, Venice Router should accept every request.
    */
-  private boolean accessControlled = false;
+  private boolean accessControlled = true;
 
   /**
    * strategies used to compress/decompress Record's value
