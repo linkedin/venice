@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -884,6 +885,14 @@ public class TestVeniceParentHelixAdmin {
       StoreResponse childStoreResponse = controllerClient.getStore(storeName);
       Assert.assertEquals(childStoreResponse.getStore().getBatchGetLimit(), 100);
     });
+
+    // Disable router cache to test hybrid store
+    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setRouterCacheEnabled(false));
+    // Config the store to be hybrid
+    controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(100).setHybridOffsetLagThreshold(100));
+    // This command should not fail
+    controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAccessControlled(true));
+    Assert.assertFalse(controllerResponse.isError());
 
     controllerWrapper.close();
     childControllerWrapper.close();
