@@ -26,7 +26,6 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -978,7 +977,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
         VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (store.isHybrid()){
+            if (store.getPartitionCount() != partitionCount && store.isHybrid()) {
                 throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for a hybrid store");
             } else {
                 int desiredPartitionCount = partitionCount;
