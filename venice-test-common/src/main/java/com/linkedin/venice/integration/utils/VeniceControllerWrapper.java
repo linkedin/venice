@@ -41,7 +41,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController,
+      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper[] childControllers,
       VeniceProperties extraProps, String clusterToD2, boolean sslToKafka) {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
@@ -55,6 +55,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
             .put(extraProps.toProperties())
             .put(KAFKA_REPLICA_FACTOR, 1)
+            .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
             .put(DEFAULT_REPLICA_FACTOR, replicaFactor)
@@ -81,6 +82,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
+            .put(OFFLINE_JOB_START_TIMEOUT_MS, 2000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
             .put(PERSISTENCE_TYPE, PersistenceType.BDB);
@@ -96,8 +98,20 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         if (isParent) {
           // Parent controller needs config to route per-cluster requests such as job status
           // This dummy parent controller wont support such requests until we make this config configurable.
-          builder.put(CHILD_CLUSTER_WHITELIST, "cluster1");
-          builder.put(CHILD_CLUSTER_URL_PREFIX + ".cluster1", childController.getControllerUrl());
+          String clusterWhiteList = "";
+          for (int dataCenterIndex = 0; dataCenterIndex < childControllers.length; dataCenterIndex++) {
+            String childDataCenterName = "dc-" + dataCenterIndex;
+            if (!clusterWhiteList.equals("")) {
+              clusterWhiteList += ",";
+            }
+            clusterWhiteList += childDataCenterName;
+            VeniceControllerWrapper childController = childControllers[dataCenterIndex];
+            if (null == childController) {
+              throw new IllegalArgumentException("child controller at index " + dataCenterIndex + " is null!");
+            }
+            builder.put(CHILD_CLUSTER_URL_PREFIX + "." + childDataCenterName, childController.getControllerUrl());
+          }
+          builder.put(CHILD_CLUSTER_WHITELIST, clusterWhiteList);
         }
 
         VeniceProperties props = builder.build();
@@ -111,11 +125,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController,
+      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper[] childControllers,
       VeniceProperties extraProps, boolean sslToKafak) {
 
     return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps, null, sslToKafak);
+        partitionSize, delayToReblanceMS, minActiveReplica, childControllers, extraProps, null, sslToKafak);
   }
 
   @Override

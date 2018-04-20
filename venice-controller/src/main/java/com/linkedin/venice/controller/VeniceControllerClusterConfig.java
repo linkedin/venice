@@ -42,6 +42,7 @@ public class VeniceControllerClusterConfig {
   private boolean sslToKafka;
   private int helixSendMessageTimeoutMilliseconds;
   private int adminConsumptionRetryDelayMs;
+  private int adminTopicReplicationFactor;
 
   private String kafkaSecurityProtocol;
   // SSL related config
@@ -157,6 +158,10 @@ public class VeniceControllerClusterConfig {
     enableNearlinePushSSLWhitelist = props.getBoolean(ENABLE_HYBRID_PUSH_SSL_WHITELIST, true);
     pushSSLWhitelist = props.getList(PUSH_SSL_WHITELIST, new ArrayList<>());
     helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
+    adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
+    if (adminTopicReplicationFactor < 1) {
+      throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
+    }
   }
 
   public VeniceProperties getProps() {
@@ -282,5 +287,13 @@ public class VeniceControllerClusterConfig {
 
   public String getHelixRebalanceAlg() {
     return helixRebalanceAlg;
+  }
+
+  public int getAdminTopicReplicationFactor() {
+    return adminTopicReplicationFactor;
+  }
+
+  public void setAdminTopicReplicationFactor(int adminTopicReplicationFactor) {
+    this.adminTopicReplicationFactor = adminTopicReplicationFactor;
   }
 }

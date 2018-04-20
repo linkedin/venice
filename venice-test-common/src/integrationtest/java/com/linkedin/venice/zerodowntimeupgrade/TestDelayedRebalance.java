@@ -82,11 +82,16 @@ public class TestDelayedRebalance {
     String topicName = createVersionAndPushData();
     int failServerPort = stopAServer(topicName);
 
-    Thread.sleep(delayRebalanceMS / 2);
-    // With delayed reblance, helix do not move the partition to other machine during the dalyed time.
     PartitionAssignment partitionAssignment =
         cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-    Assert.assertEquals(partitionAssignment.getPartition(0).getReadyToServeInstances().size(), 1);
+    Assert.assertEquals(partitionAssignment.getPartition(0).getReadyToServeInstances().size(), 1,
+        "Right after taking down a server, the number of live instances should have dropped to 1.");
+
+    Thread.sleep(delayRebalanceMS / 2);
+
+    partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
+    Assert.assertEquals(partitionAssignment.getPartition(0).getReadyToServeInstances().size(), 1,
+        "With delayed reblance, helix should not move the partition to other machine during the delayed reblance time.");
 
     Thread.sleep(delayRebalanceMS / 2);
     // Wait rebalance happen due to timeout.

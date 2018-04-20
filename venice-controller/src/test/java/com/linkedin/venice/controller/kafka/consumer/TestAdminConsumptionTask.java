@@ -162,7 +162,7 @@ public class TestAdminConsumptionTask {
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
     return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, deepCopyOffsetManager,
-        executionIdAccessor, failureRetryTimeout, isParent, stats, 1000);
+        executionIdAccessor, failureRetryTimeout, isParent, stats, 1000, 1);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -186,22 +186,52 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
+  /**
+   * In a parent controller, when the topic doesn't exist, it should be automatically created.
+   */
   @Test (timeOut = TIMEOUT)
-  public void testRunWhenTopicNotExist() throws InterruptedException, IOException {
+  public void testRunWhenTopicDoesNotExistInParent() throws InterruptedException, IOException {
+    testRunWhenTopicDoesNotExist(true);
+  }
+
+  /**
+   * In a non-parent controller, when the topic doesn't exist, it should NOT be automatically created.
+   *
+   * N.B.: This behavior is somewhat flawed. In reality, we would want multi-colo child controllers
+   *       to be the only ones which do not auto-create topics, not all non-parent controllers.
+   *       The current behavior means that a single-colo deployment requires outside intervention
+   *       to work properly, and only multi-colo deployments auto-create the topic(s) they need.
+   */
+  @Test (timeOut = TIMEOUT)
+  public void testRunWhenTopicDoesNotExistInNonParent() throws InterruptedException, IOException {
+    testRunWhenTopicDoesNotExist(false);
+  }
+
+  private void testRunWhenTopicDoesNotExist(boolean isParent) throws InterruptedException, IOException {
     TopicManager topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>()).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
 
-    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), isParent);
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    verify(mockKafkaConsumer, never())
-        .subscribe(any(), anyInt(), any());
+    if (isParent) {
+      verify(topicManager, timeout(TIMEOUT))
+          .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true);
+      verify(mockKafkaConsumer, timeout(TIMEOUT))
+          .subscribe(any(), anyInt(), any());
+    } else {
+      verify(topicManager, never())
+          .createTopic(anyString(), anyInt(), anyInt(), anyBoolean());
+      verify(mockKafkaConsumer, never())
+          .subscribe(any(), anyInt(), any());
+    }
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
+
 
   @Test (timeOut = TIMEOUT)
   public void testRun() throws InterruptedException, IOException {
