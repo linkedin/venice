@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.commons.io.IOUtils;
@@ -125,11 +126,16 @@ public class ServiceFactory {
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}, which will be working in parent mode.
    */
-  public static VeniceControllerWrapper getVeniceParentController(String clusterName, String zkAddress, KafkaBrokerWrapper kafkaBrokerWrapper, VeniceControllerWrapper childController, boolean sslToKafka) {
+  public static VeniceControllerWrapper getVeniceParentController(
+      String clusterName,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      VeniceControllerWrapper[] childControllers,
+      boolean sslToKafka) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController, EMPTY_VENICE_PROPS, sslToKafka));
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, sslToKafka));
   }
 
   /**
@@ -209,6 +215,12 @@ public class ServiceFactory {
     return getVeniceCluster(DEFAULT_SSL_TO_STORAGE_NODES);
   }
 
+  public static VeniceClusterWrapper getVeniceCluster(String clusterName) {
+    return getVeniceCluster(clusterName, 1, 1, 1, DEFAULT_REPLICATION_FACTOR,
+        DEFAULT_PARTITION_SIZE_BYTES,false, false, DEFAULT_DELAYED_TO_REBALANCE_MS,
+        DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, DEFAULT_SSL_TO_KAFKA);
+  }
+
   //TODO There are too many parameters and options that we used to create a venice cluster wrapper.
   //TODO need a builder pattern or option class to simply this.
   public static VeniceClusterWrapper getVeniceClusterWithKafkaSSL(){
@@ -235,21 +247,39 @@ public class ServiceFactory {
         false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, sslToStorageNodes, sslToKafka);
     }
 
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
+      int replicationFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
+    return getVeniceCluster(TestUtils.getUniqueString("venice-cluster"), numberOfControllers, numberOfServers, numberOfRouter, replicationFactor, partitionSize,
+        enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
+  }
+
   // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
   // Or a builder pattern
-  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
+  public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouter,
       int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
       long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
+        VeniceClusterWrapper.generateService(clusterName, numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
             partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka));
   }
 
-  protected static VeniceClusterWrapper getVeniceClusterWrapperForMultiCluster(ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName,
-      int numberOfControllers, int numberOfServers, int numberOfRouter, int replicaFactor, int partitionSize,
-      boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToRebalanceMS, int minActiveReplica,
-      boolean sslToStorageNodes, boolean sslToKafka) {
+  protected static VeniceClusterWrapper getVeniceClusterWrapperForMultiCluster(
+      ZkServerWrapper zkServerWrapper,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      BrooklinWrapper brooklinWrapper,
+      String clusterName,
+      int numberOfControllers,
+      int numberOfServers,
+      int numberOfRouter,
+      int replicaFactor,
+      int partitionSize,
+      boolean enableWhitelist,
+      boolean enableAutoJoinWhitelist,
+      long delayToRebalanceMS,
+      int minActiveReplica,
+      boolean sslToStorageNodes,
+      boolean sslToKafka) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName,
             numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize, enableWhitelist,
@@ -262,15 +292,6 @@ public class ServiceFactory {
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES));
-  }
-
-  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
-      int numberOfServers, int numberOfRouter, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes) {
-    return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
-        VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
-            numberOfServers, numberOfRouter, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
-            delayToRebalanceMS, minActiveReplica, sslToStorageNodes));
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {

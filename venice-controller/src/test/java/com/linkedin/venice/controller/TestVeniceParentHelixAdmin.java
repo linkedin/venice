@@ -802,7 +802,7 @@ public class TestVeniceParentHelixAdmin {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            childControllerWrapper, false);
+            new VeniceControllerWrapper[]{childControllerWrapper}, false);
 
     String controllerUrl = controllerWrapper.getControllerUrl();
     String childControllerUrl = childControllerWrapper.getControllerUrl();

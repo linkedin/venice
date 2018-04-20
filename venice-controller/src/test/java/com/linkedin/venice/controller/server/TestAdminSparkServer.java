@@ -450,7 +450,7 @@ public class TestAdminSparkServer {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper parentController =
         ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
-            venice.getMasterVeniceController(), false);
+            new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
     String storeName = "controllerClientCanDeleteAllVersion";
     parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersion(cluster, storeName, 1, 1);
@@ -639,7 +639,7 @@ public class TestAdminSparkServer {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper parentController =
         ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
-            venice.getMasterVeniceController(), false);
+            new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
     String storeName = "controllerClientCanGetExecutionOfDeleteStore";
     parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersionIdempotent(cluster, storeName, "test", 1, 1, true);

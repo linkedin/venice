@@ -22,9 +22,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.multiClusterH2VProps;
-import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
-import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestMetadataOperationInMultiCluster {
@@ -99,7 +97,7 @@ public class TestMetadataOperationInMultiCluster {
     for (String clusterName : clusterNames) {
       String storeName = clusterName + storeNameSuffix;
       // Use th first cluster in config, and test could h2v find the correct cluster.
-      Properties h2vProperties = multiClusterH2VProps(multiClusterWrapper, clusterNames[0], inputDirPath, storeName);
+      Properties h2vProperties = defaultH2VProps(multiClusterWrapper.getRandomController().getControllerUrl(), inputDirPath, storeName);
       propertiesMap.put(clusterName, h2vProperties);
       Schema keySchema = recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema();
       Schema valueSchema =

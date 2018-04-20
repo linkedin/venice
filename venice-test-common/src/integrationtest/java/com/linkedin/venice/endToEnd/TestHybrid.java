@@ -49,7 +49,7 @@ public class TestHybrid {
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false);
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), venice.getMasterVeniceController(), false);
+        venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
 
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;

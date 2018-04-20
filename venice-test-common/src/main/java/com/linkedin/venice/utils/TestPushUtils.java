@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -264,11 +265,9 @@ public class TestPushUtils {
     void write(Schema recordSchema, DataFileWriter writer) throws IOException;
   }
 
-  public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
+  public static Properties defaultH2VProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
-    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
-    props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
+    props.put(KafkaPushJob.VENICE_URL_PROP, veniceUrl);
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
@@ -283,23 +282,18 @@ public class TestPushUtils {
     return props;
   }
 
+  public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
+    return defaultH2VProps(veniceCluster.getRandmonVeniceController().getControllerUrl(), inputDirPath, storeName);
+  }
+
   public static Properties sslH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
-    Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
-    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getSSLAddress());
-    props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
-    props.put(VENICE_STORE_NAME_PROP, storeName);
-    props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
-    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
-    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     // remove the path for certs and pwd, because we will get them from hadoop user credentials.
     props.remove(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);
     props.remove(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG);
     props.remove(SslConfigs.SSL_KEY_PASSWORD_CONFIG);
     props.remove(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG);
-    // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
-    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     return props;
   }
 
@@ -324,10 +318,14 @@ public class TestPushUtils {
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster, Schema recordSchema, Properties props) {
+    return createStoreForJob(veniceCluster.getClusterName(), recordSchema, props);
+  }
+
+  public static ControllerClient createStoreForJob(String veniceClusterName, Schema recordSchema, Properties props) {
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props);
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, false, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceClusterWrapper,
@@ -341,9 +339,18 @@ public class TestPushUtils {
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
-        String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed, boolean chunkingEnabled) {
+                                                   String keySchemaStr, String valueSchemaStr, Properties props,
+                                                   boolean isCompressed, boolean chunkingEnabled) {
+    return createStoreForJob(veniceCluster.getClusterName(), keySchemaStr, valueSchemaStr, props, isCompressed, chunkingEnabled);
+  }
+
+  public static ControllerClient createStoreForJob(String veniceClusterName,
+                                                   String keySchemaStr, String valueSchemaStr, Properties props,
+                                                   boolean isCompressed, boolean chunkingEnabled) {
+
+
     ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
+        new ControllerClient(veniceClusterName, props.getProperty(KafkaPushJob.VENICE_URL_PROP));
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchemaStr, valueSchemaStr);
 

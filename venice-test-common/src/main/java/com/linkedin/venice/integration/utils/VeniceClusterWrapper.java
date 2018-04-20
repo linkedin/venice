@@ -137,7 +137,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
-  static ServiceProvider<VeniceClusterWrapper> generateService(int numberOfControllers, int numberOfServers,
+  static ServiceProvider<VeniceClusterWrapper> generateService(String clusterName, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
       boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
     ZkServerWrapper zkServerWrapper = null;
@@ -153,7 +153,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
        * so we can assume they're reliable enough.
        */
-      String clusterName = TestUtils.getUniqueString("venice-cluster");
       return generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, numberOfControllers,
           numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
           delayToReblanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);

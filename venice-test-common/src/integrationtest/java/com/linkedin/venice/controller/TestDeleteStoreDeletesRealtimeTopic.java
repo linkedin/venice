@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -45,6 +46,11 @@ public class TestDeleteStoreDeletesRealtimeTopic {
       sendStreamingRecord(veniceProducer, storeName, i);
     }
     veniceProducer.stop();
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 1, "The empty push has not activated yet...");
+    });
 
     AvroGenericStoreClient client =
         ClientFactory.getAndStartGenericAvroClient(

@@ -37,6 +37,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
@@ -73,6 +74,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final AdminConsumptionStats stats;
   private final long failureRetryTimeoutMs;
   private final int readRetryDelayMs;
+  private final int adminTopicReplicationFactor;
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
@@ -103,7 +105,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                               long failureRetryTimeoutMs,
                               boolean isParentController,
                               AdminConsumptionStats stats,
-                              int readRetryDelayMs) {
+                              int readRetryDelayMs,
+                              int adminTopicReplicationFactor) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
@@ -120,6 +123,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.topicExists = false;
     this.stats = stats;
     this.readRetryDelayMs = readRetryDelayMs;
+    this.adminTopicReplicationFactor = adminTopicReplicationFactor;
 
     this.consumer = consumer;
     this.offsetManager = offsetManager;
@@ -135,7 +139,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   @Override
   public void run() { //TODO: clean up this method.  We've got nested loops checking the same conditions
     logger.info("Running " + this.getClass().getSimpleName());
-    int noTopicCounter = 0;
+    long lastLogTime = 0;
     while (isRunning.get()) {
       try {
         Utils.sleep(READ_CYCLE_DELAY_MS);
@@ -144,11 +148,21 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (!isSubscribed) {
             // check whether the admin topic exists or not
             if (!whetherTopicExists(topic)) {
-              if (noTopicCounter % 60 == 0) { // To reduce log bloat, only log once per minute
-                logger.info("Admin topic: " + topic + " hasn't been created yet");
+              String logMesssage = "Admin topic: " + topic + " hasn't been created yet. ";
+              if (isParentController) {
+                logger.info(logMesssage + "Since this is the parent controller, it will be created it now.");
+                admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true);
+              } else {
+                // Child controllers should wait for MM to replicate the admin topic's existence.
+                if (System.currentTimeMillis() - lastLogTime > 60 * Time.MS_PER_SECOND) { // To reduce log bloat, only log once per minute
+                  logger.info(logMesssage + "Since this is a child controller, it will not be created by this process.");
+                  lastLogTime = System.currentTimeMillis();
+                }
+                continue;
               }
-              noTopicCounter++;
-              continue;
+            } else {
+              // Topic not created by this process, so we ensure it has the right retention.
+              makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
             }
             lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
             // First let's try to restore the state retrieved from the OffsetManager
@@ -166,8 +180,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
             isSubscribed = true;
             logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
-            makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
-            logger.info("Admin topic: " + topic + " has been updated to use infinite retention policy");
           }
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           if (null == records) {
@@ -237,9 +249,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void makeSureAdminTopicUsingInfiniteRetentionPolicy(String topicName) {
-    if (whetherTopicExists(topicName)) {
-      admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
-    }
+    admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
+    logger.info("Admin topic: " + topic + " has been updated to use infinite retention policy");
   }
 
   /**

@@ -28,7 +28,7 @@ public class AdminChannelWithSSL {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            childControllerWrapper, true);
+            new VeniceControllerWrapper[]{childControllerWrapper}, true);
 
     String controllerUrl = controllerWrapper.getControllerUrl();
     // Adding store
