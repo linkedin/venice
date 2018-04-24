@@ -19,10 +19,14 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
 
   static final Logger logger = Logger.getLogger(DefaultVenicePartitioner.class);
 
-  public static final String HASH_ALGORITHM_KEY = "partitioner.hash.algorithm";
-  public static final String DEFAULT_HASH_ALGORITHM = "MD5";
-
-  private final String hashAlgorithm = props.getString(HASH_ALGORITHM_KEY, DEFAULT_HASH_ALGORITHM);
+  public static final String MD5_HASH_ALGORITHM = "MD5";
+  private static final ThreadLocal<MessageDigest> messageDigestThreadLocal = ThreadLocal.withInitial(() -> {
+    try {
+      return MessageDigest.getInstance(MD5_HASH_ALGORITHM);
+    } catch (NoSuchAlgorithmException e) {
+      throw new VeniceException("Failed to initialize MD5 hash MessageDigest");
+    }
+  });
 
   public DefaultVenicePartitioner() {
     super();
@@ -33,33 +37,30 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
   }
 
   public int getPartitionId(byte[] keyBytes, int numPartitions) {
-    try {
 
-      MessageDigest md = MessageDigest.getInstance(hashAlgorithm);
-      md.update(keyBytes);
+    MessageDigest md = messageDigestThreadLocal.get();
+    md.update(keyBytes);
 
-      byte[] byteData = md.digest();
+    byte[] byteData = md.digest();
 
-      // find partition value from basic modulus algorithm
-      int modulo = 0;
-      int digit = 0;
-      for (int i = 0; i < byteData.length; i++) {
-        // Convert byte (-128..127) to int 0..255
-        digit = byteData[i] & 0xFF;
-        modulo = (modulo * 256 + digit) % numPartitions;
-      }
-
-      int partition = Math.abs(modulo % numPartitions);
-
-      if (logger.isDebugEnabled()) {
-        logger.debug("Using hash algorithm: " + ByteUtils.toLogString(keyBytes) + " goes to partitionId " + partition
-            + " out of " + numPartitions);
-      }
-
-      md.reset();
-      return partition;
-    } catch (NoSuchAlgorithmException e) {
-      throw new VeniceException(" Hashing algorithm given is not recognized: " + hashAlgorithm);
+    // find partition value from basic modulus algorithm
+    int modulo = 0;
+    int digit = 0;
+    for (int i = 0; i < byteData.length; i++) {
+      // Convert byte (-128..127) to int 0..255
+      digit = byteData[i] & 0xFF;
+      modulo = (modulo * 256 + digit) % numPartitions;
     }
+
+    int partition = Math.abs(modulo % numPartitions);
+
+    if (logger.isDebugEnabled()) {
+      logger.debug("Using hash algorithm: " + ByteUtils.toLogString(keyBytes) + " goes to partitionId " + partition
+          + " out of " + numPartitions);
+    }
+
+    md.reset();
+    return partition;
+
   }
 }
