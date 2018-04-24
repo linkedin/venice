@@ -66,7 +66,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
       try {
         return createMD5MessageDigest();
       } catch (NoSuchAlgorithmException e) {
-        return null;
+        throw new VeniceException("Failed to create MD5 MessageDigest");
       }
     });
 
