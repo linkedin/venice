@@ -294,17 +294,20 @@ public class RouterServer extends AbstractVeniceService {
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
             config.getClusterToD2Map());
-    VenicePathParser pathParser = new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder,
-        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository);
-    // Setup stat tracking for exceptional case
-    RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
-    RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
         config.isStickyRoutingEnabledForSingleGet(),
         config.isStickyRoutingEnabledForMultiGet(),
         statsForSingleGet, statsForMultiGet,
         liveInstanceMonitor);
+
+    VenicePathParser pathParser = new VenicePathParser(new VeniceVersionFinder(metadataRepository, Optional.of(routingDataRepository)), partitionFinder,
+        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository);
+    // Setup stat tracking for exceptional case
+    RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
+    RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
+
+
 
     // Fixed retry future
     AsyncFuture<LongSupplier> singleGetRetryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryForSingleGetThresholdMs());

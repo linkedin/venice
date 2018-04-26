@@ -10,6 +10,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.Base64;
+import java.util.Optional;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -32,7 +33,7 @@ public class TestVenicePathParser {
     ReadOnlyStoreRepository mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
-    return new VeniceVersionFinder(mockMetadataRepository);
+    return new VeniceVersionFinder(mockMetadataRepository, Optional.empty());
   }
 
   AggRouterHttpRequestStats getMockedStats() {
