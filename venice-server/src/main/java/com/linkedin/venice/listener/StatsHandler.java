@@ -8,7 +8,9 @@ import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
+import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpServerCodec;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -35,6 +37,33 @@ public class StatsHandler extends ChannelDuplexHandler {
    */
   private boolean statCallbackExecuted = false;
   private double storageExecutionSubmissionWaitTime;
+
+  /**
+   * Normally, one multi-get request will be split into two parts, and it means
+   * {@link StatsHandler#channelRead(ChannelHandlerContext, Object)} will be invoked twice.
+   *
+   * 'firstPartLatency' will measure the time took by:
+   * {@link StatsHandler}
+   * {@link HttpServerCodec}
+   * {@link HttpObjectAggregator}
+   *
+   * 'partsInvokeDelayLatency' will measure the delay between the invocation of part1
+   * and the invocation of part2;
+   *
+   * 'secondPartLatency' will measure the time took by:
+   * {@link StatsHandler}
+   * {@link HttpServerCodec}
+   * {@link HttpObjectAggregator}
+   * {@link VerifySslHandler}
+   * {@link ServerAclHandler}
+   * {@link GetRequestHttpHandler}
+   * {@link StorageExecutionHandler}
+   *
+   */
+  private double firstPartLatency = -1;
+  private double secondPartLatency = -1;
+  private double partsInvokeDelayLatency = -1;
+  private int requestPartCount = -1;
 
   public void setResponseStatus(HttpResponseStatus status) {
     this.responseStatus = status;
@@ -92,6 +121,9 @@ public class StatsHandler extends ChannelDuplexHandler {
     if (newRequest) {
       // Reset for every request
       startTimeInNS = System.nanoTime();
+      partsInvokeDelayLatency = -1;
+      secondPartLatency = -1;
+      requestPartCount = 1;
       isHealthCheck = false;
       responseStatus = null;
       statCallbackExecuted = false;
@@ -101,9 +133,21 @@ public class StatsHandler extends ChannelDuplexHandler {
       successRequestKeyCount = -1;
       multiChunkLargeValueCount = -1;
 
+      /**
+       * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
+       * registered by the pipeline to be executed in the same thread.
+       */
       newRequest = false;
+      ctx.fireChannelRead(msg);
+      firstPartLatency = LatencyUtils.getLatencyInMS(startTimeInNS);
+    } else {
+      // Only works for multi-get request.
+      long startTimeOfPart2InNS = System.nanoTime();
+      partsInvokeDelayLatency = LatencyUtils.convertLatencyFromNSToMS(startTimeOfPart2InNS - startTimeInNS);
+      ctx.fireChannelRead(msg);
+      secondPartLatency = LatencyUtils.getLatencyInMS(startTimeOfPart2InNS);
+      ++requestPartCount;
     }
-    ctx.fireChannelRead(msg);
   }
 
   @Override
@@ -160,6 +204,18 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (successRequestKeyCount > 0) {
         currentStats.recordSuccessRequestKeyCount(storeName, successRequestKeyCount);
+      }
+      if (firstPartLatency > 0) {
+        currentStats.recordRequestFirstPartLatency(storeName, firstPartLatency);
+      }
+      if (partsInvokeDelayLatency > 0) {
+        currentStats.recordRequestPartsInvokeDelayLatency(storeName, partsInvokeDelayLatency);
+      }
+      if (secondPartLatency > 0) {
+        currentStats.recordRequestSecondPartLatency(storeName, secondPartLatency);
+      }
+      if (requestPartCount > 0) {
+        currentStats.recordRequestPartCount(storeName, requestPartCount);
       }
     }
   }

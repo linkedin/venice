@@ -25,6 +25,11 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor successRequestKeyCountSensor;
   private final Sensor storageExecutionHandlerSubmissionWaitTime;
 
+  private final Sensor requestFirstPartLatencySensor;
+  private final Sensor requestSecondPartLatencySensor;
+  private final Sensor requestPartsInvokeDelayLatencySensor;
+  private final Sensor requestPartCountSensor;
+
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
@@ -104,6 +109,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
         new Avg(), new Max());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
+
+    requestFirstPartLatencySensor = registerSensor("request_first_part_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_first_part_latency")));
+    requestSecondPartLatencySensor = registerSensor("request_second_part_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_second_part_latency")));
+    requestPartsInvokeDelayLatencySensor = registerSensor("request_parts_invoke_delay_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_parts_invoke_delay_latency")));
+    requestPartCountSensor = registerSensor("request_part_count", new Avg(), new Max());
   }
 
   public void recordSuccessRequest() {
@@ -145,5 +158,21 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
   public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
     storageExecutionHandlerSubmissionWaitTime.record(submissionWaitTime);
+  }
+
+  public void recordRequestFirstPartLatency(double latency) {
+    requestFirstPartLatencySensor.record(latency);
+  }
+
+  public void recordRequestSecondPartLatency(double latency) {
+    requestSecondPartLatencySensor.record(latency);
+  }
+
+  public void recordRequestPartsInvokeDelayLatency(double latency) {
+    requestPartsInvokeDelayLatencySensor.record(latency);
+  }
+
+  public void recordRequestPartCount(int partCount) {
+    requestPartCountSensor.record(partCount);
   }
 }
