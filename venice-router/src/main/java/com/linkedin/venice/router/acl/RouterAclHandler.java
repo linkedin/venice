@@ -80,12 +80,12 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               // Root cause:
               //   Requested resource exists but does not have ACL.
               // Action:
-              //   return 500 Internal Server Error
-              logger.error("Requested store does not have ACL: " + errLine);
-              logger.warn("\nExisting stores: " + metadataRepository.getAllStores().stream().map(Store::getName).sorted()
+              //   return 401 Unauthorized
+              logger.warn("Requested store does not have ACL: " + errLine);
+              logger.debug("\nExisting stores: " + metadataRepository.getAllStores().stream().map(Store::getName).sorted()
                   .collect(Collectors.toList()) + "\nAccess-controlled stores: "
                   + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
-              NettyUtils.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR,
+              NettyUtils.setupResponseAndFlush(HttpResponseStatus.UNAUTHORIZED,
                   ("ACL not found!\n"
                       + "Either it has not been created, or can not be loaded.\n"
                       + "Please create the ACL, or report the error if you know for sure that ACL exists for this store: "
@@ -109,7 +109,10 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               // Action:
               //   return 403 Forbidden
               logger.debug("Unauthorized access rejected: " + errLine);
-              NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+              NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN,
+                  ("Access denied!\n"
+                      + "If you are the store owner, add yourself to the store ACL.\n"
+                      + "Otherwise, ask the store owner for read permission.").getBytes(), false, ctx);
             }
           }
         } catch (AclException e) {
