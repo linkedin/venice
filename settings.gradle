@@ -9,4 +9,4 @@ include 'venice-admin-tool'
 include 'venice-test-common'
 include 'venice-samza'
 include 'venice-brooklin'
-
+include 'venice-etl'
