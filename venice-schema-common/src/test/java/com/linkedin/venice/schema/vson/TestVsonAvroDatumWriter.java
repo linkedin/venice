@@ -11,6 +11,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -112,8 +113,9 @@ public class TestVsonAvroDatumWriter {
     VsonAvroDatumWriter writer = new VsonAvroDatumWriter(avroSchema);
 
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = new BinaryEncoder(output);
+    Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
     writer.write(valueSupplier.get(), encoder);
+    encoder.flush();
 
     AvroGenericDeserializer deserializer = new AvroGenericDeserializer(avroSchema, avroSchema);
     valueValidator.accept(deserializer.deserialize(output.toByteArray()));

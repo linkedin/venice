@@ -4,12 +4,14 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import java.util.Map;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
@@ -26,6 +28,11 @@ public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object
     private GenericDatumReader<Object> reader;
 
     private static final Logger logger = Logger.getLogger(VeniceAvroGenericSerializer.class);
+
+    static {
+        AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
+        logger.info("Detected: " + version.toString() + " on the classpath.");
+    }
 
     // general constructor
     public VeniceAvroGenericSerializer(String schema) {
@@ -57,7 +64,7 @@ public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object
 
     public byte[] serialize(String topic, Object object) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
-        Encoder encoder = new BinaryEncoder(output);
+        Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
         try {
             datumWriter.write(object, encoder);
             encoder.flush();

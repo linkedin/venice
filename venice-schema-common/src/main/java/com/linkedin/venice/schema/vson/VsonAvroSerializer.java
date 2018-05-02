@@ -3,6 +3,7 @@ package com.linkedin.venice.schema.vson;
 import com.linkedin.venice.serializer.VsonSerializationException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 
 import java.io.ByteArrayInputStream;
@@ -159,9 +160,9 @@ public class VsonAvroSerializer {
         case BOOLEAN:
           return readBoolean(stream);
         case INT8:
-          return readByteToAvro(stream);
+          return readByteToAvro(stream, avroSchema);
         case INT16:
-          return readShortToAvro(stream);
+          return readShortToAvro(stream, avroSchema);
         case INT32:
           return readInt32(stream);
         case INT64:
@@ -222,23 +223,23 @@ public class VsonAvroSerializer {
     return array;
   }
 
-  private GenericData.Fixed readByteToAvro(DataInputStream stream) throws IOException {
+  private GenericData.Fixed readByteToAvro(DataInputStream stream, Schema avroSchema) throws IOException {
     byte b = stream.readByte();
     if(b == Byte.MIN_VALUE) {
       return null;
     }
 
     byte[] byteArray = {b};
-    return new GenericData.Fixed(byteArray);
+    return LinkedinAvroMigrationHelper.newFixedField(avroSchema, byteArray);
   }
 
-  private GenericData.Fixed readShortToAvro(DataInputStream stream) throws IOException {
+  private GenericData.Fixed readShortToAvro(DataInputStream stream, Schema avroSchema) throws IOException {
     short s = stream.readShort();
     if (s == Short.MIN_VALUE) return null;
 
     //big-endian encoding
     byte[] byteArray = {(byte) ((s >>> 8) & 0xff), (byte) (s & 0xff)};
-    return new GenericData.Fixed(byteArray);
+    return LinkedinAvroMigrationHelper.newFixedField(avroSchema, byteArray);
   }
 
   @SuppressWarnings("unchecked")

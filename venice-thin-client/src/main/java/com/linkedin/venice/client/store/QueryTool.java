@@ -17,6 +17,8 @@ import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.JsonDecoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
+
 
 /**
  * A tool use thin client to query the value from a store by the specified key.
@@ -130,7 +132,7 @@ public class QueryTool {
         case RECORD:
           try {
             key = new GenericDatumReader<>(keySchema).read(null,
-                new JsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+                LinkedinAvroMigrationHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
           } catch (IOException e) {
             throw new VeniceException("Invalid input key:" + key, e);
           }

@@ -5,6 +5,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -27,6 +28,7 @@ public class TestVsonAvroDatumReader {
     testReader("\"string\"", () -> "123");
 
     String byteSchema = "\"bytes\"";
+    Schema avroSchema = VsonAvroSchemaAdapter.parse(byteSchema);
     byte[] randomBytes = new byte[10];
     new Random().nextBytes(randomBytes);
     testReader(byteSchema, () -> ByteBuffer.wrap(randomBytes),
@@ -35,14 +37,14 @@ public class TestVsonAvroDatumReader {
 
     //single byte
     byte[] singleByteArray = {randomBytes[0]};
-    GenericData.Fixed fixedByte = new GenericData.Fixed(singleByteArray);
+    GenericData.Fixed fixedByte = LinkedinAvroMigrationHelper.newFixedField(avroSchema, singleByteArray);
     testReader("\"int8\"", () -> fixedByte,
         vsonObject -> Assert.assertEquals(vsonObject, randomBytes[0]));
     testReadNullValue("\"int8\"");
 
     //short
     byte[] shortBytesArray = {(byte) 0xFF, (byte) 0xFE}; //0xFFFE = -2
-    GenericData.Fixed fixedShort = new GenericData.Fixed(shortBytesArray);
+    GenericData.Fixed fixedShort = LinkedinAvroMigrationHelper.newFixedField(avroSchema, shortBytesArray);
     testReader("\"int16\"", () -> fixedShort,
         vsonObject -> Assert.assertEquals(vsonObject, (short) -2));
     testReadNullValue("\"int16\"");
