@@ -64,6 +64,11 @@ ext.libraries = [ // Groovy map literal
                   asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 
+                  // Gibblin dependencies
+                  gobblinCoreBase: 'com.linkedin.gobblin:gobblin-core-base:0.11.0',
+                  gobblinKafkaJobConstructs: 'com.linkedin.gobblin-kafka:job-constructs:2.0.7',
+                  gobblinKafkaCommon: 'com.linkedin.gobblin-proxy:gobblin-kafka-common:1.64.96',
+
                   // Hadoop to Venice Bridge dependencies
                   mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
                   commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
@@ -194,6 +199,8 @@ task unitTests {
   dependsOn 'venice-admin-tool:build'
   dependsOn 'venice-test-common:build'
   dependsOn 'venice-samza:build'
+
+  dependsOn 'venice-etl:build'
 }
 
 task integrationTests {
