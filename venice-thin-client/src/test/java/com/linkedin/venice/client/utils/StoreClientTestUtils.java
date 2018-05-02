@@ -16,6 +16,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -113,7 +114,7 @@ public class StoreClientTestUtils {
 
   public static byte[] serializeRecord(Object object, Schema schema) throws VeniceClientException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = new BinaryEncoder(output);
+    Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
     GenericDatumWriter<Object> datumWriter = null;
     try {
       datumWriter = new GenericDatumWriter<>(schema);

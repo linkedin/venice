@@ -21,6 +21,7 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 import org.apache.samza.SamzaException;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -268,9 +269,10 @@ public class VeniceSystemProducer implements SystemProducer {
    */
   private static <T> byte[] serializePrimitive(T input, DatumWriter<T> writer) {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
-    BinaryEncoder encoder = new BinaryEncoder(out);
+    BinaryEncoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(out);
     try {
       writer.write(input, encoder);
+      encoder.flush();
     } catch (IOException e) {
       throw new RuntimeException("Failed to write intput: " + input + " to binary encoder", e);
     }

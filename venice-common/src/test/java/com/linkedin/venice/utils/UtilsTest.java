@@ -95,7 +95,7 @@ public class UtilsTest {
     assertListEqualityBothWays(javaUtilArrayList3, javaUtilArrayList4,
         "We cannot compare java.util.ArrayList<Object> by content equality properly!");
   }
-  
+
   private void populateIntegerList(List<Integer> list) {
     list.add(1);
     list.add(2);

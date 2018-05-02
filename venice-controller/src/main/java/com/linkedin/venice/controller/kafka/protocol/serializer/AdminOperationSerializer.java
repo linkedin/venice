@@ -8,6 +8,7 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 
@@ -29,8 +30,9 @@ public class AdminOperationSerializer {
   public byte[] serialize(AdminOperation object) {
     try {
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = new BinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(byteArrayOutputStream);
       SPECIFIC_DATUM_WRITER.write(object, encoder);
+      encoder.flush();
 
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {

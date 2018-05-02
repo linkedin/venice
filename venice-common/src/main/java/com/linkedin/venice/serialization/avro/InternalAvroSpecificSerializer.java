@@ -15,6 +15,7 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
@@ -145,7 +146,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     try {
       // If single-threaded, both the ByteArrayOutputStream and Encoder can be re-used. TODO: explore GC tuning later.
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = new BinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(byteArrayOutputStream);
 
       // We write according to the latest protocol version.
       if (MAGIC_BYTE_LENGTH == 1) {
@@ -155,7 +156,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
         byteArrayOutputStream.write(currentProtocolVersion);
       }
       writer.write(object, encoder);
-
+      encoder.flush();
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
       throw new VeniceMessageException(this.getClass().getSimpleName() + " failed to encode message: " + object.toString(), e);
@@ -329,7 +330,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       specificDatumReader.setSchema(entry.getValue()); // Writer's schema
       try {
         specificDatumReader.setExpected(compiledProtocol); // Reader's schema
-      } catch (IOException e) {
+      } catch (Exception e) {
         throw new VeniceException("Failed to setup reader schema", e);
       }
       this.readerMap.put(entry.getKey(), specificDatumReader);

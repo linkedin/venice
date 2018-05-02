@@ -20,6 +20,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.JsonEncoder;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -340,7 +341,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       ByteArrayOutputStream output = new ByteArrayOutputStream();
 
       try {
-        Encoder jsonEncoder = new JsonEncoder(keySchema, output);
+        Encoder jsonEncoder = LinkedinAvroMigrationHelper.newJsonEncoder(keySchema, output);
         writer.write(keyRecord, jsonEncoder);
         jsonEncoder.flush();
         output.flush();
