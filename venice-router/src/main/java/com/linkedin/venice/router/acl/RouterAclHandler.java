@@ -82,8 +82,9 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               // Action:
               //   return 401 Unauthorized
               logger.warn("Requested store does not have ACL: " + errLine);
-              logger.debug("\nExisting stores: " + metadataRepository.getAllStores().stream().map(Store::getName).sorted()
-                  .collect(Collectors.toList()) + "\nAccess-controlled stores: "
+              logger.debug("Existing stores: "
+                  + metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
+              logger.debug("Access-controlled stores: "
                   + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
               NettyUtils.setupResponseAndFlush(HttpResponseStatus.UNAUTHORIZED,
                   ("ACL not found!\n"
