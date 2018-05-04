@@ -84,7 +84,7 @@ public class RouterAclHandlerTest {
     enumerate(_hasAcl, _hasStore, _isAccessControlled, _isFailOpen);
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
-    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.INTERNAL_SERVER_ERROR)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
     // Store doesn't exist 8 times
     verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
@@ -135,7 +135,7 @@ public class RouterAclHandlerTest {
 
     verify(ctx, never()).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
-    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.INTERNAL_SERVER_ERROR)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
   }
 
