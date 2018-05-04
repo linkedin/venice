@@ -3,10 +3,11 @@ package com.linkedin.venice.store;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
-import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
@@ -35,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public abstract class AbstractStorageEngine implements Store {
   private final String storeName;
   protected final AtomicBoolean isOpen;
-  protected final Logger logger = Logger.getLogger(getClass());
+  protected final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
   protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap;
 
   public AbstractStorageEngine(String storeName) {
@@ -43,6 +44,8 @@ public abstract class AbstractStorageEngine implements Store {
     this.isOpen = new AtomicBoolean(true);
     this.partitionIdToPartitionMap = new ConcurrentHashMap<>();
   }
+
+  public abstract PersistenceType getType();
 
   /**
    * Load the existing storage partitions.
@@ -70,7 +73,7 @@ public abstract class AbstractStorageEngine implements Store {
    * It will throw exception if there is no opened storage partition for the given partition id.
    * @param storagePartitionConfig
    */
-  public synchronized void adjustStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+  protected synchronized void adjustStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     validateStoreName(storagePartitionConfig);
     int partitionId = storagePartitionConfig.getPartitionId();
     if (!containsPartition(partitionId)) {
@@ -83,6 +86,7 @@ public abstract class AbstractStorageEngine implements Store {
       return;
     }
     // Need to re-open storage partition according to the provided partition config
+    logger.info("Reopen database with storage partition config: " + storagePartitionConfig);
     closePartition(partitionId);
     addStoragePartition(storagePartitionConfig);
   }
@@ -136,7 +140,21 @@ public abstract class AbstractStorageEngine implements Store {
     partition.drop();
     if(partitionIdToPartitionMap.size() == 0) {
       logger.info("All Partitions deleted for Store " + this.getName() );
+      /**
+       * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
+       * in the store level.
+       */
+      drop();
     }
+  }
+
+  /**
+   * Drop the whole store
+   */
+  public synchronized void drop() {
+    logger.info("Started dropping store: " + getName());
+    partitionIdToPartitionMap.forEach( (partitionId, partition) -> dropPartition(partitionId));
+    logger.info("Finished dropping store: " + getName());
   }
 
   public synchronized void closePartition(int partitionId) {
@@ -180,53 +198,32 @@ public abstract class AbstractStorageEngine implements Store {
   }
 
   /**
-   * Get an iterator over entries in the store. The key is the first
-   * element in the entry and the value is the second element.
-   * <p/>
-   * The iterator iterates over every partition in the store and inside
-   * each partition, iterates over the partition entries.
-   *
-   * @return An iterator over the entries in this AbstractStorageEngine.
-   */
-  public abstract CloseableStoreEntriesIterator storeEntries()
-    throws VeniceException;
-
-  /**
-   * Get an iterator over keys in the store.
-   * <p/>
-   * The iterator returns the key element from the storeEntries
-   *
-   * @return An iterator over the keys in this AbstractStorageEngine.
-   */
-  public abstract CloseableStoreKeysIterator storeKeys()
-    throws VeniceException;
-
-  /**
-   * Truncate all entries in the store
-   */
-  public void truncate() {
-    for (AbstractStoragePartition partition : this.partitionIdToPartitionMap.values()) {
-      partition.truncate();
-    }
-  }
-
-  /**
    * A lot of storage engines support efficient methods for performing large
    * number of writes (puts/deletes) against the data source. This method puts
    * the storage engine in this batch write mode
-   *
-   * @return true if the storage engine took successful action to switch to
-   * 'batch-write' mode
    */
-  public boolean beginBatchWrites() {
-    return false;
+  public void beginBatchWrite(StoragePartitionConfig storagePartitionConfig, Map<String, String> checkpointedInfo) {
+    logger.info("Begin batch write for storage partition config: " + storagePartitionConfig + " with checkpointed info: " + checkpointedInfo);
+    final int partitionId = storagePartitionConfig.getPartitionId();
+    /**
+     * We want to adjust the storage partition first since it will possibly re-open the underlying database in
+     * different mode.
+     */
+    adjustStoragePartition(storagePartitionConfig);
+    getStoragePartition(partitionId).beginBatchWrite(checkpointedInfo);
   }
 
   /**
    * @return true if the storage engine successfully returned to normal mode
    */
-  public boolean endBatchWrites() {
-    return false;
+  public void endBatchWrite(StoragePartitionConfig storagePartitionConfig) {
+    logger.info("End batch write for storage partition config: " + storagePartitionConfig);
+    final int partitionId = storagePartitionConfig.getPartitionId();
+    getStoragePartition(partitionId).endBatchWrite();
+    /**
+     * After end of batch push, we would like to adjust the underlying database for the future ingestion, such as from streaming.
+     */
+    adjustStoragePartition(storagePartitionConfig);
   }
 
   public void put(Integer logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
@@ -266,13 +263,13 @@ public abstract class AbstractStorageEngine implements Store {
     return partition.get(key);
   }
 
-  public void sync(int partitionId) {
+  public Map<String, String> sync(int partitionId) {
     if (!containsPartition(partitionId)) {
       logger.warn("Partition " + partitionId + " doesn't exist, no sync operation will be executed");
-      return;
+      return Collections.emptyMap();
     }
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(partitionId);
-    partition.sync();
+    return partition.sync();
   }
 
   public void close() throws PersistenceFailureException {
@@ -285,6 +282,9 @@ public abstract class AbstractStorageEngine implements Store {
 
   // for test purpose
   public AbstractStoragePartition getStoragePartition(int partitionId) {
+    if (!this.partitionIdToPartitionMap.containsKey(partitionId)) {
+      throw new VeniceException("Partition: " + partitionId + " of store: " + getName() + " doesn't exist");
+    }
     return this.partitionIdToPartitionMap.get(partitionId);
   }
 }

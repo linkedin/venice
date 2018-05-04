@@ -2,6 +2,7 @@ package com.linkedin.venice.config;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
+import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.concurrent.TimeUnit;
 
@@ -14,6 +15,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int listenerPort;
   private final BdbServerConfig bdbServerConfig;
+  private final RocksDBServerConfig rocksDBServerConfig;
   private final boolean enableServerWhiteList;
   private final boolean autoCreateDataPath; // default true
   /**
@@ -94,12 +96,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final boolean fairStorageExecutionQueue;
 
+  private final long databaseSyncBytesIntervalForTransactionalMode;
+
+  private final long databaseSyncBytesIntervalForDeferredWriteMode;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
     dataBasePath = serverProperties.getString(DATA_BASE_PATH);
     autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     bdbServerConfig = new BdbServerConfig(serverProperties);
+    rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
     maxStateTransitionThreadNumber = serverProperties.getInt(MAX_STATE_TRANSITION_THREAD_NUMBER, 100);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
@@ -112,6 +119,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
     fairStorageExecutionQueue = serverProperties.getBoolean(SERVER_FAIR_STORAGE_EXECUTION_QUEUE, true);
+    databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
+    databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
   }
 
   public int getListenerPort() {
@@ -134,6 +143,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public BdbServerConfig getBdbServerConfig() {
     return this.bdbServerConfig;
+  }
+
+  public RocksDBServerConfig getRocksDBServerConfig() {
+    return rocksDBServerConfig;
   }
 
   public boolean isServerWhiteLIstEnabled() {
@@ -182,5 +195,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isFairStorageExecutionQueue() {
     return fairStorageExecutionQueue;
+  }
+  public long getDatabaseSyncBytesIntervalForTransactionalMode() {
+    return databaseSyncBytesIntervalForTransactionalMode;
+  }
+
+  public long getDatabaseSyncBytesIntervalForDeferredWriteMode() {
+    return databaseSyncBytesIntervalForDeferredWriteMode;
   }
 }

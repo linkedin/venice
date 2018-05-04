@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
@@ -142,7 +143,7 @@ public class VeniceServerTest {
     new Thread(new Runnable() {
       @Override
       public void run() {
-        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, false, true, false, false);
+        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, false, true, false, false, new Properties());
       }
     }).start();
     Utils.sleep(1000);

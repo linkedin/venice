@@ -44,7 +44,7 @@ public class BdbStorageEngineFactoryTest {
     for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
       String storeName = entry.getKey();
       int partitionNum = entry.getValue();
-      AbstractStorageEngine storageEngine = bdbFactory.getStore(configLoader.getStoreConfig(storeName));
+      AbstractStorageEngine storageEngine = bdbFactory.getStore(configLoader.getStoreConfig(storeName, PersistenceType.BDB));
       storageEngineList.add(storageEngine);
       for (int i = 0; i < partitionNum; ++i) {
         storageEngine.addStoragePartition(i);

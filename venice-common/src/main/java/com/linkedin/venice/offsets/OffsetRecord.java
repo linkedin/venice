@@ -46,6 +46,7 @@ public class OffsetRecord {
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = System.currentTimeMillis();
     emptyPartitionState.startOfBufferReplayDestinationOffset = null;
+    emptyPartitionState.databaseInfo = new HashMap<>();
     return emptyPartitionState;
   }
 
@@ -113,6 +114,25 @@ public class OffsetRecord {
     return Optional.ofNullable(partitionState.startOfBufferReplayDestinationOffset);
   }
 
+  public void setDatabaseInfo(Map<String, String> databaseInfo) {
+    Map<CharSequence, CharSequence> databaseInfoWithRightType = new HashMap<>();
+    databaseInfo.forEach( (k, v) -> databaseInfoWithRightType.put(k, v));
+    this.partitionState.databaseInfo = databaseInfoWithRightType;
+  }
+
+  public Map<String, String> getDatabaseInfo() {
+    Map<String, String> databaseInfo = new HashMap<>();
+    if (this.partitionState.databaseInfo != null) {
+      /**
+       * It is necessary since the 'string' type deserialized by Avro is {@link Utf8}.
+       */
+      this.partitionState.databaseInfo.forEach( (k, v) -> databaseInfo.put(k.toString(), v.toString()));
+    }
+    return databaseInfo;
+  }
+
+
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
@@ -130,6 +150,7 @@ public class OffsetRecord {
         ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
+        ", databaseInfo=" + getDatabaseInfo() +
         '}';
   }
 

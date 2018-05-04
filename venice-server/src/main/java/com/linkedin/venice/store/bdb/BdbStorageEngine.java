@@ -2,6 +2,7 @@ package com.linkedin.venice.store.bdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -48,6 +49,11 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
+  public PersistenceType getType() {
+    return PersistenceType.BDB;
+  }
+
+  @Override
   protected Set<Integer> getPersistedPartitionIds() {
     List<String> partitionNames = environment.getDatabaseNames();
     Set<Integer> partitionIds = new HashSet<>();
@@ -63,52 +69,6 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new BdbStoragePartition(storagePartitionConfig, environment, bdbServerConfig);
-  }
-
-  public CloseableStoreEntriesIterator storeEntries() {
-    return new CloseableStoreEntriesIterator(partitionIdToPartitionMap.values(), this);
-  }
-
-  public CloseableStoreKeysIterator storeKeys() {
-    return new CloseableStoreKeysIterator(storeEntries());
-  }
-
-  @Override
-  public boolean beginBatchWrites() {
-    if (checkpointerOffForBatchWrites) {
-      synchronized (this) {
-        numOutstandingBatchWriteJobs++;
-        // turn the checkpointer off for the first job
-        if (numOutstandingBatchWriteJobs == 1) {
-          logger.info("Turning checkpointer off for batch writes");
-          EnvironmentMutableConfig mConfig = environment.getMutableConfig();
-          mConfig.setConfigParam(EnvironmentConfig.ENV_RUN_CHECKPOINTER,
-            Boolean.toString(false));
-          environment.setMutableConfig(mConfig);
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  @Override
-  public boolean endBatchWrites() {
-    if (checkpointerOffForBatchWrites) {
-      synchronized (this) {
-        numOutstandingBatchWriteJobs--;
-        // turn the checkpointer back on if the last job finishes
-        if (numOutstandingBatchWriteJobs == 0) {
-          logger.info("Turning checkpointer on");
-          EnvironmentMutableConfig mConfig = environment.getMutableConfig();
-          mConfig.setConfigParam(EnvironmentConfig.ENV_RUN_CHECKPOINTER,
-            Boolean.toString(true));
-          environment.setMutableConfig(mConfig);
-          return true;
-        }
-      }
-    }
-    return false;
   }
 
   public void close() {
