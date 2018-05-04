@@ -40,11 +40,10 @@ import java.util.stream.Collectors;
  * Total Env =  1, Total Db = 30
  */
 
-public class BdbStorageEngineFactory implements StorageEngineFactory {
+public class BdbStorageEngineFactory extends StorageEngineFactory {
 
   private static final Logger logger = Logger.getLogger(BdbStorageEngineFactory.class);
 
-  private static final String TYPE_NAME = "bdb";
   private static final String SHARED_ENV_KEY = "shared";
   private final Object lock = new Object();
 
@@ -171,25 +170,16 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
 
   @Override
   public AbstractStorageEngine getStore(VeniceStoreConfig storeConfig) throws StorageInitializationException {
+    verifyPersistenceType(storeConfig);
     synchronized (lock) {
       String storeName = storeConfig.getStoreName();
-      PersistenceType persistenceType = storeConfig.getPersistenceType();
-      if(persistenceType == PersistenceType.BDB) {
-        try {
-          Environment environment = getEnvironment(storeConfig);
-          return new BdbStorageEngine(storeConfig, environment);
-        } catch (Exception e) {
-          throw new StorageInitializationException("Error opening store " + storeName , e);
-        }
-      } else {
-         throw new VeniceException("BDBFactory getStore invoked for persistency type " + persistenceType + " Store " + storeName);
+      try {
+        Environment environment = getEnvironment(storeConfig);
+        return new BdbStorageEngine(storeConfig, environment);
+      } catch (Exception e) {
+        throw new StorageInitializationException("Error opening store " + storeName , e);
       }
     }
-  }
-
-  @Override
-  public String getType() {
-    return TYPE_NAME;
   }
 
   @Override
@@ -217,54 +207,6 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
     return storeNames;
   }
 
-  /**
-   * Detect what has changed in the store configuration and rewire BDB
-   * environments accordingly.
-   *
-   * @param storeConfig updated store definition
-   */
-  @Override
-  public void update(VeniceStoreConfig storeConfig) {
-    if (!useOneEnvPerStore) {
-      throw new StorageInitializationException("Memory foot print can be set only when using different environments per store");
-    }
-
-    String storeName = storeConfig.getStoreName();
-    BdbStoreConfig bdbStoreConfig = storeConfig.getBdbStoreConfig();
-    Environment environment = environments.get(storeName);
-    // change reservation amount of reserved store
-    if (!unreservedStores.contains(environment) && bdbStoreConfig.hasMemoryFootprint()) {
-      EnvironmentMutableConfig mConfig = environment.getMutableConfig();
-      long currentCacheSize = mConfig.getCacheSize();
-      long newCacheSize = bdbStoreConfig.getMemoryFootprintMB() * ByteUtils.BYTES_PER_MB;
-      if (currentCacheSize != newCacheSize) {
-        long newReservedCacheSize = this.reservedCacheSize - currentCacheSize
-          + newCacheSize;
-
-        // check that we leave a 'minimum' shared cache
-        if ((bdbServerConfig.getBdbCacheSize() - newReservedCacheSize) < bdbServerConfig.getBdbMinimumSharedCache()) {
-          throw new StorageEngineInitializationException("Reservation of "
-            + bdbStoreConfig.getMemoryFootprintMB()
-            + " MB for store "
-            + storeName
-            + " violates minimum shared cache size of "
-            + bdbServerConfig.getBdbMinimumSharedCache());
-        }
-
-        this.reservedCacheSize = newReservedCacheSize;
-        adjustCacheSizes();
-        mConfig.setCacheSize(newCacheSize);
-        environment.setMutableConfig(mConfig);
-        logger.info("Setting private cache for store " + storeConfig.getStoreName() + " to "
-          + newCacheSize);
-      }
-    } else {
-      // we cannot support changing a reserved store to unreserved or vice
-      // versa since the sharedCache param is not mutable
-      throw new StorageInitializationException("Cannot switch between shared and private cache dynamically");
-    }
-  }
-
   @Override
   public void close() {
     synchronized (lock) {
@@ -284,7 +226,8 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
    */
   @Override
   public void removeStorageEngine(AbstractStorageEngine engine) {
-    String storeName = engine.getName();
+    verifyPersistenceType(engine);
+    final String storeName = engine.getName();
 
     logger.info("Removing the Storage Engine " + storeName);
 
@@ -337,7 +280,12 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
     }
   }
 
-  public Environment getEnvironment(VeniceStoreConfig storeConfig) throws DatabaseException {
+  @Override
+  public PersistenceType getPersistenceType() {
+    return PersistenceType.BDB;
+  }
+
+  private Environment getEnvironment(VeniceStoreConfig storeConfig) throws DatabaseException {
 
     String storeName = storeConfig.getStoreName();
     BdbStoreConfig bdbStoreConfig = storeConfig.getBdbStoreConfig();

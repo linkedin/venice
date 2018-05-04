@@ -3,6 +3,8 @@ package com.linkedin.venice.store;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PersistenceType;
 import java.util.Set;
 
 
@@ -13,46 +15,55 @@ import java.util.Set;
  * For example for BDB it holds the various environments, for jdbc it holds a
  * connection pool reference
  */
-public interface StorageEngineFactory {
+public abstract class StorageEngineFactory {
   /**
    * Get an initialized storage implementation
    *
    * @param storeDef  store definition
    * @return The storage engine
    */
-  AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
+  public abstract AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
       throws StorageInitializationException;
-
-  /**
-   *
-   * @return the type of stores returned by this configuration
-   */
-  String getType();
 
   /**
    * Retrieve all the stores persisted previously
    *
    * @return All the store names
    */
-  Set<String> getPersistedStoreNames();
-
-  /**
-   * Update the storage configuration at runtime
-   *
-   * @param storeDef new store definition
-   */
-  void update(VeniceStoreConfig storeDef);
+  public abstract Set<String> getPersistedStoreNames();
 
   /**
    * Close the storage configuration
    */
-  void close();
+  public abstract void close();
 
   /**
    * Remove the storage engine from the underlying storage configuration
    *
    * @param engine Specifies the storage engine to be removed
    */
-  void removeStorageEngine(AbstractStorageEngine engine);
+  public abstract void removeStorageEngine(AbstractStorageEngine engine);
+
+  /**
+   * Return the persistence type current factory supports.
+   * @return
+   */
+  public abstract PersistenceType getPersistenceType();
+
+  public void verifyPersistenceType(VeniceStoreConfig storeConfig) {
+    if (!storeConfig.getStorePersistenceType().equals(getPersistenceType())) {
+      throw new VeniceException("Required store persistence type: " + storeConfig.getStorePersistenceType() + " of store: "
+          + storeConfig.getStoreName() + " isn't supported in current factory: " + getClass().getName() +
+          " with type: " + getPersistenceType());
+    }
+  }
+
+  public void verifyPersistenceType(AbstractStorageEngine engine) {
+    if (!engine.getType().equals(getPersistenceType())) {
+      throw new VeniceException("Required store persistence type: " + engine.getType() + " of store: "
+          + engine.getName() + " isn't supported in current factory: " + getClass().getName() +
+          " with type: " + getPersistenceType());
+    }
+  }
 }
 

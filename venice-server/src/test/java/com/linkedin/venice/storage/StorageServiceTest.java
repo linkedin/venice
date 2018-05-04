@@ -34,6 +34,7 @@ public class StorageServiceTest {
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProps);
     VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+    storeConfig.setStorePersistenceType(PersistenceType.BDB);
 
     StorageService service = new StorageService(configLoader, s -> s.toString());
 

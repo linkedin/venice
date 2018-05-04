@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.PersistenceType.*;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.helix.WhitelistAccessor;
@@ -17,6 +18,7 @@ import java.io.IOException;
 
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.Properties;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -46,7 +48,8 @@ public class VeniceServerWrapper extends ProcessWrapper {
       boolean enableServerWhitelist,
       boolean isAutoJoin,
       boolean ssl,
-      boolean sslToKafka) {
+      boolean sslToKafka,
+      Properties properties) {
     return (serviceName, port, dataDirectory) -> {
       /** Create config directory under {@link dataDirectory} */
       File configDirectory = new File(dataDirectory.getAbsolutePath(), "config");
@@ -67,7 +70,9 @@ public class VeniceServerWrapper extends ProcessWrapper {
           .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
           .put(MAX_STATE_TRANSITION_THREAD_NUMBER, 10)
-          .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0);
+          .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
+          .put(PERSISTENCE_TYPE, BDB)
+          .put(properties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());

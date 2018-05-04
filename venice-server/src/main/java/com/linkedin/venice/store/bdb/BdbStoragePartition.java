@@ -9,6 +9,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import com.sleepycat.je.*;
+import java.util.Collections;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -189,7 +191,17 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  @Override
+  /**
+   * Get an iterator over pairs of entries in the partition. The key is the first
+   * element in the pair and the value is the second element.
+   * <p/>
+   * Note that the iterator need not be threadsafe, and that it must be
+   * manually closed after use.
+   *
+   * This function is kept since it could be used for BDB->RocksDB migration purpose.
+   *
+   * @return An iterator over the entries in this AbstractStoragePartition.
+   */
   public AbstractCloseablePartitionEntriesIterator partitionEntries() {
     try {
       Cursor cursor = getBdbDatabase().openCursor(null, null);
@@ -206,7 +218,17 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     }
   }
 
-  @Override
+  /**
+   * /**
+   * Get an iterator over keys in the partition.
+   * <p/>
+   * Note that the iterator need not be threadsafe, and that it must be
+   * manually closed after use.
+   *
+   * This function is kept since it could be used for BDB->RocksDB migration purpose.
+   *
+   * @return An iterator over the keys in this AbstractStoragePartition.
+   */
   public CloseablePartitionKeysIterator partitionKeys() {
     return new CloseablePartitionKeysIterator(partitionEntries());
   }
@@ -242,24 +264,13 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     performOperation("DROP" , dropDB );
   }
 
-  /**
-   * Truncate all the entries in the BDB database.
-   */
   @Override
-  public synchronized void truncate() {
-    BDBOperation truncateDB = () -> environment.truncateDatabase(null, getBdbDatabaseName(), false);
-    performOperation("TRUNCATE" , truncateDB );
-
-    //After truncation re-open the BDB database for Read.
-    reopenBdbDatabase();
-  }
-
-  @Override
-  public void sync() {
+  public Map<String, String> sync() {
     if (databaseConfig.getDeferredWrite()) {
       // Only applicable for deferred-write database.
       database.sync();
     }
+    return Collections.emptyMap();
 
   }
 

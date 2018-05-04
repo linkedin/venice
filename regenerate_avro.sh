@@ -4,7 +4,7 @@ DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | h
 
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v5/*"
-  "venice-common/src/main/resources/avro/PartitionState/v3/*"
+  "venice-common/src/main/resources/avro/PartitionState/v4/*"
   "venice-common/src/main/resources/avro/StoreVersionState/v3/*"
   "venice-common/src/main/resources/avro/ChunkedValueManifest/v-20/*"
   "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"

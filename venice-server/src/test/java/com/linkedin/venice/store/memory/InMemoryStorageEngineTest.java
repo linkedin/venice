@@ -96,4 +96,18 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
       throws Exception {
     super.testOperationsOnNonExistingPartition();
   }
+
+  /**
+   * This test defined in {@link AbstractStorageEngineTest} doesn't work for {@link InMemoryStorageEngine}.
+   */
+  @Test
+  public void testAdjustStoragePartitionFromTransactionalToDeferredWrite() {
+  }
+
+  /**
+   * This test defined in {@link AbstractStorageEngineTest} doesn't work for {@link InMemoryStorageEngine}.
+   */
+  @Test
+  public void testAdjustStoragePartitionFromDeferredWriteToTransactional() {
+  }
 }

@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import java.util.List;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
 
@@ -99,15 +100,20 @@ public class StoreBufferService extends AbstractVeniceService {
   private static class StoreBufferDrainer implements Runnable {
     private static final Logger LOGGER = Logger.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
+    private boolean isRunning = true;
 
     public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue) {
       this.blockingQueue = blockingQueue;
     }
 
+    public void stop() {
+      isRunning = false;
+    }
+
     @Override
     public void run() {
       QueueNode node = null;
-      while (true) {
+      while (isRunning) {
         try {
           node = blockingQueue.take();
         } catch (InterruptedException e) {
@@ -134,6 +140,7 @@ public class StoreBufferService extends AbstractVeniceService {
           ingestionTask.setLastDrainerException(e);
         }
       }
+      LOGGER.info("Current StoreBufferDrainer stopped");
     }
   }
 
@@ -142,6 +149,7 @@ public class StoreBufferService extends AbstractVeniceService {
   private final int drainerNum;
   private final ArrayList<MemoryBoundBlockingQueue<QueueNode>> blockingQueueArr;
   private ExecutorService executorService;
+  private final List<StoreBufferDrainer> drainerList = new ArrayList<>();
 
   public StoreBufferService(int drainerNum, long bufferCapacityPerDrainer, long bufferNotifyDelta) {
     this.drainerNum = drainerNum;
@@ -211,7 +219,9 @@ public class StoreBufferService extends AbstractVeniceService {
 
     // Submit all the buffer drainers
     for (int cur = 0; cur < drainerNum; ++cur) {
-      this.executorService.submit(new StoreBufferDrainer(this.blockingQueueArr.get(cur)));
+      StoreBufferDrainer drainer = new StoreBufferDrainer(this.blockingQueueArr.get(cur));
+      this.executorService.submit(drainer);
+      drainerList.add(drainer);
     }
     this.executorService.shutdown();
     return true;
@@ -219,8 +229,10 @@ public class StoreBufferService extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
+    // Graceful shutdown
+    drainerList.forEach(drainer -> drainer.stop());
     if (null != this.executorService) {
-      this.executorService.shutdownNow();
+      this.executorService.shutdown();
       this.executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
   }

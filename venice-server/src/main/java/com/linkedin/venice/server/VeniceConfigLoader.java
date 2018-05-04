@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -128,6 +129,11 @@ public class VeniceConfigLoader {
   public VeniceStoreConfig getStoreConfig(String storeName) {
     VeniceProperties storeProperties = combinedProperty.getStoreProperties(storeName);
     return new VeniceStoreConfig(storeName, storeProperties);
+  }
+
+  public VeniceStoreConfig getStoreConfig(String storeName, PersistenceType storePersistenceType) {
+    VeniceProperties storeProperties = combinedProperty.getStoreProperties(storeName);
+    return new VeniceStoreConfig(storeName, storeProperties, storePersistenceType);
   }
 
   /**

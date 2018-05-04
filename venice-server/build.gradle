@@ -33,6 +33,7 @@ dependencies {
   compile (libraries.netty4Lnkd){
     exclude group: 'javax.servlet'
   }
+  compile libraries.rocksdbjni
 
   compile project(':venice-common')
   compile project(':venice-controller')
