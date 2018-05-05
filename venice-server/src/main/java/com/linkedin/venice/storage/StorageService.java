@@ -8,6 +8,7 @@ import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
@@ -198,6 +199,10 @@ public class StorageService extends AbstractVeniceService {
 
   public StoreRepository getStoreRepository() {
     return storeRepository;
+  }
+
+  public void setAggBdbStorageEngineStats(AggVersionedBdbStorageEngineStats stats) {
+    storeRepository.setAggBdbStorageEngineStats(stats);
   }
 
   @Override

@@ -3,39 +3,33 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.Supplier;
 
-import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
-public class DIVStatsReporter extends AbstractVeniceStats {
-  private DIVStats stats;
-
+public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
   public DIVStatsReporter(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
+  }
 
+  @Override
+  protected void registerStats() {
     registerSensor("duplicate_msg",
-        new DIVStatsCounter(this, () -> stats.getDuplicateMsg()));
+        new DIVStatsCounter(this, () -> (double) getStats().getDuplicateMsg()));
     registerSensor("missing_msg",
-        new DIVStatsCounter(this, () -> stats.getMissingMsg()));
+        new DIVStatsCounter(this, () -> (double) getStats().getMissingMsg()));
     registerSensor("corrupted_msg",
-        new DIVStatsCounter(this, () -> stats.getCorruptedMsg()));
+        new DIVStatsCounter(this, () -> (double) getStats().getCorruptedMsg()));
     registerSensor("success_msg",
-        new DIVStatsCounter(this, () -> stats.getSuccessMsg()));
+        new DIVStatsCounter(this, () -> (double) getStats().getSuccessMsg()));
     registerSensor("current_idle_time",
-        new DIVStatsCounter(this, () -> stats.getCurrentIdleTime()));
+        new DIVStatsCounter(this, () -> (double) getStats().getCurrentIdleTime()));
     registerSensor("overall_idle_time",
-        new DIVStatsCounter(this, () -> stats.getOverallIdleTime()));
+        new DIVStatsCounter(this, () -> (double) getStats().getOverallIdleTime()));
   }
 
-  public void setDIVStats(DIVStats stats) {
-    this.stats = stats;
-  }
-
-  public DIVStats getDIVStats() {
-    return stats;
-  }
-
-  private static class DIVStatsCounter extends LambdaStat {
-    DIVStatsCounter(DIVStatsReporter divStatsReporter, Supplier<Long> supplier) {
-      super(() -> divStatsReporter.getDIVStats() == null ? NULL_DIV_STATS.code : supplier.get());
+  private static class DIVStatsCounter extends Gauge {
+    DIVStatsCounter(AbstractVeniceStatsReporter reporter, Supplier<Double> supplier) {
+      super(() -> reporter.getStats() == null ? NULL_DIV_STATS.code : supplier.get());
     }
   }
+
 }

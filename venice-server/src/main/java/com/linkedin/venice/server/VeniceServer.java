@@ -17,6 +17,7 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
@@ -124,6 +125,8 @@ public class VeniceServer {
     this.kafkaStoreIngestionService =
         new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo,schemaRepo, metricsRepository);
 
+    AggVersionedBdbStorageEngineStats storageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
+    storageService.setAggBdbStorageEngineStats(storageEngineStats);
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService = new ListenerService(storageService.getStoreRepository(),
         kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory, accessController);

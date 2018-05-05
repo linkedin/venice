@@ -1,18 +1,17 @@
 package com.linkedin.venice.server;
 
-import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.Store;
+import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.meta.PersistenceType.BDB;
 
 /**
  *  A wrapper class that holds all the server's storage engines.
@@ -28,6 +27,8 @@ public class StoreRepository {
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.
    */
   private final ConcurrentMap<String, AbstractStorageEngine> localStorageEngines;
+
+  private AggVersionedBdbStorageEngineStats stats = null;
 
 
   public StoreRepository() {
@@ -46,7 +47,14 @@ public class StoreRepository {
   }
 
   public AbstractStorageEngine removeLocalStorageEngine(String storeName) {
-    return localStorageEngines.remove(storeName);
+    AbstractStorageEngine engine = localStorageEngines.remove(storeName);
+    //reset stats
+    //TODO: make an abstraction atop StorageEngine Stats and get rid of
+    if (stats != null && engine != null && engine.getType() == BDB) {
+      stats.removeBdbEnvironment(engine.getName());
+    }
+
+    return engine;
   }
 
   public synchronized void addLocalStorageEngine(AbstractStorageEngine engine)
@@ -57,10 +65,25 @@ public class StoreRepository {
       logger.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
+
+    if (stats != null && found != null && found.getType() == BDB) {
+      stats.setBdbEnvironment(engine.getName(), ((BdbStorageEngine) engine).getBdbEnvironment());
+    }
   }
 
   public List<AbstractStorageEngine> getAllLocalStorageEngines() {
     return new ArrayList<>(localStorageEngines.values());
+  }
+
+  public synchronized void setAggBdbStorageEngineStats(AggVersionedBdbStorageEngineStats stats) {
+    this.stats = stats;
+
+    //load all existing bdb engine environments
+    for (AbstractStorageEngine engine : getAllLocalStorageEngines()) {
+      if (engine.getType() == BDB) {
+        stats.setBdbEnvironment(engine.getName(), ((BdbStorageEngine) engine).getBdbEnvironment());
+      }
+    }
   }
 
   public void close() {

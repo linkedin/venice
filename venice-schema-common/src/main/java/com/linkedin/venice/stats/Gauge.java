@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 
+
 /**
  * Gauge is a un-windowed MeasurableStat that has the maximum flexibility.
  * It takes a Lambda expression as parameter and calculates the real-time

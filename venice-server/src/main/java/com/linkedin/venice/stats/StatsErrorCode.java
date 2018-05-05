@@ -95,7 +95,14 @@ public enum StatsErrorCode {
    * The BDB stats depend on getting a handle of {@link com.sleepycat.je.Environment}.
    * If the instance is null, then this error code will be sent.
    */
-  NULL_BDB_ENVIRONMENT(-16);
+  NULL_BDB_ENVIRONMENT(-16),
+
+  /**
+   * Since storage engine stats has been migrated to versioned stats. It would encounter
+   * the similar edge cases as {@link DIVStatsReporter} has. Check {@link #NULL_DIV_STATS}
+   * for more details.
+   */
+  NULL_BDB_STATS(-17);
 
   public final int code;
 

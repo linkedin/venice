@@ -19,13 +19,10 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.AggBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.StorageMetadataService;
-import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
@@ -68,7 +65,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ReadOnlySchemaRepository schemaRepo;
 
   private final AggStoreIngestionStats ingestionStats;
-  private final AggBdbStorageEngineStats storageEngineStats;
   private final AggVersionedDIVStats versionedDIVStats;
 
   /**
@@ -120,7 +116,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.notifiers.add(notifier);
 
     this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
-    this.storageEngineStats = new AggBdbStorageEngineStats(metricsRepository);
     this.versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
     this.storeBufferService = new StoreBufferService(
         serverConfig.getStoreWriterNumber(),
@@ -253,11 +248,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           task.disableMetricsEmission();
         } else {
           task.enableMetricsEmission();
-          AbstractStorageEngine engine = storeRepository.getLocalStorageEngine(topicName);
-          if (engine instanceof BdbStorageEngine) {
-            storageEngineStats.setBdbEnvironment(storeName, ((BdbStorageEngine) engine).getBdbEnvironment());
-          }
-
           ingestionStats.updateStoreConsumptionTask(storeName, task);
         }
       }
