@@ -17,7 +17,7 @@ import static com.linkedin.venice.stats.StatsErrorCode.*;
  * TODO: may want to have an abstract storageEngine metrics layer if Venice allows other storage engines.
  */
 
-public class BdbStorageEngineStats extends AbstractVeniceStats {
+public class BdbStorageEngineStats {
   private Environment bdbEnvironment = null;
   /**
    * Both {@link Environment} and {@link BdbSpaceUtilizationSummary} take non-trivial creation time.
@@ -26,37 +26,22 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
   private  CachedCallable<EnvironmentStats> fastStats;
   private  CachedCallable<BdbSpaceUtilizationSummary> fastSpaceStats;
 
-  public BdbStorageEngineStats(MetricsRepository metricsRepository, String name) {
-    this(metricsRepository, name, 5 * Time.MS_PER_SECOND);
-  }
-
-  public BdbStorageEngineStats(MetricsRepository metricsRepository,
-                               String storeName,
-                               long ttlMs) {
-    super(metricsRepository, storeName);
-
+  public BdbStorageEngineStats() {
     //in the case bdbEnvironment is null, metrics will return 0
     this.fastStats =
         new CachedCallable<>(() -> bdbEnvironment == null ?
-            null : getEnvironmentStats(bdbEnvironment), ttlMs);
+            null : getEnvironmentStats(bdbEnvironment), 5 * Time.MS_PER_SECOND);
     this.fastSpaceStats =
         new CachedCallable<>(() -> bdbEnvironment == null ?
-            null : new BdbSpaceUtilizationSummary(bdbEnvironment), ttlMs);
-
-    registerSensor("bdb_cache_misses_ratio",
-        new CacheMissesRatioStat(this));
-    registerSensor("bdb_space_utilization_ratio",
-        new SpaceUtilizationRatioStat(this));
-    registerSensor("bdb_allotted_cache_size_in_bytes",
-        new AllottedCacheSizeStat(this));
-    registerSensor("bdb_space_size_in_bytes",
-        new SpaceSizeStat(this));
-    registerSensor("bdb_disk_cleaner",
-        new NumCleanerRunsStat(this));
+            null : new BdbSpaceUtilizationSummary(bdbEnvironment), 5 * Time.MS_PER_SECOND);
   }
 
   public void setBdbEnvironment(Environment bdbEnvironment) {
     this.bdbEnvironment = bdbEnvironment;
+  }
+
+  public void removeBdbEnvironment() {
+    this.bdbEnvironment = null;
   }
 
   private EnvironmentStats getEnvironmentStats(Environment bdbEnvironment) {
@@ -65,38 +50,7 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
     return bdbEnvironment.getStats(config);
   }
 
-  //wrapper bdb stats API into Tehuti Lambda stats
-  private static class CacheMissesRatioStat extends LambdaStat {
-    public CacheMissesRatioStat(BdbStorageEngineStats bdbStorageEngineStats) {
-      super(() -> bdbStorageEngineStats.getPercentageCacheMisses());
-    }
-  }
-
-  private static class SpaceUtilizationRatioStat extends LambdaStat {
-    public SpaceUtilizationRatioStat(BdbStorageEngineStats bdbStorageEngineStats) {
-      super (() -> bdbStorageEngineStats.getPercentageSpaceUtilization());
-    }
-  }
-
-  private static class AllottedCacheSizeStat extends LambdaStat {
-    public AllottedCacheSizeStat(BdbStorageEngineStats bdbStorageEngineStats) {
-      super (() -> bdbStorageEngineStats.getAllottedCacheSize());
-    }
-  }
-
-  private static class SpaceSizeStat extends LambdaStat {
-    public SpaceSizeStat(BdbStorageEngineStats bdbStorageEngineStats) {
-      super (() -> bdbStorageEngineStats.getTotalSpace());
-    }
-  }
-
-  private static class NumCleanerRunsStat extends LambdaStat {
-    public NumCleanerRunsStat(BdbStorageEngineStats bdbStorageEngineStats) {
-      super (() -> bdbStorageEngineStats.getNumCleanerRuns());
-    }
-  }
-
-  private EnvironmentStats getFastStats() {
+  public EnvironmentStats getFastStats() {
     try {
       return fastStats.call();
     } catch (Exception e) {
@@ -104,7 +58,7 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
     }
   }
 
-  private BdbSpaceUtilizationSummary getFastSpaceUtilizationSummary() {
+  public BdbSpaceUtilizationSummary getFastSpaceUtilizationSummary() {
     try {
       return fastSpaceStats.call();
     } catch(Exception e) {
@@ -117,35 +71,63 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
     return Utils.getRatio(getNumCacheMiss(), getNumReadsTotal() + getNumWritesTotal());
   }
 
-  public long getNumCacheMiss() {
+  private long getNumCacheMiss() {
     EnvironmentStats stats = getFastStats();
     return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNCacheMiss();
   }
 
-  public long getNumReadsTotal() {
+  public double getPercentageBINMiss() {
+    return Utils.getRatio(getBINFetchMisses(), getBINFetches());
+  }
+
+  public double getPercentageINMiss() {
+    return Utils.getRatio(getINFetchMisses(), getINFetches());
+  }
+
+  private long getBINFetchMisses() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNBINsFetchMiss();
+  }
+
+  private long getBINFetches() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNBINsFetch();
+  }
+
+  private long getINFetchMisses() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNUpperINsFetchMiss();
+  }
+
+  private long getINFetches() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNUpperINsFetch();
+  }
+
+  private long getNumReadsTotal() {
     return getNumRandomReads() + getNumSequentialReads();
   }
 
-  public long getNumRandomReads() {
+  private long getNumRandomReads() {
     EnvironmentStats stats = getFastStats();
     return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNRandomReads();
   }
 
-  public long getNumSequentialReads() {
+  private long getNumSequentialReads() {
     EnvironmentStats stats = getFastStats();
     return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNSequentialReads();
   }
 
-  public long getNumWritesTotal() {
+  private long getNumWritesTotal() {
     return getNumRandomWrites() + getNumSequentialWrites();
   }
 
-  public long getNumRandomWrites() {
+  private long getNumRandomWrites() {
     EnvironmentStats stats = getFastStats();
     return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNRandomWrites();
   }
 
-  public long getNumSequentialWrites() {
+  private long getNumSequentialWrites() {
     EnvironmentStats stats = getFastStats();
     return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNSequentialWrites();
   }
@@ -160,7 +142,7 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
     return Utils.getRatio(getTotalSpaceUtilized(), getTotalSpace());
   }
 
-  public long getTotalSpaceUtilized() {
+  private long getTotalSpaceUtilized() {
     BdbSpaceUtilizationSummary summary = getFastSpaceUtilizationSummary();
     return summary == null ? NULL_BDB_ENVIRONMENT.code : summary.getTotalSpaceUtilized();
   }
@@ -174,5 +156,20 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
   public long getNumCleanerRuns() {
     EnvironmentStats stats = getFastStats();
     return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNCleanerRuns();
+  }
+
+  public long getCleanerBacklog() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getCleanerBacklog();
+  }
+
+  public long getNumCleanerEntriesRead() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNCleanerEntriesRead();
+  }
+
+  public long getNumCleanerDeletions() {
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNCleanerDeletions();
   }
 }

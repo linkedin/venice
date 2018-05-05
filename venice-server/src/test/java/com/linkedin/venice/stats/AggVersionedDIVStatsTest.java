@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -15,7 +14,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -23,7 +21,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
-import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 public class AggVersionedDIVStatsTest {
   private static final int TEST_TIME = 5 *Time.MS_PER_SECOND;

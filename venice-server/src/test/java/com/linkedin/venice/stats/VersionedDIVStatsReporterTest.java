@@ -6,7 +6,7 @@ import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 
 public class VersionedDIVStatsReporterTest {
@@ -17,8 +17,8 @@ public class VersionedDIVStatsReporterTest {
     metricsRepository.addReporter(reporter);
 
     String storeName = TestUtils.getUniqueString("store");
-    VersionedDIVStatsReporter statsReporter = new VersionedDIVStatsReporter(metricsRepository, storeName,
-        (mr, name) -> new DIVStatsReporter(mr, name));
+    VeniceVersionedStatsReporter<DIVStats, DIVStatsReporter> statsReporter =
+        new VeniceVersionedStatsReporter<>(metricsRepository, storeName, (mr, name) -> new DIVStatsReporter(mr, name));
     DIVStats stats = new DIVStats();
 
     stats.recordCurrentIdleTime();

@@ -6,7 +6,7 @@ import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 
 
 public class DIVStatsReporterTest {
@@ -23,10 +23,10 @@ public class DIVStatsReporterTest {
 
     DIVStats stats = new DIVStats();
     stats.recordSuccessMsg();
-    divStatsReporter.setDIVStats(stats);
+    divStatsReporter.setStats(stats);
     Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), 1d);
 
-    divStatsReporter.setDIVStats(null);
+    divStatsReporter.setStats(null);
     Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
   }
 }
