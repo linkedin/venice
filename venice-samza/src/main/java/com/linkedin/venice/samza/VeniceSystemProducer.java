@@ -124,7 +124,7 @@ public class VeniceSystemProducer implements SystemProducer {
     String store = outgoingMessageEnvelope.getSystemStream().getStream();
     String topic = storeInfo.computeIfAbsent(store, s -> {
       VersionCreationResponse versionCreationResponse = null;
-      for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+      for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
         versionCreationResponse = veniceControllerClient.requestTopicForWrites(s, 1, pushType, samzaJobId); // TODO, store size?
         if (!versionCreationResponse.isError()) {
           return versionCreationResponse;
@@ -146,7 +146,7 @@ public class VeniceSystemProducer implements SystemProducer {
 
     Schema remoteKeySchema = keySchemas.computeIfAbsent(store, s -> {
       SchemaResponse keySchemaResponse = null;
-      for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+      for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
         keySchemaResponse = veniceControllerClient.getKeySchema(s);
         if (!keySchemaResponse.isError()) {
           String schemaString = keySchemaResponse.getSchemaStr();
@@ -185,7 +185,7 @@ public class VeniceSystemProducer implements SystemProducer {
       Schema valueSchema = getSchemaFromObject(valueObject);
       int valueSchemaId = schemaIds.computeIfAbsent(new StoreAndSchema(store, valueSchema), storeAndSchema -> {
         SchemaResponse valueSchemaResponse = null;
-        for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+        for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
           valueSchemaResponse =  veniceControllerClient.getValueSchemaID(storeAndSchema.getStoreName(),
               storeAndSchema.getSchema().toString());
           if (!valueSchemaResponse.isError()) {
