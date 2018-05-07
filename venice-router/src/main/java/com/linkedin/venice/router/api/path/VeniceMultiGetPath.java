@@ -14,7 +14,6 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.buffer.ByteBufInputStream;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -26,6 +25,7 @@ import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.entity.BasicHttpEntity;
+import org.apache.http.entity.ByteArrayEntity;
 import org.apache.log4j.Logger;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -176,8 +176,12 @@ public class VeniceMultiGetPath extends VenicePath {
   @Override
   public HttpUriRequest composeRouterRequest(String storageNodeUri) {
     HttpPost routerRequest = new HttpPost(storageNodeUri + getLocation());
-    BasicHttpEntity entity = new BasicHttpEntity();
-    entity.setContent(new ByteArrayInputStream(serializedMultiGetRequest()));
+    /**
+     * Use {@link ByteArrayEntity} here instead of {@link BasicHttpEntity} to explicitly disable
+     * streaming (chunked transfer-encoding) since the streaming might cause some inefficiency
+     * in the storage node.
+     */
+    ByteArrayEntity entity = new ByteArrayEntity(serializedMultiGetRequest());
     routerRequest.setEntity(entity);
 
     // Setup API version header

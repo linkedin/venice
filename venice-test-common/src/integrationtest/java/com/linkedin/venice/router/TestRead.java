@@ -15,6 +15,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -262,6 +263,17 @@ public class TestRead {
 
     Assert.assertTrue(localhostRequestCount > 0);
     Assert.assertTrue(localhostRequestCountForMultiGet > 0);
+
+    // Verify storage node metrics
+    double maxMultiGetRequestPartCount = Double.MIN_VALUE;
+    for (VeniceServerWrapper veniceServerWrapper : veniceCluster.getVeniceServers()) {
+      Map<String, ? extends Metric> metrics = veniceServerWrapper.getMetricsRepository().metrics();
+      if (metrics.containsKey(".total--multiget_request_part_count.Max")) {
+        maxMultiGetRequestPartCount = Math.max(maxMultiGetRequestPartCount, metrics.get(".total--multiget_request_part_count.Max").value());
+      }
+    }
+    Assert.assertEquals(maxMultiGetRequestPartCount, 1.0);
+
     /**
      * Test batch get limit
      */

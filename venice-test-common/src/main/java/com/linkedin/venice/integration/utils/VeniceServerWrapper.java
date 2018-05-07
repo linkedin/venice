@@ -152,4 +152,8 @@ public class VeniceServerWrapper extends ProcessWrapper {
   public VeniceServer getVeniceServer(){
     return veniceServer;
   }
+
+  public MetricsRepository getMetricsRepository() {
+    return veniceServer.getMetricsRepository();
+  }
 }
