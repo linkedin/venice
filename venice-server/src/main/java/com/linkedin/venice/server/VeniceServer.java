@@ -281,6 +281,10 @@ public class VeniceServer {
     return veniceConfigLoader;
   }
 
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
+
   public static void main(String args[])
       throws Exception {
     VeniceConfigLoader veniceConfigService = null;
