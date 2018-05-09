@@ -819,7 +819,7 @@ public class ControllerClient implements Closeable {
       return getJsonFromHttp(post, throwForNonMasterController);
     } catch (VeniceHttpException e) {
       if (e.getHttpStatusCode() == HttpConstants.SC_MISDIRECTED_REQUEST && retriesLeftForNonMasterController > 0) {
-        logger.warn("Failed to reach master controller. Will retry up to " + retriesLeftForNonMasterController + " more times.", e);
+        logger.warn("Failed to reach master controller " + masterControllerUrl + ". Will retry up to " + retriesLeftForNonMasterController + " more times.", e);
         Utils.sleep(500);
         return postRequest(path, params, retriesLeftForNonMasterController - 1);
       }

@@ -95,6 +95,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     MasterControllerResponse responseObject = new MasterControllerResponse();
     responseObject.setCluster(clusterName);
     responseObject.setUrl(routing.getMasterController().getUrl());
+    logger.info("For cluster " + responseObject.getCluster() + ", the master controller url is " + responseObject.getUrl()
+            + ", last refreshed at " + routing.getMasterControllerChangeTime());
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 
