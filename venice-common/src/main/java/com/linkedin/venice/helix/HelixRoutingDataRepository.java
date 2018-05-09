@@ -62,6 +62,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
 
     private volatile Map<String, Instance> liveInstancesMap;
 
+    private long masterControllerChangeTime = -1;
+
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
         listenerManager = new ListenerManager<>(); //TODO make thread count configurable
@@ -266,9 +268,14 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         return newResourceNamesToNumberOfParitions;
     }
 
+    @Override
+    public long getMasterControllerChangeTime() {
+        return this.masterControllerChangeTime;
+    }
 
     @Override
     public void onControllerChange(NotificationContext changeContext) {
+        this.masterControllerChangeTime = System.currentTimeMillis();
         if (changeContext.getType().equals(NotificationContext.Type.FINALIZE)) {
             //Finalized notification, listener will be removed.
             return;
@@ -277,10 +284,10 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
         if (leader == null) {
             this.masterController = null;
-            logger.info("Cluster do not have master controller now!");
+            logger.warn("Cluster do not have master controller now!");
         } else {
             this.masterController = createInstanceFromLiveInstance(leader);
-            logger.info("Controller is:" + masterController.getHost() + ":" + masterController.getPort());
+            logger.info("New master controller is:" + masterController.getHost() + ":" + masterController.getPort());
         }
     }
 
