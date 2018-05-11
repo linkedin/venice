@@ -11,6 +11,7 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -52,7 +53,6 @@ import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
 import org.apache.log4j.Logger;
@@ -86,7 +86,7 @@ public class TestVeniceHelixAdmin {
   private ZkServerWrapper zkServerWrapper;
   private KafkaBrokerWrapper kafkaBrokerWrapper;
 
-  private Map<String, HelixManager> participants = new HashMap<>();
+  private Map<String, SafeHelixManager> participants = new HashMap<>();
 
   private VeniceProperties controllerProps;
   private MockTestStateModelFactory stateModelFactory;
@@ -133,7 +133,7 @@ public class TestVeniceHelixAdmin {
   private void startParticipant(boolean isDelay, String nodeId)
       throws Exception {
     stateModelFactory.setBlockTransition(isDelay);
-    HelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985, stateModelFactory,
+    SafeHelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985, stateModelFactory,
         VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
     participants.put(nodeId, manager);
     manager.connect();
@@ -996,7 +996,7 @@ public class TestVeniceHelixAdmin {
     }
 
     final CopyOnWriteArrayList<KillOfflinePushMessage> processedMessage = new CopyOnWriteArrayList<>();
-    for (HelixManager manager : this.participants.values()) {
+    for (SafeHelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
       channel.registerHandler(KillOfflinePushMessage.class, message -> {
         processedMessage.add(message);
@@ -1030,7 +1030,7 @@ public class TestVeniceHelixAdmin {
 
     String storeName = TestUtils.getUniqueString("testDeleteAllVersions");
     // register kill message handler for participants.
-    for (HelixManager manager : this.participants.values()) {
+    for (SafeHelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
       channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
@@ -1119,7 +1119,7 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testDeleteOldVersionInStore() {
     String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
-    for (HelixManager manager : this.participants.values()) {
+    for (SafeHelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
       channel.registerHandler(KillOfflinePushMessage.class, message -> {
       });
@@ -1150,7 +1150,7 @@ public class TestVeniceHelixAdmin {
   public void testDeleteStore() {
     String storeName = "testDeleteStore";
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
-    for (HelixManager manager : this.participants.values()) {
+    for (SafeHelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
       channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
@@ -1189,7 +1189,7 @@ public class TestVeniceHelixAdmin {
     String storeName = "testDeleteStore";
     int largestUsedVersionNumber = 1000;
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
-    for (HelixManager manager : this.participants.values()) {
+    for (SafeHelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
       channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override

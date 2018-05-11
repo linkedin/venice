@@ -20,6 +20,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.acl.RouterAclHandler;
@@ -68,7 +69,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import javax.annotation.Nonnull;
-import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
@@ -91,7 +91,7 @@ public class RouterServer extends AbstractVeniceService {
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
   private ZkClient zkClient;
-  private HelixManager manager;
+  private SafeHelixManager manager;
   private HelixReadOnlySchemaRepository schemaRepository;
   private HelixRoutingDataRepository routingDataRepository;
   private HelixReadOnlyStoreRepository metadataRepository;
@@ -209,7 +209,7 @@ public class RouterServer extends AbstractVeniceService {
     zkClient = new ZkClient(config.getZkConnection());
     this.adapter = new HelixAdapterSerializer();
     if(isCreateHelixManager) {
-      this.manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
+      this.manager = new SafeHelixManager(new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection()));
     }
 
     this.metricsRepository = metricsRepository;

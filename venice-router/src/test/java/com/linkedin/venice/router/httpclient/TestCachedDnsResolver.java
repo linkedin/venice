@@ -104,7 +104,7 @@ public class TestCachedDnsResolver {
   @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testRefreshCacheEntries() throws UnknownHostException {
     Assert.assertEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
-    TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS, () -> {
       try {
         Assert.assertEquals(InetAddress.getByName("127.0.0.2"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
       } catch (UnknownHostException e) {

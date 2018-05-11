@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.StoreCleaner;
@@ -15,7 +16,6 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import io.tehuti.metrics.MetricsRepository;
-import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 
 /**
@@ -24,7 +24,7 @@ import org.apache.helix.manager.zk.ZkClient;
  * All resources in this class is dedicated for one Venice cluster.
  */
 public class VeniceHelixResources implements VeniceResource {
-  private final HelixManager controller;
+  private final SafeHelixManager controller;
   private final HelixReadWriteStoreRepository metadataRepository;
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixReadWriteSchemaRepository schemaRepository;
@@ -39,7 +39,7 @@ public class VeniceHelixResources implements VeniceResource {
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
                               HelixAdapterSerializer adapterSerializer,
-                              HelixManager helixManager,
+                              SafeHelixManager helixManager,
                               VeniceControllerClusterConfig config,
                               StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
     this.config = config;
@@ -100,7 +100,7 @@ public class VeniceHelixResources implements VeniceResource {
     return messageChannel;
   }
 
-  public HelixManager getController() {
+  public SafeHelixManager getController() {
     return controller;
   }
 

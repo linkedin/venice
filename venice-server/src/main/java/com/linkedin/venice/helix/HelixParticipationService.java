@@ -1,7 +1,6 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Instance;
@@ -13,30 +12,22 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.validation.constraints.NotNull;
-import org.I0Itec.zkclient.exception.ZkNoNodeException;
-import org.I0Itec.zkclient.exception.ZkNodeExistsException;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixException;
-import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkClient;
-import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
-import org.apache.zookeeper.KeeperException;
 
 
 /**
@@ -60,7 +51,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
 
-  private HelixManager manager;
+  private SafeHelixManager manager;
 
   private ThreadPoolExecutor helixStateTransitionExecutorService;
 
@@ -98,9 +89,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   @Override
   public boolean startInner() {
     logger.info("Attempting to start HelixParticipation service");
-    manager = HelixManagerFactory
-            .getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT,
-                zkAddress);
+    manager = new SafeHelixManager(
+        HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
     manager.getStateMachineEngine().registerStateModelFactory(STATE_MODEL_REFERENCE_NAME, stateModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
     // customize k-v data support soon. Then we don't need LiveInstanceInfoProvider here. Use the instance config

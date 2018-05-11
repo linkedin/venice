@@ -3,13 +3,11 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.StoreCleaner;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
@@ -35,7 +33,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   public static final String PARTITION_SUBFIX = "_0";
   private static Logger logger = Logger.getLogger(VeniceDistClusterControllerStateModel.class);
 
-  private HelixManager controller;
+  private SafeHelixManager controller;
   private VeniceHelixResources resources;
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
@@ -69,8 +67,8 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     String controllerName = message.getTgtName();
     logger.info(controllerName + " becoming leader from standby for " + clusterName);
     if (controller == null) {
-      controller = HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER,
-          zkClient.getServers());
+      controller = new SafeHelixManager(
+          HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers()));
       controller.connect();
       controller.startTimerTasks();
       resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,

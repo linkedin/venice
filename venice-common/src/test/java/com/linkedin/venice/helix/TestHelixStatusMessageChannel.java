@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixManager;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -42,9 +41,9 @@ public class TestHelixStatusMessageChannel {
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixStatusMessageChannel channel;
-  private HelixManager manager;
+  private SafeHelixManager manager;
   private HelixAdmin admin;
-  private HelixManager controller;
+  private SafeHelixManager controller;
   private RoutingDataRepository routingDataRepository;
   private final long WAIT_ZK_TIME = 1000l;
 
@@ -67,8 +66,8 @@ public class TestHelixStatusMessageChannel {
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, kafkaTopic, 1);
 
-    controller = HelixControllerMain
-        .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE);
+    controller = new SafeHelixManager(HelixControllerMain
+        .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE));
     controller.connect();
     instanceId = Utils.getHelixNodeIdentifier(port);
     manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port,
@@ -236,7 +235,7 @@ public class TestHelixStatusMessageChannel {
     channel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
 
     // Start a new participant
-    HelixManager newParticipant =
+    SafeHelixManager newParticipant =
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
@@ -269,7 +268,7 @@ public class TestHelixStatusMessageChannel {
     channel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
 
     // Start a new participant
-    HelixManager newParticipant =
+    SafeHelixManager newParticipant =
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
@@ -298,7 +297,7 @@ public class TestHelixStatusMessageChannel {
       throws Exception {
     int timeoutCount = 1;
     // Start a new participant
-    HelixManager newParticipant =
+    SafeHelixManager newParticipant =
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
