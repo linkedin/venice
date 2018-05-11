@@ -7,7 +7,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
-import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -18,8 +17,11 @@ import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
-import java.util.*;
-
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -28,10 +30,12 @@ import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.*;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
-import static com.linkedin.venice.utils.TestPushUtils.*; // TODO: remove this static import.
+import static com.linkedin.venice.utils.TestPushUtils.*;
 
 //TODO: write a H2VWrapper that can handle the whole flow
 
@@ -54,6 +58,42 @@ public abstract class TestBatch {
   public void cleanup() {
     if (veniceCluster != null) {
       veniceCluster.close();
+    }
+  }
+
+  @Test
+  public void storeWithNoVersionThrows400() {
+
+    //Create store
+    File inputDir = getTempDataDirectory();
+    Schema keySchema = Schema.parse("\"string\"");
+    Schema valueSchema = Schema.parse("\"string\"");
+    Pair<Schema, Schema> schemas = new Pair<>(keySchema, valueSchema);
+    String storeName = TestUtils.getUniqueString("store");
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, false, false);
+
+    //Query store
+    try(AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+        .setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      try {
+        Object value1 = avroClient.get("key1").get();
+        Assert.fail("Single get request on store with no push should fail");
+      } catch (Exception e){
+        Assert.assertTrue(e.getMessage().contains("Please push data to that store"));
+      }
+
+      try {
+        Set<String> keys = new HashSet<>();
+        keys.add("key2");
+        keys.add("key3");
+        Object values = avroClient.batchGet(keys).get();
+        Assert.fail("Batch get request on store with no push should fail");
+      } catch (Exception e){
+        Assert.assertTrue(e.getMessage().contains("Please push data to that store"));
+      }
+
     }
   }
 

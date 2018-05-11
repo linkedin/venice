@@ -19,7 +19,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
  * TODO: If later on DDS router could support a better way to register a handler to handle the exceptional cases,
  * we should update the logic here.
  */
-@Deprecated
+
 public class RouterExceptionAndTrackingUtils {
   private static AggRouterHttpRequestStats STATS_FOR_SINGLE_GET;
   private static AggRouterHttpRequestStats STATS_FOR_MULTI_GET;
@@ -38,7 +38,7 @@ public class RouterExceptionAndTrackingUtils {
     STATS_FOR_MULTI_GET = stats;
   }
 
-  @Deprecated
+
   public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
     metricTracking(storeName, requestType, responseStatus);

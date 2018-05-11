@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api.path;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -67,7 +68,16 @@ public class VeniceMultiGetPath extends VenicePath {
             BAD_REQUEST, "Multi-get request contains duplicate key, store name: " + getStoreName());
       }
       // partition lookup
-      int partitionId = partitionFinder.findPartitionNumber(resourceName, routerKey);
+      int partitionId;
+      try {
+        partitionId = partitionFinder.findPartitionNumber(resourceName, routerKey);
+      } catch (VeniceNoHelixResourceException e){
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+            Optional.of(getStoreName()),
+            Optional.of(RequestType.MULTI_GET),
+            e.getHttpResponseStatus(),
+            e.getMessage());
+      }
       MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
       routerRequestKey.keyBytes = key;
       routerRequestKey.keyIndex = keyIdx;
