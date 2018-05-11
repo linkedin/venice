@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.base.misc.QueryStringDecoder;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.RequestConstants;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
@@ -42,9 +43,17 @@ public class VeniceSingleGetPath extends VenicePath {
     } else {
       routerKey = RouterKey.fromString(key);
     }
-    String partition = Integer.toString(partitionFinder.findPartitionNumber(resourceName, routerKey));
-    setPartitionKeys(Collections.singleton(routerKey));
-    this.partition = partition;
+    try {
+      String partition = Integer.toString(partitionFinder.findPartitionNumber(resourceName, routerKey));
+      setPartitionKeys(Collections.singleton(routerKey));
+      this.partition = partition;
+    } catch (VeniceNoHelixResourceException e) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(RequestType.SINGLE_GET),
+          e.getHttpResponseStatus(),
+          e.getMessage());
+    }
   }
 
   @Override

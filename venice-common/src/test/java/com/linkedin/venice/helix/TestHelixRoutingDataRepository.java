@@ -164,8 +164,8 @@ public class TestHelixRoutingDataRepository {
     try {
       //Should not find the resource.
       repository.getNumberOfPartitions(resourceName);
-      Assert.fail("IAE should be thrown because resource dose not exist now.");
-    }catch(VeniceException iae){
+      Assert.fail("IAE should be thrown because resource does not exist now.");
+    } catch(VeniceException iae){
       //expected
     }
   }

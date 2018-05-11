@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.HashMap;
@@ -46,7 +47,7 @@ public class ResourceAssignment {
       String errorMessage = "Resource '" + resourceName + "' does not exist";
       logger.trace(errorMessage);
       // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out of sync, this fails...
-      throw new VeniceException(errorMessage);
+      throw new VeniceNoHelixResourceException(resourceName);
     }
   }
 
