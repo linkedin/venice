@@ -17,9 +17,9 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
-import org.apache.helix.ControllerChangeListener;
-import org.apache.helix.HelixManager;
-import org.apache.helix.LiveInstanceChangeListener;
+import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
+import org.apache.helix.api.listeners.ControllerChangeListener;
+import org.apache.helix.api.listeners.LiveInstanceChangeListener;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.ExternalView;
@@ -46,7 +46,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     /**
      * Manager used to communicate with Helix.
      */
-    private final HelixManager manager;
+    private final SafeHelixManager manager;
     /**
      * Builder used to build the data path to access Helix internal data.
      */
@@ -64,7 +64,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
 
     private long masterControllerChangeTime = -1;
 
-    public HelixRoutingDataRepository(HelixManager manager) {
+    public HelixRoutingDataRepository(SafeHelixManager manager) {
         this.manager = manager;
         listenerManager = new ListenerManager<>(); //TODO make thread count configurable
         keyBuilder = new PropertyKey.Builder(manager.getClusterName());
@@ -182,7 +182,15 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         //Get number of partitions from Ideal state category in ZK.
         Set<String> resourcesInExternalView =
             externalViewList.stream().map(ExternalView::getResourceName).collect(Collectors.toSet());
-        Map<String, Integer> resourceToPartitionCountMap = getNumberOfPartitionsFromIdealState(resourcesInExternalView);
+        Map<String, Integer> resourceToPartitionCountMap;
+        try {
+            resourceToPartitionCountMap = getNumberOfPartitionsFromIdealState(resourcesInExternalView);
+        } catch (HelixMetaDataAccessException e) {
+            logger.error(
+                "Caught HelixMetaDataAccessException when trying to getNumberOfPartitionsFromIdealState(). "
+                + "Will abort onExternalViewChange().", e);
+            return;
+        }
         ResourceAssignment newResourceAssignment = new ResourceAssignment();
         for (ExternalView externalView : externalViewList) {
             String resourceName = externalView.getResourceName();
@@ -250,7 +258,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         }
     }
 
-    private Map<String, Integer> getNumberOfPartitionsFromIdealState(Set<String> newResourceNames) {
+    private Map<String, Integer> getNumberOfPartitionsFromIdealState(Set<String> newResourceNames)
+        throws HelixMetaDataAccessException {
         List<PropertyKey> keys = newResourceNames.stream().map(keyBuilder::idealStates).collect(Collectors.toList());
         // Number of partition should be get from ideal state configuration instead of getting from external view.
         // Because if there is not participant in some partition, partition number in external view will be different from ideal state.

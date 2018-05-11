@@ -4,6 +4,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.helix.HelixInstanceConverter;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.meta.Instance;
@@ -24,7 +25,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
-import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -117,15 +117,15 @@ public class TestUtils {
     void execute() throws AssertionError;
   }
 
-  public static HelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {
+  public static SafeHelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory();
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }
 
-  public static HelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort,
+  public static SafeHelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort,
       StateModelFactory<StateModel> stateModelFactory, String stateModelDef) {
-    HelixManager participant =
-        HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
+    SafeHelixManager participant = new SafeHelixManager(
+        HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress));
     participant.getStateMachineEngine()
         .registerStateModelFactory(stateModelDef,
             stateModelFactory);

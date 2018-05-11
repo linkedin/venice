@@ -6,36 +6,24 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixDefinedState;
-import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
-import org.apache.helix.NotificationContext;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
-import org.apache.helix.model.Message;
-import org.apache.helix.model.StateModelDefinition;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
-import org.apache.helix.participant.statemachine.StateModel;
-import org.apache.helix.participant.statemachine.StateModelFactory;
-import org.apache.helix.participant.statemachine.StateModelInfo;
-import org.apache.helix.participant.statemachine.Transition;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -49,8 +37,8 @@ public class TestHelixRoutingDataRepository {
   // Test behavior configuration
   private static final int WAIT_TIME = 1000; // FIXME: Non-deterministic. Will lead to flaky tests.
 
-  private HelixManager manager;
-  private HelixManager controller;
+  private SafeHelixManager manager;
+  private SafeHelixManager controller;
   private HelixAdmin admin;
   private String clusterName = "UnitTestCLuster";
   private String resourceName = "UnitTest";
@@ -59,7 +47,7 @@ public class TestHelixRoutingDataRepository {
   private int adminPort;
   private ZkServerWrapper zkServerWrapper;
   private HelixRoutingDataRepository repository;
-  private HelixManager readManager;
+  private SafeHelixManager readManager;
 
   @BeforeMethod
   public void HelixSetup()
@@ -81,8 +69,8 @@ public class TestHelixRoutingDataRepository {
 
     httpPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
     adminPort = 50000 + (int)(System.currentTimeMillis() % 10000) +1; //port never actually used
-    controller = HelixControllerMain
-        .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
+    controller = new SafeHelixManager(HelixControllerMain
+        .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE));
 
     manager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort), zkAddress, httpPort,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
@@ -90,7 +78,7 @@ public class TestHelixRoutingDataRepository {
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
 
-    readManager = HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
+    readManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
     repository = new HelixRoutingDataRepository(readManager);
     repository.refresh();
@@ -127,7 +115,7 @@ public class TestHelixRoutingDataRepository {
     instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(0, instances.size());
     int newHttpPort = httpPort+10;
-    HelixManager newManager =
+    SafeHelixManager newManager =
         TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(newHttpPort), zkAddress, newHttpPort,
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newManager.connect();
@@ -234,8 +222,9 @@ public class TestHelixRoutingDataRepository {
 
     //Start up stand by controller by different port
     int newAdminPort = adminPort + 1;
-    HelixManager newMaster = HelixManagerFactory
-        .getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(newAdminPort), InstanceType.CONTROLLER, zkAddress);
+    SafeHelixManager newMaster = new SafeHelixManager(
+        HelixManagerFactory.getZKHelixManager(
+            clusterName, Utils.getHelixNodeIdentifier(newAdminPort), InstanceType.CONTROLLER, zkAddress));
     newMaster.connect();
     //Stop master and wait stand by become master
     controller.disconnect();
@@ -297,7 +286,7 @@ public class TestHelixRoutingDataRepository {
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
-    HelixManager newManager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort+1000), zkAddress, httpPort+1000,
+    SafeHelixManager newManager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort+1000), zkAddress, httpPort+1000,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newManager.connect();
 

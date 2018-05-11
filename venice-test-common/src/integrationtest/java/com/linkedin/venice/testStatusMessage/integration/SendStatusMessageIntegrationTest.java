@@ -2,6 +2,7 @@ package com.linkedin.venice.testStatusMessage.integration;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.DelayedZkClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -16,7 +17,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixManager;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -34,8 +34,8 @@ public class SendStatusMessageIntegrationTest {
   private String zkAddress;
   private HelixAdmin admin;
   private String cluster = TestUtils.getUniqueString("sendStatusMessage");
-  private HelixManager controller;
-  private ArrayList<HelixManager> participants = new ArrayList<>();
+  private SafeHelixManager controller;
+  private ArrayList<SafeHelixManager> participants = new ArrayList<>();
 
   @BeforeClass
   public void setup()
@@ -52,8 +52,9 @@ public class SendStatusMessageIntegrationTest {
     admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         MockTestStateModel.getDefinition());
 
-    controller = HelixControllerMain.startHelixController(zkAddress, cluster, "integrationController",
-        HelixControllerMain.STANDALONE);
+    controller = new SafeHelixManager(
+        HelixControllerMain.startHelixController(
+            zkAddress, cluster, "integrationController", HelixControllerMain.STANDALONE));
     controller.connect();
   }
 
@@ -66,7 +67,7 @@ public class SendStatusMessageIntegrationTest {
   private HelixStatusMessageChannel getParticipantDelayedChannel(int port, long lowerDelay, long upperDelay)
       throws Exception {
     DelayedZkClientUtils.startDelayingSocketIoForNewZkClients(lowerDelay, upperDelay);
-    HelixManager participant = TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port), zkAddress, port,
+    SafeHelixManager participant = TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port), zkAddress, port,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     participant.connect();
     DelayedZkClientUtils.stopDelayingSocketIoForNewZkClients();
@@ -75,7 +76,7 @@ public class SendStatusMessageIntegrationTest {
   }
 
   private void cleanUpParticipants() {
-    for (HelixManager participant : participants) {
+    for (SafeHelixManager participant : participants) {
       participant.disconnect();
     }
   }

@@ -7,13 +7,10 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.helix.ClusterMessagingService;
 import org.apache.helix.Criteria;
-import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.messaging.AsyncCallback;
@@ -49,11 +46,11 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
   private final int sendMessageTimeOut;
 
-  public HelixStatusMessageChannel(HelixManager manager) {
+  public HelixStatusMessageChannel(SafeHelixManager manager) {
     this(manager, DEFAULT_SEND_MESSAGE_TIME_OUT);
   }
 
-  public HelixStatusMessageChannel(HelixManager manager, int timeOut) {
+  public HelixStatusMessageChannel(SafeHelixManager manager, int timeOut) {
     messageService = manager.getMessagingService();
     this.sendMessageTimeOut = timeOut;
     messageService.registerMessageHandlerFactory(HELIX_MESSAGE_TYPE, new HelixStatusMessageHandleFactory());

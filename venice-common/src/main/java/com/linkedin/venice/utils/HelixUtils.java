@@ -2,6 +2,8 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
+import com.linkedin.venice.helix.SafeHelixDataAccessor;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
 import java.util.HashMap;
 import java.util.List;
@@ -10,8 +12,6 @@ import java.util.Map;
 import org.I0Itec.zkclient.DataUpdater;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixDataAccessor;
-import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -213,7 +213,7 @@ public class HelixUtils {
    * @param sleepTimeSeconds time in second that it blocks until next retry.
    * @exception VeniceException if connection keeps failing after certain number of retry
    */
-  public static void connectHelixManager(HelixManager manager, int maxRetries, int sleepTimeSeconds) {
+  public static void connectHelixManager(SafeHelixManager manager, int maxRetries, int sleepTimeSeconds) {
     int attempt = 1;
     boolean isSuccess = false;
     while (!isSuccess) {
@@ -278,9 +278,9 @@ public class HelixUtils {
     }
   }
 
-  public static boolean isLiveInstance(String clusterName, String instanceId, HelixManager manager) {
+  public static boolean isLiveInstance(String clusterName, String instanceId, SafeHelixManager manager) {
     PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-    HelixDataAccessor accessor = manager.getHelixDataAccessor();
+    SafeHelixDataAccessor accessor = manager.getHelixDataAccessor();
     // Get session id at first then get current states of given instance and give session.
     LiveInstance instance = accessor.getProperty(keyBuilder.liveInstance(instanceId));
     if (instance == null) {

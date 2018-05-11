@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -8,7 +9,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -34,9 +34,9 @@ public class TestStartMultiControllers {
     VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(numberOfControler, 1, 1);
     String clusterName = cluster.getClusterName();
     String partitionName = HelixUtils.getPartitionName(clusterName, 0);
-    HelixManager manager =
+    SafeHelixManager manager = new SafeHelixManager(
         new ZKHelixManager(clusterName, "testStartControllersMoreThanRequiredForOneCluster", InstanceType.SPECTATOR,
-            cluster.getZk().getAddress());
+            cluster.getZk().getAddress()));
     manager.connect();
     //Assert there are 3 controllers join the cluster.
     ExternalView externalView = getExternViewOfCluster(cluster, manager);
@@ -80,7 +80,7 @@ public class TestStartMultiControllers {
     cluster.close();
   }
 
-  private ExternalView getExternViewOfCluster(VeniceClusterWrapper cluster, HelixManager manager) {
+  private ExternalView getExternViewOfCluster(VeniceClusterWrapper cluster, SafeHelixManager manager) {
     String clusterName = cluster.getClusterName();
     String controllerClusterName = "venice-controllers";
     // Check whether enough controller has been assigned.

@@ -15,6 +15,7 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
@@ -42,7 +43,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
@@ -115,7 +115,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
      */
-    private HelixManager manager;
+    private SafeHelixManager manager;
     /**
      * Builder used to build the data path to access Helix internal data of level-1 cluster.
      */
@@ -167,9 +167,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     private void initLevel1Controller() {
-        manager = HelixManagerFactory
+        manager = new SafeHelixManager(HelixManagerFactory
             .getZKHelixManager(controllerClusterName, controllerName, InstanceType.CONTROLLER_PARTICIPANT,
-                multiClusterConfigs.getControllerClusterZkAddresss());
+                multiClusterConfigs.getControllerClusterZkAddresss()));
         StateMachineEngine stateMachine = manager.getStateMachineEngine();
         stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
         try {
