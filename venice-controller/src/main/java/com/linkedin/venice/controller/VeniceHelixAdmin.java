@@ -542,11 +542,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if(store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
-            // This uses the pushId to make sure any requests with the same push ID get the same version.  As of May 2017
-            // Samza cannot provide a unique ID, so we're using different logic.  We should keep pushing Samza to provide
-            // that ID and then restore this behavior.
-            //Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
-            Optional<Version> existingVersionToUse = getStartedVersion(store);
+            Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
             if (existingVersionToUse.isPresent()){
                 return existingVersionToUse.get();
             }

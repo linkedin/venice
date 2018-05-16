@@ -87,8 +87,13 @@ public class CreateVersion {
         //Query params
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        String pushJobId = request.queryParams(PUSH_JOB_ID);
-        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
+        Store store = admin.getStore(clusterName, storeName);
+        if (null == store) {
+          throw new VeniceNoStoreException(storeName);
+        }
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+
         String pushTypeString = request.queryParams(PUSH_TYPE);
         PushType pushType;
         try {
@@ -97,32 +102,29 @@ public class CreateVersion {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e);
         }
 
-        Store store = admin.getStore(clusterName, storeName);
-        if (null == store) {
-          throw new VeniceNoStoreException(storeName);
-        }
         if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
               + storeName + " which is not configured to be a hybrid store");
         }
 
-        //looked up params
+        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
         int partitionCount = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
-
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-        responseObject.setPartitions(partitionCount);
         responseObject.setReplicas(replicationFactor);
+        responseObject.setPartitions(partitionCount);
+
         boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers(isSSL));
         responseObject.setEnableSSL(isSSL);
+
+        String pushJobId = request.queryParams(PUSH_JOB_ID);
 
         switch(pushType) {
           case BATCH:
             Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor, true);
             responseObject.setVersion(version.getNumber());
-            responseObject.setKafkaTopic(Version.composeKafkaTopic(storeName, version.getNumber()));
+            responseObject.setKafkaTopic(version.kafkaTopicName());
+            responseObject.setCompressionStrategy(version.getCompressionStrategy());
             break;
           case STREAM:
             String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
@@ -135,6 +137,7 @@ public class CreateVersion {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
+
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };

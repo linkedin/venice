@@ -95,6 +95,9 @@ public class TestMultiDataCenterPush {
 
     // Verify job properties
     Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
+    for (int version : parentController.getVeniceAdmin().getCurrentVersionsForMultiColos(CLUSTER_NAME, storeName).values())  {
+      Assert.assertEquals(version, 1);
+    }
     Assert.assertEquals(job.getInputDirectory(), inputDirPath);
     String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
     Assert.assertEquals(job.getFileSchemaString(), schema);
