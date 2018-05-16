@@ -659,8 +659,14 @@ public class TestAdminSparkServer {
   public void controllerClientProvidesErrorWhenRequestingTopicForStoreThatDoesNotExist() throws IOException {
     String storeNameDoesNotExist = TestUtils.getUniqueString("no-store");
     String pushId = TestUtils.getUniqueString("no-store-push");
+
     VersionCreationResponse vcr =
-        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId);
+        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.BATCH, pushId);
+    Assert.assertTrue(vcr.isError(),
+        "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
+            .writeValueAsString(vcr));
+
+    vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));

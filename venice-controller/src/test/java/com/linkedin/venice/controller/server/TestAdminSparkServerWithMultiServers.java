@@ -6,18 +6,18 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import io.tehuti.metrics.stats.Count;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -70,22 +70,42 @@ public class TestAdminSparkServerWithMultiServers {
 
   @Test(timeOut = TIME_OUT)
   public void requestTopicIsIdempotent() {
-    String storeName = TestUtils.getUniqueString("store");
+    HashMap<String, ControllerApiConstants.PushType> storeToType = new HashMap<>(2);
+    storeToType.put(TestUtils.getUniqueString("BatchStore"), ControllerApiConstants.PushType.BATCH);
+    storeToType.put(TestUtils.getUniqueString("StreamStore"), ControllerApiConstants.PushType.STREAM);
+
     String pushOne = TestUtils.getUniqueString("pushId");
-    String pushTwo = TestUtils.getUniqueString("pushId");
+    String pushTwo = pushOne;
+    String pushThree = TestUtils.getUniqueString("pushId");
 
-    venice.getNewStore(storeName);
-    VersionCreationResponse
-        responseOneA = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushOne);
-    if (responseOneA.isError()){
-      Assert.fail(responseOneA.getError());
-    }
-    VersionCreationResponse responseTwo = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushTwo);
-    if (responseTwo.isError()){
-      Assert.fail(responseOneA.getError());
-    }
+    for (String storeName : storeToType.keySet()) {
+      venice.getNewStore(storeName);
 
-    Assert.assertEquals(responseOneA.getKafkaTopic(), responseTwo.getKafkaTopic(), "Multiple requests for topics with the same pushId must return the same kafka topic");
+      // Stream
+      if (storeToType.get(storeName).equals(ControllerApiConstants.PushType.STREAM)) {
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
+        controllerClient.emptyPush(storeName, TestUtils.getUniqueString("emptyPushId"), 10000);
+      }
+
+      // Both
+      VersionCreationResponse responseOne =
+          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushOne);
+      if (responseOne.isError()) {
+        Assert.fail(responseOne.getError());
+      }
+      VersionCreationResponse responseTwo =
+          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushTwo);
+      if (responseTwo.isError()) {
+        Assert.fail(responseOne.getError());
+      }
+
+      Assert.assertEquals(responseOne.getKafkaTopic(), responseTwo.getKafkaTopic(),
+          "Multiple requests for topics with the same pushId must return the same kafka topic");
+
+      VersionCreationResponse responseThree =
+          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushThree);
+      Assert.assertFalse(responseThree.isError(), "Controller should not allow concurrent push");
+    }
   }
 
   /**
