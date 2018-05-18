@@ -1415,6 +1415,11 @@ public class VeniceParentHelixAdmin implements Admin {
     offlinePushAccessor.updateOfflinePushStatus(cluster, status);
   }
 
+  @Override
+  public boolean isResourceStillAlive(String resourceName) {
+    throw new VeniceException("VeniceParentHelixAdmin#isResourceStillAlive is not supported!");
+  }
+
   public ParentHelixOfflinePushAccessor getOfflinePushAccessor() {
     return offlinePushAccessor;
   }

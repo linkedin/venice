@@ -157,6 +157,8 @@ public class TestTopicCleanupService {
     doReturn(false).when(admin).isTopicTruncatedBasedOnRetention(Long.MAX_VALUE);
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
     doReturn(true).when(admin).isMasterControllerOfControllerCluster();
+    // Resource is still alive
+    doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
 
     topicCleanupService.start();
     final int TOPIC_CLEANUP_TIMEOUT_IN_MS = 2000; // 2 seconds
@@ -164,7 +166,7 @@ public class TestTopicCleanupService {
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName2 + "_v1");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName2 + "_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName2 + "_v2");
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName3 + "_rt");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v3");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v4");
