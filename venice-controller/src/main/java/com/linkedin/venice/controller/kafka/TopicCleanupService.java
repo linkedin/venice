@@ -207,6 +207,14 @@ public class TopicCleanupService extends AbstractVeniceService {
         .filter(t -> admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(t)))
         /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
         .filter(t -> Version.parseVersionFromKafkaTopicName(t) <= maxVersionNumberToDelete)
+        /**
+         * Filter out resources, which haven't been fully removed.
+         *
+         * The reason to filter out still-alive resource is to avoid triggering the non-existing topic issue
+         * of Kafka consumer happening in Storage Node.
+         *
+         */
+        .filter(t -> !admin.isResourceStillAlive(t))
         .collect(Collectors.toList());
   }
 }

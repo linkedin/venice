@@ -11,8 +11,7 @@ import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
@@ -21,6 +20,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
@@ -40,12 +40,13 @@ public class TestMultiDataCenterPush {
   private final List<MirrorMakerWrapper> mirrorMakers = new ArrayList<>(NUMBER_OF_CHILD_DATACENTERS);
   private KafkaBrokerWrapper parentKafka;
   private VeniceControllerWrapper parentController;
+  private VeniceControllerWrapper[] childControllers;
 
   @BeforeClass
   public void setUp() {
     parentKafka = ServiceFactory.getKafkaBroker();
 
-    VeniceControllerWrapper[] childControllers = new VeniceControllerWrapper[NUMBER_OF_CHILD_DATACENTERS];
+    childControllers = new VeniceControllerWrapper[NUMBER_OF_CHILD_DATACENTERS];
     for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
       VeniceClusterWrapper childCluster = ServiceFactory.getVeniceCluster(CLUSTER_NAME);
       childClusters.add(childCluster);
@@ -80,7 +81,7 @@ public class TestMultiDataCenterPush {
     IOUtils.closeQuietly(parentKafka);
   }
 
-  @Test(timeOut = 60 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testMultiDataCenterPush() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -122,5 +123,34 @@ public class TestMultiDataCenterPush {
             "Complete job should have progress");
       }
     }
+
+    /**
+     * To speed up integration test, here reuses the same test case to verify topic clean up logic.
+     *
+     * TODO: update service factory to allow specifying {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE}
+     * and {@link com.linkedin.venice.ConfigKeys.MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE} to reduce job run times.
+     */
+    job.run();
+    job.run();
+
+    String v1Topic = storeName + "_v1";
+    String v2Topic = storeName + "_v2";
+    String v3Topic = storeName + "_v3";
+
+    // Verify the topics in parent controller
+    TopicManager parentTopicManager = parentController.getVeniceAdmin().getTopicManager();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,() -> {
+      Assert.assertFalse(parentTopicManager.containsTopic(v1Topic), "Topic: " + v1Topic + " should be deleted after push");
+      Assert.assertFalse(parentTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be deleted after push");
+      Assert.assertFalse(parentTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be deleted after push");
+    });
+
+    // Verify the topics in child controller
+    TopicManager childTopicManager = childControllers[0].getVeniceAdmin().getTopicManager();
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,() -> {
+      Assert.assertFalse(childTopicManager.containsTopic(v1Topic), "Topic: " + v1Topic + " should be deleted after 3 pushes");
+    });
+    Assert.assertTrue(childTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
+    Assert.assertTrue(childTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
   }
 }

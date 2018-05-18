@@ -244,6 +244,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public boolean isResourceStillAlive(String resourceName) {
+        if (!Version.topicIsValidStoreVersion(resourceName)) {
+            throw new VeniceException("Resource name: " + resourceName + " is invalid");
+        }
+        String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+        // Find out the cluster first
+        StoreConfig storeConfig = getStoreConfigAccessor().getStoreConfig(storeName);
+        if (null == storeConfig) {
+            logger.info("StoreConfig doesn't exist for store: " + storeName + ", will treat resource:" + resourceName + " as deprecated");
+            return false;
+        }
+        String clusterName = storeConfig.getCluster();
+        // Compose ZK path for external view of the resource
+        String externalViewPath = "/" + clusterName + "/EXTERNALVIEW/" + resourceName;
+        return zkClient.exists(externalViewPath);
+    }
+
+    @Override
     public boolean isClusterValid(String clusterName) {
         return admin.getClusters().contains(clusterName);
     }
