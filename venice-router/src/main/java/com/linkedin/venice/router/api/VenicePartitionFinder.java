@@ -31,7 +31,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   }
 
   public int findPartitionNumber(String resourceName, RouterKey partitionKey){
-    return partitioner.getPartitionId(partitionKey.getBytes(), getNumPartitions(resourceName));
+    return partitioner.getPartitionId(partitionKey.getKeyBuffer(), getNumPartitions(resourceName));
   }
 
   @Override

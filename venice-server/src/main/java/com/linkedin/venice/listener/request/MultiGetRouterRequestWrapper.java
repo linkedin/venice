@@ -10,9 +10,9 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.FullHttpRequest;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
 public class MultiGetRouterRequestWrapper extends RouterRequest {
@@ -46,20 +46,19 @@ public class MultiGetRouterRequestWrapper extends RouterRequest {
     }
     Iterable<MultiGetRouterRequestKeyV1> keys;
 
-    try (InputStream is = new ByteBufInputStream(httpRequest.content())) {
-      keys = parseKeys(is);
-    } catch (IOException e) {
-      throw new VeniceException("Failed to close ByteBufInputStream", e);
-    }
+
+    byte[] content = new byte[httpRequest.content().readableBytes()];
+    httpRequest.content().readBytes(content);
+    keys = parseKeys(content);
 
     return new MultiGetRouterRequestWrapper(resourceName, keys);
   }
 
-  public static Iterable<MultiGetRouterRequestKeyV1> parseKeys(InputStream content) {
+  public static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
     RecordDeserializer<MultiGetRouterRequestKeyV1> deserializer =
         SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
 
-    return deserializer.deserializeObjects(content);
+    return deserializer.deserializeObjects(OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
 
   public Iterable<MultiGetRouterRequestKeyV1> getKeys() {

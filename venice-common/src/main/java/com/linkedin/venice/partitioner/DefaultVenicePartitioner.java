@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import java.nio.ByteBuffer;
 import org.apache.log4j.Logger;
 
 import java.security.MessageDigest;
@@ -36,10 +37,10 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     super(props);
   }
 
-  public int getPartitionId(byte[] keyBytes, int numPartitions) {
+  private int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
 
     MessageDigest md = messageDigestThreadLocal.get();
-    md.update(keyBytes);
+    md.update(keyBytes, offset, length);
 
     byte[] byteData = md.digest();
 
@@ -62,5 +63,15 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     md.reset();
     return partition;
 
+  }
+
+  @Override
+  public int getPartitionId(byte[] keyBytes, int numPartitions) {
+    return getPartitionId(keyBytes, 0, keyBytes.length, numPartitions);
+  }
+
+    @Override
+  public int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions) {
+    return getPartitionId(keyByteBuffer.array(), keyByteBuffer.position(), keyByteBuffer.remaining(), numPartitions);
   }
 }

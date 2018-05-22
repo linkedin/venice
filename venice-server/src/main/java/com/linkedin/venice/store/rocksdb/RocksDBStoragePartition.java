@@ -240,14 +240,23 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  private boolean canUseBackedArray(ByteBuffer byteBuffer) {
+    return byteBuffer.array().length == byteBuffer.remaining();
+  }
+
   @Override
   public synchronized void put(byte[] key, ByteBuffer valueBuffer) {
+    if (canUseBackedArray(valueBuffer)) {
+      // We could safely use the backed array.
+      put(key, valueBuffer.array());
+      return;
+    }
     /**
      * The reason to create a new byte array to contain the value is that the overhead to create/release
      * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
      *
      * In the future, if {@link SstFileWriter#put} supports byte array with offset/length, then we don't need
-     * to create a byte copy here.
+     * to create a byte array copy here.
      * Same for {@link RocksDB#put}.
      */
     byte[] value = new byte[valueBuffer.remaining()];
@@ -262,6 +271,24 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
     }
+  }
+
+  @Override
+  public byte[] get(ByteBuffer keyBuffer) {
+    if (canUseBackedArray(keyBuffer)) {
+      // We could safely use the backed array.
+      return get(keyBuffer.array());
+    }
+    /**
+     * The reason to create a new byte array to contain the key is that the overhead to create/release
+     * {@link Slice} and {@link org.rocksdb.DirectSlice} is high since the creation/release are JNI operation.
+     *
+     * In the future, if {@link RocksDB#get} supports byte array with offset/length, then we don't need
+     * to create a byte array copy here.
+     */
+    byte[] key = new byte[keyBuffer.remaining()];
+    System.arraycopy(keyBuffer.array(), keyBuffer.position(), key, 0, keyBuffer.remaining());
+    return get(key);
   }
 
   @Override

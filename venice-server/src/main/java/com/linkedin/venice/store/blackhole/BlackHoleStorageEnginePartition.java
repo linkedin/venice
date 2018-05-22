@@ -29,6 +29,12 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public byte[] get(ByteBuffer key) {
+    // I think this is what you're looking for...
+    return null;
+  }
+
+  @Override
   public void delete(byte[] key) {
     // consider it done!
   }

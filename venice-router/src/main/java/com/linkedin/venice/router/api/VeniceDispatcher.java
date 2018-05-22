@@ -389,7 +389,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         long startTimeInNS = System.nanoTime();
         statsForSingleGet.recordCacheLookupRequest(storeName);
         Optional<RouterCache.CacheValue> cacheValue =
-            routerCache.get().get(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes());
+            routerCache.get().get(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer());
+
         statsForSingleGet.recordCacheLookupLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
         if (cacheValue != null) {
           // Cache hit
@@ -455,9 +456,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       try {
         if (content.isPresent() && valueSchemaId.isPresent()) {
           RouterCache.CacheValue cacheValue = new RouterCache.CacheValue(content.get(), valueSchemaId.get());
-          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes(), Optional.of(cacheValue));
+          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer(), Optional.of(cacheValue));
         } else {
-          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes(),
+          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer(),
               Optional.empty());
         }
         routerCache.get().setCompressionType(path.getResourceName(), compressionStrategy);

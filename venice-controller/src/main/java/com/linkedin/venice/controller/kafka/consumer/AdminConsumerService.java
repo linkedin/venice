@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.SSLConfig;
-import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
@@ -13,12 +11,9 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
 

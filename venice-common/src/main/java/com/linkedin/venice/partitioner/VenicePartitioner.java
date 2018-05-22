@@ -1,6 +1,7 @@
 package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.utils.VeniceProperties;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 
 /**
@@ -30,4 +31,6 @@ public abstract class VenicePartitioner {
      * @return
      */
     public abstract int getPartitionId(byte[] keyBytes, int numPartitions);
+
+    public abstract int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions);
 }

@@ -35,7 +35,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   public int getRequestSize() {
     // The final single-element array is being used in closure since closure can only operate final variables.
     final int[] size = {0};
-    getPartitionKeys().stream().forEach(key -> size[0] += key.getBytes().length);
+    getPartitionKeys().stream().forEach(key -> size[0] += key.getKeyBuffer().remaining());
 
     return size[0];
   }

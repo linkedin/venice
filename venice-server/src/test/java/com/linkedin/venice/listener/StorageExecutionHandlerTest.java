@@ -12,6 +12,7 @@ import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -43,7 +44,7 @@ public class StorageExecutionHandlerTest {
     GetRouterRequest testRequest = GetRouterRequest.parseGetHttpRequest(httpRequest);
 
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
-    doReturn(valueBytes).when(testStore).get(partition, keyString.getBytes());
+    doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
     StoreRepository testRepository = mock(StoreRepository.class);
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);

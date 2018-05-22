@@ -1,6 +1,7 @@
 package com.linkedin.venice.compression;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 
 public abstract class VeniceCompressor {
@@ -12,7 +13,7 @@ public abstract class VeniceCompressor {
 
   public abstract byte[] compress(byte[] data) throws IOException;
 
-  public abstract byte[] decompress(byte[] data) throws IOException;
+  public abstract ByteBuffer decompress(ByteBuffer data) throws IOException;
 
   public CompressionStrategy getCompressionStrategy() {
     return compressionStrategy;

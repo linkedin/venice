@@ -14,8 +14,15 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import javax.annotation.Nonnull;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -28,16 +35,31 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_SINGLE_GET = ScatterGatherMode.GROUP_BY_PARTITION;
 
   /**
+   * This mode will assume there is only host for single-get request (sticky routing), and the scattering logic is
+   * optimized based on this assumption.
+   */
+  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
+
+  /**
    * This mode will do the aggregation per host first, and then initiate a request per host.
-   *
-   * TODO: we could develop more scatter modes for multi-get request in the future and make it configurable.
    */
   private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_MULTI_GET = ScatterGatherMode.GROUP_BY_GREEDY_HOST;
 
+  /**
+   * This mode assumes there is only one host per partition (sticky routing), and the scattering logic is optimized
+   * based on this assumption.
+   */
+  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET = new ScatterGatherModeForStickyMultiGet();
+
   private ReadRequestThrottler readRequestThrottler;
 
-  public VeniceDelegateMode() {
+  private final boolean stickyRoutingEnabledForSingleGet;
+  private final boolean stickyRoutingEnabledForMultiGet;
+
+  public VeniceDelegateMode(boolean stickyRoutingEnabledForSingleGet, boolean stickyRoutingEnabledForMultiGet) {
     super("VENICE_DELEGATE_MODE", false);
+    this.stickyRoutingEnabledForSingleGet = stickyRoutingEnabledForSingleGet;
+    this.stickyRoutingEnabledForMultiGet = stickyRoutingEnabledForMultiGet;
   }
 
   public void initReadRequestThrottler(ReadRequestThrottler requestThrottler) {
@@ -68,10 +90,18 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     ScatterGatherMode scatterMode = null;
     switch (venicePath.getRequestType()) {
       case MULTI_GET:
-        scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET;
+        if (stickyRoutingEnabledForMultiGet) {
+          scatterMode = SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET;
+        } else {
+          scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET;
+        }
         break;
       case SINGLE_GET:
-        scatterMode = SCATTER_GATHER_MODE_FOR_SINGLE_GET;
+        if (stickyRoutingEnabledForSingleGet) {
+          scatterMode = SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET;
+        } else {
+          scatterMode = SCATTER_GATHER_MODE_FOR_SINGLE_GET;
+        }
         break;
       default:
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
@@ -126,5 +156,134 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
 
     return finalScatter;
+  }
+
+  /**
+   * This mode assumes there is only one available host for single-get request (sticky routing),
+   * so it is optimized based on this assumption to avoid unnecessary memory allocation.
+   */
+  static class ScatterGatherModeForStickySingleGet extends ScatterGatherMode {
+
+    protected ScatterGatherModeForStickySingleGet() {
+      super("SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET", false);
+    }
+
+    @Nonnull
+    @Override
+    public <H, P extends ResourcePath<K>, K, R> Scatter<H, P, K> scatter(@Nonnull Scatter<H, P, K> scatter,
+        @Nonnull String requestMethod, @Nonnull String resourceName, @Nonnull PartitionFinder<K> partitionFinder,
+        @Nonnull HostFinder<H, R> hostFinder, @Nonnull HostHealthMonitor<H> hostHealthMonitor, @Nonnull R roles,
+        Metrics metrics) throws RouterException {
+      K key = scatter.getPath().getPartitionKey();
+      String partitionName = partitionFinder.findPartitionName(resourceName, key);
+      List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, hostHealthMonitor, roles);
+      SortedSet<K> keySet = new TreeSet<>();
+      keySet.add(key);
+      if (hosts.isEmpty()) {
+        scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), keySet, partitionName));
+      } else if (hosts.size() > 1) {
+        P path = scatter.getPath();
+        if (! (path instanceof VenicePath)) {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
+              "VenicePath is expected, but received " + path.getClass());
+        }
+        VenicePath venicePath = (VenicePath)path;
+        String storeName = venicePath.getStoreName();
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(), INTERNAL_SERVER_ERROR,
+            "There should be only one available host, but received " + hosts.size()  + " for store: " + storeName + ", partition: " + partitionName);
+      } else {
+        scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
+      }
+      return scatter;
+    }
+  }
+
+  /**
+   * This mode assumes there is only one available host per partition (sticky routing),
+   * and it is optimized based on this assumption to avoid unnecessary memory allocation and speed up scattering logic.
+   */
+  static class ScatterGatherModeForStickyMultiGet extends ScatterGatherMode {
+
+    /**
+     * This class contains all the partitions/keys belonging to the same host.
+     */
+    static class KeyPartitionSet<H, K> {
+      public TreeSet<K> keySet = new TreeSet<>();
+      public Set<String> partitionNames = new HashSet<>();
+      // Only considering the first host because of sticky routing
+      public List<H> hosts;
+
+      public KeyPartitionSet(List<H> hosts) {
+        this.hosts = hosts;
+      }
+
+      public void addKeyPartitions(TreeSet<K> keys, String partitionName) {
+        this.keySet.addAll(keys);
+        this.partitionNames.add(partitionName);
+      }
+    }
+
+    protected ScatterGatherModeForStickyMultiGet() {
+      super("SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET", false);
+    }
+
+    @Nonnull
+    @Override
+    public <H, P extends ResourcePath<K>, K, R> Scatter<H, P, K> scatter(@Nonnull Scatter<H, P, K> scatter,
+        @Nonnull String requestMethod, @Nonnull String resourceName, @Nonnull PartitionFinder<K> partitionFinder,
+        @Nonnull HostFinder<H, R> hostFinder, @Nonnull HostHealthMonitor<H> hostHealthMonitor, @Nonnull R roles,
+        Metrics metrics) throws RouterException {
+      P path = scatter.getPath();
+      if (! (path instanceof VenicePath)) {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
+            "VenicePath is expected, but received " + path.getClass());
+      }
+      VenicePath venicePath = (VenicePath)path;
+      String storeName = venicePath.getStoreName();
+
+
+      /**
+       * Group by partition
+       */
+      Map<String, TreeSet<K>> partitionKeys = new HashMap<>();
+      for (K key : scatter.getPath().getPartitionKeys()) {
+        String partitionName = partitionFinder.findPartitionName(resourceName, key);
+        if (!partitionKeys.containsKey(partitionName)) {
+          partitionKeys.put(partitionName, new TreeSet<>());
+        }
+        partitionKeys.get(partitionName).add(key);
+      }
+
+      /**
+       * Group by host
+       */
+      Map<H, KeyPartitionSet<H, K>> hostMap = new HashMap<>();
+      for (Map.Entry<String, TreeSet<K>> entry : partitionKeys.entrySet()) {
+        String partitionName = entry.getKey();
+        List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, hostHealthMonitor, roles);
+        if (hosts.isEmpty()) {
+          scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), entry.getValue(), partitionName));
+        } else if (hosts.size() > 1) {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(), INTERNAL_SERVER_ERROR,
+              "There should be only one available host, but received " + hosts.size() + " for store: " + storeName + ", partition: " + partitionName);
+        }
+        else {
+          H host = hosts.get(0);
+          if (!hostMap.containsKey(host)) {
+            hostMap.put(host, new KeyPartitionSet<>(hosts));
+          }
+          hostMap.get(host).addKeyPartitions(entry.getValue(), partitionName);
+        }
+      }
+
+      /**
+       * Populate online requests
+       */
+      for (Map.Entry<H, KeyPartitionSet<H, K>> entry : hostMap.entrySet()) {
+        scatter.addOnlineRequest(new ScatterGatherRequest<>(entry.getValue().hosts, entry.getValue().keySet, entry.getValue().partitionNames));
+      }
+
+      return scatter;
+    }
   }
 }

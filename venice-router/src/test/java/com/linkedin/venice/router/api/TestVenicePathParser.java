@@ -9,6 +9,7 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import java.nio.ByteBuffer;
 import java.util.Base64;
 import java.util.Optional;
 import org.mockito.Mockito;
@@ -70,8 +71,9 @@ public class TestVenicePathParser {
     VenicePath path = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
         TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class))
         .parseResourceUri(myUri, request);
-    Assert.assertEquals(path.getPartitionKey().getBytes(), expectedKey.getBytes(),
-        new String(path.getPartitionKey().getBytes()) + " should match " + expectedKey);
+    ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
+    Assert.assertEquals(path.getPartitionKey().getKeyBuffer(), ByteBuffer.wrap(expectedKey.getBytes()),
+        new String(partitionKey.array(), partitionKey.position(), partitionKey.remaining()) + " should match " + expectedKey);
   }
 
   @Test(expectedExceptions = RouterException.class)

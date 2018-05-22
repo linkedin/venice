@@ -32,13 +32,15 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
    * Used in {@link OffHeapCache}.
    */
   public static class CacheKeySerializer implements CacheSerializer<CacheKey> {
-    public static final int SIZE_OF_SERIALIZED_STORE_ID_AND_VERSION = 8;
+    public static final int SIZE_OF_SERIALIZED_STORE_ID_AND_VERSION = 2 * Integer.BYTES;
 
     @Override
     public void serialize(CacheKey value, ByteBuffer buf) {
       buf.putInt(value.storeId);
       buf.putInt(value.version);
-      buf.put(value.key);
+      value.keyBuffer.mark();
+      buf.put(value.keyBuffer);
+      value.keyBuffer.reset();
     }
 
     @Override
@@ -49,19 +51,19 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
       byte[] key = new byte[keyLen];
       buf.get(key);
 
-      return new CacheKey(storeId, version, key);
+      return new CacheKey(storeId, version, ByteBuffer.wrap(key));
     }
 
     @Override
     public int serializedSize(CacheKey value) {
-      return SIZE_OF_SERIALIZED_STORE_ID_AND_VERSION + value.key.length;
+      return SIZE_OF_SERIALIZED_STORE_ID_AND_VERSION + value.keyBuffer.remaining();
     }
   }
 
   public static class CacheKey implements Measurable {
     private final int storeId;
     private final int version;
-    private final byte[] key;
+    private final ByteBuffer keyBuffer;
     private static final ThreadLocal<MessageDigest> messageDigest = ThreadLocal.withInitial(() -> {
       try {
         return createMD5MessageDigest();
@@ -70,15 +72,15 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
       }
     });
 
-    public CacheKey(int storeId, int version, byte[] key) {
+    public CacheKey(int storeId, int version, ByteBuffer keyBuffer) { //byte[] key) {
       this.storeId = storeId;
       this.version = version;
-      this.key = key;
+      this.keyBuffer = keyBuffer;
     }
 
     @Override
     public int getSize() {
-      return 4 + 4 + key.length;
+      return Integer.BYTES + Integer.BYTES + keyBuffer.remaining();
     }
 
     @Override
@@ -98,7 +100,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
       if (version != cacheKey.version) {
         return false;
       }
-      return Arrays.equals(key, cacheKey.key);
+      return keyBuffer.equals(cacheKey.keyBuffer);
     }
 
     @Override
@@ -108,7 +110,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
         // MD5 is not supported, so use the simple one
         int result = storeId;
         result = 31 * result + version;
-        result = 31 * result + Arrays.hashCode(key);
+        result = 31 * result + keyBuffer.hashCode();
         return result;
       } else {
         /**
@@ -116,7 +118,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
          * The overhead is slightly higher than the simple hashcode calculation.
          */
         m.reset();
-        m.update(key);
+        m.update(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining());
         byte[] digest = m.digest();
         BigInteger bigInt = new BigInteger(1, digest);
         return bigInt.intValue();
@@ -129,7 +131,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
    */
   public static class CacheValueSerializer implements CacheSerializer<Optional<CacheValue>> {
     public static final int INVALID_SCHEMA_ID = Integer.MIN_VALUE;
-    public static final int SIZE_OF_SERIALIZED_SCHEMA_ID = 4;
+    public static final int SIZE_OF_SERIALIZED_SCHEMA_ID = Integer.BYTES;
 
     @Override
     public void serialize(Optional<CacheValue> value, ByteBuffer buf) {
@@ -182,7 +184,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
 
     @Override
     public int getSize() {
-      return 4 + value.length;
+      return Integer.BYTES + value.length;
     }
 
     @Override
@@ -253,12 +255,20 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
   }
 
   public void put(String storeName, int version, byte[] key, Optional<CacheValue> value) {
-    CacheKey cacheKey = new CacheKey(getStoreId(storeName), version, key);
+    put(storeName, version, ByteBuffer.wrap(key), value);
+  }
+
+  public void put(String storeName, int version, ByteBuffer keyBuffer, Optional<CacheValue> value) {
+    CacheKey cacheKey = new CacheKey(getStoreId(storeName), version, keyBuffer);
     cache.put(cacheKey, value);
   }
 
   public Optional<CacheValue> get(String storeName, int version, byte[] key) {
-    CacheKey cacheKey = new CacheKey(getStoreId(storeName), version, key);
+    return get(storeName, version, ByteBuffer.wrap(key));
+  }
+
+  public Optional<CacheValue> get(String storeName, int version, ByteBuffer keyBuffer) {
+    CacheKey cacheKey = new CacheKey(getStoreId(storeName), version, keyBuffer);
     return cache.get(cacheKey);
   }
 

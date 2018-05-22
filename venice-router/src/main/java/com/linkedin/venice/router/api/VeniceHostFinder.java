@@ -19,6 +19,8 @@ import java.util.List;
 
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
+  private static final Comparator<Instance> INSTANCE_COMPARATOR = Comparator.comparing(Instance::getNodeId);
+
   private final RoutingDataRepository dataRepository;
   private final boolean isStickyRoutingEnabledForSingleGet;
   private final boolean isStickyRoutingEnabledForMultiGet;
@@ -144,7 +146,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
        */
       return newHosts;
     }
-    newHosts.sort(Comparator.comparing(Instance::getNodeId));
+    newHosts.sort(INSTANCE_COMPARATOR);
     int partitionId = HelixUtils.getPartitionId(partitionName);
     int chosenIndex = partitionId % hostCount;
 
