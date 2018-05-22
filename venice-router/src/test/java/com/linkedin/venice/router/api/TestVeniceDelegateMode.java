@@ -15,7 +15,6 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -25,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.SortedSet;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.Assert;
@@ -95,7 +95,7 @@ public class TestVeniceDelegateMode {
     };
   }
 
-  private HostFinder<Instance, VeniceRole> getHostFinder(Map<String, List<Instance>> partitionHostMap) {
+  private HostFinder<Instance, VeniceRole> getHostFinder(Map<String, List<Instance>> partitionHostMap, boolean sticky) {
     return new HostFinder<Instance, VeniceRole>() {
       @Nonnull
       @Override
@@ -103,6 +103,11 @@ public class TestVeniceDelegateMode {
           @Nonnull String partitionName, @Nonnull HostHealthMonitor<Instance> hostHealthMonitor,
           @Nonnull VeniceRole roles) throws RouterException {
         if (partitionHostMap.containsKey(partitionName)) {
+          if (sticky) {
+            List<Instance> hosts = new ArrayList<>();
+            hosts.add(partitionHostMap.get(partitionName).get(0));
+            return hosts;
+          }
           return partitionHostMap.get(partitionName);
         }
         return Collections.EMPTY_LIST;
@@ -159,11 +164,11 @@ public class TestVeniceDelegateMode {
     instanceList.add(instance3);
     Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
     partitionInstanceMap.put(partitionName, instanceList);
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode();
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(false, false);
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
@@ -178,6 +183,21 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
     Instance selectedHost = hosts.get(0);
     Assert.assertTrue(instanceList.contains(selectedHost));
+
+    // Test with sticky routing
+    hostFinder = getHostFinder(partitionInstanceMap, true);
+    scatterMode = new VeniceDelegateMode(true, true);
+    scatterMode.initReadRequestThrottler(throttler);
+    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
+        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 1, "There should be only one online request since there is only one key");
+    request = requests.iterator().next();
+    hosts = request.getHosts();
+    Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
+    selectedHost = hosts.get(0);
+    Assert.assertEquals(instanceList.get(0), selectedHost, "Sticky routing should select: " + instanceList.get(0));
   }
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*Some partition is not available for store.*")
@@ -196,11 +216,11 @@ public class TestVeniceDelegateMode {
     PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
 
     Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode();
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(false, false);
     scatterMode.initReadRequestThrottler(throttler);
 
     scatterMode.scatter(scatter, requestMethod, resourceName,
@@ -252,8 +272,8 @@ public class TestVeniceDelegateMode {
     Instance instance1 = new Instance("host1_123", "host1", 123);
     Instance instance2 = new Instance("host2_123", "host2", 123);
     Instance instance3 = new Instance("host3_123", "host3", 123);
-    Instance instance4 = new Instance("host4_123", "host3", 123);
-    Instance instance5 = new Instance("host5_123", "host3", 123);
+    Instance instance4 = new Instance("host4_123", "host4", 123);
+    Instance instance5 = new Instance("host5_123", "host5", 123);
     List<Instance> instanceListForP1 = new ArrayList<>();
     instanceListForP1.add(instance1);
     instanceListForP1.add(instance2);
@@ -270,8 +290,8 @@ public class TestVeniceDelegateMode {
     instanceListForP5.add(instance2);
     instanceListForP5.add(instance4);
     List<Instance> instanceListForP6 = new ArrayList<>();
-    instanceListForP6.add(instance3);
     instanceListForP6.add(instance5);
+    instanceListForP6.add(instance3);
     Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
     partitionInstanceMap.put(p1, instanceListForP1);
     partitionInstanceMap.put(p2, instanceListForP2);
@@ -280,11 +300,11 @@ public class TestVeniceDelegateMode {
     partitionInstanceMap.put(p5, instanceListForP5);
     partitionInstanceMap.put(p6, instanceListForP6);
 
-    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode();
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(false, false);
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter =
@@ -307,5 +327,46 @@ public class TestVeniceDelegateMode {
         "One of instance2/instance4 should be selected");
     Assert.assertTrue(instanceSet.contains(instance3) || instanceSet.contains(instance5),
         "One of instance3/instance5 should be selected");
+
+    // test sticky routing
+    scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    hostFinder = getHostFinder(partitionInstanceMap, true);
+    scatterMode = new VeniceDelegateMode(true, true);
+    scatterMode.initReadRequestThrottler(throttler);
+    finalScatter =
+        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+    requests = finalScatter.getOnlineRequests();
+    Assert.assertEquals(requests.size(), 3);
+    requests.stream().forEach(request -> {
+      Assert.assertEquals(request.getHosts().size(), 1,
+          "There should be only one host for each request");
+      Instance host = request.getHosts().get(0);
+      SortedSet partitionKeys = request.getPartitionKeys();
+      Set<String> partitionNames = request.getPartitionsNames();
+      if (host.equals(instance1)) {
+        Assert.assertEquals(partitionKeys.size(), 4);
+        Assert.assertTrue(partitionKeys.contains(key1));
+        Assert.assertTrue(partitionKeys.contains(key2));
+        Assert.assertTrue(partitionKeys.contains(key3));
+        Assert.assertTrue(partitionKeys.contains(key4));
+        Assert.assertEquals(partitionNames.size(), 4);
+        Assert.assertTrue(partitionNames.contains(p1));
+        Assert.assertTrue(partitionNames.contains(p2));
+        Assert.assertTrue(partitionNames.contains(p3));
+        Assert.assertTrue(partitionNames.contains(p4));
+      } else if (host.equals(instance2)) {
+        Assert.assertEquals(partitionKeys.size(), 1);
+        Assert.assertTrue(partitionKeys.contains(key5));
+        Assert.assertEquals(partitionNames.size(), 1);
+        Assert.assertTrue(partitionNames.contains(p5));;
+      } else if (host.equals(instance5)) {
+        Assert.assertEquals(partitionKeys.size(), 1);
+        Assert.assertTrue(partitionKeys.contains(key6));
+        Assert.assertEquals(partitionNames.size(), 1);
+        Assert.assertTrue(partitionNames.contains(p6));;
+      } else {
+        Assert.fail("Instance: " + host + " shouldn't be selected");
+      }
+    });
   }
 }

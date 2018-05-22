@@ -11,6 +11,7 @@ import org.apache.avro.io.DecoderFactory;
 import java.util.ArrayList;
 import java.util.List;
 
+
 public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   private final DatumReader<V> datumReader;
 
@@ -33,7 +34,14 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
     }
   }
 
-  private Iterable<V> deserializeObjects(BinaryDecoder decoder) {
+  @Override
+  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceException {
+    // This param is to re-use a decoder instance. TODO: explore GC tuning later.
+    return deserializeObjects(DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null));
+  }
+
+  @Override
+  public Iterable<V> deserializeObjects(BinaryDecoder decoder) throws VeniceException {
     List<V> objects = new ArrayList();
     try {
       while (!decoder.isEnd()) {
@@ -44,16 +52,5 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
     }
 
     return objects;
-  }
-
-  @Override
-  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceException {
-    // This param is to re-use a decoder instance. TODO: explore GC tuning later.
-    return deserializeObjects(DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null));
-  }
-
-  @Override
-  public Iterable<V> deserializeObjects(InputStream is) throws VeniceException {
-    return deserializeObjects(DecoderFactory.defaultFactory().createBinaryDecoder(is, null));
   }
 }

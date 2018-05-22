@@ -1,6 +1,7 @@
 package com.linkedin.venice.compression;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 
 
 public class NoopCompressor extends VeniceCompressor {
@@ -8,11 +9,13 @@ public class NoopCompressor extends VeniceCompressor {
     super(CompressionStrategy.NO_OP);
   }
 
+  @Override
   public byte[] compress(byte[] data) throws IOException {
     return data;
   }
 
-  public byte[] decompress(byte[] data) throws IOException {
+  @Override
+  public ByteBuffer decompress(ByteBuffer data) throws IOException {
     return data;
   }
 }

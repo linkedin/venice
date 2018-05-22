@@ -59,6 +59,16 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     return null;
   }
 
+  @Override
+  public byte[] get(ByteBuffer keyBuffer) {
+    // Don't care about the performance here
+    keyBuffer.mark();
+    byte[] key = new byte[keyBuffer.remaining()];
+    keyBuffer.get(key);
+    keyBuffer.reset();
+    return get(key);
+  }
+
   public void delete(byte[] key) {
     ByteArray k = new ByteArray(key);
     partitionDb.remove(k);

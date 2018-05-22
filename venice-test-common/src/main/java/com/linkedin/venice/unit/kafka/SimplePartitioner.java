@@ -1,6 +1,8 @@
 package com.linkedin.venice.unit.kafka;
 
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import java.nio.ByteBuffer;
+
 
 /**
  * This {@link VenicePartitioner} implementation takes the first byte of the key,
@@ -14,12 +16,24 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
  * {@link com.linkedin.venice.partitioner.DefaultVenicePartitioner}.
  */
 public class SimplePartitioner extends VenicePartitioner {
-  @Override
-  public int getPartitionId(byte[] keyBytes, int numPartitions) {
+
+  private int getPartitionId(byte firstByte, int numPartitions) {
     if (numPartitions <= 0) {
       throw new IllegalArgumentException("numPartitions must be greater than 0!");
     }
-    int firstByte = keyBytes[0];
     return firstByte % numPartitions;
+  }
+
+  @Override
+  public int getPartitionId(byte[] keyBytes, int numPartitions) {
+    return getPartitionId(keyBytes[0], numPartitions);
+  }
+
+  @Override
+  public int getPartitionId(ByteBuffer keyByteBuffer, int numPartitions) {
+    keyByteBuffer.mark();
+    int partitionId = getPartitionId(keyByteBuffer.get(), numPartitions);
+    keyByteBuffer.reset();
+    return partitionId;
   }
 }

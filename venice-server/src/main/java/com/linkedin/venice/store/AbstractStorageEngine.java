@@ -261,6 +261,18 @@ public abstract class AbstractStorageEngine implements Store {
     return partition.get(key);
   }
 
+  @Override
+  public byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException {
+    Utils.notNull(keyBuffer, "Key cannot be null.");
+    if (!containsPartition(logicalPartitionId)) {
+      String errorMessage = "Invalid partition id: " + logicalPartitionId + " Store " + getName();
+      logger.error(errorMessage);
+      throw new PersistenceFailureException(errorMessage);
+    }
+    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    return partition.get(keyBuffer);
+  }
+
   public Map<String, String> sync(int partitionId) {
     if (!containsPartition(partitionId)) {
       logger.warn("Partition " + partitionId + " doesn't exist, no sync operation will be executed");

@@ -29,10 +29,10 @@ public interface Store extends QueryStore {
    * @param value  The value associated with the key
    * @throws VeniceException
    */
-  public void put(Integer logicalPartitionId, byte[] key, byte[] value)
+  void put(Integer logicalPartitionId, byte[] key, byte[] value)
       throws VeniceException;
 
-  public void put(Integer logicalPartitionId, byte[] key, ByteBuffer value)
+  void put(Integer logicalPartitionId, byte[] key, ByteBuffer value)
     throws VeniceException;
 
   /**
@@ -42,7 +42,7 @@ public interface Store extends QueryStore {
    * @param key  The key to delete
    * @throws VeniceException
    */
-  public void delete(Integer logicalPartitionId, byte[] key)
+  void delete(Integer logicalPartitionId, byte[] key)
       throws VeniceException;
 
   /**
@@ -52,5 +52,7 @@ public interface Store extends QueryStore {
    * @return
    * @throws VeniceException
    */
-  public byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException;
+  byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException;
+
+  byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException;
 }

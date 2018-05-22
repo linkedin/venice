@@ -12,12 +12,12 @@ import java.nio.ByteBuffer;
  * The reason to use package name: org.apache.avro.io since {@link BinaryDecoder#BinaryDecoder(byte[], int, int)} is
  * package-visible.
  */
-public class OptimizedKafkaValueBinaryDecoder extends BinaryDecoder {
+public class OptimizedBinaryDecoder extends BinaryDecoder {
   private byte[] data;
   private int offset;
   private int length;
 
-  OptimizedKafkaValueBinaryDecoder() {
+  OptimizedBinaryDecoder() {
   }
 
   @Override

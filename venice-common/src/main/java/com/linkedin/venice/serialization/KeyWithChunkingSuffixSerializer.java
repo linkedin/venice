@@ -43,16 +43,18 @@ public class KeyWithChunkingSuffixSerializer {
   }
 
   private byte[] serialize(ByteBuffer key, byte[] encodedChunkedKeySuffix) {
-    if (key.capacity() >= key.limit() + encodedChunkedKeySuffix.length) {
-      // If the passed in ByteBuffer has enough capacity, then we expand it, rather than allocating a new one.
-      key.limit(key.limit() + encodedChunkedKeySuffix.length);
-      key.put(encodedChunkedKeySuffix, key.limit() - encodedChunkedKeySuffix.length, encodedChunkedKeySuffix.length);
-      return key.array();
-    } else {
-      ByteBuffer target = ByteBuffer.allocate(key.limit() + encodedChunkedKeySuffix.length);
-      target.put(key);
-      target.put(encodedChunkedKeySuffix);
-      return target.array();
-    }
+    /**
+     * Here will always allocate a new {@link ByteBuffer} to accommodate} the combination of key and chunked
+     * key suffix since we don't know whether reusing the original {@link ByteBuffer} will cause any side effect
+     * or not.
+     *
+     * Also this function won't change the position of the passed key {@link ByteBuffer}.
+     */
+    key.mark();
+    ByteBuffer target = ByteBuffer.allocate(key.remaining() + encodedChunkedKeySuffix.length);
+    target.put(key);
+    key.reset();
+    target.put(encodedChunkedKeySuffix);
+    return target.array();
   }
 }

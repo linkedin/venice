@@ -181,16 +181,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       boolean isChunked,
       MultiGetResponseWrapper response) {
 
-    byte[] bytesArrayKey;
     if (isChunked) {
-      bytesArrayKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key);
-    } else {
-      bytesArrayKey = key.array();
+      key = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key));
     }
     MultiGetResponseRecordV1 record = getFromStorage(
         store,
         partition,
-        bytesArrayKey,
+        key,
         response,
         fullBytesToMultiGetResponseRecordV1,
         constructNioByteBuffer,
@@ -240,13 +237,16 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
    * This is used by the single get code path.
    */
   private ValueRecord getValueRecord(AbstractStorageEngine store, int partition, byte[] key, boolean isChunked, StorageResponseObject response) {
+    ByteBuffer keyBuffer = null;
     if (isChunked) {
-      key = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key);
+      keyBuffer = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key));
+    } else {
+      keyBuffer = ByteBuffer.wrap(key);
     }
     return getFromStorage(
         store,
         partition,
-        key,
+        keyBuffer,
         response,
         fullBytesToValueRecord,
         constructCompositeByteBuf,
@@ -320,7 +320,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getFromStorage(
       AbstractStorageEngine store,
       int partition,
-      byte[] key,
+      ByteBuffer keyBuffer,
       ReadResponse response,
       FullBytesToValue<VALUE> fullBytesToValueFunction,
       ConstructAssembledValueContainer<ASSEMBLED_VALUE_CONTAINER> constructAssembledValueContainer,
@@ -328,7 +328,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       GetSizeOfContainer getSizeFromContainerFunction,
       ContainerToValue<ASSEMBLED_VALUE_CONTAINER, VALUE> containerToValueFunction) {
 
-    byte[] value = store.get(partition, key);
+    byte[] value = store.get(partition, keyBuffer);
     if (null == value) {
       return null;
     }

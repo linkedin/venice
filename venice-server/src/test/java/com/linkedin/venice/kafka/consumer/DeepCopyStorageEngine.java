@@ -127,6 +127,12 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
+  public byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) {
+    return this.delegate.get(logicalPartitionId, keyBuffer);
+  }
+
+
+  @Override
   public Map<String, String> sync(int partitionId) {
     return this.delegate.sync(partitionId);
   }

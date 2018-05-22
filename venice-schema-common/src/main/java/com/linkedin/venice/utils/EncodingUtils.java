@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import java.nio.ByteBuffer;
 import java.util.Base64;
 
 
@@ -13,6 +14,13 @@ public class EncodingUtils {
 
   public static String base64EncodeToString(byte[] bytes) {
     return encoder.encodeToString(bytes);
+  }
+
+  public static String base64EncodeToString(ByteBuffer byteBuffer) {
+    byteBuffer.mark();
+    ByteBuffer encoded = encoder.encode(byteBuffer);
+    byteBuffer.reset();
+    return new String(encoded.array());
   }
 
   public static byte[] base64Decode(byte[] bytes) {

@@ -128,16 +128,8 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     put(new DatabaseEntry(key), new DatabaseEntry(value.array(), value.position(), value.remaining()));
   }
 
-  public byte[] get(byte[] key) throws VeniceException {
-    boolean succeeded = true;
-    long startTimeNs = -1;
-
-    DatabaseEntry keyEntry = new DatabaseEntry(key);
+  private byte[] get(DatabaseEntry keyEntry) {
     DatabaseEntry valueEntry = new DatabaseEntry();
-
-    if (logger.isTraceEnabled()) {
-      startTimeNs = System.nanoTime();
-    }
 
     try {
       // uncommitted reads are perfectly fine now, since we have no
@@ -149,19 +141,19 @@ public class BdbStoragePartition extends AbstractStoragePartition {
         return null;
       }
     } catch (DatabaseException e) {
-      succeeded = false;
       //this.bdbEnvironmentStats.reportException(e);
       logger.error(e);
       throw new VeniceException(e);
-    } finally {
-      if (logger.isTraceEnabled()) {
-        logger.trace(succeeded ? "Successfully completed" : "Failed to complete"
-          + " GET (" + getBdbDatabaseName() + ") from key " + key + " (keyRef: "
-          + System.identityHashCode(key) + ") in "
-          + (System.nanoTime() - startTimeNs) + " ns at "
-          + System.currentTimeMillis());
-      }
     }
+  }
+
+  public byte[] get(byte[] key) throws VeniceException {
+    return get(new DatabaseEntry(key));
+  }
+
+  @Override
+  public byte[] get(ByteBuffer keyBuffer) {
+    return get(new DatabaseEntry(keyBuffer.array(), keyBuffer.position(), keyBuffer.remaining()));
   }
 
   public void delete(byte[] key) {

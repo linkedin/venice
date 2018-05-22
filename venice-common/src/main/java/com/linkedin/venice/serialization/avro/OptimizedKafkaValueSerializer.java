@@ -1,7 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.OptimizedKafkaValueBinaryDecoderFactory;
+import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
 /**
@@ -9,11 +9,11 @@ import org.apache.avro.io.OptimizedKafkaValueBinaryDecoderFactory;
  * to reduce the unnecessary byte array allocation.
  */
 public class OptimizedKafkaValueSerializer extends KafkaValueSerializer {
-  private static final OptimizedKafkaValueBinaryDecoderFactory DECODER_FACTORY = new OptimizedKafkaValueBinaryDecoderFactory();
+  private static final OptimizedBinaryDecoderFactory DECODER_FACTORY = OptimizedBinaryDecoderFactory.defaultFactory();
 
   @Override
   protected BinaryDecoder createBinaryDecoder(byte[] bytes, int offset,
       int length, BinaryDecoder reuse) {
-    return DECODER_FACTORY.createBinaryDecoder(bytes, offset, length);
+    return DECODER_FACTORY.createOptimizedBinaryDecoder(bytes, offset, length);
   }
 }
