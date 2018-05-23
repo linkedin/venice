@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -30,7 +31,6 @@ import java.text.DecimalFormat;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.List;
 import java.util.Optional;
 import java.util.TreeMap;
 import javafx.util.Pair;
@@ -144,6 +144,8 @@ public class KafkaPushJob extends AbstractJob {
   public static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
   public static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
   public static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
+
+  public static final String AZK_JOB_EXEC_URL = "azkaban.link.jobexec.url";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
@@ -534,7 +536,9 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
   private void createNewStoreVersion() {
-    VersionCreationResponse versionCreationResponse = controllerClient.createNewStoreVersion(storeName, inputFileDataSize);
+    VersionCreationResponse versionCreationResponse =
+        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, ControllerApiConstants.PushType.BATCH,
+            props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url_" + System.currentTimeMillis()));
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());

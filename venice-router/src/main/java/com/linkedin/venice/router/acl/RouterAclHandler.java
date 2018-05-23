@@ -112,7 +112,7 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               logger.debug("Unauthorized access rejected: " + errLine);
               NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN,
                   ("Access denied!\n"
-                      + "If you are the store owner, add yourself to the store ACL.\n"
+                      + "If you are the store owner, add this application (or your own username for Venice shell client) to the store ACL.\n"
                       + "Otherwise, ask the store owner for read permission.").getBytes(), false, ctx);
             }
           }
