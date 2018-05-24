@@ -180,7 +180,7 @@ public class VeniceSystemFactoryTest {
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.BATCH.toString());
     samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
     samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
-    samzaConfig.put(JOB_ID, TestUtils.getUniqueString("samza-push-id"));
+    samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("samza-push-id"));
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer(VENICE_SYSTEM_NAME, new MapConfig(samzaConfig), null);
     return veniceProducer;

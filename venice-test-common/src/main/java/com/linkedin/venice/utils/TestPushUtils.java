@@ -8,7 +8,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
-import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -47,7 +46,7 @@ import org.testng.Assert;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.JOB_ID;
+import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
 
 
 public class TestPushUtils {
@@ -387,7 +386,7 @@ public class TestPushUtils {
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.STREAM.toString());
     samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
     samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
-    samzaConfig.put(JOB_ID, TestUtils.getUniqueString("venice-push-id"));
+    samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     return veniceProducer;
