@@ -16,7 +16,7 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 public class VeniceSystemFactory implements SystemFactory {
   public static final String SYSTEMS_PREFIX = "systems.";
   public static final String DOT = ".";
-  public static final String JOB_ID = "job.id";
+  public static final String DEPLOYMENT_ID = "deployment.id";
   /**
    * Http Venice URL (router or controller).  Used by producer to query controller.
    * TODO: integrate sdwu's work so we can also use D2 here.
@@ -37,7 +37,7 @@ public class VeniceSystemFactory implements SystemFactory {
 
   @Override
   public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
-    String samzaJobId = config.get(JOB_ID);
+    String samzaJobId = config.get(DEPLOYMENT_ID);
 
     String prefix = SYSTEMS_PREFIX + systemName + DOT;
     String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
