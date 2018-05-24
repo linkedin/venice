@@ -91,8 +91,7 @@ public class VenicePartitionStateModel extends StateModel {
                 notifier.waitConsumptionCompleted(message.getResourceName(), partition);
             } catch (InterruptedException e) {
                 String errorMsg =
-                    "Can not complete consumption for resource:" + message.getResourceName() + "par" + " partition:"
-                        + partition;
+                    "Can not complete consumption for resource:" + message.getResourceName() + " partition:" + partition;
                 logger.error(errorMsg, e);
                 // Please note, after throwing this exception, this node will become ERROR for this resource.
                 throw new VeniceException(errorMsg, e);
@@ -132,14 +131,14 @@ public class VenicePartitionStateModel extends StateModel {
              */
             makeSurePartitionIsNotConsuming();
         } catch (Exception e) {
-            logger.error("Met error while waiting for partition to stop consuming", e);
+            logger.error("Error waiting for partition to stop consuming", e);
         }
         // Catch exception separately to ensure reset consumption offset would be executed for sure.
         try {
             storageService.dropStorePartition(storeConfig, partition);
         } catch (Exception e) {
             logger.error(
-                "Met error while dropping the partition:" + partition + " in store:" + storeConfig.getStoreName());
+                "Error dropping the partition:" + partition + " in store:" + storeConfig.getStoreName());
         }
         storeIngestionService.resetConsumptionOffset(storeConfig, partition);
     }
@@ -165,6 +164,7 @@ public class VenicePartitionStateModel extends StateModel {
             logger.info(storePartitionDescription + " met an error during state transition. Stop the running consumption. Caused by:",
                 error.getException());
             storeIngestionService.stopConsumption(storeConfig, partition);
+            removePartitionFromStore();
         });
     }
 
@@ -233,6 +233,6 @@ public class VenicePartitionStateModel extends StateModel {
             time.sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
         }
         throw new VeniceException("Partition: " + partition + " of store: " + storeConfig.getStoreName() +
-            " is still being consuming after waiting for it to stop a total of" + RETRY_NUM * SLEEP_SECONDS + " seconds.");
+            " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
     }
 }
