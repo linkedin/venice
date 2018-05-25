@@ -1134,13 +1134,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
         if (putValue.position() < ByteUtils.SIZE_OF_INT) {
           throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + ByteUtils.SIZE_OF_INT);
         }
+        // Back up the original 4 bytes
+        putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
+        int backupBytes = putValue.getInt();
         putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
         ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
         storageEngine.put(partition, keyBytes, putValue);
         /**
          * We still want to recover the original position to make this function idempotent.
          */
-        putValue.position(putValue.position() + ByteUtils.SIZE_OF_INT);
+        putValue.putInt(backupBytes);
 
         if (logger.isTraceEnabled()) {
           logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " +
