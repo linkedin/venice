@@ -49,8 +49,8 @@ public class TestOptimizedKafkaValueSerializer {
     KafkaMessageEnvelope deserializedRecord = valueSerializer.deserialize(topic, serializedRecord);
     EndOfSegment deserializedEndOfSegment = (EndOfSegment)((ControlMessage)deserializedRecord.payloadUnion).controlMessageUnion;
     ByteBuffer deserializedChecksumValue = deserializedEndOfSegment.checksumValue;
-    Assert.assertEquals(deserializedChecksumValue.position(), 0, "Deserialized checksum should be backed by a new byte array");
-    Assert.assertEquals(deserializedChecksumValue.array(), checksumBytes);
+    Assert.assertTrue(deserializedChecksumValue.position() > 0, "Deserialized checksum should be backed by the original byte array");
+    Assert.assertEquals(deserializedChecksumValue, ByteBuffer.wrap(checksumBytes));
   }
 
   @Test
