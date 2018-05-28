@@ -20,7 +20,7 @@ public class OptimizedBinaryDecoderFactory {
    */
   public OptimizedBinaryDecoder createOptimizedBinaryDecoder(byte[] data, int offset, int length) {
     OptimizedBinaryDecoder decoder = localBinaryDecoder.get();
-    decoder.init(data, offset, length);
+    decoder.configure(data, offset, length);
     return decoder;
   }
 }

@@ -160,9 +160,21 @@ public class VsonAvroSerializer {
         case BOOLEAN:
           return readBoolean(stream);
         case INT8:
-          return readByteToAvro(stream, avroSchema);
+          /**
+           * In Avro 1.7, both the bytes array and a schema are needed to construct a Fixed type of data;
+           * however, 'avroSchema' has already been transformed by the VsonAvroSchemaAdapter, so 'avroSchema'
+           * is an UNION schema (e.g., [{"type":"fixed","name":"byteWrapper","size":1},"null"]); therefore,
+           * the actual schema (e.g., {"type":"fixed","name":"byteWrapper","size":1}) should be extracted
+           * before calling readByteToAvro() function which will construct a GenericData.Fixed object.
+           * While in Avro 1.4, the schema is not needed to construct a GenericData.Fixed object.
+           */
+          return readByteToAvro(stream, VsonAvroSchemaAdapter.stripFromUnion(avroSchema));
         case INT16:
-          return readShortToAvro(stream, avroSchema);
+          /**
+           * Same reason as above. This time we are extracting {"type":"fixed","name":"shortWrapper","size":2}
+           * from the UNION schema [{"type":"fixed","name":"shortWrapper","size":2},"null"].
+           */
+          return readShortToAvro(stream, VsonAvroSchemaAdapter.stripFromUnion(avroSchema));
         case INT32:
           return readInt32(stream);
         case INT64:

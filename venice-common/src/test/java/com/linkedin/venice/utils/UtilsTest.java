@@ -75,14 +75,21 @@ public class UtilsTest {
     // Sanity check. This works:
     assertTrue(javaUtilArrayList1.equals(avroArray), "Java is broken!!!");
 
-    // But this doesn't:
-    assertFalse(avroArray.equals(javaUtilArrayList1), "Avro is not broken anymore!!!");
+    // But this doesn't (in Avro 1.4 only):
+    assertTrue(avroArray.equals(javaUtilArrayList1), "Avro is broken again somehow!!!");
 
     /**
      * N.B.: The bad behavior demonstrated by the above assert is the reason why we are using
      * our own list equality implementation. If this assertion fails in the future (let's say,
      * following an upgrade of Avro), then that means we can get rid of our
      * {@link Utils#listEquals(List, List)} function.
+     *
+     * Updates: The Avro version is updated to 1.7.7, so the above assert is changed; however,
+     * in order to be compatible with clients who might still use Avro 1.4.1, we decided not
+     * to remove {@link Utils#listEquals(List, List)} function yet.
+     * More context: GenericData.Array.equals(Object o) in avro 1.4.1 checks whether 'o' is
+     * an instance of GenericData.Array, while GenericData.Array.equals(Object o) in avro
+     * 1.7.7 checks whether 'o' is an instance of List.
      */
 
     // Code under test

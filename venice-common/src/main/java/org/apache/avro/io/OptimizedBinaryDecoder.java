@@ -21,11 +21,12 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   }
 
   @Override
-  void init(byte[] data, int offset, int length) {
-    super.init(data, offset, length);
+  BinaryDecoder configure(byte[] data, int offset, int length) {
+    super.configure(data, offset, length);
     this.data = data;
     this.offset = offset;
     this.length = length;
+    return this;
   }
 
   @Override

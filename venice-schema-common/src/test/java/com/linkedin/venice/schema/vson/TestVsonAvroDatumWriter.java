@@ -89,7 +89,7 @@ public class TestVsonAvroDatumWriter {
       try {
         ((GenericData.Array) avroObject).get(3);
         Assert.fail();
-      } catch (ArrayIndexOutOfBoundsException e) {}
+      } catch (IndexOutOfBoundsException e) {}
     });
 
     testWriteNullValue(vsonSchemaStr);
