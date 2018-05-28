@@ -15,13 +15,13 @@ import org.codehaus.jackson.JsonNode;
 
 public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   private static final String DEFAULT_RECORD_NAME = "record";
-  private static final String DEFAULT_DOC = null;
-  private static final String DEFAULT_NAMESPACE = null;
+  public static final String DEFAULT_DOC = null;
+  public static final String DEFAULT_NAMESPACE = null;
   private static final JsonNode DEFAULT_VALUE = null;
 
   //both vson int8 and int16 would be wrapped as Avro fixed.
-  private static final String BYTE_WRAPPER = "byteWrapper";
-  private static final String SHORT_WRAPPER = "shortWrapper";
+  public static final String BYTE_WRAPPER = "byteWrapper";
+  public static final String SHORT_WRAPPER = "shortWrapper";
 
   private int recordCount = 1;
 

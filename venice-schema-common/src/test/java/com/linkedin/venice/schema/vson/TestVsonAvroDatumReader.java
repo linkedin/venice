@@ -37,14 +37,18 @@ public class TestVsonAvroDatumReader {
 
     //single byte
     byte[] singleByteArray = {randomBytes[0]};
-    GenericData.Fixed fixedByte = LinkedinAvroMigrationHelper.newFixedField(avroSchema, singleByteArray);
+    GenericData.Fixed fixedByte = LinkedinAvroMigrationHelper.newFixedField(
+        Schema.createFixed(VsonAvroSchemaAdapter.BYTE_WRAPPER, VsonAvroSchemaAdapter.DEFAULT_DOC,
+            VsonAvroSchemaAdapter.DEFAULT_NAMESPACE, 1), singleByteArray);
     testReader("\"int8\"", () -> fixedByte,
         vsonObject -> Assert.assertEquals(vsonObject, randomBytes[0]));
     testReadNullValue("\"int8\"");
 
     //short
     byte[] shortBytesArray = {(byte) 0xFF, (byte) 0xFE}; //0xFFFE = -2
-    GenericData.Fixed fixedShort = LinkedinAvroMigrationHelper.newFixedField(avroSchema, shortBytesArray);
+    GenericData.Fixed fixedShort = LinkedinAvroMigrationHelper.newFixedField(
+        Schema.createFixed(VsonAvroSchemaAdapter.SHORT_WRAPPER, VsonAvroSchemaAdapter.DEFAULT_DOC,
+            VsonAvroSchemaAdapter.DEFAULT_NAMESPACE, 2), shortBytesArray);
     testReader("\"int16\"", () -> fixedShort,
         vsonObject -> Assert.assertEquals(vsonObject, (short) -2));
     testReadNullValue("\"int16\"");

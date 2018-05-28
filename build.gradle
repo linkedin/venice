@@ -28,7 +28,8 @@ def ossKafkaGroup = "org.apache.kafka"
 def ossKafkaVersion = "0.10.1.1"
 
 ext.libraries = [ // Groovy map literal
-                  avro: 'org.apache.avro:avro:1.4.1',
+                  avro: 'org.apache.avro:avro:1.7.7',
+                  avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
                   avroMigrationHelper: 'com.linkedin.avro-schemas:avro-migration-helper:39.0.21',
                   azkaban: 'com.linkedin.azkaban:azkaban:2.5.0',
                   bdbJe: 'com.sleepycat:je:5.0.104',

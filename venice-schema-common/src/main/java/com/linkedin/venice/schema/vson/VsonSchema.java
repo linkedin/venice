@@ -20,7 +20,6 @@ public class VsonSchema implements Serializable {
   }
 
   public static VsonSchema parse(String vsonSchemaStr) {
-
     return new VsonSchema(VsonSchemaAdapter.parse(vsonSchemaStr));
   }
 
