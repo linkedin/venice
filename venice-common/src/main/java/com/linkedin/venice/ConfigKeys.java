@@ -449,4 +449,6 @@ public class ConfigKeys {
    * What replication factor should the admin topics have, upon creation.
    */
   public static final String ADMIN_TOPIC_REPLICATION_FACTOR = "admin.topic.replication.factor";
+
+  public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
 }

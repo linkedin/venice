@@ -37,6 +37,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
@@ -121,6 +122,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final long readCycleDelayMs;
   private final long emptyPollSleepMs;
 
+  private final DiskUsage diskUsage;
+
   // Non-final
   private KafkaConsumerWrapper consumer;
   private Set<Integer> schemaIdSet;
@@ -155,7 +158,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             long readCycleDelayMs,
                             long emptyPollSleepMs,
                             long databaseSyncBytesIntervalForTransactionalMode,
-                            long databaseSyncBytesIntervalForDeferredWriteMode) {
+                            long databaseSyncBytesIntervalForDeferredWriteMode,
+                            DiskUsage diskUsage) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.emptyPollSleepMs = emptyPollSleepMs;
     this.databaseSyncBytesIntervalForTransactionalMode = databaseSyncBytesIntervalForTransactionalMode;
@@ -197,6 +201,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, e));
     this.producerTrackerCreator = guid -> new ProducerTracker(guid, topic);
+
+    this.diskUsage = diskUsage;
   }
 
   private void validateState() {
@@ -790,6 +796,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     partitionConsumptionState.incrementProcessedRecordNum();
     partitionConsumptionState.incrementProcessedRecordSize(recordSize);
+
+    if (diskUsage.isDiskFull(recordSize)){
+      throw new VeniceException("Disk is full: throwing exception to error push: "
+          + storeNameWithoutVersionInfo + " version " + storeVersion + ". "
+          + diskUsage.getDiskStatus());
+    }
 
     int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();
     if (processedRecordNum >= OFFSET_THROTTLE_INTERVAL ||

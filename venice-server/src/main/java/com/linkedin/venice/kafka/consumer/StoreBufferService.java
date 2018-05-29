@@ -128,7 +128,7 @@ public class StoreBufferService extends AbstractVeniceService {
         } catch (Exception e) {
           String consumerRecordString = consumerRecord.toString();
           if (consumerRecordString.length() > 1024) {
-            // Careful not to flood the logs with too much random BS...
+            // Careful not to flood the logs with too much content...
             LOGGER.error("Got exception during processing consumer record (truncated at 1024 characters) : "
                 + consumerRecordString.substring(0, 1024), e);
           } else {

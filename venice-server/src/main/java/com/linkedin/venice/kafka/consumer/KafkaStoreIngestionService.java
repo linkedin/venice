@@ -27,6 +27,7 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 
 import java.util.*;
@@ -158,6 +159,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Store store = metadataRepo.getStore(storeName);
     BooleanSupplier isStoreVersionCurrent = () -> store.getCurrentVersion() == storeVersion;
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
+    DiskUsage diskUsage = new DiskUsage(
+        veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
+        veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
 
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
         storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
@@ -165,7 +169,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs(),
         veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs(),
         veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(),
-        veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode());
+        veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode(), diskUsage);
+
   }
 
   /**
