@@ -49,6 +49,7 @@ import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
+import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -82,6 +83,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
@@ -262,7 +264,9 @@ public class StoreIngestionTaskTest {
   }
 
   private void runHybridTest(Set<Integer> partitions, Runnable assertions) throws Exception {
-    runTest(new RandomPollStrategy(), partitions, () -> {}, assertions, Optional.of(new HybridStoreConfig(100,100)));
+    runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
+        Optional.of(new HybridStoreConfig(100,100)),
+        Optional.empty());
   }
 
   private void runTest(Set<Integer> partitions,
@@ -273,14 +277,15 @@ public class StoreIngestionTaskTest {
 
   private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
                        Runnable assertions) throws Exception {
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig);
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty());
   }
 
   private void runTest(PollStrategy pollStrategy,
                        Set<Integer> partitions,
                        Runnable beforeStartingConsumption,
                        Runnable assertions,
-                       Optional<HybridStoreConfig> hybridStoreConfig) throws Exception {
+                       Optional<HybridStoreConfig> hybridStoreConfig,
+                       Optional<DiskUsage> diskUsageForTest) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
@@ -299,12 +304,21 @@ public class StoreIngestionTaskTest {
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
+    DiskUsage diskUsage;
+    if (diskUsageForTest.isPresent()){
+      diskUsage = diskUsageForTest.get();
+    } else {
+      diskUsage = mock(DiskUsage.class);
+      doReturn(false).when(diskUsage).isDiskFull(anyLong());
+    }
     storeIngestionTaskUnderTest =
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
             mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0,
-            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode);
+            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode, diskUsage);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
+
+
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -1092,6 +1106,7 @@ public class StoreIngestionTaskTest {
     final long MESSAGES_AFTER_EOP = 100;
 
     // This does not entirely make sense, but we can do better when we have a real integration test which includes buffer replay
+    // TODO: We now have a real integration test which includes buffer replay, maybe fix up this test?
     final long TOTAL_MESSAGES_PER_PARTITION = (MESSAGES_BEFORE_EOP + MESSAGES_AFTER_EOP) / ALL_PARTITIONS.size();
     when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
 
@@ -1129,6 +1144,32 @@ public class StoreIngestionTaskTest {
           verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
         }
     );
+  }
+
+  /**
+   * This test writes a message to Kafka then creates a StoreIngestionTask (and StoreBufferDrainer)  It also passes a DiskUsage
+   * object to the StoreIngestionTask that always reports disk full.  This means when the StoreBufferDrainer tries to persist
+   * the record, it will receive a disk full error.  This test checks for that disk full error on the Notifier object.
+   * @throws Exception
+   */
+  @Test
+  public void StoreIngestionTaskRespectsDiskUsage() throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    DiskUsage diskFullUsage = mock(DiskUsage.class);
+    doReturn(true).when(diskFullUsage).isDiskFull(anyLong());
+    doReturn("mock disk full disk usage").when(diskFullUsage).getDiskStatus();
+
+    runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), ()->{}, ()->{
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        Assert.assertFalse(mockNotifierError.isEmpty(), "Disk Usage should have triggered an ingestion error");
+        String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getCause().getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
+            .collect(Collectors.joining());
+        Assert.assertTrue(errorMessages.contains("Disk is full"),
+            "Expected disk full error, found following error messages: " + errorMessages);
+      });
+    }, Optional.empty(), Optional.of(diskFullUsage));
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{
