@@ -18,6 +18,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
+import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
 import org.apache.helix.api.listeners.IdealStateChangeListener;
 import org.apache.helix.api.listeners.LiveInstanceChangeListener;
@@ -41,7 +42,7 @@ import org.apache.log4j.Logger;
  * As this repository is used by Router, so here only cached the online instance at first. If Venice needs some more
  * instances in other state, could add them in the further.
  */
-
+@BatchMode
 public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository, ControllerChangeListener, LiveInstanceChangeListener, IdealStateChangeListener {
     private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class);
     /**
@@ -189,7 +190,6 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         ResourceAssignment newResourceAssignment = new ResourceAssignment();
         Set<String> resourcesInExternalView =
                 externalViewList.stream().map(ExternalView::getResourceName).collect(Collectors.toSet());
-
         if (!resourceToPartitionCountMapSnapshot.keySet().containsAll(resourcesInExternalView)) {
             logger.info("Found the inconsistent data between the external view and ideal state of cluster: " + manager
                 .getClusterName() + ". Reading the latest ideal state from zk.");
@@ -338,7 +338,10 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     private void refreshResourceToIdealPartitionCountMap(List<IdealState> idealStates) {
         HashMap<String, Integer> partitionCountMap = new HashMap<>();
         for (IdealState idealState : idealStates) {
-            partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());
+            // Ideal state could be null, if a resource has already been deleted.
+            if(idealState != null) {
+                partitionCountMap.put(idealState.getResourceName(), idealState.getNumPartitions());
+            }
         }
         this.resourceToIdealPartitionCountMap = Collections.unmodifiableMap(partitionCountMap);
     }
