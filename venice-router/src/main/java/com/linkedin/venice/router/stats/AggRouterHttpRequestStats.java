@@ -167,6 +167,26 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordCacheLookupLatency(latency);
   }
 
+  public void recordCacheLookupLatencyForEachKeyInMultiget(String storeName, double latency) {
+    totalStats.recordCacheLookupLatencyForEachKeyInMultiGet(latency);
+    getStoreStats(storeName).recordCacheLookupLatencyForEachKeyInMultiGet(latency);
+  }
+
+  public void recordCacheResultSerializationLatency(String storeName, double latency) {
+    totalStats.recordCacheResultSerializationLatency(latency);
+    getStoreStats(storeName).recordCacheResultSerializationLatency(latency);
+  }
+
+  public void recordResponseResultsDeserializationLatency(String storeName, double latency) {
+    totalStats.recordResponseResultsDeserializationLatency(latency);
+    getStoreStats(storeName).recordResponseResultsDeserializationLatency(latency);
+  }
+
+  public void recordCacheUpdateLatencyForMultiGet(String storeName, double latency) {
+    totalStats.recordCacheUpdateLatencyForMultiGet(latency);
+    getStoreStats(storeName).recordCacheUpdateLatencyForMultiGet(latency);
+  }
+
   public void recordCachePutRequest(String storeName) {
     totalStats.recordCachePutRequest();
     getStoreStats(storeName).recordCachePutRequest();

@@ -108,11 +108,18 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(CHUNKING_ENABLED);
   }
 
-  public UpdateStoreQueryParams setRouterCacheEnabled(boolean routerCacheEnabled) {
-    return putBoolean(ROUTER_CACHE_ENABLED, routerCacheEnabled);
+  public UpdateStoreQueryParams setSingleGetRouterCacheEnabled(boolean singleGetRouterCacheEnabled) {
+    return putBoolean(SINGLE_GET_ROUTER_CACHE_ENABLED, singleGetRouterCacheEnabled);
   }
-  public Optional<Boolean> getRouterCacheEnabled() {
-    return getBoolean(ROUTER_CACHE_ENABLED);
+  public Optional<Boolean> getSingleGetRouterCacheEnabled() {
+    return getBoolean(SINGLE_GET_ROUTER_CACHE_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setBatchGetRouterCacheEnabled(boolean batchGetRouterCacheEnabled) {
+    return putBoolean(BATCH_GET_ROUTER_CACHE_ENABLED, batchGetRouterCacheEnabled);
+  }
+  public Optional<Boolean> getBatchGetRouterCacheEnabled() {
+    return getBoolean(BATCH_GET_ROUTER_CACHE_ENABLED);
   }
 
   public UpdateStoreQueryParams setBatchGetLimit(int batchGetLimit) {

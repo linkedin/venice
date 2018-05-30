@@ -56,6 +56,13 @@ public class VeniceSingleGetPath extends VenicePath {
     }
   }
 
+  public VeniceSingleGetPath(String resourceName, RouterKey routerKey, String partition) {
+    super(resourceName);
+    this.routerKey = routerKey;
+    this.partition = partition;
+    setPartitionKeys(Collections.singleton(routerKey));
+  }
+
   @Override
   public RequestType getRequestType() {
     return RequestType.SINGLE_GET;

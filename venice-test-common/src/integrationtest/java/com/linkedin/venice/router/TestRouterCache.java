@@ -76,13 +76,14 @@ public class TestRouterCache {
     d2Servers.forEach(d2Server -> d2Server.forceStart());
   }
 
-  private VersionCreationResponse createStore(boolean isCompressed) {
+  private VersionCreationResponse createStore(boolean isCompressed, boolean isRouterCacheEnabled, boolean isBatchGetRouterCacheEnabled) {
     VersionCreationResponse response = veniceCluster.getNewStoreVersion();
     // Update default quota and enable router cache
     controllerClient.updateStore(response.getName(), new UpdateStoreQueryParams()
             .setReadQuotaInCU(10000l)
             .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
-            .setRouterCacheEnabled(true));
+            .setSingleGetRouterCacheEnabled(isRouterCacheEnabled)
+            .setBatchGetRouterCacheEnabled(isBatchGetRouterCacheEnabled));
 
     return response;
   }
@@ -93,15 +94,15 @@ public class TestRouterCache {
     IOUtils.closeQuietly(veniceCluster);
   }
 
-  @DataProvider(name = "isCompressed")
+  @DataProvider(name = "isCompressed_isCacheEnabled_isBatchGetCacheEnabled")
   public static Object[][] pushStatues() {
-    return new Object[][]{{false}, {true}};
+    return new Object[][]{{false, true, false}, {false, false, true}, {true, true, false}, {true, false, true}};
   }
 
-  @Test(timeOut = 20000, dataProvider = "isCompressed")
-  public void testRead(boolean isCompressed) throws Exception {
+  @Test(timeOut = 20000, dataProvider = "isCompressed_isCacheEnabled_isBatchGetCacheEnabled")
+  public void testRead(boolean isCompressed, boolean isRouterCacheEnabled, boolean isBatchGetRouterCacheEnabled) throws Exception {
     // Create test store
-    VersionCreationResponse creationResponse = createStore(isCompressed);
+    VersionCreationResponse creationResponse = createStore(isCompressed, isRouterCacheEnabled, isBatchGetRouterCacheEnabled);
     String topic = creationResponse.getKafkaTopic();
     String storeName = creationResponse.getName();
     int pushVersion = creationResponse.getVersion();
@@ -181,6 +182,7 @@ public class TestRouterCache {
     double totalCacheLookupRequest = 0;
     double totalCacheHitRequest = 0;
     double totalCachePutRequest = 0;
+    double totalBatchGetCacheHitRequest = 0;
     for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
       MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
       Map<String, ? extends Metric> metrics = metricsRepository.metrics();
@@ -194,10 +196,17 @@ public class TestRouterCache {
       if (metrics.containsKey(".total--cache_put_request.Count")) {
         totalCachePutRequest += metrics.get(".total--cache_put_request.Count").value();
       }
+      if (metrics.containsKey(".total--multiget_cache_hit_request.Count")) {
+        totalBatchGetCacheHitRequest += metrics.get(".total--multiget_cache_hit_request.Count").value();
+      }
     }
 
-    Assert.assertEquals(totalCacheLookupRequest, 100.0);
-    Assert.assertEquals(totalCacheHitRequest, 98.0);
-    Assert.assertEquals(totalCachePutRequest, 2.0);
+    if (isRouterCacheEnabled) {
+      Assert.assertEquals(totalCacheLookupRequest, 100.0);
+      Assert.assertEquals(totalCacheHitRequest, 98.0);
+      Assert.assertEquals(totalCachePutRequest, 2.0);
+    } else if (isBatchGetRouterCacheEnabled) {
+      Assert.assertEquals(totalBatchGetCacheHitRequest, 470.0);
+    }
   }
 }

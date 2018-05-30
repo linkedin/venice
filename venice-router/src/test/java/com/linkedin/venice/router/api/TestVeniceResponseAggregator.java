@@ -14,6 +14,8 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -119,7 +121,17 @@ public class TestVeniceResponseAggregator {
         new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
-    byte[] finalContent = finalResponse.content().array();
+    byte[] finalContent;
+    if (finalResponse.content() instanceof CompositeByteBuf) {
+      CompositeByteBuf compositeByteBuf = (CompositeByteBuf)finalResponse.content();
+      ByteBuf result = Unpooled.buffer(compositeByteBuf.readableBytes());
+      for (int i = 0; i < compositeByteBuf.numComponents(); i++) {
+        result.writeBytes(compositeByteBuf.internalComponent(i).array());
+      }
+      finalContent = result.array();
+    } else {
+      finalContent = finalResponse.content().array();
+    }
     Iterable<CharSequence> values = deserializeResponse(finalContent);
     Set<String> expectedValues = new HashSet<>();
     expectedValues.add(value1);

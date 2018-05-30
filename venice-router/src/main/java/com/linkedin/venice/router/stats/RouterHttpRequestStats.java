@@ -34,11 +34,16 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor cacheHitRequestSensor;
   private final Sensor cacheHitRatioSensor;
   private final Sensor cacheLookupLatencySensor;
+  private final Sensor cacheLookupLatencyForEachKeyInMultiGetSensor;
   private final Sensor cachePutRequestSensor;
   private final Sensor cachePutLatencySensor;
+  private final Sensor cacheUpdateLatencyForMultiGetSensor;
   private final Sensor keyNumSensor;
   // Reflect the real request usage, e.g count each key as an unit of request usage.
   private final Sensor requestUsageSensor;
+
+  private final Sensor cacheResultSerializationLatencySensor;
+  private final Sensor responseResultsDeserializationLatencySensor;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
@@ -81,6 +86,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         new TehutiUtils.SimpleRatioStat(cacheHitRequestRate, cacheLookupRequestRate));
     cacheLookupLatencySensor = registerSensor("cache_lookup_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_lookup_latency")));
+    cacheLookupLatencyForEachKeyInMultiGetSensor = registerSensor("cache_lookup_latency_for_each_key_in_multiget",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_lookup_latency_for_each_key_in_multiget")));
+    cacheResultSerializationLatencySensor = registerSensor("cache_result_serialization_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_result_serialization_latency")));
+    responseResultsDeserializationLatencySensor = registerSensor("response_results_deserialization_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_results_deserialization_latency")));
+    cacheUpdateLatencyForMultiGetSensor = registerSensor("cache_update_latency_for_multiget",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_update_latency_for_multiget")));
     cachePutRequestSensor = registerSensor("cache_put_request", new Count());
     cachePutLatencySensor = registerSensor("cache_put_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
@@ -157,6 +170,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordCacheLookupLatency(double latency) {
     cacheLookupLatencySensor.record(latency);
+  }
+
+  public void recordCacheLookupLatencyForEachKeyInMultiGet(double latency) {
+    cacheLookupLatencyForEachKeyInMultiGetSensor.record(latency);
+  }
+
+  public void recordCacheResultSerializationLatency(double latency) {
+    cacheResultSerializationLatencySensor.record(latency);
+  }
+
+  public void recordResponseResultsDeserializationLatency(double latency) {
+    responseResultsDeserializationLatencySensor.record(latency);
+  }
+
+  public void recordCacheUpdateLatencyForMultiGet(double latency) {
+    cacheUpdateLatencyForMultiGetSensor.record(latency);
   }
 
   public void recordCachePutRequest() {
