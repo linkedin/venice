@@ -26,7 +26,8 @@ public class StoreInfo {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
-    storeInfo.setRouterCacheEnabled(store.isRouterCacheEnabled());
+    storeInfo.setSingleGetRouterCacheEnabled(store.isSingleGetRouterCacheEnabled());
+    storeInfo.setBatchGetRouterCacheEnabled(store.isBatchGetRouterCacheEnabled());
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
 
@@ -99,7 +100,12 @@ public class StoreInfo {
   /**
    * Whether cache is enabled in Router.
    */
-  private boolean routerCacheEnabled = false;
+  private boolean singleGetRouterCacheEnabled = false;
+
+  /**
+   * Whether batch-get cache is enabled in Router.
+   */
+  private boolean batchGetRouterCacheEnabled = false;
 
   /**
    * Batch get limit for current store.
@@ -256,12 +262,20 @@ public class StoreInfo {
     this.chunkingEnabled = chunkingEnabled;
   }
 
-  public boolean isRouterCacheEnabled() {
-    return routerCacheEnabled;
+  public boolean isSingleGetRouterCacheEnabled() {
+    return singleGetRouterCacheEnabled;
   }
 
-  public void setRouterCacheEnabled(boolean routerCacheEnabled) {
-    this.routerCacheEnabled = routerCacheEnabled;
+  public void setSingleGetRouterCacheEnabled(boolean singleGetRouterCacheEnabled) {
+    this.singleGetRouterCacheEnabled = singleGetRouterCacheEnabled;
+  }
+
+  public boolean isBatchGetRouterCacheEnabled() {
+    return batchGetRouterCacheEnabled;
+  }
+
+  public void setBatchGetRouterCacheEnabled(boolean batchGetRouterCacheEnabled) {
+    this.batchGetRouterCacheEnabled = batchGetRouterCacheEnabled;
   }
 
   public int getBatchGetLimit() {

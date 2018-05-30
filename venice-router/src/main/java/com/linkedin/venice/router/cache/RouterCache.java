@@ -136,8 +136,11 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
     @Override
     public void serialize(Optional<CacheValue> value, ByteBuffer buf) {
       if (value.isPresent()) {
+        int previousPosition = value.get().buf.position();
         buf.putInt(value.get().schemaId);
-        buf.put(value.get().value);
+        buf.put(value.get().buf);
+        // restore the previous position in case the ByteBuffer is needed again
+        value.get().buf.position(previousPosition);
       } else {
         buf.putInt(INVALID_SCHEMA_ID);
       }
@@ -149,33 +152,40 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
       if (INVALID_SCHEMA_ID == schemaId) {
         return Optional.empty();
       } else {
-        int valueLen = buf.remaining();
-        byte[] value = new byte[valueLen];
-        buf.get(value);
-        return Optional.of(new CacheValue(value, schemaId));
+        return Optional.of(new CacheValue(buf, schemaId));
       }
     }
 
     @Override
     public int serializedSize(Optional<CacheValue> value) {
       if (value.isPresent()) {
-        return SIZE_OF_SERIALIZED_SCHEMA_ID + value.get().value.length;
+        return SIZE_OF_SERIALIZED_SCHEMA_ID + value.get().getByteBuffer().remaining();
       }
       return SIZE_OF_SERIALIZED_SCHEMA_ID;
     }
   }
 
   public static class CacheValue implements Measurable {
-    private final byte[] value;
+    private final ByteBuffer buf;
     private final int schemaId;
 
-    public CacheValue(byte[] value, int schemaId) {
-      this.value = value;
+    public CacheValue(ByteBuffer buf, int schemaId) {
+      this.buf = buf;
       this.schemaId = schemaId;
     }
 
     public byte[] getValue() {
+      int valueLen = buf.remaining();
+      int previousPosition = buf.position();
+      byte[] value = new byte[valueLen];
+      buf.get(value);
+      // restore the previous position in case the ByteBuffer is needed again
+      buf.position(previousPosition);
       return value;
+    }
+
+    public ByteBuffer getByteBuffer() {
+      return buf;
     }
 
     public int getSchemaId() {
@@ -184,7 +194,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
 
     @Override
     public int getSize() {
-      return Integer.BYTES + value.length;
+      return Integer.BYTES + buf.remaining();
     }
 
     @Override
@@ -201,12 +211,19 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
       if (schemaId != that.schemaId) {
         return false;
       }
-      return Arrays.equals(value, that.value);
+      return buf.equals(that.buf);
     }
 
     @Override
     public int hashCode() {
-      int result = Arrays.hashCode(value);
+      int previousPosition = buf.position();
+      int valueLen = buf.remaining();
+      int result = 1;
+      for (int i = 0; i < valueLen; i++) {
+        result = 31 * result + buf.get();
+      }
+      // restore the previous position in case the ByteBuffer is needed again
+      buf.position(previousPosition);
       result = 31 * result + schemaId;
       return result;
     }

@@ -16,7 +16,9 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.nio.ByteBuffer;
 import java.util.Collection;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 import javax.annotation.Nonnull;
@@ -33,7 +35,9 @@ public class VeniceMultiGetPath extends VenicePath {
   private static final Logger LOGGER = Logger.getLogger(VeniceMultiGetPath.class);
   public static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
 
+  private int keyNum;
   private final SortedMap<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap;
+  private final SortedMap<Integer, RouterKey> keyIdxToRouterKey;
 
   public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
       int maxKeyCount)
@@ -48,11 +52,13 @@ public class VeniceMultiGetPath extends VenicePath {
     }
 
     this.routerKeyMap = new TreeMap<>();
+    this.keyIdxToRouterKey = new TreeMap<>();
     Iterable<ByteBuffer> keys = null;
     byte[] content = new byte[request.content().readableBytes()];
     request.content().readBytes(content);
     keys = deserialize(content);
 
+    keyNum = 0;
     int keyIdx = 0;
     for (ByteBuffer key : keys) {
       RouterKey routerKey = new RouterKey(key);
@@ -60,6 +66,10 @@ public class VeniceMultiGetPath extends VenicePath {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
             BAD_REQUEST, "Multi-get request contains duplicate key, store name: " + getStoreName());
       }
+
+      keyNum++;
+      this.keyIdxToRouterKey.put(keyIdx, routerKey);
+
       // partition lookup
       int partitionId;
       try {
@@ -98,11 +108,38 @@ public class VeniceMultiGetPath extends VenicePath {
     }
   }
 
-  private VeniceMultiGetPath(String resourceName, SortedMap<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap) {
+  private VeniceMultiGetPath(String resourceName, SortedMap<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
+      SortedMap<Integer, RouterKey> keyIdxToRouterKey, int keyNum) {
     super(resourceName);
     this.routerKeyMap = routerKeyMap;
+    this.keyIdxToRouterKey = keyIdxToRouterKey;
+    this.keyNum = keyNum;
     setPartitionKeys(routerKeyMap.keySet());
   }
+
+  /**
+   * remove a key from the multi-get path;
+   * however, don't modify the keyIdxToRouterKey map because we need to maintain a mapping from keyIdx to RouterKey;
+   * the MultiGetResponseRecord from the servers only contains keyIdx and doesn't contains the actual key,
+   * but we need the key to update the cache.
+   * @param key
+   */
+  public void removeFromRequest(RouterKey key) {
+    if (key != null) {
+      routerKeyMap.remove(key);
+      keyNum--;
+    }
+  }
+
+  public Set<Map.Entry<Integer, RouterKey>> getKeyIdxToRouterKeySet() { return keyIdxToRouterKey.entrySet(); }
+
+  public RouterKey getRouterKeyByKeyIdx(int keyIdx) { return keyIdxToRouterKey.get(keyIdx); }
+
+  public boolean isEmptyRequest() {
+    return 0 == routerKeyMap.size();
+  }
+
+  public int getCurrentKeyNum() { return keyNum; }
 
   @Nonnull
   @Override
@@ -148,9 +185,11 @@ public class VeniceMultiGetPath extends VenicePath {
           BAD_GATEWAY, "RouterKey: " + s + " should exist in the original path");
     }
     SortedMap<RouterKey, MultiGetRouterRequestKeyV1> newRouterKeyMap = new TreeMap<>();
+    SortedMap<Integer, RouterKey> newKeyIdxToRouterKey = new TreeMap<>();
     newRouterKeyMap.put(s, routerKeyMap.get(s));
+    newKeyIdxToRouterKey.put(routerKeyMap.get(s).keyIndex, s);
 
-    return fixRetryRequestFlagForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap));
+    return fixRetryRequestFlagForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey, 1));
   }
 
   /**
@@ -165,15 +204,17 @@ public class VeniceMultiGetPath extends VenicePath {
   @Override
   public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
     SortedMap<RouterKey, MultiGetRouterRequestKeyV1> newRouterKeyMap = new TreeMap<>();
+    SortedMap<Integer, RouterKey> newKeyIdxToRouterKey = new TreeMap<>();
     for (RouterKey key : s) {
       if (!routerKeyMap.containsKey(key)) {
         throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-            BAD_GATEWAY, "RouterKey: " + s + " should exist in the original path");
+            BAD_GATEWAY, "RouterKey: " + key + " should exist in the original path");
       }
       newRouterKeyMap.put(key, routerKeyMap.get(key));
+      newKeyIdxToRouterKey.put(routerKeyMap.get(key).keyIndex, key);
     }
 
-    return fixRetryRequestFlagForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap));
+    return fixRetryRequestFlagForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey, s.size()));
   }
 
   @Override

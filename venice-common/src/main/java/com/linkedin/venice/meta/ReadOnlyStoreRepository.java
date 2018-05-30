@@ -59,7 +59,14 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * Whether Router cache is enabled for the specified store
    * @return
    */
-  boolean isRouterCacheEnabled(String name);
+  boolean isSingleGetRouterCacheEnabled(String name);
+
+  /**
+   * Whether Router cache for batch get is enabled for the specified store
+   * @param name name of the store
+   * @return
+   */
+  boolean isBatchGetRouterCacheEnabled(String name);
 
   /**
    * Get batch-get limit for the specified store

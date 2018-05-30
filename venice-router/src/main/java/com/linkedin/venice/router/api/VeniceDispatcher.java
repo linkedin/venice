@@ -16,7 +16,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.cache.RouterCache;
@@ -26,9 +28,13 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -39,6 +45,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,6 +58,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
@@ -87,6 +95,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private static final ByteBuf NOT_FOUND_CONTENT = Unpooled.wrappedBuffer(new byte[0]);
 
   private final AggRouterHttpRequestStats statsForSingleGet;
+  private final AggRouterHttpRequestStats statsForMultiGet;
 
   /**
    * Single-get throttling needs to happen here because of caching.
@@ -98,6 +107,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final RouteHttpStats routeStatsForSingleGet;
   private final RouteHttpStats routeStatsForMultiGet;
 
+  private final RecordDeserializer<MultiGetResponseRecordV1> multiGetResponseRecordDeserializer =
+      SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+  private final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseRecordSerializer =
+      SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
 
   /**
    *
@@ -107,13 +120,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
       Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository storeRepository,
       Optional<RouterCache> routerCache, AggRouterHttpRequestStats statsForSingleGet,
-      Optional<CachedDnsResolver> dnsResolver, MetricsRepository metricsRepository) {
+      AggRouterHttpRequestStats statsForMultiGet, Optional<CachedDnsResolver> dnsResolver,
+      MetricsRepository metricsRepository) {
     this.healthMonitor = healthMonitor;
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
     this.storeRepository = storeRepository;
     this.routerCache = routerCache;
     this.cacheHitRequestThrottleWeight = config.getCacheHitRequestThrottleWeight();
     this.statsForSingleGet = statsForSingleGet;
+    this.statsForMultiGet = statsForMultiGet;
 
     this.clientPoolSize = config.getHttpClientPoolSize();
     int totalIOThreadNum = Runtime.getRuntime().availableProcessors();
@@ -185,9 +200,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
      */
     poolStats.addStatsForRoute(host.getHost());
 
-    if (path.getRequestType().equals(RequestType.SINGLE_GET) &&
-        handleCacheLookupAndThrottlingForSingleGetRequest((VeniceSingleGetPath)path, host, responseFuture, contextExecutor)) {
-      // Cache hit
+    List<MultiGetResponseRecordV1> cacheResultForMultiGet = new ArrayList<>();
+    if (handleCacheLookupAndThrottling(path, host, responseFuture, contextExecutor, cacheResultForMultiGet)) {
+      // Single get hits cache or all keys in batch get hit cache
       return;
     }
 
@@ -273,7 +288,31 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           return;
         }
 
-        ByteBuf content = Unpooled.wrappedBuffer(contentToByte);
+        int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
+        CompressionStrategy compressionStrategy = result.containsHeader(VENICE_COMPRESSION_STRATEGY)
+            ? CompressionStrategy.valueOf(Integer.valueOf(result.getFirstHeader(VENICE_COMPRESSION_STRATEGY).getValue()))
+            : CompressionStrategy.NO_OP;
+
+        ByteBuf content;
+        if (path.getRequestType().equals(RequestType.MULTI_GET)) {
+
+          if (cacheResultForMultiGet.size() > 0) {
+            // combine the cache results with the request results
+            CompositeByteBuf compositeByteBuf = Unpooled.compositeBuffer(2);
+            compositeByteBuf.addComponent(Unpooled.wrappedBuffer(contentToByte));
+            long serializationStartTimeInNS = System.nanoTime();
+            compositeByteBuf.addComponent(Unpooled.wrappedBuffer(multiGetResponseRecordSerializer.serializeObjects(cacheResultForMultiGet)));
+            content = compositeByteBuf;
+            double serializationLatencyInMS = LatencyUtils.getLatencyInMS(serializationStartTimeInNS);
+            statsForMultiGet.recordCacheResultSerializationLatency(storeName, serializationLatencyInMS);
+          } else {
+            // only put the response from server node to content
+            content = Unpooled.wrappedBuffer(contentToByte);
+          }
+        } else {
+          // for single get, the result is only from the server node; otherwise, it would have hit cache and return
+          content = Unpooled.wrappedBuffer(contentToByte);
+        }
 
         switch (responseStatus){
           case HttpStatus.SC_OK:
@@ -287,10 +326,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, BAD_GATEWAY, content);
         }
 
-        int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
-        CompressionStrategy compressionStrategy = result.containsHeader(VENICE_COMPRESSION_STRATEGY)
-            ? CompressionStrategy.valueOf(Integer.valueOf(result.getFirstHeader(VENICE_COMPRESSION_STRATEGY).getValue()))
-            : CompressionStrategy.NO_OP;
         response.headers()
             .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
             .set(HttpHeaderNames.CONTENT_TYPE, result.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue())
@@ -300,18 +335,44 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           // For multi-get, the partition is not returned to client
           String partitionIdStr = numberFromPartitionName(partitionNames.iterator().next());
           response.headers().set(HttpConstants.VENICE_PARTITION, partitionIdStr);
-          // Update cache for single-get request
-          if (responseStatus == HttpStatus.SC_OK) {
-            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.of(contentToByte), Optional.of(valueSchemaId), compressionStrategy);
-          } else if (responseStatus == HttpStatus.SC_NOT_FOUND) {
-            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.empty(), Optional.empty(), compressionStrategy);
-          }
         }
 
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });
         recordResponseWaitingTime(host.getHost(), path, dispatchStartTSInNS);
+
+        /**
+         * The following codes will tie up the client thread after the response has been sent.
+         *
+         * we have tried performing the cache update asynchronously outside the client's thread by
+         * submitting the following codes to an executor, but the executor caused a lot of extra GC
+         * so it's not worth adding another executor here.
+         *
+         * It might still be possible to tune the asynchronous method further in the future, if need.
+         */
+        if (routerCache.isPresent()) {
+          if (path.getRequestType().equals(RequestType.MULTI_GET) && storeRepository.isBatchGetRouterCacheEnabled(storeName)) {
+            long responseDeserializationStartTimeInNS = System.nanoTime();
+            Iterable<MultiGetResponseRecordV1> records = multiGetResponseRecordDeserializer.deserializeObjects(contentToByte);
+            statsForMultiGet.recordResponseResultsDeserializationLatency(storeName, LatencyUtils.getLatencyInMS(responseDeserializationStartTimeInNS));
+            long cacheUpdateStartTimeInNS = System.nanoTime();
+            for (MultiGetResponseRecordV1 record : records) {
+              // update the cache
+              updateCache(path, ((VeniceMultiGetPath) path).getRouterKeyByKeyIdx(record.keyIndex), Optional.of(record.value.array()), Optional.of(valueSchemaId), compressionStrategy);
+            }
+            statsForMultiGet.recordCacheUpdateLatencyForMultiGet(storeName, LatencyUtils.getLatencyInMS(cacheUpdateStartTimeInNS));
+          } else if (path.getRequestType().equals(RequestType.SINGLE_GET) && storeRepository.isSingleGetRouterCacheEnabled(storeName)) {
+            // Update cache for single-get request
+            if (responseStatus == HttpStatus.SC_OK) {
+              updateCache(path, path.getPartitionKey(), Optional.of(contentToByte), Optional.of(valueSchemaId), compressionStrategy);
+            } else if (responseStatus == HttpStatus.SC_NOT_FOUND) {
+              updateCache(path, path.getPartitionKey(), Optional.empty(), Optional.empty(), compressionStrategy);
+            }
+          }
+        }
+
+
       }
 
       @Override
@@ -357,7 +418,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   }
 
   /**
-   * Handle cache lookup for single-get request, and this function is handling throttling as well.
+   * Handle cache lookup for both batch-get and single-get request, and this function is handling throttling as well.
    * Here is the throttling logic for cache lookup request:
    * 1. If it is a cache hit, the request won't be counted when calculating per storage node throttler
    * since there is no request sent out to any storage node;
@@ -371,67 +432,155 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * @param selectedHost
    * @param responseFuture
    * @param contextExecutor
-   * @return whether cache lookup is succeed or not.
+   * @param cacheResultForMultiGet the cached value for the key will be added to this list
+   * @return whether the single-get hits cache or all keys in batch-get hit cache
+   * @throws RouterException
    */
-  protected boolean handleCacheLookupAndThrottlingForSingleGetRequest(VeniceSingleGetPath path, Instance selectedHost,
-      AsyncPromise<List<FullHttpResponse>> responseFuture, Executor contextExecutor) throws RouterException {
+  protected boolean handleCacheLookupAndThrottling(VenicePath path, Instance selectedHost,
+      AsyncPromise<List<FullHttpResponse>> responseFuture, Executor contextExecutor,
+      List<MultiGetResponseRecordV1> cacheResultForMultiGet) throws RouterException {
+    if (!routerCache.isPresent()) {
+      return false;
+    }
+
     String storeName = path.getStoreName();
+    RequestType requestType = path.getRequestType();
+
     try {
-      if (routerCache.isPresent() && storeRepository.isRouterCacheEnabled(storeName)) {
-        /**
-         * Cache throttling first
-         * Only throttle in store level since the cache lookup request is not actually sending to any storage node
-         */
+      boolean cacheEnabledForStore = requestType.equals(RequestType.SINGLE_GET) ?
+          storeRepository.isSingleGetRouterCacheEnabled(storeName) : storeRepository.isBatchGetRouterCacheEnabled(storeName);
+      if (!cacheEnabledForStore) {
+        // Caching is not enabled
         if (!path.isRetryRequest()) {
-          readRequestThrottler.mayThrottleRead(storeName, cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+          readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
         }
+        return false;
+      }
 
-        long startTimeInNS = System.nanoTime();
-        statsForSingleGet.recordCacheLookupRequest(storeName);
-        Optional<RouterCache.CacheValue> cacheValue =
-            routerCache.get().get(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer());
-
-        statsForSingleGet.recordCacheLookupLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
-        if (cacheValue != null) {
-          // Cache hit
-          statsForSingleGet.recordCacheHitRequest(storeName);
-          FullHttpResponse response;
-          if (cacheValue.isPresent()) {
-            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
-                Unpooled.wrappedBuffer(cacheValue.get().getValue()));
-            response.headers()
-                .set(HttpConstants.VENICE_PARTITION, path.getPartition())
-                .set(HttpConstants.VENICE_SCHEMA_ID, cacheValue.get().getSchemaId())
-                .set(HttpHeaderNames.CONTENT_LENGTH, cacheValue.get().getValue().length)
-                .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
-          } else {
-            response =
-                new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, NOT_FOUND_CONTENT);
-            response.headers()
-                .set(HttpHeaderNames.CONTENT_LENGTH, 0)
-                .set(HttpConstants.VENICE_PARTITION, path.getPartition());
-          }
-
-          response.headers().set(VENICE_COMPRESSION_STRATEGY, routerCache.get().getCompressionStrategy(path.getResourceName()).getValue());
-
-          contextExecutor.execute(() -> {
-            responseFuture.setSuccess(Collections.singletonList(response));
-          });
-          return true;
-        } else {
+      long startTimeInNS = System.nanoTime();
+      switch (requestType) {
+        case SINGLE_GET:
           /**
-           * Cache miss
-           * Unset the previous per-store throttler
+           * Cache throttling first
+           * Only throttle in store level since the cache lookup request is not actually sending to any storage node
            */
           if (!path.isRetryRequest()) {
-            readRequestThrottler.mayThrottleRead(storeName, -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+            readRequestThrottler.mayThrottleRead(storeName, cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
           }
-        }
+
+          statsForSingleGet.recordCacheLookupRequest(storeName);
+          Optional<RouterCache.CacheValue> cacheValue =
+              routerCache.get().get(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer());
+
+          statsForSingleGet.recordCacheLookupLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
+          if (cacheValue != null) {
+            // Cache hit
+            statsForSingleGet.recordCacheHitRequest(storeName);
+            FullHttpResponse response;
+            if (cacheValue.isPresent()) {
+              response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                  Unpooled.wrappedBuffer(cacheValue.get().getValue()));
+              response.headers()
+                  .set(HttpConstants.VENICE_PARTITION, ((VeniceSingleGetPath)path).getPartition())
+                  .set(HttpConstants.VENICE_SCHEMA_ID, cacheValue.get().getSchemaId())
+                  .set(HttpHeaderNames.CONTENT_LENGTH, cacheValue.get().getValue().length)
+                  .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+            } else {
+              response =
+                  new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, NOT_FOUND_CONTENT);
+              response.headers()
+                  .set(HttpHeaderNames.CONTENT_LENGTH, 0)
+                  .set(HttpConstants.VENICE_PARTITION, ((VeniceSingleGetPath)path).getPartition());
+            }
+
+            response.headers().set(VENICE_COMPRESSION_STRATEGY, routerCache.get().getCompressionStrategy(path.getResourceName()).getValue());
+
+            contextExecutor.execute(() -> {
+              responseFuture.setSuccess(Collections.singletonList(response));
+            });
+            return true;
+          } else {
+            /**
+             * Cache miss
+             * Unset the previous per-store throttler
+             */
+            if (!path.isRetryRequest()) {
+              readRequestThrottler.mayThrottleRead(storeName, -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+              readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
+            }
+          }
+          break;
+        case MULTI_GET:
+          /**
+           * Cache throttling first;
+           * for multi-get, multiply the throttle weight with the number of keys in the request
+           * and only throttle once
+           */
+          if (!path.isRetryRequest()) {
+            readRequestThrottler.mayThrottleRead(storeName,
+                cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity() * ((VeniceMultiGetPath)path).getCurrentKeyNum(), Optional.empty());
+          }
+
+          int valueSchemaId = 0;
+          int cacheMissTimes = 0;
+          for (Map.Entry<Integer, RouterKey> routerKeyEntry : ((VeniceMultiGetPath)path).getKeyIdxToRouterKeySet()) {
+            statsForMultiGet.recordCacheLookupRequest(storeName);
+            long cacheLookupStartTimeInNS = System.nanoTime();
+            Optional<RouterCache.CacheValue> cacheValueForOneKey =
+                routerCache.get().get(storeName, path.getVersionNumber(), routerKeyEntry.getValue().getKeyBuffer());
+            statsForMultiGet.recordCacheLookupLatencyForEachKeyInMultiget(storeName, LatencyUtils.getLatencyInMS(cacheLookupStartTimeInNS));
+            if (cacheValueForOneKey != null) {
+              // cache hit for this key
+              statsForMultiGet.recordCacheHitRequest(storeName);
+              if (cacheValueForOneKey.isPresent()) {
+                MultiGetResponseRecordV1 multiGetResponseRecordV1 = new MultiGetResponseRecordV1();
+                multiGetResponseRecordV1.value = cacheValueForOneKey.get().getByteBuffer();
+                multiGetResponseRecordV1.keyIndex = routerKeyEntry.getKey();
+                multiGetResponseRecordV1.schemaId = cacheValueForOneKey.get().getSchemaId();
+                valueSchemaId = Math.max(valueSchemaId, multiGetResponseRecordV1.schemaId);
+
+                // add cache value to result
+                cacheResultForMultiGet.add(multiGetResponseRecordV1);
+              }
+
+              // remove this key request in MultiGetPath
+              ((VeniceMultiGetPath)path).removeFromRequest(routerKeyEntry.getValue());
+            } else {
+              // cache miss for this key
+              cacheMissTimes++;
+            }
+          }
+          // Do throttling discount for all the keys that are not found in the cache
+          if (!path.isRetryRequest()) {
+            readRequestThrottler.mayThrottleRead(storeName,
+                -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity() * cacheMissTimes, Optional.empty());
+          }
+          statsForMultiGet.recordCacheLookupLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
+
+          if (((VeniceMultiGetPath)path).isEmptyRequest()) {
+            // all keys hit cache
+            byte[] contentToByte = multiGetResponseRecordSerializer.serializeObjects(cacheResultForMultiGet);
+            ByteBuf content = Unpooled.wrappedBuffer(contentToByte);
+            CompressionStrategy compressionStrategy = routerCache.get().getCompressionStrategy(path.getResourceName());
+
+            FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
+
+            response.headers()
+                .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
+                .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY)
+                .set(HttpConstants.VENICE_SCHEMA_ID, valueSchemaId)
+                .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
+
+            contextExecutor.execute(() -> {
+              responseFuture.setSuccess(Collections.singletonList(response));
+            });
+            return true;
+          } else {
+            // part of the key hit cache; still need to send a batch-get request
+            return false;
+          }
       }
-      // Caching is not enabled or cache miss
-      if (!path.isRetryRequest()) {
-        readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
-      }
+
     } catch (QuotaExceededException e) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.SINGLE_GET),
           TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
@@ -441,31 +590,36 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   }
 
   /**
-   * Update cache for single-get request
+   * Update cache
    * @param path
    * @param content If not found, this field will be {@link Optional#empty()}
    * @param valueSchemaId If not found, this field will be {@link Optional#empty()}
    */
-  protected void updateCacheForSingleGetRequest(VeniceSingleGetPath path, Optional<byte[]> content,
-                                                Optional<Integer> valueSchemaId, CompressionStrategy compressionStrategy) {
+  protected void updateCache(VenicePath path,  RouterKey routerKey, Optional<byte[]> content,
+      Optional<Integer> valueSchemaId, CompressionStrategy compressionStrategy) {
     String storeName = path.getStoreName();
-    // Setup cache for single-get
-    if (routerCache.isPresent() && storeRepository.isRouterCacheEnabled(storeName)) {
-      long startTimeInNS = System.nanoTime();
+    if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
       statsForSingleGet.recordCachePutRequest(storeName);
-      try {
-        if (content.isPresent() && valueSchemaId.isPresent()) {
-          RouterCache.CacheValue cacheValue = new RouterCache.CacheValue(content.get(), valueSchemaId.get());
-          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer(), Optional.of(cacheValue));
-        } else {
-          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getKeyBuffer(),
-              Optional.empty());
-        }
-        routerCache.get().setCompressionType(path.getResourceName(), compressionStrategy);
-      } catch (Exception e) {
-        logger.error("Received exception during updating cache", e);
+    } else {
+      statsForMultiGet.recordCachePutRequest(storeName);
+    }
+
+    long startTimeInNS = System.nanoTime();
+    try {
+      if (content.isPresent() && valueSchemaId.isPresent()) {
+        RouterCache.CacheValue cacheValue = new RouterCache.CacheValue(ByteBuffer.wrap(content.get()), valueSchemaId.get());
+        routerCache.get().put(storeName, path.getVersionNumber(), routerKey.getKeyBuffer(), Optional.of(cacheValue));
+      } else {
+        routerCache.get().put(storeName, path.getVersionNumber(), routerKey.getKeyBuffer(), Optional.empty());
       }
+      routerCache.get().setCompressionType(path.getResourceName(), compressionStrategy);
+    } catch (Exception e) {
+      logger.error("Received exception during updating cache", e);
+    }
+    if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
       statsForSingleGet.recordCachePutLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
+    } else {
+      statsForMultiGet.recordCachePutLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
     }
   }
 

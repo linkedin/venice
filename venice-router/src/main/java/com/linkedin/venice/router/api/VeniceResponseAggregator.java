@@ -201,32 +201,24 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       CompressionStrategy compressionStrategy = response.headers().contains(VENICE_COMPRESSION_STRATEGY) ?
           CompressionStrategy.valueOf(Integer.valueOf(response.headers().get(VENICE_COMPRESSION_STRATEGY))) : CompressionStrategy.NO_OP;
 
-      if (compressionStrategy != CompressionStrategy.NO_OP) {
-        byte[] content = response.content().array();
-        /**
-         * Reuse the original byte array by {@link org.apache.avro.io.OptimizedBinaryDecoder}.
-         */
-        Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
-            OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
-
-        for (MultiGetResponseRecordV1 record : records) {
-          record.value = decompressRecord(storeName, version, compressionStrategy, record.value, stats);
+      if (response.content() instanceof CompositeByteBuf) {
+        CompositeByteBuf compositeByteBuf = (CompositeByteBuf)response.content();
+        for (int i = 0; i < compositeByteBuf.numComponents(); i++) {
+          byte[] content = compositeByteBuf.internalComponent(i).array();
+          resultLen += addResponseToList(content, contentList, storeName, version, compressionStrategy, stats);
         }
-
-        byte[] decompressedRecords = recordSerializer.serializeObjects(records);
-        contentList.add(decompressedRecords);
-        resultLen += decompressedRecords.length;
       } else {
-        byte[] records = response.content().array();
-        contentList.add(records);
-        resultLen += records.length;
+        byte[] content = response.content().array();
+        resultLen += addResponseToList(content, contentList, storeName, version, compressionStrategy, stats);
       }
     }
 
     // Concat all the responses
-    // TODO: explore how to reuse the buffer: Pooled or CompositeByteBuf??
-    ByteBuf result = Unpooled.buffer(resultLen);
-    contentList.stream().forEach(content -> result.writeBytes(content));
+    CompositeByteBuf result = Unpooled.compositeBuffer(contentList.size());
+    for (int i = 0; i < contentList.size(); i++) {
+      byte[] content = contentList.get(i);
+      result.addComponent(true, i, Unpooled.wrappedBuffer(content));
+    }
 
     FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, result);
     MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
@@ -249,6 +241,27 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       return decompressed;
     } catch (IOException e) {
       throw new VeniceException(String.format("failed to decompress data. Store: %s; Version: %d", storeName, version), e);
+    }
+  }
+
+  private int addResponseToList(byte[] content, List<byte[]> contentList, String storeName, int version, CompressionStrategy compressionStrategy, AggRouterHttpRequestStats stats) {
+    if (compressionStrategy != CompressionStrategy.NO_OP) {
+      /**
+       * Reuse the original byte array by {@link org.apache.avro.io.OptimizedBinaryDecoder}.
+       */
+      Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
+          OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
+
+      for (MultiGetResponseRecordV1 record : records) {
+        record.value = decompressRecord(storeName, version, compressionStrategy, record.value, stats);
+      }
+
+      byte[] decompressedRecords = recordSerializer.serializeObjects(records);
+      contentList.add(decompressedRecords);
+      return decompressedRecords.length;
+    } else {
+      contentList.add(content);
+      return content.length;
     }
   }
 }

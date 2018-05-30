@@ -1325,17 +1325,17 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testRouterCacheEnabled() {
+  public void testSingleGetRouterCacheEnabled() {
     String storeName = TestUtils.getUniqueString("test_store");
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertFalse(store.isRouterCacheEnabled());
+    Assert.assertFalse(store.isSingleGetRouterCacheEnabled());
 
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-        .setRouterCacheEnabled(true));
+        .setSingleGetRouterCacheEnabled(true));
     store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertTrue(store.isRouterCacheEnabled());
+    Assert.assertTrue(store.isSingleGetRouterCacheEnabled());
 
     // Test enabling hybrid for a cache-enabled store
     try {
@@ -1349,9 +1349,9 @@ public class TestVeniceHelixAdmin {
     // Test enabling cache of a hybrid store
     // Disable cache first
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-        .setRouterCacheEnabled(false));
+        .setSingleGetRouterCacheEnabled(false));
     store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertFalse(store.isRouterCacheEnabled());
+    Assert.assertFalse(store.isSingleGetRouterCacheEnabled());
     // Enable hybrid
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(1000L)
@@ -1360,7 +1360,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertTrue(store.isHybrid());
     try {
       veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-          .setRouterCacheEnabled(true));
+          .setSingleGetRouterCacheEnabled(true));
       Assert.fail("A VeniceException expected since we could not enable cache of a hybrid store");
     } catch (VeniceException e) {
     }
@@ -1368,9 +1368,9 @@ public class TestVeniceHelixAdmin {
     // Test enabling cache of a compressed store
     // Disable cache first
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-        .setRouterCacheEnabled(false));
+        .setSingleGetRouterCacheEnabled(false));
     store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertFalse(store.isRouterCacheEnabled());
+    Assert.assertFalse(store.isSingleGetRouterCacheEnabled());
     // Enable compression
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setCompressionStrategy(CompressionStrategy.GZIP));
@@ -1378,7 +1378,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertTrue(store.getCompressionStrategy().isCompressionEnabled());
     try {
       veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-          .setRouterCacheEnabled(true));
+          .setSingleGetRouterCacheEnabled(true));
       Assert.fail("A VeniceException expected since we could not enable cache of a compressed store");
     } catch (VeniceException e) {
     }

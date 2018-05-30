@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.cache;
 
 import com.linkedin.venice.meta.RoutingDataRepository;
+import java.nio.ByteBuffer;
 import org.mockito.Mockito;
 import java.util.Optional;
 import org.testng.Assert;
@@ -16,8 +17,8 @@ public class RouterCacheTest {
     String storeName2 = "test_store_1";
     byte[] testKey1 = "test_key1".getBytes();
     byte[] testKey2 = "test_key2".getBytes();
-    RouterCache.CacheValue cacheValue1 = new RouterCache.CacheValue("test_value1".getBytes(), 1);
-    RouterCache.CacheValue cacheValue2 = new RouterCache.CacheValue("test_value2".getBytes(), 2);
+    RouterCache.CacheValue cacheValue1 = new RouterCache.CacheValue(ByteBuffer.wrap("test_value1".getBytes()), 1);
+    RouterCache.CacheValue cacheValue2 = new RouterCache.CacheValue(ByteBuffer.wrap("test_value2".getBytes()), 2);
 
     routerCache.put(storeName1, 1, testKey1, Optional.of(cacheValue1));
     routerCache.put(storeName1, 1, testKey2, Optional.of(cacheValue2));

@@ -576,7 +576,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       Optional.of(message.accessControlled),
                       CompressionStrategy.optionalValueOf(message.compressionStrategy),
                       Optional.of(message.chunkingEnabled),
-                      Optional.of(message.routerCacheEnabled),
+                      Optional.of(message.singleGetRouterCacheEnabled),
+                      Optional.of(message.batchGetRouterCacheEnabled),
                       Optional.of(message.batchGetLimit),
                       Optional.of(message.numVersionsToPreserve)
         );

@@ -864,15 +864,26 @@ public class TestVeniceParentHelixAdmin {
       Assert.assertTrue(childStoreResponse.getStore().isChunkingEnabled());
     });
 
-    // Update routerCacheEnabled
-    Assert.assertFalse(storeResponse.getStore().isRouterCacheEnabled());
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setRouterCacheEnabled(true));
+    // Update singleGetRouterCacheEnabled
+    Assert.assertFalse(storeResponse.getStore().isSingleGetRouterCacheEnabled());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setSingleGetRouterCacheEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isRouterCacheEnabled());
+    Assert.assertTrue(storeResponse.getStore().isSingleGetRouterCacheEnabled());
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
       StoreResponse childStoreResponse = controllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isRouterCacheEnabled());
+      Assert.assertTrue(childStoreResponse.getStore().isSingleGetRouterCacheEnabled());
+    });
+
+    // Update batchGetRouterCacheEnabled
+    Assert.assertFalse(storeResponse.getStore().isBatchGetRouterCacheEnabled());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetRouterCacheEnabled(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isBatchGetRouterCacheEnabled());
+    // Child controller will be updated asynchronously
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      Assert.assertTrue(childStoreResponse.getStore().isBatchGetRouterCacheEnabled());
     });
 
     // Update batchGetLimit
@@ -887,7 +898,7 @@ public class TestVeniceParentHelixAdmin {
     });
 
     // Disable router cache to test hybrid store
-    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setRouterCacheEnabled(false));
+    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setSingleGetRouterCacheEnabled(false));
     // Config the store to be hybrid
     controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(100).setHybridOffsetLagThreshold(100));
     // This command should not fail

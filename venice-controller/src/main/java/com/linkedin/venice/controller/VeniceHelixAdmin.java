@@ -1087,11 +1087,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public synchronized  void setRouterCacheEnabled(String clusterName, String storeName,
-        boolean routerCacheEnabled) {
+    public synchronized  void setSingleGetRouterCacheEnabled(String clusterName, String storeName,
+        boolean singleGetRouterCacheEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setRouterCacheEnabled(routerCacheEnabled);
+            store.setSingleGetRouterCacheEnabled(singleGetRouterCacheEnabled);
 
+            return store;
+        });
+    }
+
+    public synchronized void setBatchGetRouterCacheEnabled(String clusterName, String storeName,
+        boolean batchGetRouterCacheEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setBatchGetRouterCacheEnabled(batchGetRouterCacheEnabled);
             return store;
         });
     }
@@ -1131,16 +1139,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      *
      * @param store
      * @param newHybridStoreConfig
-     * @param newRouterCacheEnabled
+     * @param newSingleGetRouterCacheEnabled
+     * @param newBatchGetRouterCacheEnabled
      */
     protected void checkWhetherStoreWillHaveConflictConfigForCaching(Store store,
         Optional<HybridStoreConfig> newHybridStoreConfig,
-        Optional<Boolean> newRouterCacheEnabled) {
+        Optional<Boolean> newSingleGetRouterCacheEnabled,
+        Optional<Boolean> newBatchGetRouterCacheEnabled) {
         String storeName = store.getName();
-        if (store.isHybrid() && newRouterCacheEnabled.isPresent() && newRouterCacheEnabled.get()) {
+        if (store.isHybrid() && (newSingleGetRouterCacheEnabled.orElse(false) || newBatchGetRouterCacheEnabled.orElse(false))) {
             throw new VeniceException("Router cache couldn't be enabled for store: " + storeName + " since it is a hybrid store");
         }
-        if (store.isRouterCacheEnabled() && newHybridStoreConfig.isPresent()) {
+        if ((store.isSingleGetRouterCacheEnabled() || store.isBatchGetRouterCacheEnabled()) && newHybridStoreConfig.isPresent()) {
             throw new VeniceException("Hybrid couldn't be enabled for store: " + storeName + " since it enables router-cache");
         }
     }
@@ -1162,7 +1172,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> accessControlled,
         Optional<CompressionStrategy> compressionStrategy,
         Optional<Boolean> chunkingEnabled,
-        Optional<Boolean> routerCacheEnabled,
+        Optional<Boolean> singleGetRouterCacheEnabled,
+        Optional<Boolean> batchGetRouterCacheEnabled,
         Optional<Integer> batchGetLimit,
         Optional<Integer> numVersionsToPreserve) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
@@ -1176,7 +1187,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
 
-        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, hybridStoreConfig, routerCacheEnabled);
+        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, hybridStoreConfig, singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
 
         try {
             if (owner.isPresent()) {
@@ -1220,8 +1231,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 });
             }
 
-            if (routerCacheEnabled.isPresent()) {
-                setRouterCacheEnabled(clusterName, storeName, routerCacheEnabled.get());
+            if (singleGetRouterCacheEnabled.isPresent()) {
+                setSingleGetRouterCacheEnabled(clusterName, storeName, singleGetRouterCacheEnabled.get());
+            }
+
+            if (batchGetRouterCacheEnabled.isPresent()) {
+              setBatchGetRouterCacheEnabled(clusterName, storeName, batchGetRouterCacheEnabled.get());
             }
 
             if (accessControlled.isPresent()) {

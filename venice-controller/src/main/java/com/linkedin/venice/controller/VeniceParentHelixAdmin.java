@@ -868,7 +868,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> readQuotaInCU, Optional<Integer> currentVersion, Optional<Integer> largestUsedVersionNumber,
       Optional<Long> hybridRewindSeconds, Optional<Long> hybridOffsetLagThreshold, Optional<Boolean> accessControlled,
       Optional<CompressionStrategy> compressionStrategy, Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> routerCacheEnabled, Optional<Integer> batchGetLimit, Optional<Integer> numVersionsToPreserve) {
+      Optional<Boolean> singleGetRouterCacheEnabled, Optional<Boolean> batchGetRouterCacheEnabled,
+      Optional<Integer> batchGetLimit, Optional<Integer> numVersionsToPreserve) {
     acquireLock(clusterName);
 
     try {
@@ -907,11 +908,13 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.compressionStrategy = compressionStrategy.isPresent()
           ? compressionStrategy.get().getValue() : store.getCompressionStrategy().getValue();
       setStore.chunkingEnabled = chunkingEnabled.isPresent() ? chunkingEnabled.get() : store.isChunkingEnabled();
-      setStore.routerCacheEnabled = routerCacheEnabled.isPresent() ? routerCacheEnabled.get() : store.isRouterCacheEnabled();
+      setStore.singleGetRouterCacheEnabled = singleGetRouterCacheEnabled.isPresent() ? singleGetRouterCacheEnabled.get() : store.isSingleGetRouterCacheEnabled();
+      setStore.batchGetRouterCacheEnabled =
+          batchGetRouterCacheEnabled.isPresent() ? batchGetRouterCacheEnabled.get() : store.isBatchGetRouterCacheEnabled();
 
       veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store,
           null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
-          routerCacheEnabled);
+          singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.isPresent() ? numVersionsToPreserve.get() : store.getNumVersionsToPreserve();

@@ -177,7 +177,8 @@ public interface Admin {
                      Optional<Boolean> accessControlled,
                      Optional<CompressionStrategy> compressionStrategy,
                      Optional<Boolean> chunkingEnabled,
-                     Optional<Boolean> routerCacheEnabled,
+                     Optional<Boolean> singleGetRouterCacheEnabled,
+                     Optional<Boolean> batchGetRouterCacheEnabled,
                      Optional<Integer> batchGetLimit,
                      Optional<Integer> numVersionsToPreserve);
 
@@ -199,7 +200,8 @@ public interface Admin {
             params.getAccessControlled(),
             params.getCompressionStrategy(),
             params.getChunkingEnabled(),
-            params.getRouterCacheEnabled(),
+            params.getSingleGetRouterCacheEnabled(),
+            params.getBatchGetRouterCacheEnabled(),
             params.getBatchGetLimit(),
             params.getNumVersionsToPreserve());
     }

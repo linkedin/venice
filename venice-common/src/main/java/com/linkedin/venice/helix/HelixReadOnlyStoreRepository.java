@@ -274,14 +274,28 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   @Override
-  public boolean isRouterCacheEnabled(String name) {
+  public boolean isSingleGetRouterCacheEnabled(String name) {
     metadataLock.readLock().lock();
     try {
        Store store = storeMap.get(name);
        if (null == store) {
          throw new VeniceNoStoreException(name);
        }
-       return store.isRouterCacheEnabled();
+       return store.isSingleGetRouterCacheEnabled();
+    } finally {
+      metadataLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public boolean isBatchGetRouterCacheEnabled(String name) {
+    metadataLock.readLock().lock();
+    try {
+      Store store = storeMap.get(name);
+      if (null == store) {
+        throw new VeniceNoStoreException(name);
+      }
+      return store.isBatchGetRouterCacheEnabled();
     } finally {
       metadataLock.readLock().unlock();
     }

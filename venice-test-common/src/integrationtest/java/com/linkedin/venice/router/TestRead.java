@@ -109,7 +109,7 @@ public class TestRead {
   private void updateStore(long readQuota, int maxKeyLimit) {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setReadQuotaInCU(readQuota)
-            .setRouterCacheEnabled(true)
+            .setSingleGetRouterCacheEnabled(true)
             .setBatchGetLimit(maxKeyLimit));
   }
 

@@ -22,7 +22,7 @@ public class OffHeapCacheTest {
     OffHeapCache<RouterCache.CacheKey, RouterCache.CacheValue> cache = new OffHeapCache<>(1024 * 1024, 4, 256,
         new RouterCache.CacheKeySerializer(), new RouterCache.CacheValueSerializer(), cacheEviction);
     RouterCache.CacheKey cacheKey1 = new RouterCache.CacheKey(1, 1, ByteBuffer.wrap("key1".getBytes()));
-    RouterCache.CacheValue cacheValue1 = new RouterCache.CacheValue("value1".getBytes(), 1);
+    RouterCache.CacheValue cacheValue1 = new RouterCache.CacheValue(ByteBuffer.wrap("value1".getBytes()), 1);
     RouterCache.CacheKey cacheKey2 = new RouterCache.CacheKey(2, 1, ByteBuffer.wrap("key".getBytes()));
 
     cache.put(cacheKey1, Optional.of(cacheValue1));
