@@ -333,12 +333,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
       }
 
       // Looks like none of the short-circuitry fired, so we need to measure lag!
-      long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState);
       long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+      boolean shouldLogLag = partitionConsumptionState.getProcessedRecordNum() % threshold == 0; //Log lag for every <threshold> records.
+      long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState, shouldLogLag);
       boolean lagging = lag > threshold;
 
+      if (shouldLogLag) {
       logger.info(String.format("%s partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
           partitionConsumptionState.getPartition(), (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), threshold));
+      }
 
       lagIsAcceptable = !lagging;
     }
@@ -354,7 +357,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * A private method that has the formula to calculate real-time buffer lag. This method assumes every factor is
    * not null or presented in Optional. Pre-check should be done if necessary
    */
-  private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs) {
+  private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs, boolean shouldLog) {
     int partition = pcs.getPartition();
     /**
      * We still allow the upstream to check whether it could become 'ONLINE' for every message since it is possible
@@ -376,9 +379,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
 
-    logger.info(String.format("%s partition %d real-time buffer lag offset is: "
-        + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
-        consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
+    if (shouldLog) {
+      logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
+          consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
+    }
 
     return lag;
   }
@@ -874,7 +878,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long offsetLag = partitionConsumptionStateMap.values().parallelStream()
         .filter(pcs -> pcs.isEndOfPushReceived() &&
             pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent())
-        .mapToLong(pcs -> measureHybridOffsetLag(svs.get().startOfBufferReplay, pcs))
+        .mapToLong(pcs -> measureHybridOffsetLag(svs.get().startOfBufferReplay, pcs, false))
         .sum();
 
     return minZeroLag(offsetLag);
