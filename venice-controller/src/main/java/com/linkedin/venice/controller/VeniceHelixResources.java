@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
@@ -16,6 +17,8 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import io.tehuti.metrics.MetricsRepository;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZkClient;
 
 /**
@@ -48,7 +51,9 @@ public class VeniceHelixResources implements VeniceResource {
         config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.schemaRepository =
         new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName);
-    this.routingDataRepository = new HelixRoutingDataRepository(helixManager);
+    // Use the separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
+    SafeHelixManager spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
+    this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager, config.getHelixSendMessageTimeoutMs());
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
@@ -138,6 +143,17 @@ public class VeniceHelixResources implements VeniceResource {
           });
     } finally {
       metadataRepository.unLock();
+    }
+  }
+
+  private SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {
+    SafeHelixManager manager =
+        new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "", InstanceType.SPECTATOR, zkAddress));
+    try {
+      manager.connect();
+      return manager;
+    } catch (Exception e) {
+      throw new VeniceException("Spectator manager could not connect to cluster: " + clusterName, e);
     }
   }
 }
