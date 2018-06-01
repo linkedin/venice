@@ -295,7 +295,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         if (!reasonForNotBeingReady.isPresent()) {
           break;
         } else {
-          updatePushStatus(pushStatus, ExecutionStatus.STARTED, reasonForNotBeingReady);
+          refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, reasonForNotBeingReady);
         }
         if(System.currentTimeMillis() - startTime >= offlinePushWaitTimeInMilliseconds){
           // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
@@ -312,7 +312,9 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         lock.wait(nextWaitTime);
         resourceAssignment = routingDataRepository.getResourceAssignment();
       }
-      updatePushStatus(pushStatus, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
+
+      refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
+
       // TODO add a metric to track waiting time.
       long spentTime = System.currentTimeMillis() - startTime;
       logger.info(
@@ -529,6 +531,26 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       metadataRepository.updateStore(store);
     } finally {
       metadataRepository.unLock();
+    }
+  }
+
+  /**
+   * Here, we refresh the push status, in order to avoid a race condition where a small job could
+   * already be completed. Previously, we would clobber the COMPLETED status with STARTED, which
+   * would stall the job forever.
+   *
+   * Now, since we get the refreshed status, we can validate whether a transition to {@param newStatus}
+   * is valid, before making the change. If if wouldn't be valid (because the job already completed
+   * or already failed, for example), then we leave the status as is, rather than adding in the
+   * new details.
+   */
+  private void refreshAndUpdatePushStatus(String kafkaTopic, ExecutionStatus newStatus, Optional<String> newStatusDetails){
+    final OfflinePushStatus refreshedPushStatus = getOfflinePush(kafkaTopic);
+    if (refreshedPushStatus.validatePushStatusTransition(newStatus)) {
+      updatePushStatus(refreshedPushStatus, newStatus, newStatusDetails);
+    } else {
+      logger.info("refreshedPushStatus does not allow transitioning to " + newStatus + ", because it is currently in: "
+          + refreshedPushStatus.getCurrentStatus() + " status. Will skip updating the status.");
     }
   }
 
