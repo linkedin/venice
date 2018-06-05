@@ -59,7 +59,7 @@ public abstract class PushStatusDecider {
         String statusDetails = "too many ERROR replicas (" + errorReplicasCount + "/" + replicationFactor
             + ") in partition " + partition.getId() + " for OfflinePushStrategy:" + getStrategy();
         logger.warn("Push for topic:" + pushStatus.getKafkaTopic() + " should fail because of " + statusDetails);
-        return new Pair(ExecutionStatus.ERROR, statusDetails);
+        return new Pair<>(ExecutionStatus.ERROR, Optional.of(statusDetails));
       }
 
       // Is the partition has enough number of completed replicas.
