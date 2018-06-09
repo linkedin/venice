@@ -34,7 +34,7 @@ public enum ControllerRoute {
   ClUSTER_HEALTH_INSTANCES("/cluster_health_instances", Arrays.asList()),
   LIST_REPLICAS("/list_replicas", Arrays.asList(NAME, VERSION)),
   NODE_REPLICAS("/storage_node_replicas", Arrays.asList(STORAGE_NODE_ID)),
-  NODE_REMOVABLE("/node_removable", Arrays.asList(STORAGE_NODE_ID)),
+  NODE_REMOVABLE("/node_removable", Arrays.asList(STORAGE_NODE_ID), INSTANCE_VIEW),
   WHITE_LIST_ADD_NODE("/white_list_add_node", Arrays.asList(STORAGE_NODE_ID)),
   WHITE_LIST_REMOVE_NODE("/white_list_remove_node", Arrays.asList(STORAGE_NODE_ID)),
   REMOVE_NODE("/remove_node", Arrays.asList(STORAGE_NODE_ID)),

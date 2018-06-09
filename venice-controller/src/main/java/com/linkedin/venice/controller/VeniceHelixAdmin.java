@@ -1746,14 +1746,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId) {
+    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, boolean isFromInstanceView) {
         checkControllerMastership(clusterName);
         int minActiveReplicas = getVeniceHelixResource(clusterName).getConfig().getMinActiveReplica();
-        return isInstanceRemovable(clusterName, helixNodeId, minActiveReplicas);
+        return isInstanceRemovable(clusterName, helixNodeId, minActiveReplicas, isFromInstanceView);
     }
 
     @Override
-    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas) {
+    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView) {
         checkControllerMastership(clusterName);
         return InstanceStatusDecider
             .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, minActiveReplicas);
