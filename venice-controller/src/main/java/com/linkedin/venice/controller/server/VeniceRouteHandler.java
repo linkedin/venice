@@ -2,8 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.ControllerRoute;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.ExceptionUtils;
 import spark.Request;
 import spark.Response;
 import spark.Route;
@@ -22,8 +21,7 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
   }
 
   @Override
-  public Object handle(Request request, Response response)
-      throws Exception {
+  public Object handle(Request request, Response response) throws Exception {
     T veniceResponse = responseType.newInstance();
     try {
       internalHandle(request, veniceResponse);
@@ -31,7 +29,7 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
       if (e.getMessage() != null) {
         veniceResponse.setError(e.getMessage());
       } else {
-        veniceResponse.setError(e.getClass().getName());
+        veniceResponse.setError(ExceptionUtils.stackTraceToString(e));
       }
       AdminSparkServer.handleError(e, request, response);
     }
