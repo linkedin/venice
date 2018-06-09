@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
@@ -90,6 +91,39 @@ public class TestInstanceStatusDecider {
     }
   }
 
+  @Test
+  public void testIsRemovableLossDataInstanceView() {
+    int partitionCount = 2;
+    String instance1 = "localhost_1";
+    String instance2 = "localhost_2";
+    PartitionAssignment partitionAssignment = prepareMultiPartitionAssignments(resourceName, partitionCount);
+    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
+    // Partition 0 have 2 online replicas
+    List<Instance> onlineInstances = new ArrayList<>();
+    onlineInstances.add(Instance.fromNodeId(instance1));
+    onlineInstances.add(Instance.fromNodeId(instance2));
+    statusToInstancesMap.put(HelixState.ONLINE_STATE, onlineInstances);
+    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+    // Partition 1 only have 1 bootstrap replica but no online replica.
+    List<Instance> bootstrapInstances = new ArrayList<>();
+    bootstrapInstances.add(Instance.fromNodeId(instance2));
+    statusToInstancesMap = new HashMap<>();
+    statusToInstancesMap.put(HelixState.BOOTSTRAP_STATE, bootstrapInstances);
+    partitionAssignment.addPartition(new Partition(1, statusToInstancesMap));
+
+    // Test the completed push.
+    VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
+    for (VersionStatus status : statuses) {
+      prepareStoreAndVersion(storeName, version, status);
+      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, 1, true).isRemovable(),
+          instance1 + "could be removed because it's not the last online copy in the instance's point of view.");
+      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance2, 1, true).isRemovable(),
+          instance2 + "could NOT be removed because it the last online copy in the instance's point of view.");
+      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, 1).isRemovable(),
+          instance1 + "could NOT be removed because in the cluster's point of view, partition 1 does not have any online replica alive.");
+    }
+  }
+
   /**
    * Test is instance removable during the push. If removing would fail the running job, we can not remove that
    * instance.
@@ -156,9 +190,43 @@ public class TestInstanceStatusDecider {
     }
   }
 
+  @Test
+  public void testIsRemovableTriggerRebalanceInstanceView() {
+    int partitionCount = 2;
+    int replicationFactor = 3;
+    PartitionAssignment partitionAssignment = prepareMultiPartitionAssignments(resourceName, partitionCount);
+
+    Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
+    List<Instance> instances = new ArrayList<>();
+    for (int i = 1; i <= replicationFactor; i++) {
+      instances.add(Instance.fromNodeId("localhost_" + i));
+    }
+    statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+    partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
+
+    statusToInstancesMap = new HashMap<>();
+    instances = new ArrayList<>();
+    instances.add(Instance.fromNodeId("localhost_1"));
+    statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+    partitionAssignment.addPartition(new Partition(1, statusToInstancesMap));
+
+    VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
+    for (VersionStatus status : statuses) {
+      prepareStoreAndVersion(storeName, version, status);
+      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", 2, true).isRemovable(),
+          "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0 in instance's point of view, it will not trigger re-balance.");
+      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", 2).isRemovable(),
+          "Instance should NOT be removable because after removing one instance, there are only 1 active replicas in partition 1 in cluster's point of view, it will trigger re-balance.");
+    }
+  }
+
   private PartitionAssignment prepareAssignments(String resourceName) {
+    return prepareMultiPartitionAssignments(resourceName, 1);
+  }
+
+  private PartitionAssignment prepareMultiPartitionAssignments(String resourceName, int partitionCount) {
     ResourceAssignment resourceAssignment = new ResourceAssignment();
-    PartitionAssignment partitionAssignment = new PartitionAssignment(resourceName, 1);
+    PartitionAssignment partitionAssignment = new PartitionAssignment(resourceName, partitionCount);
     resourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
     Mockito.doReturn(resourceAssignment).when(routingDataRepository).getResourceAssignment();
     return partitionAssignment;

@@ -683,8 +683,8 @@ public class TestVeniceHelixAdmin {
     });
 
     //Now we have 2 replicas in bootstrap in each partition.
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1).isRemovable());
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1, false).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1, false).isRemovable());
 
     //Shutdown one instance
     stopParticipant(nodeId);
@@ -695,9 +695,9 @@ public class TestVeniceHelixAdmin {
       return partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().size() == 1;
     });
 
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1).isRemovable(),
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1, false).isRemovable(),
         "Even there is only one live instance, it could be removed and our push would not failed.");
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1).isRemovable(), "Instance is shutdown.");
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1, false).isRemovable(), "Instance is shutdown.");
   }
 
   @Test
@@ -733,13 +733,13 @@ public class TestVeniceHelixAdmin {
     storeRepository.updateStore(store);
 
     //Enough number of replicas, any of instance is able to moved out.
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1).isRemovable());
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1, false).isRemovable());
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1, false).isRemovable());
     // If min required replica number is 2, we can not remove any of server.
-    NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, nodeId, 2);
+    NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, nodeId, 2,false);
     Assert.assertFalse(result.isRemovable());
     Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString());
-    result = veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 2);
+    result = veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 2, false);
     Assert.assertFalse(result.isRemovable());
     Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString());
 
@@ -752,10 +752,10 @@ public class TestVeniceHelixAdmin {
       return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
     });
 
-    result = veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1);
+    result = veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1, false);
     Assert.assertFalse(result.isRemovable(), "Only one instance is alive, can not be moved out.");
     Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA.toString());
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1).isRemovable(), "Instance is shutdown.");
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1, false).isRemovable(), "Instance is shutdown.");
   }
 
   @Test

@@ -14,10 +14,7 @@ import java.util.List;
 import java.util.Map;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
@@ -113,7 +110,13 @@ public class NodesAndReplicas {
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
-        NodeRemovableResult result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId);
+        String[] instanceView = request.queryMap().toMap().get(INSTANCE_VIEW);
+        NodeRemovableResult result;
+        if (instanceView != null && Boolean.valueOf(instanceView[0])) {
+          result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, true);
+        } else {
+          result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId, false);
+        }
         responseObject.setRemovable(result.isRemovable());
         // Add detail reason why this instance could not be removed.
         if (!result.isRemovable()) {

@@ -79,7 +79,7 @@ public class TestRebalanceByDefaultStrategy {
       String instanceId = Utils.getHelixNodeIdentifier(port);
       TestUtils.waitForNonDeterministicCompletion(RETRY_REMOVE_TIMEOUT_MS, TimeUnit.MILLISECONDS, () -> {
         try {
-          if (cluster.getMasterVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId).isRemovable()) {
+          if (cluster.getMasterVeniceController().getVeniceAdmin().isInstanceRemovable(clusterName, instanceId, false).isRemovable()) {
             cluster.stopVeniceServer(port);
             Thread.sleep(UPGRADE_TIME_MS);
             cluster.restartVeniceServer(port);

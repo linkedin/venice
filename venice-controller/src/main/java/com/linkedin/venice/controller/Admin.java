@@ -283,10 +283,14 @@ public interface Admin {
      * otherwise Venice will lose data. For detail criteria please refer to {@link InstanceStatusDecider}
      *
      * @param helixNodeId nodeId of helix participant. HOST_PORT.
+     * @param isFromInstanceView If the value is true, it means we will only check the partitions this instance hold.
+     *                           E.g. if all replicas of a partition are error, but this instance does not hold any
+     *                           replica in this partition, we will skip this partition in the checking.
+     *                           If the value is false, we will check all partitions of resources this instance hold.
      */
-    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId);
+    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, boolean isFromInstanceView);
 
-    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas);
+    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a

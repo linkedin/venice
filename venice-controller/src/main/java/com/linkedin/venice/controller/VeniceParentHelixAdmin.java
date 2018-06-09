@@ -1208,12 +1208,12 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public NodeRemovableResult isInstanceRemovable(String clusterName, String instanceId) {
+  public NodeRemovableResult isInstanceRemovable(String clusterName, String instanceId, boolean isFromInstanceView) {
     throw new VeniceException("isInstanceRemovable is not supported!");
   }
 
   @Override
-  public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas) {
+  public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView) {
     throw new VeniceException("isInstanceRemovable is not supported!");
   }
 

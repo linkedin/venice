@@ -50,6 +50,12 @@ public class InstanceStatusDecider {
     return replicas;
   }
 
+  protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName,
+      String instanceId, int minActiveReplicas) {
+
+    return isRemovable(resources, clusterName, instanceId, minActiveReplicas, false);
+  }
+
   /**
    * Decide whether the given instance could be moved out from the cluster. An instance is removable if:
    * 1. It's not a live instance any more.
@@ -60,7 +66,7 @@ public class InstanceStatusDecider {
    *  3.1 Push will not fail after removing this node from the cluster.
    */
   protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName, String instanceId,
-      int minActiveReplicas) {
+      int minActiveReplicas, boolean isInstanceView) {
     try {
       // If instance is not alive, it's removable.
       if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getController())) {
@@ -81,7 +87,7 @@ public class InstanceStatusDecider {
         for (String resourceName : resourceNameSet) {
           // Get partition assignments that if we removed the given instance from cluster.
           PartitionAssignment partitionAssignmentAfterRemoving =
-              getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName);
+              getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
 
           VersionStatus versionStatus = getVersionStatus(resources.getMetadataRepository(), resourceName);
           if (versionStatus.equals(VersionStatus.ONLINE) || versionStatus.equals(VersionStatus.PUSHED)) {
@@ -166,11 +172,18 @@ public class InstanceStatusDecider {
   }
 
   private static PartitionAssignment getPartitionAssignmentAfterRemoving(String instanceId,
-      ResourceAssignment resourceAssignment, String resourceName) {
+      ResourceAssignment resourceAssignment, String resourceName, boolean isInstanceView) {
     PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
     PartitionAssignment partitionAssignmentAfterRemoving =
         new PartitionAssignment(resourceName, partitionAssignment.getExpectedNumberOfPartitions());
     for (Partition partition : partitionAssignment.getAllPartitions()) {
+      if(isInstanceView) {
+        // If the instance does not hold any replica of this partition, skip it. As in the instance' view, we only care
+        // about the partitions that has been assigned to this instance.
+        if(partition.getInstanceStatusById(instanceId) == null){
+          continue;
+        }
+      }
       Partition partitionAfterRemoving = partition.withRemovedInstance(instanceId);
       partitionAssignmentAfterRemoving.addPartition(partitionAfterRemoving);
     }
