@@ -274,7 +274,8 @@ public class RouterServer extends AbstractVeniceService {
       ", cache size: " + config.getCacheSizeBytes() + ", cache concurrency: " + config.getCacheConcurrency() +
       ", cache hash table size: " + config.getCacheHashTableSize());
       routerCache = Optional.of(new RouterCache(config.getCacheType(), config.getCacheEviction(),
-              config.getCacheSizeBytes(), config.getCacheConcurrency(), config.getCacheHashTableSize(), routingDataRepository));
+              config.getCacheSizeBytes(), config.getCacheConcurrency(), config.getCacheHashTableSize(),
+              config.getCacheTTLmillis(), routingDataRepository));
       // Tracking cache metrics
       new RouterCacheStats(metricsRepository, "router_cache", routerCache.get());
     }

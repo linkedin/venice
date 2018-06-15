@@ -501,7 +501,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             return true;
           } else {
             /**
-             * Cache miss
+             * Cache miss or the value is expired
              * Unset the previous per-store throttler
              */
             if (!path.isRetryRequest()) {

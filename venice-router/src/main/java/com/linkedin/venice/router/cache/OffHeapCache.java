@@ -22,6 +22,8 @@ public class OffHeapCache<K, V> implements Cache<K, V> {
   public OffHeapCache(long capacityInBytes,
       int concurrency,
       int hashTableSize,
+      boolean isCacheTTLEnabled,
+      long cacheTTLmillis,
       CacheSerializer<K> keySerializer,
       CacheSerializer<Optional<V>> valueSerializer,
       CacheEviction cacheEviction) {
@@ -38,6 +40,8 @@ public class OffHeapCache<K, V> implements Cache<K, V> {
         .capacity(capacityInBytes)
         .segmentCount(concurrency)
         .hashTableSize(hashTableSize)
+        .timeouts(isCacheTTLEnabled)
+        .defaultTTLmillis(cacheTTLmillis)
         .throwOOME(true);
     ohCache = cacheBuilder.build();
   }

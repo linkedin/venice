@@ -48,6 +48,7 @@ public class VeniceRouterConfig {
   private CacheEviction cacheEviction;
   private int cacheHashTableSize;
   private double cacheHitRequestThrottleWeight;
+  private long cacheTTLmillis;
   private int routerNettyGracefulShutdownPeriodSeconds;
   private boolean enforceSecureOnly;
   private boolean dnsCacheEnabled;
@@ -95,6 +96,7 @@ public class VeniceRouterConfig {
     cacheType = CacheType.valueOf(props.getString(ROUTER_CACHE_TYPE, CacheType.OFF_HEAP_CACHE.name()));
     cacheEviction = CacheEviction.valueOf(props.getString(ROUTER_CACHE_EVICTION, CacheEviction.W_TINY_LFU.name()));
     cacheHashTableSize = props.getInt(ROUTER_CACHE_HASH_TABLE_SIZE, 1024 * 1024); // 1M
+    cacheTTLmillis = props.getLong(ROUTER_CACHE_TTL_MILLIS, TimeUnit.MINUTES.toMillis(5)); // 5 minutes
     /**
      * Make the default value for the throttle weight of cache hit request to be 1, which is same as the regular request.
      * The reason behind this:
@@ -233,6 +235,10 @@ public class VeniceRouterConfig {
 
   public TreeMap<Integer, Integer> getLongTailRetryForBatchGetThresholdMs() {
     return longTailRetryForBatchGetThresholdMs;
+  }
+
+  public long getCacheTTLmillis() {
+    return cacheTTLmillis;
   }
 
   public boolean isDnsCacheEnabled() {

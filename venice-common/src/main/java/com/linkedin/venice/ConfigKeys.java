@@ -267,6 +267,12 @@ public class ConfigKeys {
   public static final String ROUTER_CACHE_HASH_TABLE_SIZE = "router.cache.hash.table.size";
 
   /**
+   * The TTL for each entry in router cache (millisecond)
+   * If 0, TTL is not enabled; other, cache TTL is enabled
+   */
+  public static final String ROUTER_CACHE_TTL_MILLIS = "router.cache.ttl.millis";
+
+  /**
    * The request is still being throttled even it is a cache hit, but just with smaller weight.
    */
   public static final String ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT = "router.cache.hit.request.throttle.weight";
