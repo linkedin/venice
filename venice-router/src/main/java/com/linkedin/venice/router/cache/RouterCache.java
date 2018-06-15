@@ -237,7 +237,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
   private final Map<String, CompressionStrategy> compressionTypeCache;
 
   public RouterCache(CacheType cacheType, CacheEviction cacheEviction, long capacityInBytes, int concurrency,
-      int hashTableSize, RoutingDataRepository routingDataRepository) {
+      int hashTableSize, long cacheTTLmillis, RoutingDataRepository routingDataRepository) {
     if (cacheType.equals(CacheType.ON_HEAP_CACHE)) {
       // Check whether 'MD5' algorithm is available or not
       try {
@@ -253,8 +253,9 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
         throw new VeniceException("Not supported cache eviction algorithm for on-heap cache: " + cacheEviction);
       }
     } else if (cacheType.equals(CacheType.OFF_HEAP_CACHE)) {
-      this.cache = new OffHeapCache<>(capacityInBytes, concurrency, hashTableSize, new CacheKeySerializer(),
-          new CacheValueSerializer(), cacheEviction);
+      boolean isCacheTTLEnabled = (cacheTTLmillis <= 0) ? false : true;
+      this.cache = new OffHeapCache<>(capacityInBytes, concurrency, hashTableSize, isCacheTTLEnabled, cacheTTLmillis,
+          new CacheKeySerializer(), new CacheValueSerializer(), cacheEviction);
     } else {
       throw new VeniceException("Unknown cache type: " + cacheType);
     }

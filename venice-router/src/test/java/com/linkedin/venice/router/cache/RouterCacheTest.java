@@ -12,7 +12,7 @@ public class RouterCacheTest {
   @Test
   public void testCache() {
     RouterCache routerCache = new RouterCache(CacheType.ON_HEAP_CACHE, CacheEviction.LRU, 200, 2,
-    -1, Mockito.mock(RoutingDataRepository.class));
+    -1, 0, Mockito.mock(RoutingDataRepository.class));
     String storeName1 = "test_store_2";
     String storeName2 = "test_store_1";
     byte[] testKey1 = "test_key1".getBytes();
