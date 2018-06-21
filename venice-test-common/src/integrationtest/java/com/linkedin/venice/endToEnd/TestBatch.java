@@ -27,6 +27,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.LongBinaryOperator;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.generic.IndexedRecord;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
@@ -264,6 +268,37 @@ public abstract class TestBatch {
         },
         false,
         isChunkingAllowed);
+  }
+
+  @Test(timeOut =  TEST_TIMEOUT)
+  public void testRunJobWithSchemaThatContainsUnknownField() throws Exception {
+    testBatchStore(inputDir -> {
+          Schema recordSchema = writeSchemaWithUnknownFieldIntoAvroFile(inputDir);
+          return new Pair<>(recordSchema.getField("key").schema(),
+              recordSchema.getField("value").schema());
+        }, props -> {
+          props.setProperty(KEY_FIELD_PROP, "key");
+          props.setProperty(VALUE_FIELD_PROP, "value");
+        },
+        (avroClient, vsonClient) -> {
+          String schemaWithoutSymbolDocStr = loadFileAsString("SchemaWithoutSymbolDoc.avsc");
+          Schema schemaWithoutSymbolDoc = Schema.parse(schemaWithoutSymbolDocStr);
+          GenericRecord keyRecord = new GenericData.Record(schemaWithoutSymbolDoc.getField("key").schema());
+          keyRecord.put("memberId", (long)1);
+          keyRecord.put("source", testRecordType.OFFLINE);
+          IndexedRecord value = (IndexedRecord)avroClient.get(keyRecord).get();
+          Assert.assertEquals(value.get(0).toString(), "LOGO");
+          Assert.assertEquals(value.get(1), 1);
+
+          String schemaWithSymbolDocStr = loadFileAsString("SchemaWithSymbolDoc.avsc");
+          Schema schemaWithSymbolDoc = Schema.parse(schemaWithSymbolDocStr);
+          GenericRecord keyRecord2 = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
+          keyRecord2.put("memberId", (long)2);
+          keyRecord2.put("source", testRecordType.NEARLINE);
+          IndexedRecord value2 = (IndexedRecord)avroClient.get(keyRecord2).get();
+          Assert.assertEquals(value2.get(0).toString(), "INDUSTRY");
+          Assert.assertEquals(value2.get(1), 2);
+        });
   }
 
   private static class StatCounter extends AtomicLong {

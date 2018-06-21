@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import org.apache.avro.Schema;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
@@ -128,6 +130,13 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     for (SchemaEntry entry : valueSchemas) {
       if (entry.equals(valueSchemaEntry)) {
         return entry.getId();
+      } else {
+        // try the schema that filters out unknown fields
+        String canonicalizedRequestSchema = LinkedinAvroMigrationHelper.toParsingForm(Schema.parse(valueSchemaStr));
+        String canonicalizedServerSchema = LinkedinAvroMigrationHelper.toParsingForm(entry.getSchema());
+        if (canonicalizedServerSchema.equals(canonicalizedRequestSchema)) {
+          return entry.getId();
+        }
       }
     }
 
