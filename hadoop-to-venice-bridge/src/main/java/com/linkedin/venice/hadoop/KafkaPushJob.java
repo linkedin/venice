@@ -41,6 +41,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
 import org.apache.hadoop.conf.Configuration;
@@ -482,9 +483,11 @@ public class KafkaPushJob extends AbstractJob {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
       throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse.toString());
     }
-    SchemaEntry serverSchema = new SchemaEntry(keySchemaResponse.getId(), keySchemaResponse.getSchemaStr());
-    SchemaEntry clientSchema = new SchemaEntry(1, keySchemaString);
-    if (! serverSchema.equals(clientSchema)) {
+    Schema serverSchema = Schema.parse(keySchemaResponse.getSchemaStr());
+    Schema clientSchema = Schema.parse(keySchemaString);
+    String canonicalizedServerSchema = LinkedinAvroMigrationHelper.toParsingForm(serverSchema);
+    String canonicalizedClientSchema = LinkedinAvroMigrationHelper.toParsingForm(clientSchema);
+    if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
       String briefErrorMessage = "Key schema mis-match for store " + storeName;
       logger.error(briefErrorMessage +
           "\n\t\tController URLs: " + veniceControllerUrl +

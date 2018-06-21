@@ -1,0 +1,72 @@
+{
+  "type": "record",
+  "name": "TestFileRecord",
+  "namespace": "unknown.field",
+  "fields": [
+    {
+      "name": "key",
+      "type": {
+        "type": "record",
+        "name": "recordKey",
+        "namespace": "schema.unknown.field.symbolDoc",
+        "fields": [
+          {
+            "name": "memberId",
+            "type": "long"
+          },
+          {
+            "name": "source",
+            "type": {
+              "type": "enum",
+              "name": "testRecordType",
+              "doc": "record type",
+              "symbols": [
+                "NEARLINE",
+                "OFFLINE"
+              ],
+              "symbolDoc": {
+                "NEARLINE": "Current record is generated from NEARLINE process.",
+                "OFFLINE": "Current record is generated from OFFLINE process."
+              }
+            },
+            "doc": "The source of current record."
+          }
+        ]
+      },
+      "doc": "The key field of record."
+    },
+    {
+      "name": "value",
+      "type": {
+        "type": "record",
+        "name": "recordValue",
+        "namespace": "people.like.symbolDoc",
+        "fields": [
+          {
+            "name": "targetedField",
+            "type": {
+              "type": "enum",
+              "name": "testTargetedField",
+              "symbols": [
+                "WEBSITE_URL",
+                "LOGO",
+                "INDUSTRY"
+              ],
+              "symbolDocs": {
+                "WEBSITE_URL": "website url.",
+                "LOGO": "organization logo.",
+                "INDUSTRY": "organization industry."
+              }
+            }
+          },
+          {
+            "name": "priority",
+            "type": "int",
+            "default": 1
+          }
+        ]
+      },
+      "doc": "The value field of record."
+    }
+  ]
+}

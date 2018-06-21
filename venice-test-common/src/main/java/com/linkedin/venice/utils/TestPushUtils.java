@@ -32,6 +32,7 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.io.IOUtils;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -151,6 +152,55 @@ public class TestPushUtils {
           }
         });
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+  }
+
+  public enum testRecordType {
+    NEARLINE,OFFLINE;
+  }
+  public enum testTargetedField {
+    WEBSITE_URL,LOGO,INDUSTRY;
+  }
+  public static Schema writeSchemaWithUnknownFieldIntoAvroFile(File parentDir) throws IOException {
+    String schemaWithSymbolDocStr = loadFileAsString("SchemaWithSymbolDoc.avsc");
+    Schema schemaWithSymbolDoc = Schema.parse(schemaWithSymbolDocStr);
+    File file = new File(parentDir, "schema_with_unknown_field.avro");
+    DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schemaWithSymbolDoc);
+    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
+    dataFileWriter.create(schemaWithSymbolDoc, file);
+
+    for (int i = 1; i <= 10; ++i) {
+      GenericRecord newRecord = new GenericData.Record(schemaWithSymbolDoc);
+      GenericRecord keyRecord = new GenericData.Record(schemaWithSymbolDoc.getField("key").schema());
+      keyRecord.put("memberId", (long)i);
+      if (0 == i % 2) {
+        keyRecord.put("source", testRecordType.NEARLINE);
+      } else {
+        keyRecord.put("source", testRecordType.OFFLINE);
+      }
+
+      GenericRecord valueRecord = new GenericData.Record(schemaWithSymbolDoc.getField("value").schema());
+      valueRecord.put("priority", i);
+      if (0 == i % 3) {
+        valueRecord.put("targetedField", testTargetedField.WEBSITE_URL);
+      } else if (1 == i % 3) {
+        valueRecord.put("targetedField", testTargetedField.LOGO);
+      } else {
+        valueRecord.put("targetedField", testTargetedField.INDUSTRY);
+      }
+
+      newRecord.put("key", keyRecord);
+      newRecord.put("value", valueRecord);
+      dataFileWriter.append(newRecord);
+    }
+    dataFileWriter.close();
+
+    /**
+     * return a schema without symbolDoc field so that the venice store is created with schema
+     * that doesn't contain symbolDoc but the files in HDFS has symbolDoc.
+     */
+    String schemaWithoutSymbolDocStr = loadFileAsString("SchemaWithoutSymbolDoc.avsc");
+    Schema schemaWithoutSymbolDoc = Schema.parse(schemaWithoutSymbolDocStr);
+    return schemaWithoutSymbolDoc;
   }
 
   //write vson byte (int 8) and short (int16) to a file
@@ -403,5 +453,9 @@ public class TestPushUtils {
         Integer.toString(recordId),
         "stream_" + recordId);
     producer.send(storeName, envelope);
+  }
+
+  public static String loadFileAsString(String fileName) throws IOException {
+    return IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName), "utf-8");
   }
 }
