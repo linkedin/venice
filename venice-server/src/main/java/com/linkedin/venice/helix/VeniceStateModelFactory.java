@@ -141,10 +141,10 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
     }
 
     @Override
-    public void started(String resourceName, int partitionId) {}
+    public void started(String resourceName, int partitionId, String message) {}
 
     @Override
-    public void restarted(String storeName, int partitionId, long offset) {}
+    public void restarted(String storeName, int partitionId, long offset, String message) {}
 
     /**
      * Count down the latch once consumption is completed.
@@ -153,19 +153,25 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
      * @param offset
      */
     @Override
-    public void completed(String resourceName, int partitionId, long offset) {
+    public void completed(String resourceName, int partitionId, long offset, String message) {
       stateModelToSuccessMap.put(getStateModelIdentification(resourceName, partitionId), true);
       countDownTheLatch(resourceName, partitionId);
     }
 
     @Override
-    public void progress(String resourceName, int partitionId, long offset) {}
+    public void progress(String resourceName, int partitionId, long offset, String message) {}
 
     @Override
-    public void endOfPushReceived(String storeName, int partitionId, long offset) {}
+    public void endOfPushReceived(String storeName, int partitionId, long offset, String message) {}
 
     @Override
-    public void startOfBufferReplayReceived(String storeName, int partitionId, long offset) {}
+    public void startOfBufferReplayReceived(String storeName, int partitionId, long offset, String message) {}
+
+    @Override
+    public void startOfIncrementalPushReceived(String storeName, int partitionId, long offset, String message) {}
+
+    @Override
+    public void endOfIncrementalPushReceived(String storeName, int partitionId, long offset, String message) {}
 
     @Override
     public void close() {}

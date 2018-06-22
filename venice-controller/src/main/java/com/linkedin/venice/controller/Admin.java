@@ -96,6 +96,15 @@ public interface Admin {
 
     String getRealTimeTopic(String clusterName, String storeName);
 
+    /**
+     * Right now, it will return the latest version recorded in parent controller. There are a couple of edge cases.
+     * 1. If a push fails in some colos, the version will be inconsistent among colos
+     * 2. If rollback happens, latest version will not be the current version.
+     *
+     * TODO: figure out how we'd like to cover these edge cases
+     */
+    Version getIncrementalPushTopic(String clusterName, String storeName);
+
     int getCurrentVersion(String clusterName, String storeName);
 
     Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName);

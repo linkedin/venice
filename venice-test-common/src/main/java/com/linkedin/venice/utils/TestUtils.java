@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -24,6 +25,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import javax.swing.text.html.Option;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -139,9 +141,8 @@ public class TestUtils {
   }
 
   public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
-    return getOffsetRecord(currentOffset, Optional.of(1000L));
+    return getOffsetRecord(currentOffset, complete ? Optional.of(1000L) : Optional.of(0L));
   }
-
 
   public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord();
@@ -149,6 +150,14 @@ public class TestUtils {
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived(endOfPushOffset.get());
     }
+    return offsetRecord;
+  }
+
+  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete, String incrementalPushVersion) {
+    OffsetRecord offsetRecord = getOffsetRecord(currentOffset, complete);
+    IncrementalPush incrementalPush = new IncrementalPush();
+    incrementalPush.version = incrementalPushVersion;
+    offsetRecord.setIncrementalPush(incrementalPush);
     return offsetRecord;
   }
 

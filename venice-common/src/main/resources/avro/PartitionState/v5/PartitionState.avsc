@@ -30,6 +30,29 @@
       },
       "default": {}
     }, {
+      "name": "incrementalPushInfo",
+      "doc": "metadata of ongoing incremental push in the partition",
+      "type": [
+        "null",
+        {
+          "name": "IncrementalPush",
+          "type": "record",
+          "fields": [
+            {
+              "name": "version",
+              "doc": "The version of current incremental push",
+              "type": "string"
+            }, {
+              "name": "error",
+              "doc": "The first error founded during in`gestion",
+              "type": ["null", "string"],
+              "default": null
+            }
+          ]
+        }
+      ],
+      "default": null
+    },{
       "name": "producerStates",
       "doc": "A map of producer GUID -> producer state.",
       "type": {

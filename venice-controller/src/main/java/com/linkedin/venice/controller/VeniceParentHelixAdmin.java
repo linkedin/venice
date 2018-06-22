@@ -631,6 +631,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public synchronized Version getIncrementalPushTopic(String clusterName, String storeName) {
+    return veniceHelixAdmin.getIncrementalPushTopic(clusterName, storeName);
+  }
+
+  @Override
   public int getCurrentVersion(String clusterName, String storeName) {
     throw new VeniceUnsupportedOperationException("getCurrentVersion", "Please use getCurrentVersionsForMultiColos in Parent controller.");
   }

@@ -33,6 +33,12 @@ public enum ExecutionStatus {
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
   START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false),
 
+  /** An incremental push job/task is started*/
+  START_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, false),
+
+  /** An incremental push job/task is completed*/
+  END_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, true),
+
   /**
    * For task, data is read and put into storage engine.
    * For Job, all of tasks are completed.

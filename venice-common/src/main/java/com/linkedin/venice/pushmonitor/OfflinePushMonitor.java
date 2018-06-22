@@ -33,7 +33,12 @@ import org.apache.log4j.Logger;
  * <p>
  * For example, once a replica become ONLINE from BOOTSTRAP, monitor would check is the whole push completed and active
  * the related version if the answer is yes. Or in case of node failure, monitor would fail the push job in some cases.
+ *
+ * TODO:
+ * The class now is listening to both PartitionStatus changes and RoutingDataRepository changes. This makes
+ * the logic a bit of ambiguous. We may want to move RoutingDataRepository listener out of this class later.
  */
+
 public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusListener, RoutingDataRepository.RoutingDataChangedListener {
   public static final int MAX_ERROR_PUSH_TO_KEEP = 5;
   private static final Logger logger = Logger.getLogger(OfflinePushMonitor.class);

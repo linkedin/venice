@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import com.linkedin.venice.utils.Utils;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -153,13 +154,13 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   @Override
   public void updateReplicaStatus(String topic, int partitionId, String instanceId, ExecutionStatus status,
-      long progress) {
-    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, progress);
+      long progress, String incrementalPushVersion) {
+    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, progress, incrementalPushVersion);
   }
 
   @Override
-  public void updateReplicaStatus(String topic, int partitionId, String instanceId, ExecutionStatus status) {
-    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, Integer.MIN_VALUE);
+  public void updateReplicaStatus(String topic, int partitionId, String instanceId, ExecutionStatus status, String incrementalPushVersion) {
+    compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, Integer.MIN_VALUE, incrementalPushVersion);
   }
 
   /**
@@ -174,7 +175,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
    * So eventually, all updates will succeed after couples of retries.
    */
   private void compareAndUpdateReplicaStatus(String topic, int partitionId, String instanceId, ExecutionStatus status,
-      long progress) {
+      long progress, String incrementalPushVersion) {
     // If a version was created prior to the deployment of this new push monitor, an exception would be thrown while upgrading venice server.
     // Because the server would try to update replica status but there is no ZNode for that replica. So we add a check here to ignore the update
     // in case of ZNode missing.
@@ -187,6 +188,9 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       currentData.updateReplicaStatus(instanceId, status);
       if (progress != Integer.MIN_VALUE) {
         currentData.updateProgress(instanceId, progress);
+      }
+      if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
+        currentData.updateIncrementalPushVersion(instanceId, incrementalPushVersion);
       }
       return currentData;
     });

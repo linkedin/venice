@@ -91,6 +91,8 @@ public class KafkaPushJob extends AbstractJob {
   public final static String FILE_KEY_SCHEMA = "key.schema";
   public final static String FILE_VALUE_SCHEMA = "value.schema";
 
+  public final static String INCREMENTAL_PUSH = "incremental.push";
+
   //veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
   public final static String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
 
@@ -177,6 +179,7 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean pbnjFailFast;
   private final boolean pbnjAsync;
   private final double pbnjSamplingRatio;
+  private final boolean isIncrementalPush;
   private final boolean isDuplicateKeyAllowed;
 
   private ControllerClient controllerClient;
@@ -340,6 +343,7 @@ public class KafkaPushJob extends AbstractJob {
     this.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
     this.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
     this.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
+    this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
     if (enablePBNJ) {
@@ -406,19 +410,29 @@ public class KafkaPushJob extends AbstractJob {
         // Whether the messages in one single topic partition is lexicographically sorted by key bytes.
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
-        boolean sorted = !isMapOnly;
         jc = new JobClient(pushJobConf);
-        getVeniceWriter().broadcastStartOfPush(sorted, isChunkingEnabled, compressionStrategy, new HashMap<>());
-        // submit the job for execution and wait for completion
-        runningJob = jc.runJob(pushJobConf);
-        //TODO: send a failure END OF PUSH message if something went wrong
-        getVeniceWriter().broadcastEndOfPush(new HashMap<>());
+        if (isIncrementalPush) {
+          String incrementalPushVersion = String.valueOf(System.currentTimeMillis());
+          getVeniceWriter().broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
+          runningJob = jc.runJob(pushJobConf);
+          getVeniceWriter().broadcastEndOfIncrementalPush(incrementalPushVersion, new HashMap<>());
+        } else {
+          getVeniceWriter().broadcastStartOfPush(!isMapOnly, isChunkingEnabled, compressionStrategy, new HashMap<>());
+          // submit the job for execution and wait for completion
+          runningJob = jc.runJob(pushJobConf);
+          //TODO: send a failure END OF PUSH message if something went wrong
+          getVeniceWriter().broadcastEndOfPush(new HashMap<>());
+        }
         // Close VeniceWriter before polling job status since polling job status could
         // trigger job deletion
         closeVeniceWriter();
 
         // Waiting for Venice Backend to complete consumption
-        pollStatusUntilComplete();
+
+        //TODO: this is a temporary workaround. Remove it when polling status is supported for incremental push
+        if (!isIncrementalPush) {
+          pollStatusUntilComplete();
+        }
       } else {
         logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
@@ -539,8 +553,10 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
   private void createNewStoreVersion() {
+    ControllerApiConstants.PushType pushType = isIncrementalPush ?
+        ControllerApiConstants.PushType.BATCH : ControllerApiConstants.PushType.BATCH;
     VersionCreationResponse versionCreationResponse =
-        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, ControllerApiConstants.PushType.BATCH,
+        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType,
             props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url_" + System.currentTimeMillis()));
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
@@ -883,6 +899,8 @@ public class KafkaPushJob extends AbstractJob {
     logger.info("Avro key schema: " + keySchemaString);
     logger.info("Avro value schema: " + valueSchemaString);
     logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
+    logger.info("Is incremental push: " + isIncrementalPush);
+    logger.info("Is duplicated key allowed" + isDuplicateKeyAllowed);
   }
   /**
    * Do not change this method argument type.

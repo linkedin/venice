@@ -292,6 +292,24 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     producer.flush();
   }
 
+  public void broadcastStartOfIncrementalPush(String version, Map<String, String> debugInfo) {
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_INCREMENTAL_PUSH);
+    StartOfIncrementalPush startOfIncrementalPush = new StartOfIncrementalPush();
+    startOfIncrementalPush.version = version;
+    controlMessage.controlMessageUnion = startOfIncrementalPush;
+    broadcastControlMessage(controlMessage, debugInfo);
+    producer.flush();
+  }
+
+  public void broadcastEndOfIncrementalPush(String version, Map<String, String> debugInfo) {
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.END_OF_INCREMENTAL_PUSH);
+    EndOfIncrementalPush endOfIncrementalPush = new EndOfIncrementalPush();
+    endOfIncrementalPush.version = version;
+    controlMessage.controlMessageUnion = endOfIncrementalPush;
+    broadcastControlMessage(controlMessage, debugInfo);
+    producer.flush();
+  }
+
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {
     return sendMessage(key, value, partition, new KafkaMessageCallback(key, value, logger));
   }

@@ -497,13 +497,14 @@ public class StoreIngestionTaskTest {
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
+    //runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
        * we need to add 1 to last data message offset.
        */
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
       /**
        * It seems Mockito will mess up the verification if there are two functions with the same name:
        * {@link StorageMetadataService#put(String, StoreVersionState)}
@@ -521,6 +522,8 @@ public class StoreIngestionTaskTest {
           .put(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barLastOffset + 1, true)));
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+      verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
     });
   }
 
@@ -577,7 +580,7 @@ public class StoreIngestionTaskTest {
         getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), getOffsetRecord(barOffsetToSkip))));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
       verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(MissingDataException.class)));
@@ -592,8 +595,6 @@ public class StoreIngestionTaskTest {
   /**
    * In this test, partition FOO will complete normally, but partition BAR will contain a duplicate record. The
    * {@link VeniceNotifier} should see the completion for both partitions.
-   *
-   * TODO: Add a metric to track duplicate records, and verify that it gets tracked properly.
    */
   @Test
   public void testSkippingOfDuplicateRecord() throws Exception {
@@ -607,9 +608,9 @@ public class StoreIngestionTaskTest {
         getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barOffsetToDupe);
-      verify(mockNotifier, after(TEST_TIMEOUT).never()).completed(topic, PARTITION_BAR, barOffsetToDupe + 1);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe);
+      verify(mockNotifier, after(TEST_TIMEOUT).never()).endOfPushReceived(topic, PARTITION_BAR, barOffsetToDupe + 1);
 
       // After we verified that completed() is called, the rest should be guaranteed to be finished, so no need for timeouts
 
@@ -739,7 +740,7 @@ public class StoreIngestionTaskTest {
 
         TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
           for (Object[] args : mockNotifierCompleted) {
-            if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) >= lastOffsetBeforeEOP) {
+            if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) > lastOffsetBeforeEOP) {
               return true;
             }
           }
@@ -1024,7 +1025,7 @@ public class StoreIngestionTaskTest {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
 
       storeIngestionTaskUnderTest.kill();
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
     });
   }
 
@@ -1161,7 +1162,8 @@ public class StoreIngestionTaskTest {
     doReturn(true).when(diskFullUsage).isDiskFull(anyLong());
     doReturn("mock disk full disk usage").when(diskFullUsage).getDiskStatus();
 
-    runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), ()->{}, ()->{
+    runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), () -> {
+    }, () -> {
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
         Assert.assertFalse(mockNotifierError.isEmpty(), "Disk Usage should have triggered an ingestion error");
         String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getCause().getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
@@ -1170,6 +1172,36 @@ public class StoreIngestionTaskTest {
             "Expected disk full error, found following error messages: " + errorMessages);
       });
     }, Optional.empty(), Optional.of(diskFullUsage));
+  }
+
+  @Test
+    public void testIncrementalPush() throws Exception {
+    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    String version = String.valueOf(System.currentTimeMillis());
+    veniceWriter.broadcastStartOfIncrementalPush(version, new HashMap<>());
+    //veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+    long fooNewOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    veniceWriter.broadcastEndOfIncrementalPush(version, new HashMap<>());
+    //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg, StartOfSeg, StartOfIncrementalPush
+    //data, EndOfIncrementalPush
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      //sync the offset when receiving EndOfPush
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
+      //sync the offset when receiving StartOfIncrementalPush
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true, version)));
+
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+
+      //since notifier reporting happens before offset update, it actually reports previous offsets
+      verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+      verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
+    });
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{

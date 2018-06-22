@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.offsets.OffsetRecord;
 
 /**
@@ -70,10 +71,10 @@ class PartitionConsumptionState {
     return this.offsetRecord.isEndOfPushReceived();
   }
   public boolean isComplete() {
-    return isEndOfPushReceived() && (hybrid == lagCaughtUp);
+    return isEndOfPushReceived() && lagCaughtUp;
   }
   public boolean isWaitingForReplicationLag() {
-    return isEndOfPushReceived() && hybrid && !lagCaughtUp;
+    return isEndOfPushReceived() && !lagCaughtUp;
   }
   public void lagHasCaughtUp() {
     this.lagCaughtUp = true;
@@ -108,11 +109,15 @@ class PartitionConsumptionState {
   public void resetProcessedRecordSize() {
     this.processedRecordSize = 0;
   }
-
+  public IncrementalPush getIncrementalPush() {
+    return this.offsetRecord.getIncrementalPush();
+  }
+  public void setIncrementalPush(IncrementalPush ip) {
+    this.offsetRecord.setIncrementalPush(ip);
+  }
   public long getLastTimeOfSourceTopicOffsetLookup() {
     return lastTimeOfSourceTopicOffsetLookup;
   }
-
   public void setLastTimeOfSourceTopicOffsetLookup(long lastTimeOfSourceTopicOffsetLookup) {
     this.lastTimeOfSourceTopicOffsetLookup = lastTimeOfSourceTopicOffsetLookup;
   }
@@ -129,7 +134,7 @@ class PartitionConsumptionState {
         ", offsetRecord=" + offsetRecord +
         ", errorReported=" + errorReported +
         ", started=" + isStarted() +
-        (hybrid ? ", lagCaughtUp=" + lagCaughtUp : "") +
+        ", lagCaughtUp=" + lagCaughtUp +
         ", processedRecordNum=" + processedRecordNum +
         ", processedRecordSize=" + processedRecordSize +
         ", processedRecordSizeSinceLastSync=" + processedRecordSizeSinceLastSync +
