@@ -16,7 +16,6 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -26,7 +25,6 @@ import org.testng.annotations.Test;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.any;
-
 
 public class OfflinePushMonitorTest {
   private RoutingDataRepository mockRoutingDataRepo;

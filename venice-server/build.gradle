@@ -32,6 +32,7 @@ dependencies {
   compile libraries.tehuti
   compile (libraries.netty4Lnkd){
     exclude group: 'javax.servlet'
+    exclude group: 'org.mockito', module: 'mockito-all'
   }
   compile libraries.rocksdbjni
 

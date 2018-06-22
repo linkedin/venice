@@ -50,7 +50,7 @@ public class ProducerConsumerReaderIntegrationTest {
   private AvroGenericStoreClient<String, Object> storeClient;
 
   @BeforeMethod
-  public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
+  public void setUp() throws VeniceClientException {
     boolean sslEnabled = true;
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(sslEnabled);

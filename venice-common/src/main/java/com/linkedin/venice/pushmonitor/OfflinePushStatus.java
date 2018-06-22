@@ -31,6 +31,7 @@ public class OfflinePushStatus {
    */
   private Optional<String> statusDetails = Optional.of("Helix Resource not created.");
   private List<StatusSnapshot> statusHistory;
+  private String incrementalPushVersion = "";
   private List<PartitionStatus> partitionStatuses;
 
   private Map<String, String> pushProperties;
@@ -43,7 +44,7 @@ public class OfflinePushStatus {
     this.strategy = strategy;
     this.pushProperties = new HashMap<>();
     statusHistory = new ArrayList<>();
-    addHistoricStatus(currentStatus);
+    addHistoricStatus(currentStatus, incrementalPushVersion);
     //initialize partition status for each partition.
     partitionStatuses = new ArrayList<>(numberOfPartition);
     for (int i = 0; i < numberOfPartition; i++) {
@@ -60,7 +61,7 @@ public class OfflinePushStatus {
     if (validatePushStatusTransition(newStatus)) {
       this.currentStatus = newStatus;
       this.statusDetails = newStatusDetails;
-      addHistoricStatus(newStatus);
+      addHistoricStatus(newStatus, incrementalPushVersion);
     } else {
       throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
     }
@@ -213,6 +214,14 @@ public class OfflinePushStatus {
     updateStatusDetails();
   }
 
+  public String getIncrementalPushVersion() {
+    return incrementalPushVersion;
+  }
+
+  public void setIncrementalPushVersion(String incrementalPushVersion) {
+    this.incrementalPushVersion = incrementalPushVersion;
+  }
+
   public OfflinePushStatus clonePushStatus() {
     OfflinePushStatus clonePushStatus =
         new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
@@ -257,8 +266,12 @@ public class OfflinePushStatus {
     return partitionStatuses.get(partitionId);
   }
 
-  private void addHistoricStatus(ExecutionStatus status) {
-    statusHistory.add(new StatusSnapshot(status, LocalDateTime.now().toString()));
+  private void addHistoricStatus(ExecutionStatus status, String incrementalPushVersion) {
+    StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
+    if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
+      snapshot.setIncrementalPushVersion(incrementalPushVersion);
+    }
+    statusHistory.add(snapshot);
   }
 
   /**
@@ -327,6 +340,9 @@ public class OfflinePushStatus {
     if (!pushProperties.equals(that.pushProperties)) {
       return false;
     }
+    if (!incrementalPushVersion.equals(that.incrementalPushVersion)) {
+      return false;
+    }
     return partitionStatuses.equals(that.partitionStatuses);
   }
 
@@ -341,6 +357,7 @@ public class OfflinePushStatus {
     result = 31 * result + statusHistory.hashCode();
     result = 31 * result + partitionStatuses.hashCode();
     result = 31 * result + pushProperties.hashCode();
+    result = 31 * result + incrementalPushVersion.hashCode();
     return result;
   }
 
@@ -353,6 +370,7 @@ public class OfflinePushStatus {
         ", strategy=" + strategy +
         ", currentStatus=" + currentStatus +
         ", statusDetails=" + statusDetails +
+        ", incrementalPushVersion=" + incrementalPushVersion +
         '}';
   }
 }

@@ -12,8 +12,11 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
+import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
+import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
@@ -56,6 +59,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import javax.validation.constraints.NotNull;
+import kafka.common.TopicAndPartition;
+import org.apache.commons.collections4.map.PassiveExpiringMap;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -101,6 +106,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   private final StorageMetadataService storageMetadataService;
   private final TopicManager topicManager;
+  private final CachedLatestOffsetGetter cachedLatestOffsetGetter;
   private final EventThrottler bandWidthThrottler;
   private final EventThrottler recordsThrottler;
   /** Per-partition consumption state map */
@@ -116,8 +122,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final Optional<HybridStoreConfig> hybridStoreConfig;
   private final IngestionNotificationDispatcher notificationDispatcher;
   private final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
-  /** Interval before querying Kafka broker about the source topic offset */
-  private final int sourceTopicOffsetCheckInterval;
+
   private final Function<GUID, ProducerTracker> producerTrackerCreator;
   private final long readCycleDelayMs;
   private final long emptyPollSleepMs;
@@ -154,7 +159,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull StoreBufferService storeBufferService,
                             @NotNull BooleanSupplier isCurrentVersion,
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
-                            int sourceTopicOffsetCheckIntervalMs,
+                            int topicOffsetCheckIntervalMs,
                             long readCycleDelayMs,
                             long emptyPollSleepMs,
                             long databaseSyncBytesIntervalForTransactionalMode,
@@ -185,6 +190,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.producerTrackerMap = new ConcurrentHashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
+    this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, topicOffsetCheckIntervalMs);
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
@@ -196,8 +202,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = hybridStoreConfig;
     this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, topic, isCurrentVersion);
-
-    this.sourceTopicOffsetCheckInterval = sourceTopicOffsetCheckIntervalMs;
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, e));
     this.producerTrackerCreator = guid -> new ProducerTracker(guid, topic);
@@ -301,38 +305,43 @@ public class StoreIngestionTask implements Runnable, Closeable {
       return false;
     }
 
-    if (!hybridStoreConfig.isPresent()) {
-      // Since we know the EOP has been received, any non-hybrid store is ready to go!
-      return true;
-    }
-
     if (!partitionConsumptionState.isWaitingForReplicationLag()) {
       // If we have already crossed the acceptable lag threshold in the past, then we will stick to that,
       // rather than possibly flip flopping
       return true;
     }
 
-    Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
-    Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
-    if (!(storeVersionStateOptional.isPresent() && sobrDestinationOffsetOptional.isPresent())) {
-      // In this case, we have a hybrid store which has received its EOP, but has not yet received its SOBR.
-      // Therefore, we cannot precisely measure its offset, but we know for sure that it is lagging since
-      // the RT buffer replay has not even started yet.
-      logger.warn(consumerTaskId + " Cannot measure replication lag because the SOBR info is not present" +
-          ", storeVersionStateOptional: " + storeVersionStateOptional +
-          ", sobrDestinationOffsetOptional: " + sobrDestinationOffsetOptional);
-      return false;
+    boolean lagIsAcceptable;
+
+    if (!hybridStoreConfig.isPresent()) {
+    /**
+     * Batch store is ready to go if it has caught all offset lag. Since getOffset returns the next available
+     * offset, it will be 1 offset ahead of the current offset.
+     */
+      lagIsAcceptable = cachedLatestOffsetGetter.getOffset(topic, partitionConsumptionState.getPartition()) <=
+        partitionConsumptionState.getOffsetRecord().getOffset() + 1;
+    } else {
+      Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
+      Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
+      if (!(storeVersionStateOptional.isPresent() && sobrDestinationOffsetOptional.isPresent())) {
+        // In this case, we have a hybrid store which has received its EOP, but has not yet received its SOBR.
+        // Therefore, we cannot precisely measure its offset, but we know for sure that it is lagging since
+        // the RT buffer replay has not even started yet.
+        logger.warn(consumerTaskId + " Cannot measure replication lag because the SOBR info is not present"
+            + ", storeVersionStateOptional: " + storeVersionStateOptional + ", sobrDestinationOffsetOptional: " + sobrDestinationOffsetOptional);
+        return false;
+      }
+
+      // Looks like none of the short-circuitry fired, so we need to measure lag!
+      long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState);
+      long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+      boolean lagging = lag > threshold;
+
+      logger.info(String.format("%s partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
+          partitionConsumptionState.getPartition(), (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), threshold));
+
+      lagIsAcceptable = !lagging;
     }
-
-    // Looks like none of the short-circuitry fired, so we need to measure lag!
-    long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState);
-    long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-    boolean lagging = lag > threshold;
-
-    logger.info(String.format("%s partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
-        partitionConsumptionState.getPartition(), (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), threshold));
-
-    boolean lagIsAcceptable = !lagging;
 
     if (lagIsAcceptable) {
       partitionConsumptionState.lagHasCaughtUp();
@@ -348,22 +357,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
     /**
-     * Since get real-time topic offset is expensive, so we will only retrieve source topic offset after the predefined
-     * interval: {@link sourceTopicOffsetCheckInterval}
-     *
      * We still allow the upstream to check whether it could become 'ONLINE' for every message since it is possible
      * that there is no messages after rewinding, which causes partition won't be 'ONLINE' in the future.
      *
-     * With this strategy, it is possible that partition could become 'ONLINE' at most {@link sourceTopicOffsetCheckInterval}
-     * earlier.
+     * With this strategy, it is possible that partition could become 'ONLINE' at most
+     * {@link CachedLatestOffsetGetter#ttlMs} earlier.
      */
-    long currentTime = System.currentTimeMillis();
-    long sourceTopicMaxOffset = pcs.getSourceTopicMaxOffset();
-    if (currentTime - pcs.getLastTimeOfSourceTopicOffsetLookup() > sourceTopicOffsetCheckInterval) {
-      sourceTopicMaxOffset = topicManager.getLatestOffsetAndRetry(sobr.sourceTopicName.toString(), partition, 3);
-      pcs.setLastTimeOfSourceTopicOffsetLookup(currentTime);
-      pcs.setSourceTopicMaxOffset(sourceTopicMaxOffset);
-    }
+    long sourceTopicMaxOffset = cachedLatestOffsetGetter.getOffset(sobr.sourceTopicName.toString(), partition);
+
     long sobrSourceOffset = sobr.sourceOffsets.get(partition);
     long currentOffset = pcs.getOffsetRecord().getOffset();
 
@@ -609,10 +610,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
          * 1. (Preferred) Auto-unsubscription when receiving EOP for batch store. With this way,
          * the unused consumer thread (not processing any kafka message) will be collected.
          * 2. Always keep subscription no matter what happens.
-         *
          */
+
         // Second, take care of informing the controller about our status, and starting consumption
-        if (record.isEndOfPushReceived() && !hybridStoreConfig.isPresent()) {
           /**
            * There could be two cases in this scenario:
            * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
@@ -621,21 +621,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
            * In either case, StoreIngestionTask should report 'started' => ['progress' => ] 'completed' to accomplish
            * task state transition in Controller.
            */
+        if (isReadyToServe(newPartitionConsumptionState)) {
           notificationDispatcher.reportCompleted(newPartitionConsumptionState);
-          logger.info(consumerTaskId + " Partition " + partition + " is already consumed and the store is" +
-              " batch-only, so consumption will not be started.");
-        } else {
-          // For hybrid case, if it's ready to server, report complete to let BOOTSTRAP->ONLINE state transition
-          // complete at first then keep consuming because message might be replicated from RT topic cotinually.
-          if (hybridStoreConfig.isPresent() && isReadyToServe(newPartitionConsumptionState)) {
-            notificationDispatcher.reportCompleted(newPartitionConsumptionState);
-            logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve and the store is" +
-                " hybrid, so consumption will be started.");
-          }
-          consumer.subscribe(topic, partition, record);
-          logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
-              + record.getOffset());
+          logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve");
         }
+        consumer.subscribe(topic, partition, record);
+        logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
+            + record.getOffset());
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
@@ -967,11 +959,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
          */
         storageEngine.endBatchWrite(storagePartitionConfig);
 
-        if (hybridStoreConfig.isPresent()) {
-          notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);
-        } else {
-          notificationDispatcher.reportCompleted(partitionConsumptionState);
-        }
+        /**
+         * It's a bit of tricky here. Since the offset is not updated yet, it's actually previous offset reported
+         * here.
+         * TODO: sync up offset before invoking dispatcher
+         */
+        notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
@@ -1006,6 +999,19 @@ public class StoreIngestionTask implements Runnable, Closeable {
               ControlMessageType.START_OF_PUSH.name() + " control message.");
         }
        break;
+      case START_OF_INCREMENTAL_PUSH:
+        CharSequence startVersion = ((StartOfIncrementalPush) controlMessage.controlMessageUnion).version;
+        IncrementalPush newIncrementalPush = new IncrementalPush();
+        newIncrementalPush.version = startVersion;
+
+        partitionConsumptionState.setIncrementalPush(newIncrementalPush);
+        notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+        break;
+      case END_OF_INCREMENTAL_PUSH:
+        CharSequence endVersion = ((EndOfIncrementalPush) controlMessage.controlMessageUnion).version;
+        partitionConsumptionState.setIncrementalPush(null);
+        notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, endVersion.toString());
+        break;
       default:
         throw new UnsupportedMessageTypeException("Unrecognized Control message type " + controlMessage.controlMessageType);
     }
@@ -1047,7 +1053,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         ControlMessageType messageType =
             processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
-        if (messageType == ControlMessageType.END_OF_PUSH || messageType == ControlMessageType.START_OF_BUFFER_REPLAY) {
+        if (messageType == ControlMessageType.END_OF_PUSH ||
+            messageType == ControlMessageType.START_OF_BUFFER_REPLAY ||
+            messageType == ControlMessageType.START_OF_INCREMENTAL_PUSH ||
+            messageType == ControlMessageType.END_OF_INCREMENTAL_PUSH) {
           syncOffset = true;
         }
       } else if (null == kafkaValue) {
@@ -1294,5 +1303,27 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isPartitionConsuming(int partitionId) {
     return partitionConsumptionStateMap.containsKey(partitionId);
+  }
+
+  /**
+   * Since get real-time topic offset is expensive, so we will only retrieve source topic offset after the predefined
+   * ttlMs
+   */
+  private static class CachedLatestOffsetGetter {
+    private final TopicManager topicManager;
+    private final Map<TopicAndPartition, Long> cachedLatestOffsets;
+
+
+    CachedLatestOffsetGetter(TopicManager topicManager, long ttlMs) {
+      this.topicManager = topicManager;
+
+      //a concurrent hash map with native ttl support. get will return null if the value is expired
+      cachedLatestOffsets = new PassiveExpiringMap<>(ttlMs, new ConcurrentHashMap<>());
+    }
+
+    long getOffset(String topic, int partitionId) {
+      return cachedLatestOffsets.computeIfAbsent(new TopicAndPartition(topic, partitionId),
+      tp -> topicManager.getLatestOffsetAndRetry(tp.topic(), tp.partition(), 3));
+    }
   }
 }

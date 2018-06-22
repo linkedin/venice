@@ -648,6 +648,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public synchronized Version getIncrementalPushTopic(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if (store == null) {
+                throwStoreDoesNotExist(clusterName, storeName);
+            }
+
+            List<Version> versions = store.getVersions();
+            if (versions.isEmpty()) {
+                throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
+            }
+
+            /**
+             * Don't use {@link Store#getCurrentVersion()} here since it is always 0 in parent controller
+             */
+            return versions.get(versions.size() - 1);
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    @Override
     public int getCurrentVersion(String clusterName, String storeName) {
         Store store = getStoreForReadOnly(clusterName, storeName);
         if (store.isEnableReads()) {

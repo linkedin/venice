@@ -56,6 +56,7 @@ public class ControllerApiConstants {
    */
   public enum PushType {
     BATCH, //This is a batch push that will create a new version
+    INCREMENTAL, //This is a batch push that will re-use current version's topic
     STREAM //This is a stream job that writes into a buffer topic (or possibly the current version topic depending on store-level configs)
   }
 }

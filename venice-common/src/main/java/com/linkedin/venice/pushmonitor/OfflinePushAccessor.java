@@ -38,11 +38,11 @@ public interface OfflinePushAccessor {
    * Update one particular replica status and progress by given topic, partition and instanceId to the persistent storage.
    */
   void updateReplicaStatus(String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status,
-      long progress);
+      long progress, String message);
   /**
    * Update one particular replica status only by given topic, partition and instanceId to the persistent storage.
    */
-  void updateReplicaStatus(String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status);
+  void updateReplicaStatus(String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status, String message);
 
   /**
    * Subscribe the data change of partition status.

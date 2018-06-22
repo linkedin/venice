@@ -17,6 +17,12 @@ public class ReplicaStatus {
   private final String instanceId;
   private ExecutionStatus currentStatus = STARTED;
   private long currentProgress = 0;
+  /**
+   *  This field is only used by incremental push status
+   *  Check out {@link ExecutionStatus#START_OF_INCREMENTAL_PUSH_RECEIVED} and
+   *  {@link ExecutionStatus#END_OF_INCREMENTAL_PUSH_RECEIVED}
+   */
+  private String incrementalPushVersion = "";
 
   private List<StatusSnapshot> statusHistory;
 
@@ -39,29 +45,13 @@ public class ReplicaStatus {
    * Judge whether current status could be transferred to new status. Note, because each status could be transferred to
    * START again in case that replica is re-allocated to the same server again after it was moved out.
    * <p>
-   * Replica status' state machine:
+   * Replica status' state machine.
+   * e.g.
    * <ul>
    *   <li>STARTED->PROGRESS</li>
    *   <li>STARTED->ERROR</li>
    *   <li>STARTED->COMPLETED</li>
    *   <li>STARTED->STARTED</li>
-   *   <li>PROGRESS->PROGRESS</li>
-   *   <li>PROGRESS->ERROR</li>
-   *   <li>PROGRESS->COMPLETED</li>
-   *   <li>PROGRESS->START</li>
-   *   <li>PROGRESS->END_OF_PUSH_RECEIVED</li>
-   *   <li>PROGRESS->START_OF_BUFFER_REPLAY_RECEIVED</li>
-   *   <li>ERROR->START</li>
-   *   <li>COMPLETED->START</li>
-   *   <li>COMPLETED->ERROR</li>
-   *   <li>END_OF_PUSH_RECEIVED->START</li>
-   *   <li>END_OF_PUSH_RECEIVED->START_OF_BUFFER_REPLAY_RECEIVED</li>
-   *   <li>END_OF_PUSH_RECEIVED->ERROR</li>
-   *   <li>END_OF_PUSH_RECEIVED->COMPLETED</li>
-   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->STARTED</li>
-   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->ERROR</li>
-   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->PROGRESS</li>
-   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->COMPLETED</li>
    * </ul>
    * @param newStatus
    * @return
@@ -74,16 +64,20 @@ public class ReplicaStatus {
         isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
         break;
       case ERROR:
-        isValid = Utils.verifyTransition(newStatus, STARTED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case COMPLETED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR);
+        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case END_OF_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case START_OF_BUFFER_REPLAY_RECEIVED:
         isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, PROGRESS, COMPLETED);
+        break;
+      case START_OF_INCREMENTAL_PUSH_RECEIVED:
+      case END_OF_INCREMENTAL_PUSH_RECEIVED:
+        isValid = Utils.verifyTransition(newStatus, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, ERROR, COMPLETED);
         break;
       default:
         isValid = false;
@@ -112,6 +106,15 @@ public class ReplicaStatus {
     this.currentProgress = currentProgress;
   }
 
+  @SuppressWarnings("unused") // Used by ZK serialize and deserialize
+  public String getIncrementalPushVersion() {
+    return incrementalPushVersion;
+  }
+
+  public void setIncrementalPushVersion(String incrementalPushVersion) {
+    this.incrementalPushVersion = incrementalPushVersion;
+  }
+
   public List<StatusSnapshot> getStatusHistory() {
     return statusHistory;
   }
@@ -133,7 +136,12 @@ public class ReplicaStatus {
     if (statusHistory.size() == MAX_HISTORY_LENGTH) {
       statusHistory.remove(0);
     }
-    statusHistory.add(new StatusSnapshot(status, LocalDateTime.now().toString()));
+
+    StatusSnapshot snapshot = new StatusSnapshot(status, LocalDateTime.now().toString());
+    if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
+      snapshot.setIncrementalPushVersion(incrementalPushVersion);
+    }
+    statusHistory.add(snapshot);
   }
 
   @Override
@@ -153,6 +161,9 @@ public class ReplicaStatus {
     if (!instanceId.equals(that.instanceId)) {
       return false;
     }
+    if (!incrementalPushVersion.equals(that.incrementalPushVersion)) {
+      return false;
+    }
     if (currentStatus != that.currentStatus) {
       return false;
     }
@@ -163,6 +174,7 @@ public class ReplicaStatus {
   public int hashCode() {
     int result = instanceId.hashCode();
     result = 31 * result + currentStatus.hashCode();
+    result = 31 * result + incrementalPushVersion.hashCode();
     result = 31 * result + (int) (currentProgress ^ (currentProgress >>> 32));
     result = 31 * result + statusHistory.hashCode();
     return result;

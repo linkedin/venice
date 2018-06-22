@@ -2,6 +2,7 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
@@ -154,7 +155,13 @@ public class OffsetRecord {
     return databaseInfo;
   }
 
+  public void setIncrementalPush(IncrementalPush ip) {
+    this.partitionState.incrementalPushInfo = ip;
+  }
 
+  public IncrementalPush getIncrementalPush() {
+    return this.partitionState.incrementalPushInfo;
+  }
 
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.

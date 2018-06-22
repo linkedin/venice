@@ -1,14 +1,10 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReplicaStatus;
 import com.linkedin.venice.pushmonitor.StatusSnapshot;
-import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 /**
  * Serializer used to convert the data between {@link PartitionStatus} and json.

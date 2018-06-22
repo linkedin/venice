@@ -30,6 +30,7 @@ dependencies {
     compile libraries.routerNetty4
     compile (libraries.netty4Lnkd){
         exclude group: 'javax.servlet'
+        exclude group: 'org.mockito', module: 'mockito-all'
     }
     compile (libraries.routerLnkd){ // for SSL Initializer
         exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo

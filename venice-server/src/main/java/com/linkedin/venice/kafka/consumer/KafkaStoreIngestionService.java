@@ -15,7 +15,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -161,11 +160,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
         storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
         veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
-        isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs(),
+        isStoreVersionCurrent, hybridStoreConfig, veniceStore.getTopicOffsetCheckIntervalMs(),
         veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs(),
         veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(),
         veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode(), diskUsage);
-
   }
 
   /**

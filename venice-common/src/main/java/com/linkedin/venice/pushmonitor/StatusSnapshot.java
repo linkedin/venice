@@ -5,8 +5,8 @@ package com.linkedin.venice.pushmonitor;
  */
 public class StatusSnapshot {
   private final ExecutionStatus status;
-
   private final String time;
+  private String incrementalPushVersion = "";
 
   public StatusSnapshot(ExecutionStatus status, String time) {
     this.status = status;
@@ -19,6 +19,14 @@ public class StatusSnapshot {
 
   public String getTime() {
     return time;
+  }
+
+  public String getIncrementalPushVersion() {
+    return incrementalPushVersion;
+  }
+
+  public void setIncrementalPushVersion(String incrementalPushVersion) {
+    this.incrementalPushVersion = incrementalPushVersion;
   }
 
   @Override
@@ -35,12 +43,16 @@ public class StatusSnapshot {
     if (status != that.status) {
       return false;
     }
+    if (!incrementalPushVersion.equals(that.incrementalPushVersion)) {
+      return false;
+    }
     return time.equals(that.time);
   }
 
   @Override
   public int hashCode() {
     int result = status.hashCode();
+    result = 31 * result + incrementalPushVersion.hashCode();
     result = 31 * result + time.hashCode();
     return result;
   }

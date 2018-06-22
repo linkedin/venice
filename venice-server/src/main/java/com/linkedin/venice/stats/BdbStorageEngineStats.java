@@ -8,7 +8,6 @@ import com.linkedin.venice.utils.Utils;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentStats;
 import com.sleepycat.je.StatsConfig;
-import io.tehuti.metrics.MetricsRepository;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 

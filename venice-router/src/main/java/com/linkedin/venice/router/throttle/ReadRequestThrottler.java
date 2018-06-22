@@ -170,7 +170,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
       logger.warn("Could not found routing data for topic: " + topicName
           + ", it might be caused by the delay of the routing data. Only create per store level throttler.");
     }
-    stats.recordQuota(storeName, storeQuotaPerRouter);
+      stats.recordQuota(storeName, storeQuotaPerRouter);
     return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment,
         perStorageNodeReadQuotaBuffer, storeQuotaCheckTimeWindow, storageNodeQuotaCheckTimeWindow);
   }

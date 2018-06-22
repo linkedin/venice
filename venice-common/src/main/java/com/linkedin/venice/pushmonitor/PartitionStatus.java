@@ -37,7 +37,15 @@ public class PartitionStatus {
     if (replicaStatusMap.containsKey(instanceId)) {
       replicaStatusMap.get(instanceId).setCurrentProgress(progress);
     } else {
-      throw new VeniceException("Can not find replica status for:" + instanceId);
+      throw new VeniceException("Can not find replica status for: " + instanceId);
+    }
+  }
+
+  public void updateIncrementalPushVersion(String instanceId, String metadata) {
+    if (replicaStatusMap.containsKey(instanceId)) {
+      replicaStatusMap.get(instanceId).setIncrementalPushVersion(metadata);
+    } else {
+      throw new VeniceException("Can not find replica status for: " + instanceId);
     }
   }
 

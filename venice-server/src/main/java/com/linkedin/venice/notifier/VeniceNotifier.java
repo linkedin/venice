@@ -9,50 +9,80 @@ public interface VeniceNotifier {
     /**
      * Consumption is started for a store and partition
      */
+    default void started(String storeName, int partitionId) {
+        started(storeName, partitionId, "");
+    }
 
-    void started(String storeName, int partitionId);
+    void started(String storeName, int partitionId, String message);
 
     /**
      * Consumption is restarted from given offset for a store and partition
      */
-    void restarted(String storeName, int partitionId, long offset);
+    default void restarted(String storeName, int partitionId, long offset) {
+        restarted(storeName, partitionId, offset, "");
+    }
+
+    void restarted(String storeName, int partitionId, long offset, String message);
 
     /**
      * Periodic progress report of consumption for a store and partition.
      */
-    void progress(String storeName, int partitionId, long offset);
-  
+    default void progress(String storeName, int partitionId, long offset) {
+        progress(storeName, partitionId, offset, "");
+    }
+
+    void progress(String storeName, int partitionId, long offset, String message);
+
     /**
      * The {@link ControlMessageType#END_OF_PUSH} control message was consumed.
-     * 
-     * This is only emitted for Hybrid Stores, since Batch-Only Stores report 
+     *
+     * This is only emitted for Hybrid Stores, since Batch-Only Stores report
      * {@link #completed(String, int, long)} right away when getting the EOP.
      */
-    void endOfPushReceived(String storeName, int partitionId, long offset);
-  
+    default void endOfPushReceived(String storeName, int partitionId, long offset) {
+        endOfPushReceived(storeName, partitionId, offset, "");
+    }
+
+    void endOfPushReceived(String storeName, int partitionId, long offset, String message);
+
     /**
      * The {@link ControlMessageType#START_OF_BUFFER_REPLAY} control message was consumed.
      *
      * This is only emitted for Hybrid Stores, after the report of
      * {@link #endOfPushReceived(String, int, long)} and before {@link #completed(String, int, long)}.
      */
-    void startOfBufferReplayReceived(String storeName, int partitionId, long offset);
+    default void startOfBufferReplayReceived(String storeName, int partitionId, long offset) {
+        startOfBufferReplayReceived(storeName, partitionId, offset, "");
+    }
+
+    void startOfBufferReplayReceived(String storeName, int partitionId, long offset, String message);
+
+    /**
+     * Consumption is started for an incremental push
+     */
+    default void startOfIncrementalPushReceived(String storeName, int partitionId, long offset) {
+        startOfIncrementalPushReceived(storeName, partitionId, offset, "");
+    }
+
+    void startOfIncrementalPushReceived(String storeName, int partitionId, long offset, String message);
+
+    /**
+     * Consumption is completed for an incremental push
+     */
+    default void endOfIncrementalPushReceived(String storeName, int partitionId, long offset) {
+        endOfIncrementalPushReceived(storeName, partitionId, offset, "");
+    }
+
+    void endOfIncrementalPushReceived(String storeName, int partitionId, long offset, String message);
 
     /**
      * Consumption is completed for a store and partition.
      */
-    void completed(String storeName, int partitionId, long offset);
-//
-//    /**
-//     * This flag controls whether completion should be based only on the reception of the EOP
-//     * message (false) or also on the replication lag reaching a certain acceptable threshold
-//     * (true). The default is false.
-//     *
-//     * @return true if completion should be blocked by excessive replication lag, false otherwise.
-//     */
-//    default boolean replicationLagShouldBlockCompletion() {
-//      return false;
-//    }
+    default void completed(String storeName, int partitionId, long offset) {
+        completed(storeName, partitionId, offset, "");
+    }
+
+    void completed(String storeName, int partitionId, long offset, String message);
 
     /**
      * The Process is shutting down and clean up the resources associated with the Notifier.

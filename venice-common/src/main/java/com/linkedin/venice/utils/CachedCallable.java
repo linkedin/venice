@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicReference;
 
