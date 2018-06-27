@@ -96,7 +96,7 @@ public class VeniceRouterConfig {
     cacheType = CacheType.valueOf(props.getString(ROUTER_CACHE_TYPE, CacheType.OFF_HEAP_CACHE.name()));
     cacheEviction = CacheEviction.valueOf(props.getString(ROUTER_CACHE_EVICTION, CacheEviction.W_TINY_LFU.name()));
     cacheHashTableSize = props.getInt(ROUTER_CACHE_HASH_TABLE_SIZE, 1024 * 1024); // 1M
-    cacheTTLmillis = props.getLong(ROUTER_CACHE_TTL_MILLIS, TimeUnit.MINUTES.toMillis(5)); // 5 minutes
+    cacheTTLmillis = props.getLong(ROUTER_CACHE_TTL_MILLIS, 0); // Any non-positive number will disable the cache TTL
     /**
      * Make the default value for the throttle weight of cache hit request to be 1, which is same as the regular request.
      * The reason behind this:
