@@ -55,11 +55,11 @@ ext.libraries = [ // Groovy map literal
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.2.15',
                   d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.2.15',
-                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:4.0.1',
-                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:4.0.1',
-                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:4.0.1',
-                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:4.0.1',
-                  netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:4.0.1',
+                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:4.0.144',
+                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:4.0.144',
+                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:4.0.144',
+                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:4.0.144',
+                  netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:4.0.144',
                   oss: 'org.sonatype.oss:oss-parent:7',
                   asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
@@ -77,7 +77,7 @@ ext.libraries = [ // Groovy map literal
                   joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
                   log4j: 'log4j:log4j:1.2.17',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
-                  testng: 'org.testng:testng:6.11',
+                  testng: 'org.testng:testng:6.14.3',
                   // TODO remove this linkedin MP dependency, instead depends on the opensource tehuti lib.
                   tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.6',
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
