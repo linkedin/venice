@@ -65,7 +65,11 @@ def makeTag(remote):
     sys.exit()
   call(["git", "push", remote, tag_name])
 
+def getTags(remote):
+  call(["git", "fetch", remote, "master", "--tags"])
+
 remote = getRemote()
+getTags(remote)
 makeTag(remote)
 
 
