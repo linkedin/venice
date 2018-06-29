@@ -334,7 +334,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-      boolean shouldLogLag = partitionConsumptionState.getProcessedRecordNum() % threshold == 0; //Log lag for every <threshold> records.
+      boolean shouldLogLag = partitionConsumptionState.getOffsetRecord().getOffset() % threshold == 0; //Log lag for every <threshold> records.
       long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState, shouldLogLag);
       boolean lagging = lag > threshold;
 
