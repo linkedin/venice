@@ -1,3 +1,3 @@
-owners: [ mwise, venice-eng, sdwu, yayan, goliu, chgao, mnhuang ]
+owners: [ mwise, venice-eng, sdwu, yayan, goliu ]
 paths: [ '.*' ]
 whitelist: [ ]
