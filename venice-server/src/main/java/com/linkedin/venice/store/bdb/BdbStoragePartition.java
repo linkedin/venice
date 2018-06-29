@@ -47,6 +47,8 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   private final AtomicBoolean isOpen;
   private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
+  private final boolean checkpointAfterDropping;
+
   public BdbStoragePartition(StoragePartitionConfig storagePartitionConfig, Environment environment, BdbServerConfig bdbServerConfig) {
     super(storagePartitionConfig.getPartitionId());
 
@@ -69,6 +71,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       this.databaseConfig.setTransactional(true);
       logger.info("Opening database for store: " + getBdbDatabaseName() + " in transactional mode");
     }
+    this.checkpointAfterDropping = bdbServerConfig.isBdbCheckpointAfterDropping();
 
     this.database = this.environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);
     // Sync here to make sure the new database will be persisted.
@@ -260,6 +263,14 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   public synchronized void drop() {
     BDBOperation dropDB =() -> environment.removeDatabase(null, getBdbDatabaseName());
     performOperation("DROP" , dropDB );
+    if (checkpointAfterDropping) {
+      // Log file deletion only occurs after a checkpoint
+      environment.cleanLog();
+      CheckpointConfig ckptConfig = new CheckpointConfig();
+      ckptConfig.setMinimizeRecoveryTime(true);
+      ckptConfig.setForce(true);
+      environment.checkpoint(ckptConfig);
+    }
   }
 
   @Override
