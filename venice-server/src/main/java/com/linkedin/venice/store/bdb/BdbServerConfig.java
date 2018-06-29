@@ -43,6 +43,7 @@ public class BdbServerConfig {
   public static final String BDB_RECOVERY_FORCE_CHECKPOINT = "bdb.recovery.force.checkpoint";
   public static final String BDB_RAW_PROPERTY_STRING = "bdb.raw.property.string";
   public static final String BDB_DATABASE_KEY_PREFIXING = "bdb.database.key.prefixing";
+  public static final String BDB_CHECKPOINT_AFTER_DROPPING = "bdb.checkpoint.after.dropping";
 
   // bdb config parameters
   private long bdbCacheSize;
@@ -82,6 +83,7 @@ public class BdbServerConfig {
   private boolean bdbRecoveryForceCheckpoint;
   private boolean bdbDatabaseKeyPrefixing;
   private String bdbRawPropertyString;
+  private boolean bdbCheckpointAfterDropping;
 
   public BdbServerConfig(VeniceProperties props) {
     this.bdbCacheSize = props.getSizeInBytes(BDB_CACHE_SIZE, 200 * 1024 * 1024);
@@ -125,6 +127,7 @@ public class BdbServerConfig {
     this.bdbRecoveryForceCheckpoint = props.getBoolean(BDB_RECOVERY_FORCE_CHECKPOINT, false);
     this.bdbDatabaseKeyPrefixing = props.getBoolean(BDB_DATABASE_KEY_PREFIXING, false);
     this.bdbRawPropertyString = props.getString(BDB_RAW_PROPERTY_STRING, () -> null);
+    this.bdbCheckpointAfterDropping = props.getBoolean(BDB_CHECKPOINT_AFTER_DROPPING, true);
   }
 
   public long getBdbCacheSize() {
@@ -784,5 +787,16 @@ public class BdbServerConfig {
 
   public void setBdbDatabaseKeyPrefixing(boolean bdbDatabaseKeyPrefixing) {
     this.bdbDatabaseKeyPrefixing = bdbDatabaseKeyPrefixing;
+  }
+
+  /**
+   * Controls if BDB enforces taking checkpoint after dropping a partition;
+   * With checkpoint enforcement, log files will be cleaned up after dropping a BDB storage partition.
+   * @return
+   */
+  public boolean isBdbCheckpointAfterDropping() { return bdbCheckpointAfterDropping; }
+
+  public void setBdbCheckpointAfterDropping(boolean bdbCheckpointAfterDropping) {
+    this.bdbCheckpointAfterDropping = bdbCheckpointAfterDropping;
   }
 }

@@ -8,9 +8,9 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.AbstractStoragePartition;
-import com.linkedin.venice.store.StoragePartitionConfig;
+import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.sleepycat.je.Environment;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -24,6 +24,7 @@ import java.util.Properties;
 
 
 public class BdbStorageEngineTest extends AbstractStorageEngineTest {
+  public static final int randomRecordNum = 150000;
 
   BdbStorageEngineFactory factory;
 
@@ -62,6 +63,63 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
   @Test
   public void testGetAndPut() {
     super.testGetAndPut();
+  }
+
+  private void putRandomData(int recordsNum, int partitionId) {
+    while (recordsNum-- >= 0) {
+      byte[] key = RandomGenUtils.getRandomBytes(50);
+      byte[] value = RandomGenUtils.getRandomBytes(500);
+      try {
+        doPut(partitionId, key, value);
+      } catch (VeniceException e) {
+        Assert.fail("Exception was thrown: " + e.getMessage(), e);
+      }
+    }
+  }
+
+  @Test
+  public void testDropPartition() {
+    AbstractStorageEngine storageEngine = service.getStoreRepository().getLocalStorageEngine(STORE_NAME);
+
+    // put roughly 100MB data in partition 0
+    putRandomData(randomRecordNum, 0);
+
+    // add one partition and put roughly 100MB data in it
+    storageEngine.addStoragePartition(1);
+    putRandomData(randomRecordNum, 1);
+
+    // add one partition and put roughly 100MB data in it
+    storageEngine.addStoragePartition(2);
+    putRandomData(randomRecordNum, 2);
+
+    // add one partition and put roughly 100MB data in it
+    storageEngine.addStoragePartition(3);
+    putRandomData(randomRecordNum, 3);
+
+    BdbSpaceUtilizationSummary utilizationSummary = null;
+    long totalSpaceUsedBeforeDropping = 0;
+    if (storageEngine instanceof BdbStorageEngine) {
+      Environment env = ((BdbStorageEngine)storageEngine).getBdbEnvironment();
+      utilizationSummary = new BdbSpaceUtilizationSummary(env);
+      totalSpaceUsedBeforeDropping = utilizationSummary.getTotalSpaceUsed();
+    }
+
+    service.dropStorePartition(storeConfig, 1);
+    service.dropStorePartition(storeConfig, 2);
+    service.dropStorePartition(storeConfig, 3);
+
+    long totalSpaceUsedAfterDropping = 0;
+    if (storageEngine instanceof BdbStorageEngine) {
+      Environment env = ((BdbStorageEngine)storageEngine).getBdbEnvironment();
+      utilizationSummary = new BdbSpaceUtilizationSummary(env);
+      totalSpaceUsedAfterDropping = utilizationSummary.getTotalSpaceUsed();
+    }
+
+    /**
+     * After dropping 3 BDB store partition, more than half of the disk space should be released.
+     * Notice that this assertion could fail if default setting of checkpoint enforcement is false.
+     */
+    Assert.assertTrue(totalSpaceUsedAfterDropping < totalSpaceUsedBeforeDropping / 2);
   }
 
   @Test
