@@ -94,6 +94,11 @@ class PartitionConsumptionState {
   public void incrementProcessedRecordNum() {
     ++this.processedRecordNum;
   }
+
+  /**
+   * This value is not reliable for Hybrid ingest.  Check its current usage before relying on it.
+   * @return
+   */
   public int getProcessedRecordNum() {
     return this.processedRecordNum;
   }
