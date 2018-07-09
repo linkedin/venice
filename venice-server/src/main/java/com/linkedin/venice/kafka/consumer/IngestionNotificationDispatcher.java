@@ -122,6 +122,17 @@ class IngestionNotificationDispatcher {
     report(pcs, ExecutionStatus.PROGRESS,
         notifier -> notifier.progress(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()),
         () -> {
+
+          // Progress reporting happens too frequently for each Kafka Pull,
+          // Report progress only if configured intervals have elapsed.
+          // This has a drawback if there are messages but the interval has not elapsed
+          // they will not be reported. But if there are no messages after that
+          // for a long time, no progress will be reported. That is OK for now.
+          long timeElapsed = System.currentTimeMillis() - lastProgressReportTime;
+          if(timeElapsed < PROGRESS_REPORT_INTERVAL) {
+            return false;
+          }
+
           logger.info("pcs: " + pcs);
           if (!isCurrentVersion.getAsBoolean() && // The currently-active version should always report progress.
               (!pcs.isStarted() ||
@@ -132,16 +143,6 @@ class IngestionNotificationDispatcher {
                 ", offset:" + pcs.getOffsetRecord().getOffset() +
                 ", because it has not been started or already been terminated." +
                 " partitionConsumptionState: " + pcs.toString());
-            return false;
-          }
-
-          // Progress reporting happens too frequently for each Kafka Pull,
-          // Report progress only if configured intervals have elapsed.
-          // This has a drawback if there are messages but the interval has not elapsed
-          // they will not be reported. But if there are no messages after that
-          // for a long time, no progress will be reported. That is OK for now.
-          long timeElapsed = System.currentTimeMillis() - lastProgressReportTime;
-          if(timeElapsed < PROGRESS_REPORT_INTERVAL) {
             return false;
           }
 
