@@ -110,6 +110,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final VeniceControllerConsumerFactory veniceConsumerFactory;
     private final int minNumberOfUnusedKafkaTopicsToPreserve;
     private final int minNumberOfStoreVersionsToPreserve;
+    private final StoreGraveyard storeGraveyard;
 
 
   /**
@@ -151,6 +152,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
         this.storeConfigAccessor =
             new ZkStoreConfigAccessor(zkClient, adapterSerializer);
+        this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
         veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
         this.topicReplicator =
             TopicReplicator.getTopicReplicator(topicManager, commonConfig.getProps(), veniceWriterFactory);
@@ -288,7 +290,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
                 // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
                 // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
-                StoreGraveyard storeGraveyard = resources.getStoreGraveyard();
                 int largestUsedVersionNumber = storeGraveyard.getLargestUsedVersionNumber(storeName);
                 newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 storeRepo.addStore(newStore);
@@ -355,8 +356,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
             logger.info("Putting store:" + storeName + " into graveyard");
-            HelixStoreGraveyard storeGraveyard = resources.getStoreGraveyard();
-            storeGraveyard.putStoreIntoGraveyard(storeRepository.getStore(storeName));
+            storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
             // Helix will remove all data under this store's znode including key and value schemas.
             resources.getMetadataRepository().deleteStore(storeName);
             // Delete the config for this store after deleting the store.
@@ -2113,6 +2113,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public ZkWhitelistAccessor getWhitelistAccessor() {
         return whitelistAccessor;
+    }
+
+    public StoreGraveyard getStoreGraveyard() {
+        return storeGraveyard;
     }
 
     public String getControllerName(){

@@ -14,13 +14,8 @@ public interface StoreGraveyard {
   int getLargestUsedVersionNumber(String storeName);
 
   /**
-   * Get the timestamp(unix time) of when the given store was deleted at last.
-   */
-  long getLastDeletionTime(String storeName);
-
-  /**
    * Put the given store into grave yard. If the store has already existed in the grave yard, update it by this given
    * store.
    */
-  void putStoreIntoGraveyard(Store store);
+  void putStoreIntoGraveyard(String clusterNaem, Store store);
 }
