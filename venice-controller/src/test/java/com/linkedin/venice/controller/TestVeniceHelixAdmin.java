@@ -1183,7 +1183,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
     Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted before.");
     Assert.assertEquals(
-        veniceAdmin.getVeniceHelixResource(clusterName).getStoreGraveyard().getLargestUsedVersionNumber(storeName),
+        veniceAdmin.getStoreGraveyard().getLargestUsedVersionNumber(storeName),
         version.getNumber(), "LargestUsedVersionNumber should be kept in graveyard.");
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.isTopicTruncated(Version.composeKafkaTopic(storeName, version.getNumber())));
@@ -1216,7 +1216,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
     Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted before.");
     Assert.assertEquals(
-        veniceAdmin.getVeniceHelixResource(clusterName).getStoreGraveyard().getLargestUsedVersionNumber(storeName),
+        veniceAdmin.getStoreGraveyard().getLargestUsedVersionNumber(storeName),
         largestUsedVersionNumber, "LargestUsedVersionNumber should be overwritten and kept in graveyard.");
   }
 
