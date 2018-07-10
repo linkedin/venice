@@ -127,7 +127,7 @@ public class BdbServerConfig {
     this.bdbRecoveryForceCheckpoint = props.getBoolean(BDB_RECOVERY_FORCE_CHECKPOINT, false);
     this.bdbDatabaseKeyPrefixing = props.getBoolean(BDB_DATABASE_KEY_PREFIXING, false);
     this.bdbRawPropertyString = props.getString(BDB_RAW_PROPERTY_STRING, () -> null);
-    this.bdbCheckpointAfterDropping = props.getBoolean(BDB_CHECKPOINT_AFTER_DROPPING, true);
+    this.bdbCheckpointAfterDropping = props.getBoolean(BDB_CHECKPOINT_AFTER_DROPPING, false);
   }
 
   public long getBdbCacheSize() {

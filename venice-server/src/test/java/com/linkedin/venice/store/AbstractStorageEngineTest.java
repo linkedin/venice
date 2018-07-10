@@ -16,6 +16,7 @@ import org.testng.annotations.Test;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.store.bdb.BdbServerConfig.*;
 
 
 public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
@@ -45,6 +46,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(LISTENER_PORT , 7072)
         .put(ADMIN_PORT , 7073)
         .put(DATA_BASE_PATH, databasePath)
+        .put(BDB_CHECKPOINT_AFTER_DROPPING, true)
         .build();
   }
 
