@@ -274,7 +274,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String valueSchema) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         logger.info("Start creating store: " + storeName);
-        synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
+        resources.lockForMetadataOperation();
+        try{
             checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store newStore = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
@@ -305,6 +306,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
             logger.info("Completed creating Store: " + storeName);
+        }finally {
+            resources.unlockForMetadataOperation();
         }
     }
 
@@ -313,7 +316,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         logger.info("Start deleting store: " + storeName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        synchronized (resources) {
+        resources.lockForMetadataOperation();
+        try{
             HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             storeRepository.lock();
             Store store = null;
@@ -362,6 +366,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Delete the config for this store after deleting the store.
             storeConfigAccessor.deleteConfig(storeName);
             logger.info("Store:" + storeName + "has been deleted.");
+        } finally {
+            resources.unlockForMetadataOperation();
         }
     }
 
@@ -451,49 +457,59 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
 
         Version version = null;
         OfflinePushStrategy strategy = null;
+
         try {
-            repository.lock();
-            int newTopicPartitionCount = 0;
+            resources.lockForMetadataOperation();
             try {
-                Store store = repository.getStore(storeName);
-                if (store == null) {
-                    throwStoreDoesNotExist(clusterName, storeName);
-                }
-                strategy = store.getOffLinePushStrategy();
-                if (versionNumber == VERSION_ID_UNSET) {
-                    // No Version supplied, generate new version.
-                    version = store.increaseVersion(pushJobId);
-                } else {
-                    if (store.containsVersion(versionNumber)) {
-                        throwVersionAlreadyExists(storeName, versionNumber);
+                repository.lock();
+                int newTopicPartitionCount = 0;
+                try {
+                    Store store = repository.getStore(storeName);
+                    if (store == null) {
+                        throwStoreDoesNotExist(clusterName, storeName);
                     }
-                    version = new Version(storeName, versionNumber, pushJobId);
-                    store.addVersion(version);
+                    strategy = store.getOffLinePushStrategy();
+                    if (versionNumber == VERSION_ID_UNSET) {
+                        // No Version supplied, generate new version.
+                        version = store.increaseVersion(pushJobId);
+                    } else {
+                        if (store.containsVersion(versionNumber)) {
+                            throwVersionAlreadyExists(storeName, versionNumber);
+                        }
+                        version = new Version(storeName, versionNumber, pushJobId);
+                        store.addVersion(version);
+                    }
+                    // Update default partition count if it have not been assigned.
+                    if (store.getPartitionCount() == 0) {
+                        store.setPartitionCount(
+                            numberOfPartition); //TODO, persist numberOfPartitions at the version level
+                    }
+                    newTopicPartitionCount = store.getPartitionCount();
+                    repository.updateStore(store);
+                    logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
+                } finally {
+                    repository.unLock();
                 }
-                // Update default partition count if it have not been assigned.
-                if (store.getPartitionCount() == 0) {
-                    store.setPartitionCount(numberOfPartition); //TODO, persist numberOfPartitions at the version level
+
+                VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
+                createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount,
+                    clusterConfig.getKafkaReplicaFactor(), true);
+                if (whetherStartOfflinePush) {
+                    // TODO: there could be some problem here since topic creation is an async op, which means the new topic
+                    // may not exist, When storage node is trying to consume the new created topic.
+
+                    // We need to prepare to monitor before creating helix resource.
+                    startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor,
+                        strategy);
+                    createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
                 }
-                newTopicPartitionCount = store.getPartitionCount();
-                repository.updateStore(store);
-                logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
             } finally {
-                repository.unLock();
-            }
-
-            VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
-            createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor(), true);
-            if (whetherStartOfflinePush) {
-                // TODO: there could be some problem here since topic creation is an async op, which means the new topic
-                // may not exist, When storage node is trying to consume the new created topic.
-
-                // We need to prepare to monitor before creating helix resource.
-                startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
-                createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
+                resources.unlockForMetadataOperation();
             }
             return version;
         } catch (Throwable e) {
@@ -698,52 +714,65 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        List<Version> deletingVersionSnapshot = new ArrayList<>();
-        repository.lock();
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        resources.lockForMetadataOperation();
         try {
-            Store store = repository.getStore(storeName);
-            checkPreConditionForDeletion(clusterName, storeName, store);
-            logger.info("Deleting all versions in store: " + store + " in cluster: " + clusterName);
-            // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
-            // version were deleted, router will get a current version which does not exist actually.
-            store.setEnableWrites(true);
-            store.setCurrentVersion(Store.NON_EXISTING_VERSION);
-            store.setEnableWrites(false);
-            repository.updateStore(store);
-            deletingVersionSnapshot = new ArrayList<>(store.getVersions());
-        } finally {
-            repository.unLock();
+
+            HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+            List<Version> deletingVersionSnapshot = new ArrayList<>();
+            repository.lock();
+            try {
+                Store store = repository.getStore(storeName);
+                checkPreConditionForDeletion(clusterName, storeName, store);
+                logger.info("Deleting all versions in store: " + store + " in cluster: " + clusterName);
+                // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
+                // version were deleted, router will get a current version which does not exist actually.
+                store.setEnableWrites(true);
+                store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+                store.setEnableWrites(false);
+                repository.updateStore(store);
+                deletingVersionSnapshot = new ArrayList<>(store.getVersions());
+            } finally {
+                repository.unLock();
+            }
+            // Do not lock the entire deleting block, because during the deleting, controller would acquire repository lock
+            // to query store when received the status update from storage node.
+            for (Version version : deletingVersionSnapshot) {
+                deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
+            }
+            logger.info("Deleted all versions in store: " + storeName + " in cluster: " + clusterName);
+            return deletingVersionSnapshot;
+        }finally {
+            resources.unlockForMetadataOperation();
         }
-        // Do not lock the entire deleting block, because during the deleting, controller would acquire repository lock
-        // to query store when received the status update from storage node.
-        for (Version version : deletingVersionSnapshot) {
-            deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
-        }
-        logger.info("Deleted all versions in store: " + storeName + " in cluster: " + clusterName);
-        return deletingVersionSnapshot;
     }
 
     @Override
     public void deleteOldVersionInStore(String clusterName, String storeName, int versionNum) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        Store store = repository.getStore(storeName);
-        // Here we do not require the store be disabled. So it might impact reads
-        // The thing is a new version is just online, now we delete the old version. So some of routers
-        // might still use the old one as the current version, so when they send the request to that version,
-        // they will get error response.
-        // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
-        // TOOD And only allow to delete the old version that the newer version has been online for a while.
-        checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
-        if (!store.containsVersion(versionNum)) {
-            logger.warn("Ignore the deletion request. Could not find version: " + versionNum + " in store: " + storeName
-                + " in cluster: " + clusterName);
-            return;
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        resources.lockForMetadataOperation();
+        try {
+            HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+            Store store = repository.getStore(storeName);
+            // Here we do not require the store be disabled. So it might impact reads
+            // The thing is a new version is just online, now we delete the old version. So some of routers
+            // might still use the old one as the current version, so when they send the request to that version,
+            // they will get error response.
+            // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
+            // TOOD And only allow to delete the old version that the newer version has been online for a while.
+            checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
+            if (!store.containsVersion(versionNum)) {
+                logger.warn(
+                    "Ignore the deletion request. Could not find version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
+                return;
+            }
+            logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
+            deleteOneStoreVersion(clusterName, storeName, versionNum);
+            logger.info("Deleted version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
+        }finally {
+            resources.unlockForMetadataOperation();
         }
-        logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
-        deleteOneStoreVersion(clusterName, storeName, versionNum);
-        logger.info("Deleted version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
     }
 
     /**
@@ -751,35 +780,47 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
-        String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
-        logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
-        deleteHelixResource(clusterName, resourceName);
-        logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
-        killOfflinePush(clusterName, resourceName);
-        if (topicReplicator.isPresent()) {
-            String realTimeTopic = Version.composeRealTimeTopic(storeName);
-            topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        resources.lockForMetadataOperation();
+        try {
+            String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
+            logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
+            deleteHelixResource(clusterName, resourceName);
+            logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
+            killOfflinePush(clusterName, resourceName);
+            if (topicReplicator.isPresent()) {
+                String realTimeTopic = Version.composeRealTimeTopic(storeName);
+                topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+            }
+            Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
+            if (deletedVersion.isPresent()) {
+                truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
+            }
+            stopMonitorOfflinePush(clusterName, resourceName);
+        }finally{
+            resources.unlockForMetadataOperation();
         }
-        Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
-        if (deletedVersion.isPresent()) {
-            truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
-        }
-        stopMonitorOfflinePush(clusterName, resourceName);
     }
 
     @Override
     public void retireOldStoreVersions(String clusterName, String storeName) {
         logger.info("Retiring old versions for store: " + storeName);
-        HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        Store store = storeRepository.getStore(storeName);
-        List<Version> versionsToDelete = store.retrieveVersionsToDelete(minNumberOfStoreVersionsToPreserve);
-        for (Version version : versionsToDelete) {
-            deleteOneStoreVersion(clusterName, storeName, version.getNumber());
-            logger.info("Retired store:" + store.getName() + " version:" + version.getNumber());
-        }
-        logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        resources.lockForMetadataOperation();
+        try {
+            HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+            Store store = storeRepository.getStore(storeName);
+            List<Version> versionsToDelete = store.retrieveVersionsToDelete(minNumberOfStoreVersionsToPreserve);
+            for (Version version : versionsToDelete) {
+                deleteOneStoreVersion(clusterName, storeName, version.getNumber());
+                logger.info("Retired store:" + store.getName() + " version:" + version.getNumber());
+            }
+            logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
 
-        truncateOldKafkaTopics(store, false);
+            truncateOldKafkaTopics(store, false);
+        }finally {
+            resources.unlockForMetadataOperation();
+        }
     }
 
     /***
@@ -1408,7 +1449,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Enabled delayed re-balance for resource:" + kafkaTopic);
             admin.rebalance(clusterName, kafkaTopic, replicationFactor);
             logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
-
             // TODO Wait until there are enough nodes assigned to the given resource.
             // This waiting is not mandatory in our new offline push monitor. But in order to keep the logic as similar
             // as before, we still waiting here. This logic could be removed later.
