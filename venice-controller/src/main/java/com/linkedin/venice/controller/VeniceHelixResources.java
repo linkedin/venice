@@ -17,6 +17,9 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZkClient;
@@ -37,6 +40,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
+  private final ReadWriteLock shutdownLock;
 
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
@@ -66,6 +70,7 @@ public class VeniceHelixResources implements VeniceResource {
         new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor());
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
+    shutdownLock = new ReentrantReadWriteLock();
   }
 
   @Override
@@ -121,6 +126,29 @@ public class VeniceHelixResources implements VeniceResource {
 
   public AggPartitionHealthStats getAggPartitionHealthStats() {
     return aggPartitionHealthStats;
+  }
+
+  /**
+   * Lock the resource for metadata operation. Different operations could be executed in parallel.
+   */
+  public void lockForMetadataOperation(){
+    shutdownLock.readLock().lock();
+  }
+
+  public void unlockForMetadataOperation(){
+    shutdownLock.readLock().unlock();
+  }
+
+  /**
+   * Lock the resource for shutdown operation(mastership handle over and controller shutdown). Once
+   * acquired the lock, no metadata operation or shutdown operation could be executed.
+   */
+  public void lockForShutdown(){
+    shutdownLock.writeLock().lock();
+  }
+
+  public void unlockForShutdown(){
+    shutdownLock.writeLock().unlock();
   }
 
   /**

@@ -57,6 +57,8 @@ public class VeniceControllerService extends AbstractVeniceService {
   @Override
   public void stopInner() {
     for (String clusterName : mutliClusterConfigs.getClusters()) {
+      // We don't need to lock resources here, as we will acquire the lock during the ST leader->standby, which would
+      // prevent the partial updates.
       admin.stop(clusterName);
       try {
         consumerServices.get(clusterName).stop();

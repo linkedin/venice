@@ -1532,4 +1532,5 @@ public class TestVeniceParentHelixAdmin {
     status1.setPushProperties(map);
     verify(accessor).updateOfflinePushStatus(eq(clusterName), eq(status1));
   }
+
 }

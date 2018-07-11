@@ -86,8 +86,15 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     String controllerName = message.getTgtName();
 
     logger.info(controllerName + " becoming standby from leader for " + clusterName);
-    synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
+    // We have to create a snapshot of resources here, as the resources will be set to null during the reset. So this
+    // snapshot will let us unlock successfully.
+    VeniceHelixResources snapshot = resources;
+    snapshot.lockForShutdown(); // Lock to prevent the partial result of admin operation.
+    try {
       reset();
+    } finally {
+      // After reset everything, unlock then hand-off the mastership.
+      snapshot.unlockForShutdown();
     }
   }
 
