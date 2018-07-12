@@ -324,7 +324,7 @@ public class RouterServer extends AbstractVeniceService {
           return singleGetRetryFuture;
         } else {
           /**
-           * Long tail retry is not enabled for batch-get.
+           * Long tail retry threshold is based on key count for batch-get request.
            */
           int keyNum = path.getPartitionKeys().size();
           if (0 == keyNum) {

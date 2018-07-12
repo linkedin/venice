@@ -220,9 +220,23 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public void completed(org.apache.http.HttpResponse result) {
         int statusCode = result.getStatusLine().getStatusCode();
+        if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+          // Retry errored request
+          if (!path.isRetryRequest()) {
+            // Together with long-tail retry, for a single scatter request, it is possible to have at most two
+            // retry requests, one triggered by long-tail retry threshold, the other one is triggered by error
+            // response.
+            contextExecutor.execute(() -> {
+              // Triggers an immediate router retry excluding the host we selected.
+              retryFuture.setSuccess(HttpResponseStatus.valueOf(statusCode));
+            });
+            return;
+          }
+        }
+
         Set<String> partitionNames = part.getPartitionsNames();
         String resourceName = path.getResourceName();
-        String offsetHeader = result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue();
+
         // TODO: make this logic consistent across single-get and multi-get
         switch (path.getRequestType()) {
           case SINGLE_GET:
@@ -232,8 +246,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
               logger.error(
                   "There must be only one partition in a request, handling request as if there is only one partition");
             }
-            long offset = Long.parseLong(offsetHeader);
             if (statusCode == HttpStatus.SC_OK) {
+              if (null == result.getFirstHeader(HttpConstants.VENICE_OFFSET)) {
+                throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.SINGLE_GET),
+                    INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET + " is expected");
+              }
+              String offsetHeader = result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue();
+              long offset = Long.parseLong(offsetHeader);
               checkOffsetLag(resourceName, partitionName, host, offset);
               /*
               // The following code could block online serving if all the partitions are marked as slow.
@@ -251,29 +270,35 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             break;
           case MULTI_GET:
             // Get partition offset header
-            try {
-              Map<Integer, Long> partitionOffsetMap = PartitionOffsetMapUtils.deserializePartitionOffsetMap(offsetHeader);
-              partitionNames.forEach(pName -> {
-                int partitionId = HelixUtils.getPartitionId(pName);
-                if (partitionOffsetMap.containsKey(partitionId)) {
-                  /**
-                   * TODO: whether we should mark host as slow for multi-get request.
-                   *
-                   * Right now, the scatter mode being used for multi-get only returns one host per request, so we
-                   * could not mark it slow directly if the offset lag is big since it could potentially mark all the hosts
-                   * to be slow.
-                   *
-                   * For streaming case, one possible solution is to use sticky routing so that the requests for a given
-                   * partition will hit one specific host consistently.
-                   */
-                  checkOffsetLag(resourceName, pName, host, partitionOffsetMap.get(partitionId));
-
-                } else {
-                  logger.error("Multi-get response doesn't contain offset for partition: " + pName);
-                }
-              });
-            } catch (IOException e) {
-              logger.error("Failed to parse partition offset map from content: " + offsetHeader);
+            if (statusCode == HttpStatus.SC_OK) {
+              if (null == result.getFirstHeader(HttpConstants.VENICE_OFFSET)) {
+                throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+                    INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET + " is expected");
+              }
+              String offsetHeader = result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue();
+              try {
+                Map<Integer, Long> partitionOffsetMap = PartitionOffsetMapUtils.deserializePartitionOffsetMap(offsetHeader);
+                partitionNames.forEach(pName -> {
+                  int partitionId = HelixUtils.getPartitionId(pName);
+                  if (partitionOffsetMap.containsKey(partitionId)) {
+                    /**
+                     * TODO: whether we should mark host as slow for multi-get request.
+                     *
+                     * Right now, the scatter mode being used for multi-get only returns one host per request, so we
+                     * could not mark it slow directly if the offset lag is big since it could potentially mark all the hosts
+                     * to be slow.
+                     *
+                     * For streaming case, one possible solution is to use sticky routing so that the requests for a given
+                     * partition will hit one specific host consistently.
+                     */
+                    checkOffsetLag(resourceName, pName, host, partitionOffsetMap.get(partitionId));
+                  } else {
+                    logger.error("Multi-get response doesn't contain offset for partition: " + pName);
+                  }
+                });
+              } catch (IOException e) {
+                logger.error("Failed to parse partition offset map from content: " + offsetHeader);
+              }
             }
             break;
         }
@@ -371,8 +396,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             }
           }
         }
-
-
       }
 
       @Override

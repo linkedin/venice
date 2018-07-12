@@ -160,6 +160,18 @@ public class ConfigKeys {
    */
   public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.bytes.interval.for.deferred.write.mode";
 
+  /**
+   * When load balance happens, a replica could be moved to another storage node.
+   * When dropping the existing replica through Helix state transition: 'ONLINE' -> 'OFFLINE' and 'OFFLINE' -> 'DROPPED',
+   * a race condition could happen since Router in-memory partition assignment update through Zookeeper
+   * is independent from database drop in storage node, so Router could possibly forward the request to the storage node,
+   * which has just dropped the partition.
+   *
+   * To mitigate this issue, we will add a delay in state transition: 'OFFLINE' -> 'DROPPED' to drain all the incoming
+   * requests to the to-drop partition, and we will enable error-retry on Router as well.
+   */
+  public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS = "server.partition.graceful.drop.time.in.seconds";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
