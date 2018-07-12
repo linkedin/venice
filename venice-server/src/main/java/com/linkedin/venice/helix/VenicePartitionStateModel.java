@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -151,6 +152,12 @@ public class VenicePartitionStateModel extends StateModel {
     public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
         //TODO Add some control logic here to maintain storage engine to avoid mistake operations.
         executeStateTransition(message, context, ()-> {
+            try {
+                // Gracefully drop partition to drain the requests to this partition
+                Thread.sleep(TimeUnit.SECONDS.toMillis(storeConfig.getPartitionGracefulDropDelaySeconds()));
+            } catch (InterruptedException e) {
+                throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
+            }
             removePartitionFromStore();
         });
     }

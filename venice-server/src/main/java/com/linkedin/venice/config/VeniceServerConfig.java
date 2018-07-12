@@ -102,6 +102,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final double diskFullThreshold;
 
+  private final int partitionGracefulDropDelaySeconds;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -124,6 +126,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.90);
+    partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
   }
 
   public int getListenerPort() {
@@ -209,5 +212,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public double getDiskFullThreshold(){
     return diskFullThreshold;
+  }
+
+  public int getPartitionGracefulDropDelaySeconds() {
+    return partitionGracefulDropDelaySeconds;
   }
 }
