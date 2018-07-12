@@ -148,7 +148,7 @@ public class KafkaPushJob extends AbstractJob {
   public static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
   public static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
 
-  public static final String AZK_JOB_EXEC_URL = "azkaban.link.jobexec.url";
+  public static final String AZK_JOB_EXEC_URL = "azkaban.link.attempt.url";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
@@ -556,8 +556,8 @@ public class KafkaPushJob extends AbstractJob {
     ControllerApiConstants.PushType pushType = isIncrementalPush ?
         ControllerApiConstants.PushType.BATCH : ControllerApiConstants.PushType.BATCH;
     VersionCreationResponse versionCreationResponse =
-        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType,
-            props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url_" + System.currentTimeMillis()));
+        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType, System.currentTimeMillis() + "_" +
+            props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url"));
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
