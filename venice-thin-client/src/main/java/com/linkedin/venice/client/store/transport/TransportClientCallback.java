@@ -25,7 +25,7 @@ public class TransportClientCallback {
   public void completeFuture(int statusCode,
                              byte[] body,
                              int schemaId) {
-    String msg = new String(body, StandardCharsets.UTF_8);
+    String msg;
 
     if (statusCode == HttpStatus.SC_OK) {
       valueFuture.complete(new TransportClientResponse(schemaId, body));
@@ -36,6 +36,7 @@ public class TransportClientCallback {
           break;
         case HttpStatus.SC_INTERNAL_SERVER_ERROR:
         case HttpStatus.SC_SERVICE_UNAVAILABLE:
+          msg = new String(body, StandardCharsets.UTF_8);
           if (msg != null) {
             valueFuture.completeExceptionally(new VeniceClientHttpException(msg, statusCode));
           } else {
@@ -44,6 +45,7 @@ public class TransportClientCallback {
           break;
         case HttpStatus.SC_BAD_REQUEST:
         default:
+          msg = new String(body, StandardCharsets.UTF_8);
           if (msg != null) {
             valueFuture.completeExceptionally(new VeniceClientHttpException(msg, statusCode));
           } else {
