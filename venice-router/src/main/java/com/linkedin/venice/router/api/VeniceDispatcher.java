@@ -249,7 +249,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             if (statusCode == HttpStatus.SC_OK) {
               if (null == result.getFirstHeader(HttpConstants.VENICE_OFFSET)) {
                 throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.SINGLE_GET),
-                    INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET + " is expected");
+                    INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET +
+                        " in the response from storage node is expected for URI: " + routerRequest.getURI());
               }
               String offsetHeader = result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue();
               long offset = Long.parseLong(offsetHeader);
@@ -273,7 +274,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             if (statusCode == HttpStatus.SC_OK) {
               if (null == result.getFirstHeader(HttpConstants.VENICE_OFFSET)) {
                 throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
-                    INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET + " is expected");
+                    INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET +
+                        " in the response from storage node is expected for URI: " + routerRequest.getURI());
               }
               String offsetHeader = result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue();
               try {
