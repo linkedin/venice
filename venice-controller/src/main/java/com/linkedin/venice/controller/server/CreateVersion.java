@@ -121,13 +121,7 @@ public class CreateVersion {
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
-            Version version;
-            //TODO: merge the if-else brunch when we have idempotent topic query feature read
-            if (pushType == PushType.BATCH) {
-              version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor, true);
-            } else {
-              version = admin.getIncrementalPushTopic(clusterName, storeName);
-            }
+            Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor, true, (pushType == PushType.INCREMENTAL));
 
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(version.kafkaTopicName());

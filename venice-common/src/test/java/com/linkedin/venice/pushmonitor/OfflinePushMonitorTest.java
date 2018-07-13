@@ -238,6 +238,63 @@ public class OfflinePushMonitorTest {
   }
 
   @Test
+  public void testQueryingIncrementalPushJobStatus() {
+    String topic = "incrementalPushTestStore_v1";
+    String incrementalPushVersion = String.valueOf(System.currentTimeMillis());
+
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+        ExecutionStatus.NOT_CREATED);
+
+    //prepare new partition status
+    List<ReplicaStatus> replicaStatuses = new ArrayList<>();
+    for (int i = 0; i < replicationFactor; i++) {
+      ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
+      replicaStatuses.add(replicaStatus);
+    }
+
+    //update one of the replica status START -> COMPLETE -> START_OF_INCREMENTAL_PUSH_RECEIVED (SOIP_RECEIVED)
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.COMPLETED);
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+    prepareMockStore(topic);
+
+    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
+    //OfflinePushMonitor should return SOIP_RECEIVED if any of replica receives SOIP_RECEIVED
+    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+
+    //update 2 of the replica status to END_OF_INCREMENTAL_PUSH_RECEIVED (EOIP_RECEIVED)
+    //and update the third one to EOIP_RECEIVED with wrong version
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+
+    replicaStatuses.get(1).updateStatus(ExecutionStatus.COMPLETED);
+    replicaStatuses.get(1).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+    replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+
+    replicaStatuses.get(2).updateStatus(ExecutionStatus.COMPLETED);
+    replicaStatuses.get(2).updateStatus(ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+    replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, "incorrect_version");
+
+    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
+    //OfflinePushMonitor should be able to filter out irrelevant IP versions
+    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
+
+    replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
+
+    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
+    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.WARNING, incrementalPushVersion);
+
+    monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
+    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+        ExecutionStatus.ERROR);
+  }
+
+  @Test
   public void testOnPartitionStatusChangeForHybridStore() {
     String topic = "hybridTestStore_v1";
     // Prepare a hybrid store.

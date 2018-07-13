@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -319,13 +320,17 @@ public class ControllerClient implements Closeable {
   }
 
   public JobStatusQueryResponse queryJobStatusWithRetry(String kafkaTopic, int attempts){
+    return queryJobStatusWithRetry(kafkaTopic, attempts, Optional.empty());
+  }
+
+  public JobStatusQueryResponse queryJobStatusWithRetry(String kafkaTopic, int attempts, Optional<String> incrementalPushVersion){
     if (attempts < 1){
       throw new VeniceException("Querying with retries requires at least one attempt, called with " + attempts + " attempts");
     }
     int attemptsRemaining = attempts;
     JobStatusQueryResponse response = JobStatusQueryResponse.createErrorResponse("Request was not attempted");
     while (attemptsRemaining > 0){
-      response = queryJobStatus(kafkaTopic); /* should always return a valid object */
+      response = queryJobStatus(kafkaTopic, incrementalPushVersion); /* should always return a valid object */
       if (! response.isError()){
         return response;
       } else {
@@ -337,13 +342,21 @@ public class ControllerClient implements Closeable {
     return response;
   }
 
+
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
+    return queryJobStatus(kafkaTopic, Optional.empty());
+  }
+
+  public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
       QueryParams queryParams = newParams()
           .add(NAME, storeName)
           .add(VERSION, version);
+      if (incrementalPushVersion.isPresent()) {
+        queryParams.add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion.get());
+      }
       String responseJson = getRequest(ControllerRoute.JOB.getPath(), queryParams);
       return mapper.readValue(responseJson, JobStatusQueryResponse.class);
     } catch (Exception e){

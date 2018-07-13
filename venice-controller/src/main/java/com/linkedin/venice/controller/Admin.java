@@ -95,7 +95,11 @@ public interface Admin {
      * first task triggers a new Version, all subsequent tasks identify with the same jobPushId, and should be provided
      * with the same Version object.
      */
-    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush);
+    default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush) {
+        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartions, replicationFactor, offlinePush, false);
+    }
+
+    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush);
 
     String getRealTimeTopic(String clusterName, String storeName);
 
@@ -106,7 +110,7 @@ public interface Admin {
      *
      * TODO: figure out how we'd like to cover these edge cases
      */
-    Version getIncrementalPushTopic(String clusterName, String storeName);
+    Version getIncrementalPushVersion(String clusterName, String storeName);
 
     int getCurrentVersion(String clusterName, String storeName);
 
@@ -247,6 +251,8 @@ public interface Admin {
      * @return the status of current offline push for the passed kafka topic
      */
     OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic);
+
+    OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion);
 
     Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic);
 

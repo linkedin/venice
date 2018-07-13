@@ -185,13 +185,14 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     logger.info(
         "Start update replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
-      currentData.updateReplicaStatus(instanceId, status);
+      currentData.updateReplicaStatus(instanceId, status, incrementalPushVersion);
       if (progress != Integer.MIN_VALUE) {
         currentData.updateProgress(instanceId, progress);
       }
       if (!Utils.isNullOrEmpty(incrementalPushVersion)) {
         currentData.updateIncrementalPushVersion(instanceId, incrementalPushVersion);
       }
+
       return currentData;
     });
     logger.info("Updated replica status for topic:" + topic + " partition:" + partitionId + " status: " + status

@@ -655,7 +655,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * batch jobs push to the same store at the same time.
      */
     @Override
-    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor, boolean offlinePush) {
+    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
@@ -671,7 +671,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } finally {
             repository.unLock();
         }
-        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, offlinePush);
+
+        return isIncrementalPush ? getIncrementalPushVersion(clusterName, storeName)
+            : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, offlinePush);
     }
 
     /**
@@ -770,7 +772,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized Version getIncrementalPushTopic(String clusterName, String storeName) {
+    public synchronized Version getIncrementalPushVersion(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
@@ -778,6 +780,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Store store = repository.getStore(storeName);
             if (store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
+            }
+
+            if (!store.isIncrementalPushEnabled()) {
+                throw new VeniceException("Incremental push is not enabled for store: " + storeName);
             }
 
             List<Version> versions = store.getVersions();
@@ -788,7 +794,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             /**
              * Don't use {@link Store#getCurrentVersion()} here since it is always 0 in parent controller
              */
-            return versions.get(versions.size() - 1);
+            Version version = versions.get(versions.size() - 1);
+            if (version.getStatus() == VersionStatus.ERROR) {
+                throw new VeniceException("cannot have incremental push because current version is in error status. "
+                    + "Version: " + version.getNumber() + " Store:" + storeName);
+            }
+            return version;
         } finally {
             repository.unLock();
         }
@@ -1714,9 +1725,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
+        return getOffLinePushStatus(clusterName, kafkaTopic, Optional.empty());
+    }
+
+    @Override
+    public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion) {
         checkControllerMastership(clusterName);
         OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
-        Pair<ExecutionStatus, Optional<String>> statusAndDetails = monitor.getOfflinePushStatusAndDetails(kafkaTopic);
+        Pair<ExecutionStatus, Optional<String>> statusAndDetails =
+            monitor.getOfflinePushStatusAndDetails(kafkaTopic, incrementalPushVersion);
         return new OfflinePushStatusInfo(statusAndDetails.getFirst(), statusAndDetails.getSecond());
     }
 

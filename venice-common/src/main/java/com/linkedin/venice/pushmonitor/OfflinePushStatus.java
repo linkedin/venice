@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
@@ -152,6 +153,48 @@ public class OfflinePushStatus {
     if (finishedPartitions > 0) {
       setStatusDetails(finishedPartitions + "/" + numberOfPartition + " partitions completed.");
     }
+  }
+
+  /**
+   * Check the status of the given incremental push version
+   */
+  public ExecutionStatus checkIncrementalPushStatus(String incrementalPushVersion) {
+    //find all executeStatus that are related to certain incrementalPushVersion
+    List<List<StatusSnapshot>> replicaHistoryList = getPartitionStatuses().stream()
+        //get a list of replica status
+        .flatMap(partitionStatus -> partitionStatus.getReplicaStatuses().stream())
+        //get a list of replica's status history
+        .map(replicaStatus -> replicaStatus.getStatusHistory())
+        //filter the history list so that it only contains records that are related to certain IP version
+        .map(replicaHistory -> replicaHistory.stream()
+            .filter(statusSnapshot -> statusSnapshot.getIncrementalPushVersion().equals(incrementalPushVersion))
+            .collect(Collectors.toList()))
+        .collect(Collectors.toList());
+
+    //If any of error status is reported, then return ERROR
+    if (replicaHistoryList.stream()
+        .anyMatch(replicaHistory -> replicaHistory.stream()
+          .anyMatch(statusSnapshot -> statusSnapshot.getStatus() == ExecutionStatus.WARNING))) {
+      return ExecutionStatus.ERROR;
+    }
+
+    //If all of the replicas report EOIP_RECEIVED, then the job is done
+    if (replicaHistoryList.stream()
+        .filter(replicaHistory -> replicaHistory.stream()
+            .anyMatch(statusSnapshot -> statusSnapshot.getStatus() == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED))
+        .count() == (numberOfPartition * replicationFactor)) {
+      return ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
+    }
+
+    //IF any of SOIP is reported, then the job is started
+    if (replicaHistoryList.stream()
+        .anyMatch(replicaHistory -> replicaHistory.stream()
+            .anyMatch(statusSnapshot -> statusSnapshot.getStatus() == ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED))) {
+      return ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED;
+    }
+
+    //SNs haven't received this incremental push yet
+    return ExecutionStatus.NOT_CREATED;
   }
 
   public String getKafkaTopic() {

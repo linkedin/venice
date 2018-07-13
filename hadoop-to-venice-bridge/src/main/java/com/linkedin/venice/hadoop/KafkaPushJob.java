@@ -411,11 +411,12 @@ public class KafkaPushJob extends AbstractJob {
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
         jc = new JobClient(pushJobConf);
+        Optional<String> incrementalPushVersion = Optional.empty();
         if (isIncrementalPush) {
-          String incrementalPushVersion = String.valueOf(System.currentTimeMillis());
-          getVeniceWriter().broadcastStartOfIncrementalPush(incrementalPushVersion, new HashMap<>());
+          incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
+          getVeniceWriter().broadcastStartOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
           runningJob = jc.runJob(pushJobConf);
-          getVeniceWriter().broadcastEndOfIncrementalPush(incrementalPushVersion, new HashMap<>());
+          getVeniceWriter().broadcastEndOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
         } else {
           getVeniceWriter().broadcastStartOfPush(!isMapOnly, isChunkingEnabled, compressionStrategy, new HashMap<>());
           // submit the job for execution and wait for completion
@@ -428,11 +429,7 @@ public class KafkaPushJob extends AbstractJob {
         closeVeniceWriter();
 
         // Waiting for Venice Backend to complete consumption
-
-        //TODO: this is a temporary workaround. Remove it when polling status is supported for incremental push
-        if (!isIncrementalPush) {
-          pollStatusUntilComplete();
-        }
+        pollStatusUntilComplete(incrementalPushVersion);
       } else {
         logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
@@ -554,7 +551,7 @@ public class KafkaPushJob extends AbstractJob {
    */
   private void createNewStoreVersion() {
     ControllerApiConstants.PushType pushType = isIncrementalPush ?
-        ControllerApiConstants.PushType.BATCH : ControllerApiConstants.PushType.BATCH;
+        ControllerApiConstants.PushType.INCREMENTAL : ControllerApiConstants.PushType.BATCH;
     VersionCreationResponse versionCreationResponse =
         controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType, System.currentTimeMillis() + "_" +
             props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url"));
@@ -638,7 +635,7 @@ public class KafkaPushJob extends AbstractJob {
    * we are willing to mark the job as successful.  If any datacenters report an explicit error status, we throw an
    * exception and fail the job.
    */
-  private void pollStatusUntilComplete(){
+  private void pollStatusUntilComplete(Optional<String> incrementalPushVersion){
     /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts by default */
     int retryAttempts = this.props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
     ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
@@ -647,16 +644,18 @@ public class KafkaPushJob extends AbstractJob {
       Utils.sleep(5000); /* TODO better polling policy */
       keepChecking = false;
       switch (currentStatus) {
-        case COMPLETED: /* jobs done */
+        case COMPLETED: /* batch jobs done */
+        case END_OF_INCREMENTAL_PUSH_RECEIVED: /* incremental push jobs done */
         case ARCHIVED: /* This shouldn't happen, but presumably wont change on further polls */
           continue;
         case ERROR: /* failure to query (treat as connection issue, so we retry */
         case NOT_CREATED:
         case NEW:
         case STARTED:
+        case START_OF_INCREMENTAL_PUSH_RECEIVED:
         case END_OF_PUSH_RECEIVED:
         case PROGRESS:
-          JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(topic, retryAttempts);
+          JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(topic, retryAttempts, incrementalPushVersion);
           /**
            * Note: {@link JobStatusQueryResponse#isError()} means the status could not be queried.
            * This may be due to a communication error.
@@ -680,7 +679,7 @@ public class KafkaPushJob extends AbstractJob {
       }
     }
     /* At this point either reported success, or had connection issues */
-    if (currentStatus.equals(ExecutionStatus.COMPLETED)){
+    if (currentStatus.equals(ExecutionStatus.COMPLETED) || currentStatus.equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)){
       logger.info("Successfully pushed");
     } else {
       throw new VeniceException("Push failed with execution status: " + currentStatus.toString());
@@ -923,7 +922,7 @@ public class KafkaPushJob extends AbstractJob {
       // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
       logger.info("Received exception while killing map-reduce job", ex);
     }
-    if (! Utils.isNullOrEmpty(topic)) {
+    if (! Utils.isNullOrEmpty(topic) && !isIncrementalPush) {
       controllerClient.killOfflinePushJob(topic);
       logger.info("Offline push job has been killed, topic: " + topic);
     }

@@ -45,6 +45,9 @@ public enum ExecutionStatus {
    */
   COMPLETED(true, true, false, true),
 
+  /** a non-fatal error task meets when processing the data. Often happens after EOP is received. **/
+  WARNING(false, true, false, true),
+
   /** Job/task met error when processing the data. */
   ERROR(true, true, false, true),
 

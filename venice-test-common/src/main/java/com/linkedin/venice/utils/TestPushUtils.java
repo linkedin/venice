@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -89,6 +90,25 @@ public class TestPushUtils {
             user.put("id", Integer.toString(i));
             user.put("name", name + i);
             user.put("age", i);
+            writer.append(user);
+          }
+        });
+  }
+
+  /**
+   * This file overrides half of the value in {@link #writeSimpleAvroFileWithUserSchema(File)}
+   * and add some new values.
+   * It's designed to test incremental push
+   */
+  public static Schema writeSimpleAvroFileWithUserSchema2(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          String name = "test_name_";
+          for (int i = 51; i <= 150; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put("id", Integer.toString(i));
+            user.put("name", name + (i * 2));
+            user.put("age", i * 2);
             writer.append(user);
           }
         });
@@ -374,7 +394,7 @@ public class TestPushUtils {
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, false, false);
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, false, false, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceClusterWrapper,
@@ -390,12 +410,12 @@ public class TestPushUtils {
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
                                                    String keySchemaStr, String valueSchemaStr, Properties props,
                                                    boolean isCompressed, boolean chunkingEnabled) {
-    return createStoreForJob(veniceCluster.getClusterName(), keySchemaStr, valueSchemaStr, props, isCompressed, chunkingEnabled);
+    return createStoreForJob(veniceCluster.getClusterName(), keySchemaStr, valueSchemaStr, props, isCompressed, chunkingEnabled, false);
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName,
                                                    String keySchemaStr, String valueSchemaStr, Properties props,
-                                                   boolean isCompressed, boolean chunkingEnabled) {
+                                                   boolean isCompressed, boolean chunkingEnabled, boolean incrementalPushEnabled) {
 
 
     ControllerClient controllerClient =
@@ -412,7 +432,8 @@ public class TestPushUtils {
             .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
             .setBatchGetLimit(2000)
             .setReadQuotaInCU(1000000000)
-            .setChunkingEnabled(chunkingEnabled));
+            .setChunkingEnabled(chunkingEnabled)
+            .setIncrementalPushEnabled(incrementalPushEnabled));
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 

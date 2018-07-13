@@ -92,6 +92,7 @@ public class TestVeniceParentHelixAdmin {
   private VeniceWriter veniceWriter;
   private VeniceParentHelixAdmin parentAdmin;
   private VeniceHelixResources resources;
+  private Store store;
   private ParentHelixOfflinePushAccessor accessor;
 
   @BeforeMethod
@@ -127,10 +128,10 @@ public class TestVeniceParentHelixAdmin {
     accessor = Mockito.mock(ParentHelixOfflinePushAccessor.class);
     resources = mockResources(config, clusterName);
 
-    Store mockStore = mock(Store.class);
-    doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(mockStore).getOffLinePushStrategy();
+    store = mock(Store.class);
+    doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
-    doReturn(mockStore).when(storeRepo).getStore(any());
+    doReturn(store).when(storeRepo).getStore(any());
     // Please override this default mock implementation if you need special store repo logic for your test
     doReturn(storeRepo).when(resources)
         .getMetadataRepository();
@@ -163,7 +164,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn(config).when(resources)
         .getConfig();
     doReturn(resources).when(internalAdmin)
-        .getVeniceHelixResource(clusterName);
+        .getVeniceHelixResource(any());
     return resources;
   }
 
@@ -719,8 +720,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false);
   }
 
   /**
@@ -742,8 +743,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false);
   }
 
   /**
@@ -935,29 +936,60 @@ public class TestVeniceParentHelixAdmin {
     kafkaBrokerWrapper.close();
   }
 
-  @Test
-  public void testGetExecutionStatus(){
+  //get a map of mock client that can return vairable execution status
+  Map<ExecutionStatus, ControllerClient> getMockJobStatusQueryClient() {
     Map<ExecutionStatus, ControllerClient> clientMap = new HashMap<>();
     for (ExecutionStatus status : ExecutionStatus.values()){
       JobStatusQueryResponse response = new JobStatusQueryResponse();
       response.setStatus(status.toString());
       ControllerClient statusClient = mock(ControllerClient.class);
-      doReturn(response).when(statusClient).queryJobStatusWithRetry(anyString(), anyInt());
+      doReturn(response).when(statusClient).queryJobStatusWithRetry(anyString(), anyInt(), any());
       clientMap.put(status, statusClient);
     }
+
+    return clientMap;
+  }
+
+  @Test
+  public void testGetIncrementalPushVersion() {
+   Version incrementalPushVersion = new Version("testStore", 1);
+   Assert.assertEquals(parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED), incrementalPushVersion);
+
+   try {
+     parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.STARTED);
+     Assert.fail();
+   } catch (VeniceException e) {}
+
+   try {
+     parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.ERROR);
+     Assert.fail();
+   } catch (VeniceException e) {}
+
+   doReturn(true).when(internalAdmin).isTopicTruncated(incrementalPushVersion.kafkaTopicName());
+   try {
+     parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED);
+     Assert.fail();
+   } catch (VeniceException e) {}
+  }
+
+  @Test
+  public void testGetExecutionStatus(){
+    Map<ExecutionStatus, ControllerClient> clientMap = getMockJobStatusQueryClient();
     TopicManager topicManager = mock(TopicManager.class);
 
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
     ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatusWithRetry(anyString(), anyInt());
+    doReturn(failResponse).when(failClient).queryJobStatusWithRetry(anyString(), anyInt(), any());
     clientMap.put(null, failClient);
 
     // Verify clients work as expected
     for (ExecutionStatus status : ExecutionStatus.values()) {
-      Assert.assertEquals(clientMap.get(status).queryJobStatusWithRetry("topic", 1).getStatus(), status.toString());
+      Assert.assertEquals(clientMap.get(status).queryJobStatusWithRetry("topic", 1, Optional.empty())
+          .getStatus(), status.toString());
     }
-    Assert.assertTrue(clientMap.get(null).queryJobStatusWithRetry("topic", 1).isError());
+    Assert.assertTrue(clientMap.get(null).queryJobStatusWithRetry("topic", 1, Optional.empty())
+        .isError());
 
     Map<String, ControllerClient> completeMap = new HashMap<>();
     completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
@@ -965,33 +997,33 @@ public class TestVeniceParentHelixAdmin {
     completeMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
     Set<String> topicList = new HashSet<>(
         Arrays.asList(
-            "topic1",
-            "topic2",
-            "topic3",
-            "topic4",
-            "topic5",
-            "topic6",
-            "topic7",
-            "topic8",
-            "topic9"
+            "topic1_v1",
+            "topic2_v1",
+            "topic3_v1",
+            "topic4_v1",
+            "topic5_v1",
+            "topic6_v1",
+            "topic7_v1",
+            "topic8_v1",
+            "topic9_v1"
         )
     );
     doReturn(topicList).when(topicManager).listTopics();
 
     Admin.OfflinePushStatusInfo
-        offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1", completeMap, topicManager);
+        offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic1_v1", completeMap, topicManager);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
-    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic1");
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic1_v1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2", completeMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic2_v1", completeMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    verify(internalAdmin, never()).truncateKafkaTopic("topic2");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic2_v1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -1000,48 +1032,48 @@ public class TestVeniceParentHelixAdmin {
     Map<String, ControllerClient> progressMap = new HashMap<>();
     progressMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
     progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic3", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic3_v1", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
-    verify(internalAdmin, never()).truncateKafkaTopic("topic3");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic3_v1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
     progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic4", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic4_v1", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
-    verify(internalAdmin, never()).truncateKafkaTopic("topic4");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic4_v1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic5", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic5_v1", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(internalAdmin, never()).truncateKafkaTopic("topic5");;
+    verify(internalAdmin, never()).truncateKafkaTopic("topic5_v1");;
     Assert.assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic6", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic6_v1", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(internalAdmin, never()).truncateKafkaTopic("topic6");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic6_v1");
     Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.END_OF_PUSH_RECEIVED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic7", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic7_v1", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(internalAdmin, never()).truncateKafkaTopic("topic7");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic7_v1");
     Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.END_OF_PUSH_RECEIVED.toString());
 
     progressMap.put("cluster13", clientMap.get(ExecutionStatus.COMPLETED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic8", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("IGNORED", "topic8_v1", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(internalAdmin, never()).truncateKafkaTopic("topic8");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic8_v1");
     Assert.assertEquals(extraInfo.get("cluster13"), ExecutionStatus.COMPLETED.toString());
 
     // 1 in 4 failures is ERROR
@@ -1050,10 +1082,10 @@ public class TestVeniceParentHelixAdmin {
     failCompleteMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("failcluster", clientMap.get(null));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8_v1", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic8");
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic8_v1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -1062,7 +1094,7 @@ public class TestVeniceParentHelixAdmin {
     // 3 in 6 failures is PROGRESS (so it keeps trying)
     failCompleteMap.put("failcluster2", clientMap.get(null));
     failCompleteMap.put("failcluster3", clientMap.get(null));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic9", failCompleteMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic9_v1", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     Assert.assertEquals(extraInfo.get("failcluster2"), ExecutionStatus.UNKNOWN.toString());
@@ -1070,30 +1102,30 @@ public class TestVeniceParentHelixAdmin {
 
     Map<String, ControllerClient> errorMap = new HashMap<>();
     errorMap.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic10", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic10_v1", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
-    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic10");
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic10_v1");
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertEquals(extraInfo.get("cluster-err"), ExecutionStatus.ERROR.toString());
 
     errorMap.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic11", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic11_v1", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
-    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic11");
+    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic11_v1");
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertEquals(extraInfo.get("cluster-complete"), ExecutionStatus.COMPLETED.toString());
 
     // Test whether errored topics will be truncated or not when 'maxErroredTopicNumToKeep' is > 0.
     parentAdmin.setMaxErroredTopicNumToKeep(2);
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic12", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic12_v1", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
-    verify(internalAdmin, never()).truncateKafkaTopic("topic12");
+    verify(internalAdmin, never()).truncateKafkaTopic("topic12_v1");
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     // Reset
     parentAdmin.setMaxErroredTopicNumToKeep(0);
 
     errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NEW));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic13", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic13_v1", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?  limitation of ordering used in aggregation code
     Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
@@ -1517,7 +1549,6 @@ public class TestVeniceParentHelixAdmin {
     verify(accessor, atLeastOnce()).createOfflinePushStatus(eq(clusterName), any());
     // Collect the old offline push status.
     verify(accessor).deleteOfflinePushStatus(clusterName, storeName+"_v0");
-
   }
 
   @Test

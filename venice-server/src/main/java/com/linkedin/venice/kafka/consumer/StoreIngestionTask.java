@@ -1070,6 +1070,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       case END_OF_INCREMENTAL_PUSH:
         // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
         CharSequence endVersion = ((EndOfIncrementalPush) controlMessage.controlMessageUnion).version;
+        //reset incremental push version
         partitionConsumptionState.setIncrementalPush(null);
         notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, endVersion.toString());
         break;
