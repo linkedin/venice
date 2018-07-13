@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -23,10 +24,10 @@ public class JobRoutesTest {
   private static final Logger LOGGER = Logger.getLogger(JobRoutesTest.class);
 
   @Test
-  public void testPopulateJobStatus() throws Exception {
+  public void testPopulateJobStatus() {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isMasterController(anyString());
-    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockAdmin).getOffLinePushStatus(anyString(), anyString());
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockAdmin).getOffLinePushStatus(anyString(), anyString(), any());
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     // 3 partitions, with latest offsets 100, 110, and 120
@@ -50,7 +51,7 @@ public class JobRoutesTest {
     String cluster = TestUtils.getUniqueString("cluster");
     String store = TestUtils.getUniqueString("store");
     int version = 5;
-    JobStatusQueryResponse response = JobRoutes.populateJobStatus(cluster, store, version, mockAdmin);
+    JobStatusQueryResponse response = JobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty());
 
     Long available = response.getMessagesAvailable();
     Long consumed = response.getMessagesConsumed();
@@ -63,8 +64,6 @@ public class JobRoutesTest {
     LOGGER.info("extraDetails: " + extraDetails);
     Assert.assertNotNull(extraDetails);
 
-
     Assert.assertTrue(consumed <= available, "Messages consumed: " + consumed + " must be less than or equal to available messages: " + available);
-
   }
 }

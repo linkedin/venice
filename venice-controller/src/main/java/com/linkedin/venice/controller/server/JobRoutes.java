@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 import spark.Route;
 
@@ -25,7 +26,9 @@ public class JobRoutes {
         String cluster = request.queryParams(CLUSTER);
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
-        responseObject = populateJobStatus(cluster, store, versionNumber, admin);
+        String incrementalPushVersion = AdminSparkServer.getOptionalParameterValue(request, INCREMENTAL_PUSH_VERSION);
+        responseObject = populateJobStatus(cluster, store, versionNumber, admin,
+            incrementalPushVersion == null ? Optional.empty() : Optional.of(incrementalPushVersion));
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
@@ -35,7 +38,8 @@ public class JobRoutes {
     };
   }
 
-  protected static JobStatusQueryResponse populateJobStatus(String cluster, String store, int versionNumber, Admin admin) {
+  protected static JobStatusQueryResponse populateJobStatus(String cluster, String store,
+      int versionNumber, Admin admin, Optional<String> incrementalPushVersion) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     Version version = new Version(store, versionNumber);
@@ -74,7 +78,7 @@ public class JobRoutes {
      * Job status query should happen after 'querying offset' since job status query could
      * delete current topic
      */
-    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(cluster, kafkaTopicName);
+    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(cluster, kafkaTopicName, incrementalPushVersion);
     responseObject.setStatus(offlineJobStatus.getExecutionStatus().toString());
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails().orElse(null));
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());

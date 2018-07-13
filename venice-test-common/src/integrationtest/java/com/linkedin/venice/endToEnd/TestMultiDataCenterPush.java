@@ -30,10 +30,12 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.hadoop.KafkaPushJob.INCREMENTAL_PUSH;
 
 
 public class TestMultiDataCenterPush {
   private static final Logger LOGGER = Logger.getLogger(TestMultiDataCenterPush.class);
+  private static final int TEST_TIMEOUT = 360 * Time.MS_PER_SECOND;
   private static final String CLUSTER_NAME = "multi-dc-test-cluster";
   private static final int NUMBER_OF_CHILD_DATACENTERS = 2;
   private final List<VeniceClusterWrapper> childClusters = new ArrayList<>(NUMBER_OF_CHILD_DATACENTERS);
@@ -81,7 +83,7 @@ public class TestMultiDataCenterPush {
     IOUtils.closeQuietly(parentKafka);
   }
 
-  @Test(timeOut = 360 * Time.MS_PER_SECOND)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testMultiDataCenterPush() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -156,5 +158,48 @@ public class TestMultiDataCenterPush {
     });
     Assert.assertTrue(childTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
     Assert.assertTrue(childTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testMultiDataCenterIncrementalPush() throws Exception {
+    //create a batch push job
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, storeName);
+    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    createStoreForJob(CLUSTER_NAME, keySchemaStr, valueSchemaStr, props, false, false, true);
+
+    KafkaPushJob job = new KafkaPushJob("Test batch push job", props);
+    job.run();
+
+    //create a incremental push job
+    writeSimpleAvroFileWithUserSchema2(inputDir);
+    props.setProperty(INCREMENTAL_PUSH, "true");
+    KafkaPushJob incrementalPushJob = new KafkaPushJob("Test incremental push job", props);
+    incrementalPushJob.run();
+
+    //validate the client can read data
+    for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
+      VeniceClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);
+      String routerUrl = veniceCluster.getRandomRouterURL();
+      try(AvroGenericStoreClient<String, Object> client =
+          ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        for (int i = 1; i <= 50; ++i) {
+          String expected = "test_name_" + i;
+          String actual = client.get(Integer.toString(i)).get().toString();
+          Assert.assertEquals(actual, expected);
+        }
+
+        for (int i = 51; i <= 150; ++i) {
+          String expected = "test_name_" + (i * 2);
+          String actual = client.get(Integer.toString(i)).get().toString();
+          Assert.assertEquals(actual, expected);
+        }
+      }
+    }
   }
 }

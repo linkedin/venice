@@ -102,6 +102,9 @@ public class Store {
   private final OfflinePushStrategy offLinePushStrategy;
   /**
    * List of non-retired versions.
+   * It's currently sorted and there is code run under the assumption that the last element in the list is the largest.
+   * check out {VeniceHelixAdmin#getIncrementalPushVersion}
+   * Please make it in mind if you want to change this logic
    */
   private List<Version> versions;
 
@@ -145,6 +148,8 @@ public class Store {
    * Whether cache in Router is enabled for batch get in the current store.
    */
   private boolean batchGetRouterCacheEnabled = false;
+
+
 
   /**
    * Batch get key number limit, and Venice will use cluster-level config if it is not positive.

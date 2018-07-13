@@ -602,7 +602,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
-      int numberOfPartitions, int replicationFactor, boolean offlinePush) {
+      int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
     List<String> existingTopicsForStore = existingTopicsForStore(storeName);
     List<Version> storeVersions = veniceHelixAdmin.getStore(clusterName, storeName).getVersions();
     for (String topic : existingTopicsForStore){
@@ -633,7 +633,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
-    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, false);
+    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, false, isIncrementalPush);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }
@@ -643,9 +643,37 @@ public class VeniceParentHelixAdmin implements Admin {
     return veniceHelixAdmin.getRealTimeTopic(clusterName, storeName);
   }
 
+  /**
+   * A couple of extra checks are needed in parent controller
+   * 1. check batch job statuses across child controllers. (We cannot only check the version status
+   * in parent controller since they are marked as STARTED)
+   * 2. check if the topic is marked to be truncated or not. (This could be removed if we don't
+   * preserve incremental push topic in parent Kafka anymore
+   */
   @Override
-  public synchronized Version getIncrementalPushTopic(String clusterName, String storeName) {
-    return veniceHelixAdmin.getIncrementalPushTopic(clusterName, storeName);
+  public synchronized Version getIncrementalPushVersion(String clusterName, String storeName) {
+    Version incrementalPushVersion = veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName);
+    String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
+    ExecutionStatus status = getOffLinePushStatus(clusterName, incrementalPushTopic, Optional.empty()).getExecutionStatus();
+
+    return getIncrementalPushVersion(incrementalPushVersion, status);
+  }
+
+  //This method is only for internal / test use case
+  Version getIncrementalPushVersion(Version incrementalPushVersion, ExecutionStatus status) {
+    String incrementalPushTopic = incrementalPushVersion.kafkaTopicName();
+    String storeName = incrementalPushVersion.getStoreName();
+
+    if (!status.isTerminal()) {
+      throw new VeniceException("Cannot start incremental push since batch push is on going." + " store: " + storeName);
+    }
+
+    if(status == ExecutionStatus.ERROR || veniceHelixAdmin.isTopicTruncated(incrementalPushTopic)) {
+      throw new VeniceException("Cannot start incremental push since previous batch push has failed. Please run another bash job."
+          + " store: " + storeName);
+    }
+
+    return incrementalPushVersion;
   }
 
   @Override
@@ -1071,8 +1099,19 @@ public class VeniceParentHelixAdmin implements Admin {
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager());
   }
 
+  @Override
+  public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion) {
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager(), Optional.empty());
+  }
+
   protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
-      Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
+    Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, topicManager, Optional.empty());
+  }
+
+  protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
+      Map<String, ControllerClient> controllerClients, TopicManager topicManager, Optional<String> incrementalPushVersion) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW; // This status is not used for anything... Might make sense to remove it, but anyhow.
     Optional<String> currentReturnStatusDetails = Optional.empty();
@@ -1082,7 +1121,7 @@ public class VeniceParentHelixAdmin implements Admin {
     int failCount = 0;
     for (String cluster : childClusters){
       ControllerClient controllerClient = controllerClients.get(cluster);
-      JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(kafkaTopic, 2); // TODO: Make retry count configurable
+      JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(kafkaTopic, 2, incrementalPushVersion); // TODO: Make retry count configurable
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
@@ -1109,14 +1148,17 @@ public class VeniceParentHelixAdmin implements Admin {
     Ordering<ExecutionStatus> priorityOrder = Ordering.explicit(Arrays.asList(
         ExecutionStatus.PROGRESS,
         ExecutionStatus.STARTED,
+        ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
         ExecutionStatus.NEW,
         ExecutionStatus.NOT_CREATED,
         ExecutionStatus.END_OF_PUSH_RECEIVED,
         ExecutionStatus.ERROR,
+        ExecutionStatus.WARNING,
         ExecutionStatus.COMPLETED,
+        ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
         ExecutionStatus.ARCHIVED));
     Collections.sort(statuses, priorityOrder::compare);
-    if (statuses.size()>0){
+    if (statuses.size() > 0){
       currentReturnStatus = statuses.get(0);
     }
 
@@ -1137,16 +1179,22 @@ public class VeniceParentHelixAdmin implements Admin {
       // TODO: Set parent controller's version status based on currentReturnStatus
       // COMPLETED -> ONLINE
       // ERROR -> ERROR
+      //TODO: remove this if statement since it was only for debugging purpose
       if (maxErroredTopicNumToKeep > 0 && currentReturnStatus.equals(ExecutionStatus.ERROR)) {
         currentReturnStatusDetails = Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic won't be truncated");
         logger.info("The errored kafka topic: " + kafkaTopic + " won't be truncated since it will be used to investigate"
             + "some Kafka related issue");
       } else {
-        logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
-        truncateKafkaTopic(kafkaTopic);
-        currentReturnStatusDetails = Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
-
-      }
+        //truncate the topic if this is not an incremental push enabled store or this is a failed batch push
+        if ((!incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR) ||
+            !veniceHelixAdmin.getVeniceHelixResource(clusterName).
+            getMetadataRepository().
+            getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic)).isIncrementalPushEnabled()) {
+            logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
+            truncateKafkaTopic(kafkaTopic);
+            currentReturnStatusDetails = Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
+          }
+        }
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo, currentReturnStatusDetails, extraDetails);

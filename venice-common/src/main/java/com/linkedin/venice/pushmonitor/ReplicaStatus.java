@@ -41,6 +41,11 @@ public class ReplicaStatus {
     }
   }
 
+  public void updateStatus(ExecutionStatus newStatus, String incrementalPushVersion) {
+    setIncrementalPushVersion(incrementalPushVersion);
+    updateStatus(newStatus);
+  }
+
   /**
    * Judge whether current status could be transferred to new status. Note, because each status could be transferred to
    * START again in case that replica is re-allocated to the same server again after it was moved out.
@@ -61,23 +66,26 @@ public class ReplicaStatus {
     switch (currentStatus) {
       case STARTED:
       case PROGRESS:
-        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, WARNING, ERROR, COMPLETED);
+        break;
+      case WARNING:
+        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case ERROR:
         isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case COMPLETED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case END_OF_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, WARNING, ERROR, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case START_OF_BUFFER_REPLAY_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, PROGRESS, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, PROGRESS, COMPLETED);
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, WARNING, ERROR, COMPLETED);
         break;
       default:
         isValid = false;

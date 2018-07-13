@@ -30,7 +30,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.generic.IndexedRecord;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
@@ -155,24 +154,52 @@ public abstract class TestBatch {
     }, true);
   }
 
-  protected void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
-    testBatchStore(inputFileWriter, extraProps, dataValidator, false);
+  @Test
+  public void testIncrementalPush() throws Exception {
+    String storeName = testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+    }, (avroClient, vsonClient) -> {
+      for (int i = 1; i <= 100; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }, false, false, null, true);
+
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+      properties.setProperty(INCREMENTAL_PUSH, "true");
+    }, (avroClient, vsonClient) -> {
+      for (int i = 51; i <= 150; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+      }
+    }, false, false, storeName, true);
   }
 
-  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed) throws Exception {
-    testBatchStore(inputFileWriter, extraProps, dataValidator, isCompressed, false);
+  protected String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, false);
   }
 
-  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed, boolean chunkingEnabled) throws Exception {
+  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, isCompressed, false, null, false);
+  }
+
+  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      boolean isCompressed, boolean chunkingEnabled, String existingStore, boolean incrementalPushEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
-    String storeName = TestUtils.getUniqueString("store");
+    String storeName = Utils.isNullOrEmpty(existingStore) ? TestUtils.getUniqueString("store") : existingStore;
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     extraProps.accept(props);
 
-    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, isCompressed, chunkingEnabled);
+    if (Utils.isNullOrEmpty(existingStore)) {
+      createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
+          isCompressed, chunkingEnabled, incrementalPushEnabled);
+    }
 
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
     job.run();
@@ -183,6 +210,8 @@ public abstract class TestBatch {
         .setVeniceURL(veniceCluster.getRandomRouterURL()));
 
     dataValidator.validate(avroClient, vsonClient);
+
+    return storeName;
   }
 
   interface InputFileWriter {
@@ -267,7 +296,9 @@ public abstract class TestBatch {
           }
         },
         false,
-        isChunkingAllowed);
+        isChunkingAllowed,
+        null,
+        false);
   }
 
   @Test(timeOut =  TEST_TIMEOUT)
@@ -405,6 +436,8 @@ public abstract class TestBatch {
           }).get();
         },
         false,
+        false,
+        null,
         false);
   }
 

@@ -75,7 +75,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int maxRequestSize;
 
   /**
-   * Time interval for offset check of source topic in Hybrid Store lag measurement.
+   * Time interval for offset check of topic in Hybrid Store lag measurement.
    */
   private final int topicOffsetCheckIntervalMs;
 

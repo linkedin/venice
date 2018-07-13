@@ -220,14 +220,20 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
    * Get the status for the given offline push E.g. STARTED, COMPLETED.
    */
   public ExecutionStatus getOfflinePushStatus(String topic) {
-    return getOfflinePushStatusAndDetails(topic).getFirst();
+    return getOfflinePushStatusAndDetails(topic, Optional.empty()).getFirst();
   }
 
-  public Pair<ExecutionStatus, Optional<String>> getOfflinePushStatusAndDetails(String topic) {
+  public ExecutionStatus getOfflinePushStatus(String topic, Optional<String> incrementalPushVersion) {
+    return getOfflinePushStatusAndDetails(topic, incrementalPushVersion).getFirst();
+  }
+
+  public Pair<ExecutionStatus, Optional<String>> getOfflinePushStatusAndDetails(String topic, Optional<String> incrementalPushVersion) {
     synchronized (lock) {
       if (topicToPushMap.containsKey(topic)) {
         OfflinePushStatus offlinePushStatus = topicToPushMap.get(topic);
-        return new Pair<>(offlinePushStatus.getCurrentStatus(), offlinePushStatus.getOptionalStatusDetails());
+        return incrementalPushVersion.isPresent() ?
+            new Pair<>(offlinePushStatus.checkIncrementalPushStatus(incrementalPushVersion.get()), Optional.empty()) :
+            new Pair<>(offlinePushStatus.getCurrentStatus(), offlinePushStatus.getOptionalStatusDetails());
       } else {
         return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Kafka topic not detected yet."));
       }

@@ -25,11 +25,16 @@ public class PartitionStatus {
   }
 
   public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus) {
+    updateReplicaStatus(instanceId, newStatus, "");
+  }
+
+  public void updateReplicaStatus(String instanceId, ExecutionStatus newStatus, String incrementalPushVersion) {
     ReplicaStatus replicaStatus = replicaStatusMap.get(instanceId);
     if (replicaStatus == null) {
       replicaStatus = new ReplicaStatus(instanceId);
       replicaStatusMap.put(instanceId, replicaStatus);
     }
+    replicaStatus.setIncrementalPushVersion(incrementalPushVersion);
     replicaStatus.updateStatus(newStatus);
   }
 

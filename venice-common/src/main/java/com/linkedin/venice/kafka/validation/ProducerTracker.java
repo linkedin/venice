@@ -241,7 +241,7 @@ public class ProducerTracker {
                                           KafkaMessageEnvelope messageEnvelope,
                                           Segment segment,
                                           boolean endOfPushReceived) {
-    handleUnregisteredProducer(scenario, messageEnvelope, segment, endOfPushReceived, Optional.empty());
+      handleUnregisteredProducer(scenario, messageEnvelope, segment, endOfPushReceived, Optional.empty());
   }
 
   private void handleUnregisteredProducer(String scenario,
