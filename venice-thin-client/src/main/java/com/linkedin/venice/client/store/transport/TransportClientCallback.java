@@ -24,35 +24,17 @@ public class TransportClientCallback {
 
   public void completeFuture(int statusCode,
                              byte[] body,
-                             int schemaId) {
-    String msg;
-
+      int schemaId) {
     if (statusCode == HttpStatus.SC_OK) {
       valueFuture.complete(new TransportClientResponse(schemaId, body));
+    } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
+      valueFuture.complete(null);
     } else {
-      switch (statusCode) {
-        case HttpStatus.SC_NOT_FOUND:
-          valueFuture.complete(null);
-          break;
-        case HttpStatus.SC_INTERNAL_SERVER_ERROR:
-        case HttpStatus.SC_SERVICE_UNAVAILABLE:
-          msg = new String(body, StandardCharsets.UTF_8);
-          if (msg != null) {
-            valueFuture.completeExceptionally(new VeniceClientHttpException(msg, statusCode));
-          } else {
-            valueFuture.completeExceptionally(new VeniceClientHttpException(statusCode));
-          }
-          break;
-        case HttpStatus.SC_BAD_REQUEST:
-        default:
-          msg = new String(body, StandardCharsets.UTF_8);
-          if (msg != null) {
-            valueFuture.completeExceptionally(new VeniceClientHttpException(msg, statusCode));
-          } else {
-            valueFuture.completeExceptionally(
-                new VeniceClientHttpException("Router responds with status code: " + statusCode, statusCode));
-          }
-      }
+      /**
+       * Only convert body from `byte[]` to `String` when necessary since it is quite expensive.
+       */
+      String msg = new String(body, StandardCharsets.UTF_8);
+      valueFuture.completeExceptionally(new VeniceClientHttpException(msg, statusCode));
     }
   }
 }
