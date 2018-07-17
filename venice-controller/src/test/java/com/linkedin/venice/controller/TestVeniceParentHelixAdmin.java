@@ -724,6 +724,29 @@ public class TestVeniceParentHelixAdmin {
   }
 
   /**
+   * Idempotent increment version should work because existing topic is truncated
+   */
+  @Test
+  public void testIdempotentIncrementVersionWhenPreviousTopicsExistButTruncated() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String previousKafkaTopic = storeName + "_v1";
+    doReturn(new HashSet<>(Arrays.asList(previousKafkaTopic)))
+        .when(topicManager)
+        .listTopics();
+    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Version version = new Version(storeName, 1, pushJobId + "_different");
+    store.addVersion(version);
+    doReturn(true).when(internalAdmin).isTopicTruncated(previousKafkaTopic);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
+    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false);
+  }
+
+  /**
    * Idempotent increment version should NOT work because existing topic uses different push ID than the request
    */
   @Test

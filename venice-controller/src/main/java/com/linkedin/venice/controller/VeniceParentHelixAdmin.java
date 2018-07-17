@@ -600,6 +600,13 @@ public class VeniceParentHelixAdmin implements Admin {
     List<String> existingTopicsForStore = existingTopicsForStore(storeName);
     List<Version> storeVersions = veniceHelixAdmin.getStore(clusterName, storeName).getVersions();
     for (String topic : existingTopicsForStore){
+      /**
+       * If the topic is truncated, no need to check the actual job status.
+       */
+      if (isTopicTruncated(topic)) {
+        logger.info("Skip truncated topic: " + topic);
+        continue;
+      }
       OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
       if (offlineJobStatus.getExecutionStatus().isTerminal()) {
         logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
