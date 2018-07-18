@@ -3,7 +3,9 @@ package com.linkedin.venice.server;
 import com.google.common.collect.ImmutableList;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.config.VeniceClusterConfig;
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
@@ -45,6 +47,7 @@ public class VeniceServer {
   private StorageService storageService;
   private BdbStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
+  private LeakedResourceCleaner leakedResourceCleaner;
 
   private MetricsRepository metricsRepository;
 
@@ -145,6 +148,17 @@ public class VeniceServer {
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
     // that helix is disconnected but consumption service try to send message by helix.
     services.add(kafkaStoreIngestionService);
+
+    //
+    /**
+     * Create and add storage resource clean up service;
+     * the cleanup service can be extended to clean up any resources, but for now, we only use it to do BDB clean up.
+     */
+    VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
+    if (veniceServerConfig.getBdbServerConfig().isBdbDroppedDbCleanUpEnabled()) {
+      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStoreRepository(), veniceServerConfig.getStorageLeakedResourceCleanUpIntervalInMS());
+      services.add(leakedResourceCleaner);
+    }
 
 
     /**

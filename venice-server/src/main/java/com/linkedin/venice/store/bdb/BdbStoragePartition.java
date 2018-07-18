@@ -35,6 +35,8 @@ import static com.linkedin.venice.meta.PersistenceType.*;
 public class BdbStoragePartition extends AbstractStoragePartition {
   private static final Logger logger = Logger.getLogger(BdbStoragePartition.class);
   private static final String DATABASE_NAME_SEPARATOR = "-";
+  public static final String DELETE_FLAG_SUFFIX = "_dropped";
+  public static final String DELETE_TIMESTAMP_SEPARATOR = "_";
 
   private final String storeName;
   private final Environment environment;
@@ -47,7 +49,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   private final AtomicBoolean isOpen;
   private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
-  private final boolean checkpointAfterDropping;
+  private final boolean isBdbDroppedDbCleanUpEnabled;
 
   public BdbStoragePartition(StoragePartitionConfig storagePartitionConfig, Environment environment, BdbServerConfig bdbServerConfig) {
     super(storagePartitionConfig.getPartitionId());
@@ -71,7 +73,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       this.databaseConfig.setTransactional(true);
       logger.info("Opening database for store: " + getBdbDatabaseName() + " in transactional mode");
     }
-    this.checkpointAfterDropping = bdbServerConfig.isBdbCheckpointAfterDropping();
+    this.isBdbDroppedDbCleanUpEnabled = bdbServerConfig.isBdbDroppedDbCleanUpEnabled();
 
     this.database = this.environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);
     // Sync here to make sure the new database will be persisted.
@@ -263,13 +265,14 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   public synchronized void drop() {
     BDBOperation dropDB =() -> environment.removeDatabase(null, getBdbDatabaseName());
     performOperation("DROP" , dropDB );
-    if (checkpointAfterDropping) {
-      // Log file deletion only occurs after a checkpoint
-      environment.cleanLog();
-      CheckpointConfig ckptConfig = new CheckpointConfig();
-      ckptConfig.setMinimizeRecoveryTime(true);
-      ckptConfig.setForce(true);
-      environment.checkpoint(ckptConfig);
+
+    // Create a database to log this deletion operation only when the config for bdb.dropped.db.clean.up is true
+    if (isBdbDroppedDbCleanUpEnabled) {
+      DatabaseConfig tmpDatabaseConfig = new DatabaseConfig();
+      tmpDatabaseConfig.setAllowCreate(true);
+      Database deleteFlag = environment.openDatabase(null,
+          getBdbDatabaseName() + DELETE_TIMESTAMP_SEPARATOR + System.nanoTime() + DELETE_FLAG_SUFFIX, tmpDatabaseConfig);
+      deleteFlag.close();
     }
   }
 

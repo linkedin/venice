@@ -43,7 +43,7 @@ public class BdbServerConfig {
   public static final String BDB_RECOVERY_FORCE_CHECKPOINT = "bdb.recovery.force.checkpoint";
   public static final String BDB_RAW_PROPERTY_STRING = "bdb.raw.property.string";
   public static final String BDB_DATABASE_KEY_PREFIXING = "bdb.database.key.prefixing";
-  public static final String BDB_CHECKPOINT_AFTER_DROPPING = "bdb.checkpoint.after.dropping";
+  public static final String BDB_DROPPED_DB_CLEAN_UP_ENABLED = "bdb.dropped.db.clean.up.enabled";
 
   // bdb config parameters
   private long bdbCacheSize;
@@ -83,7 +83,7 @@ public class BdbServerConfig {
   private boolean bdbRecoveryForceCheckpoint;
   private boolean bdbDatabaseKeyPrefixing;
   private String bdbRawPropertyString;
-  private boolean bdbCheckpointAfterDropping;
+  private boolean bdbDroppedDbCleanUpEnabled;
 
   public BdbServerConfig(VeniceProperties props) {
     this.bdbCacheSize = props.getSizeInBytes(BDB_CACHE_SIZE, 200 * 1024 * 1024);
@@ -97,7 +97,8 @@ public class BdbServerConfig {
     this.bdbCheckpointMs = props.getLong(BDB_CHECKPOINT_INTERVAL_MS, 30 * Time.MS_PER_SECOND);
     this.bdbOneEnvPerStore = props.getBoolean(BDB_ONE_ENV_PER_STORE, true);
     this.bdbCleanerMinFileUtilization = props.getInt(BDB_CLEANER_MIN_FILE_UTILIZATION, 0);
-    this.bdbCleanerMinUtilization = props.getInt(BDB_CLEANER_MINUTILIZATION, 50);
+    // Increase the minimum utilization from 50% to 70% to improve disk utilization
+    this.bdbCleanerMinUtilization = props.getInt(BDB_CLEANER_MINUTILIZATION, 70);
     this.bdbCleanerThreads = props.getInt(BDB_CLEANER_THREADS, 1);
     // by default, wake up the cleaner everytime we write log file size *
     // utilization% bytes. So, by default 30MB
@@ -127,7 +128,7 @@ public class BdbServerConfig {
     this.bdbRecoveryForceCheckpoint = props.getBoolean(BDB_RECOVERY_FORCE_CHECKPOINT, false);
     this.bdbDatabaseKeyPrefixing = props.getBoolean(BDB_DATABASE_KEY_PREFIXING, false);
     this.bdbRawPropertyString = props.getString(BDB_RAW_PROPERTY_STRING, () -> null);
-    this.bdbCheckpointAfterDropping = props.getBoolean(BDB_CHECKPOINT_AFTER_DROPPING, false);
+    this.bdbDroppedDbCleanUpEnabled = props.getBoolean(BDB_DROPPED_DB_CLEAN_UP_ENABLED, true);
   }
 
   public long getBdbCacheSize() {
@@ -794,9 +795,11 @@ public class BdbServerConfig {
    * With checkpoint enforcement, log files will be cleaned up after dropping a BDB storage partition.
    * @return
    */
-  public boolean isBdbCheckpointAfterDropping() { return bdbCheckpointAfterDropping; }
+  public boolean isBdbDroppedDbCleanUpEnabled() {
+    return bdbDroppedDbCleanUpEnabled;
+  }
 
-  public void setBdbCheckpointAfterDropping(boolean bdbCheckpointAfterDropping) {
-    this.bdbCheckpointAfterDropping = bdbCheckpointAfterDropping;
+  public void setBdbDroppedDbCleanUpEnabled(boolean bdbDroppedDbCleanUpEnabled) {
+    this.bdbDroppedDbCleanUpEnabled = bdbDroppedDbCleanUpEnabled;
   }
 }
