@@ -1,5 +1,6 @@
 package com.linkedin.venice.store.bdb;
 
+import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -9,8 +10,10 @@ import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.RandomGenUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.sleepycat.je.Environment;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -79,6 +82,10 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
   @Test
   public void testDropPartition() {
+    // in this test case, wake up the cleaner thread every 1 second
+    LeakedResourceCleaner cleaner = new LeakedResourceCleaner(service.getStoreRepository(), 1000);
+    cleaner.setCheckpointDelayInMinutes(-1L);
+    cleaner.start();
     AbstractStorageEngine storageEngine = service.getStoreRepository().getLocalStorageEngine(STORE_NAME);
 
     // put roughly 100MB data in partition 0
@@ -96,30 +103,42 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     storageEngine.addStoragePartition(3);
     putRandomData(randomRecordNum, 3);
 
+    // add one partition and put roughly 100MB data in it
+    storageEngine.addStoragePartition(4);
+    putRandomData(randomRecordNum, 4);
+
     BdbSpaceUtilizationSummary utilizationSummary = null;
-    long totalSpaceUsedBeforeDropping = 0;
+    final long totalSpaceUsedBeforeDropping;
     if (storageEngine instanceof BdbStorageEngine) {
       Environment env = ((BdbStorageEngine)storageEngine).getBdbEnvironment();
       utilizationSummary = new BdbSpaceUtilizationSummary(env);
       totalSpaceUsedBeforeDropping = utilizationSummary.getTotalSpaceUsed();
+    } else {
+      totalSpaceUsedBeforeDropping = 0;
     }
 
     service.dropStorePartition(storeConfig, 1);
     service.dropStorePartition(storeConfig, 2);
     service.dropStorePartition(storeConfig, 3);
+    service.dropStorePartition(storeConfig, 4);
 
-    long totalSpaceUsedAfterDropping = 0;
-    if (storageEngine instanceof BdbStorageEngine) {
-      Environment env = ((BdbStorageEngine)storageEngine).getBdbEnvironment();
-      utilizationSummary = new BdbSpaceUtilizationSummary(env);
-      totalSpaceUsedAfterDropping = utilizationSummary.getTotalSpaceUsed();
-    }
+    // wait a few seconds for the cleaner thread to clean up leaked resource
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
+      long totalSpaceUsedAfterDropping = 0;
+      if (storageEngine instanceof BdbStorageEngine) {
+        Environment env = ((BdbStorageEngine)storageEngine).getBdbEnvironment();
+        BdbSpaceUtilizationSummary utilizationSummaryAfterCleanUp = new BdbSpaceUtilizationSummary(env);
+        totalSpaceUsedAfterDropping = utilizationSummaryAfterCleanUp.getTotalSpaceUsed();
 
-    /**
-     * After dropping 3 BDB store partition, more than half of the disk space should be released.
-     * Notice that this assertion could fail if default setting of checkpoint enforcement is false.
-     */
-    Assert.assertTrue(totalSpaceUsedAfterDropping < totalSpaceUsedBeforeDropping / 2);
+        /**
+         * After dropping 4 BDB store partition, more than half of the disk space should be released.
+         * Notice that this assertion could fail if default setting of checkpoint enforcement is false.
+         */
+        Assert.assertTrue(totalSpaceUsedAfterDropping < totalSpaceUsedBeforeDropping / 2);
+      }
+    });
+
+    cleaner.stopInner();
   }
 
   @Test

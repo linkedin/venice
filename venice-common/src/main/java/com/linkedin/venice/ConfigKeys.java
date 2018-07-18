@@ -172,6 +172,13 @@ public class ConfigKeys {
    */
   public static final String SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS = "server.partition.graceful.drop.time.in.seconds";
 
+  /**
+   * When a BDB partition is dropped, the disk space is not released immediately; a checkpoint is needed to release the disk space;
+   * so a cleaner thread is spawned for the entire storage service; the cleaner thread will wake up every few hours and check
+   * whether it needs to do a checkpoint; if so, clean up each store sequentially.
+   */
+  public static final String SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES = "server.leaked.resource.clean.up.interval.in.minutes";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

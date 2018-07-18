@@ -104,6 +104,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int partitionGracefulDropDelaySeconds;
 
+  private final long storageLeakedResourceCleanUpIntervalInMS;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -127,6 +129,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.90);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
+    storageLeakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 6 * 60)); // 6 hours by default
   }
 
   public int getListenerPort() {
@@ -216,5 +219,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getPartitionGracefulDropDelaySeconds() {
     return partitionGracefulDropDelaySeconds;
+  }
+
+  public long getStorageLeakedResourceCleanUpIntervalInMS() {
+    return storageLeakedResourceCleanUpIntervalInMS;
   }
 }
