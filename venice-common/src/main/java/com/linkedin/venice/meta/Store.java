@@ -157,6 +157,11 @@ public class Store {
    */
   private int numVersionsToPreserve = NUM_VERSION_PRESERVE_NOT_SET;
 
+  /**
+   * a flag to see if the store supports incremental push or not
+   */
+  private boolean incrementalPushEnabled = false;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -380,6 +385,14 @@ public class Store {
     this.batchGetLimit = batchGetLimit;
   }
 
+  public boolean isIncrementalPushEnabled() {
+    return incrementalPushEnabled;
+  }
+
+  public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
+    this.incrementalPushEnabled = incrementalPushEnabled;
+  }
+
   /**
    * Add a version into store.
    *
@@ -595,6 +608,7 @@ public class Store {
     result = 31 * result + (batchGetRouterCacheEnabled ? 1 : 0);
     result = 31 * result + batchGetLimit;
     result = 31 * result + numVersionsToPreserve;
+    result = 31 * result + (incrementalPushEnabled ? 1 : 0);
     return result;
   }
 
@@ -627,6 +641,7 @@ public class Store {
     if (batchGetRouterCacheEnabled != store.batchGetRouterCacheEnabled) return false;
     if (batchGetLimit != store.batchGetLimit) return false;
     if (numVersionsToPreserve != store.numVersionsToPreserve) return false;
+    if (incrementalPushEnabled != store.incrementalPushEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -662,6 +677,7 @@ public class Store {
     clonedStore.setBatchGetRouterCacheEnabled(batchGetRouterCacheEnabled);
     clonedStore.setBatchGetLimit(batchGetLimit);
     clonedStore.setNumVersionsToPreserve(numVersionsToPreserve);
+    clonedStore.setIncrementalPushEnabled(incrementalPushEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

@@ -22,6 +22,7 @@ public class StoreInfo {
     storeInfo.setReadQuotaInCU(store.getReadQuotaInCU());
     storeInfo.setVersions(store.getVersions());
     storeInfo.setAccessControlled(store.isAccessControlled());
+    storeInfo.setIncrementalPushEnabled(store.isIncrementalPushEnabled());
     if (store.isHybrid()) {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
@@ -117,6 +118,11 @@ public class StoreInfo {
    * version number will not trigger new OfflinePushJobs.
    */
   private int largestUsedVersionNumber;
+
+  /**
+   * a flag to see if the store supports incremental push or not
+   */
+  private boolean incrementalPushEnabled;
 
   public StoreInfo() {
   }
@@ -292,5 +298,13 @@ public class StoreInfo {
 
   public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
     this.largestUsedVersionNumber = largestUsedVersionNumber;
+  }
+
+  public boolean isIncrementalPushEnabled() {
+    return incrementalPushEnabled;
+  }
+
+  public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
+    this.incrementalPushEnabled = incrementalPushEnabled;
   }
 }

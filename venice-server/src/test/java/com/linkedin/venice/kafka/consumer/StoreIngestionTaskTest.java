@@ -281,10 +281,20 @@ public class StoreIngestionTaskTest {
   }
 
   private void runTest(PollStrategy pollStrategy,
+      Set<Integer> partitions,
+      Runnable beforeStartingConsumption,
+      Runnable assertions,
+      Optional<HybridStoreConfig> hybridStoreConfig,
+      Optional<DiskUsage> diskUsageForTest) throws Exception{
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest);
+  }
+
+  private void runTest(PollStrategy pollStrategy,
                        Set<Integer> partitions,
                        Runnable beforeStartingConsumption,
                        Runnable assertions,
                        Optional<HybridStoreConfig> hybridStoreConfig,
+                       boolean incrementalPushEnabled,
                        Optional<DiskUsage> diskUsageForTest) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
@@ -314,7 +324,7 @@ public class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest =
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
             mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
-            mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0,
+            mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, incrementalPushEnabled,0,
             READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode, diskUsage);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
 
@@ -1182,26 +1192,27 @@ public class StoreIngestionTaskTest {
 
     String version = String.valueOf(System.currentTimeMillis());
     veniceWriter.broadcastStartOfIncrementalPush(version, new HashMap<>());
-    //veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     long fooNewOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfIncrementalPush(version, new HashMap<>());
     //Records order are: StartOfSeg, StartOfPush, data, EndOfPush, EndOfSeg, StartOfSeg, StartOfIncrementalPush
     //data, EndOfIncrementalPush
 
-    runTest(getSet(PARTITION_FOO), () -> {
-      //sync the offset when receiving EndOfPush
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
-          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
-      //sync the offset when receiving StartOfIncrementalPush
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
-          .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true, version)));
+    runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), () -> {}, () -> {
+      waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+        //sync the offset when receiving EndOfPush
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
+        //sync the offset when receiving StartOfIncrementalPush
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true, version)));
 
-      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+        verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
 
-      //since notifier reporting happens before offset update, it actually reports previous offsets
-      verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
-      verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
-    });
+        //since notifier reporting happens before offset update, it actually reports previous offsets
+        verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
+        verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
+      });
+    }, Optional.empty(), Optional.empty());
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{

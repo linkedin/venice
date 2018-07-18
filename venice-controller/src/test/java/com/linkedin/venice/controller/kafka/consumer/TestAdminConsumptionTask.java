@@ -64,6 +64,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import javax.swing.text.html.Option;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
@@ -681,6 +682,8 @@ public class TestAdminConsumptionTask {
     setStore.enableReads = enableReads;
     setStore.enableWrites = enableWrites;
     setStore.accessControlled = accessControlled;
+    setStore.incrementalPushEnabled = true;
+
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
@@ -705,7 +708,7 @@ public class TestAdminConsumptionTask {
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(), any(), any(),
-            eq(Optional.of(123L)), eq(Optional.of(1000L)), eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any());
+            eq(Optional.of(123L)), eq(Optional.of(1000L)), eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)));
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {

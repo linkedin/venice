@@ -579,7 +579,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       Optional.of(message.singleGetRouterCacheEnabled),
                       Optional.of(message.batchGetRouterCacheEnabled),
                       Optional.of(message.batchGetLimit),
-                      Optional.of(message.numVersionsToPreserve)
+                      Optional.of(message.numVersionsToPreserve),
+                      Optional.of(message.incrementalPushEnabled)
         );
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);

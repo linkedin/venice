@@ -1112,6 +1112,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setIncrementalPushEnabled(String clusterName, String storeName,
+        boolean incrementalPushEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            if (incrementalPushEnabled && store.isHybrid()) {
+                throw new VeniceException("hybrid store doesn't support incremental push");
+            }
+            store.setIncrementalPushEnabled(incrementalPushEnabled);
+
+            return  store;
+        });
+    }
+
     public synchronized  void setSingleGetRouterCacheEnabled(String clusterName, String storeName,
         boolean singleGetRouterCacheEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -1148,14 +1160,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * This function will check whether the store update will cause the case that a hybrid store will have router-cache enabled
+     * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
      *
      * For now, router cache shouldn't be enabled for a hybrid store.
      * TODO: need to remove this check when the proper fix (cross-colo race condition) is implemented.
      *
-     * Right now, this function doesn't check whether the hybrid config and router-cache flag will be updated at the same time:
-     * 1. Current store originally is a hybrid store;
+     * Right now, this function doesn't check whether the hybrid/incremental push config and router-cache flag will be updated at the same time:
+     * 1. Current store originally is a hybrid/incremental push store;
      * 2. The update operation will turn this store to be a batch-only store, and enable router-cache at the same time;
      * The reason not to check the above scenario is that the hybrid config/router-cache update is not atomic, so admin should
      * update the store to be batch-only store first and turn on the router-cache feature after.
@@ -1163,20 +1175,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * BTW, it seems no way to update a hybrid store to be a batch-only store.
      *
      * @param store
+     * @param newIncrementalPushConfig
      * @param newHybridStoreConfig
      * @param newSingleGetRouterCacheEnabled
      * @param newBatchGetRouterCacheEnabled
      */
     protected void checkWhetherStoreWillHaveConflictConfigForCaching(Store store,
+        Optional<Boolean> newIncrementalPushConfig,
         Optional<HybridStoreConfig> newHybridStoreConfig,
         Optional<Boolean> newSingleGetRouterCacheEnabled,
         Optional<Boolean> newBatchGetRouterCacheEnabled) {
         String storeName = store.getName();
-        if (store.isHybrid() && (newSingleGetRouterCacheEnabled.orElse(false) || newBatchGetRouterCacheEnabled.orElse(false))) {
-            throw new VeniceException("Router cache couldn't be enabled for store: " + storeName + " since it is a hybrid store");
+        if ((store.isHybrid() || store.isIncrementalPushEnabled()) && (newSingleGetRouterCacheEnabled.orElse(false) || newBatchGetRouterCacheEnabled.orElse(false))) {
+            throw new VeniceException("Router cache couldn't be enabled for store: " + storeName + " since it is a hybrid/incremental push store");
         }
-        if ((store.isSingleGetRouterCacheEnabled() || store.isBatchGetRouterCacheEnabled()) && newHybridStoreConfig.isPresent()) {
-            throw new VeniceException("Hybrid couldn't be enabled for store: " + storeName + " since it enables router-cache");
+        if ((store.isSingleGetRouterCacheEnabled() || store.isBatchGetRouterCacheEnabled()) && (newHybridStoreConfig.isPresent() || newIncrementalPushConfig.orElse(false))) {
+            throw new VeniceException("Hybrid/incremental push couldn't be enabled for store: " + storeName + " since it enables router-cache");
         }
     }
 
@@ -1200,7 +1214,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> singleGetRouterCacheEnabled,
         Optional<Boolean> batchGetRouterCacheEnabled,
         Optional<Integer> batchGetLimit,
-        Optional<Integer> numVersionsToPreserve) {
+        Optional<Integer> numVersionsToPreserve,
+        Optional<Boolean> incrementalPushEnabled) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
@@ -1212,7 +1227,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
 
-        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, hybridStoreConfig, singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
+        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, incrementalPushEnabled,hybridStoreConfig, singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
 
         try {
             if (owner.isPresent()) {
@@ -1251,6 +1266,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // To fix the final variable problem in the lambda expression
                 final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
                 storeMetadataUpdate(clusterName, storeName, store -> {
+                    if (store.isIncrementalPushEnabled()) {
+                        throw new VeniceException("incremental push store could not support hybrid");
+                    }
                     store.setHybridStoreConfig(finalHybridConfig);
                     return store;
                 });
@@ -1282,6 +1300,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (numVersionsToPreserve.isPresent()) {
                 setNumVersionsToPreserve(clusterName, storeName, numVersionsToPreserve.get());
+            }
+
+            if (incrementalPushEnabled.isPresent()) {
+                setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
             }
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
