@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
 import org.apache.http.HttpStatus;
 
 import java.nio.charset.StandardCharsets;
@@ -25,16 +26,23 @@ public class TransportClientCallback {
   public void completeFuture(int statusCode,
                              byte[] body,
       int schemaId) {
-    if (statusCode == HttpStatus.SC_OK) {
+    if (statusCode == HttpStatus.SC_OK || (statusCode < 300 && statusCode >= 200)) {
       valueFuture.complete(new TransportClientResponse(schemaId, body));
     } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
       valueFuture.complete(null);
     } else {
-      /**
-       * Only convert body from `byte[]` to `String` when necessary since it is quite expensive.
-       */
+      //Only convert body from `byte[]` to `String` when necessary since it is quite expensive
       String msg = new String(body, StandardCharsets.UTF_8);
-      valueFuture.completeExceptionally(new VeniceClientHttpException(msg, statusCode));
+      Throwable exception;
+      switch (statusCode){
+        case VeniceClientRateExceededException.HTTP_TOO_MANY_REQUESTS:
+          exception = new VeniceClientRateExceededException(msg);
+          break;
+        default:
+          exception = new VeniceClientHttpException(msg, statusCode);
+          break;
+      }
+      valueFuture.completeExceptionally(exception);
     }
   }
 }
