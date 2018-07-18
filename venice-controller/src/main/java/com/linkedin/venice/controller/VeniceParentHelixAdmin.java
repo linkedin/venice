@@ -61,7 +61,6 @@ import java.util.Optional;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
-import org.apache.http.protocol.HTTP;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -875,13 +874,26 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void updateStore(String clusterName, String storeName, Optional<String> owner, Optional<Boolean> readability,
-      Optional<Boolean> writeability, Optional<Integer> partitionCount, Optional<Long> storageQuotaInByte,
-      Optional<Long> readQuotaInCU, Optional<Integer> currentVersion, Optional<Integer> largestUsedVersionNumber,
-      Optional<Long> hybridRewindSeconds, Optional<Long> hybridOffsetLagThreshold, Optional<Boolean> accessControlled,
-      Optional<CompressionStrategy> compressionStrategy, Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> singleGetRouterCacheEnabled, Optional<Boolean> batchGetRouterCacheEnabled,
-      Optional<Integer> batchGetLimit, Optional<Integer> numVersionsToPreserve) {
+  public void updateStore(String clusterName,
+      String storeName,
+      Optional<String> owner,
+      Optional<Boolean> readability,
+      Optional<Boolean> writeability,
+      Optional<Integer> partitionCount,
+      Optional<Long> storageQuotaInByte,
+      Optional<Long> readQuotaInCU,
+      Optional<Integer> currentVersion,
+      Optional<Integer> largestUsedVersionNumber,
+      Optional<Long> hybridRewindSeconds,
+      Optional<Long> hybridOffsetLagThreshold,
+      Optional<Boolean> accessControlled,
+      Optional<CompressionStrategy> compressionStrategy,
+      Optional<Boolean> chunkingEnabled,
+      Optional<Boolean> singleGetRouterCacheEnabled,
+      Optional<Boolean> batchGetRouterCacheEnabled,
+      Optional<Integer> batchGetLimit,
+      Optional<Integer> numVersionsToPreserve,
+      Optional<Boolean> incrementalPushEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -924,13 +936,15 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.batchGetRouterCacheEnabled =
           batchGetRouterCacheEnabled.isPresent() ? batchGetRouterCacheEnabled.get() : store.isBatchGetRouterCacheEnabled();
 
-      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store,
+      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store, incrementalPushEnabled,
           null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
           singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.isPresent() ? numVersionsToPreserve.get() : store.getNumVersionsToPreserve();
 
+      setStore.incrementalPushEnabled =
+          incrementalPushEnabled.isPresent() ? incrementalPushEnabled.get() : store.isIncrementalPushEnabled();
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;

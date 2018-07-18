@@ -921,11 +921,13 @@ public class TestVeniceParentHelixAdmin {
     });
 
     // Disable router cache to test hybrid store
-    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setSingleGetRouterCacheEnabled(false));
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setSingleGetRouterCacheEnabled(false)
+        .setBatchGetRouterCacheEnabled(false));
     // Config the store to be hybrid
-    controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(100).setHybridOffsetLagThreshold(100));
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(100).setHybridOffsetLagThreshold(100));
     // This command should not fail
-    controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAccessControlled(true));
+    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAccessControlled(true));
     Assert.assertFalse(controllerResponse.isError());
 
     controllerWrapper.close();
@@ -1209,8 +1211,29 @@ public class TestVeniceParentHelixAdmin {
     boolean accessControlled = true;
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
-    Optional<CompressionStrategy> compressionStrategy = Optional.of(CompressionStrategy.GZIP);
+
+    //test incremental push
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+
+    verify(zkClient, times(2)).readData(zkOffsetNodePath, null);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.incrementalPushEnabled, true);
+
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
+        .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
         .setReadQuotaInCU(readQuota)
         .setAccessControlled(accessControlled)
@@ -1218,23 +1241,13 @@ public class TestVeniceParentHelixAdmin {
         .setHybridRewindSeconds(135l)
         .setHybridOffsetLagThreshold(2000));
 
-    verify(veniceWriter)
-        .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
-    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
-    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
-    byte[] keyBytes = keyCaptor.getValue();
-    byte[] valueBytes = valueCaptor.getValue();
-    int schemaId = schemaCaptor.getValue();
-    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    Assert.assertEquals(keyBytes.length, 0);
-    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    valueBytes = valueCaptor.getValue();
+    schemaId = schemaCaptor.getValue();
 
-    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+
+    updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
     Assert.assertEquals(updateStore.readQuotaInCU, readQuota,
@@ -1251,7 +1264,7 @@ public class TestVeniceParentHelixAdmin {
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
-    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter, times(3)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
     adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);

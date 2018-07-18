@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.google.common.base.VerifyException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
@@ -72,6 +73,11 @@ public class TestUtils {
    * To be used for tests when we need to wait for an async operation to complete. Pass a timeout, and a labmda
    * for checking if the operation is complete.
    *
+   * There is an issue within Mockito where it emits VerifyError instead of ArgumentsAreDifferent Exception.
+   * Check out "ExceptionFactory#JunitArgsAreDifferent" for details. The workaround here is to catch both
+   * assert and verify error.
+   * TODO: find a better way resolve it
+   *
    * @param timeout amount of time to wait
    * @param timeoutUnits {@link TimeUnit} for the {@param timeout}
    * @param assertionToWaitFor A {@link NonDeterministicAssertion} which should simply execute without exception
@@ -95,12 +101,12 @@ public class TestUtils {
       try {
         assertionToWaitFor.execute();
         return;
-      } catch (AssertionError ae) {
+      } catch (AssertionError | VerifyError e) {
         if (System.currentTimeMillis() > timeoutTime) {
-          throw ae;
+          throw e;
         } else {
           LOGGER.info("waitForNonDeterministicAssertion caught an AssertionError. Will retry again in: " + waitTime
-              + " ms. Assertion message: " + ae.getMessage());
+              + " ms. Assertion message: " + e.getMessage());
         }
         Utils.sleep(waitTime);
         if (exponentialBackOff) {

@@ -37,6 +37,7 @@ public enum Arg {
   VSON_STORE("vson_store", "vson", true, "indicate whether it is Vson store or Avro store"),
   COMPRESSION_STRATEGY("compression-strategy", "cs", true, "strategies used to compress/decompress Record's value"),
   CHUNKING_ENABLED("chunking-enabled", "ce", true, "Enable/Disable value chunking, mostly for large value store support"),
+  INCREMENTAL_PUSH_ENABLED("incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"),
   SINGLE_GET_ROUTER_CACHE_ENABLED("single-get-router-cache-enabled", "srce", true, "Enable/Disable single get cache in Router"),
   BATCH_GET_ROUTER_CACHE_ENABLED("batch-get-router-cache-enabled", "brce", true, "Enable/Disable batch get cache in Router"),
   BATCH_GET_LIMIT("batch-get-limit", "bgl", true, "Key number limit inside one batch-get request"),

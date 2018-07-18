@@ -90,6 +90,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   private static final long KILL_WAIT_TIME_MS = 5000l;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
+  private static final int SLOPPY_OFFSET_CATCHUP_THRESHOLD = 100;
 
   // Final stuff
   /** storage destination for consumption */
@@ -143,6 +144,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
 
+  /** A quick check point to see if incremental push is supported.
+   * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
+  private final boolean isIncrementalPushEnabled;
+
 
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
@@ -159,6 +164,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull StoreBufferService storeBufferService,
                             @NotNull BooleanSupplier isCurrentVersion,
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
+                            @NotNull boolean isIncrementalPushEnabled,
                             int topicOffsetCheckIntervalMs,
                             long readCycleDelayMs,
                             long emptyPollSleepMs,
@@ -201,6 +207,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.storeBufferService = storeBufferService;
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = hybridStoreConfig;
+    this.isIncrementalPushEnabled = isIncrementalPushEnabled;
     this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, topic, isCurrentVersion);
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, e));
@@ -299,10 +306,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // Check various short-circuit conditions first.
-
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       // If the EOP has not been received yet, then for sure we aren't ready
       return false;
+    }
+
+    if (partitionConsumptionState.isComplete()) {
+      //Since we know the EOP has been received, regular batch store is read to go!
+      return true;
     }
 
     if (!partitionConsumptionState.isWaitingForReplicationLag()) {
@@ -315,11 +326,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     if (!hybridStoreConfig.isPresent()) {
     /**
-     * Batch store is ready to go if it has caught all offset lag. Since getOffset returns the next available
-     * offset, it will be 1 offset ahead of the current offset.
+     * In theory, it will be 1 offset ahead of the current offset since getOffset returns the next available offset.
+     * Currently, we make it a sloppy in case Kafka topic have duplicate messages.
+     * TODO: find a better solution
      */
       lagIsAcceptable = cachedLatestOffsetGetter.getOffset(topic, partitionConsumptionState.getPartition()) <=
-        partitionConsumptionState.getOffsetRecord().getOffset() + 1;
+        partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
       Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
       Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
@@ -547,7 +559,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent());
+        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -658,7 +670,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         }
         partitionConsumptionStateMap.put(
             partition,
-            new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent()));
+            new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );

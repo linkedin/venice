@@ -33,6 +33,7 @@ public class ControllerApiConstants {
   public static final String OFFSET_LAG_TO_GO_ONLINE = "offset_lag_to_go_online";
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
+  public static final String INCREMENTAL_PUSH_ENABLED = "incremental_push_enabled";
   public static final String SINGLE_GET_ROUTER_CACHE_ENABLED = "single_get_router_cache_enabled";
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
   public static final String BATCH_GET_LIMIT = "batch_get_limit";

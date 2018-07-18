@@ -9,6 +9,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 class PartitionConsumptionState {
   private final int partition;
   private final boolean hybrid;
+  private final boolean isIncrementalPushEnabled;
   private OffsetRecord offsetRecord;
   /** whether the ingestion of current partition is deferred-write. */
   private boolean deferredWrite;
@@ -35,9 +36,10 @@ class PartitionConsumptionState {
     return sourceTopicMaxOffset;
   }
 
-  public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid) {
+  public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid, boolean isIncrementalPushEnabled) {
     this.partition = partition;
     this.hybrid = hybrid;
+    this.isIncrementalPushEnabled = isIncrementalPushEnabled;
     this.offsetRecord = offsetRecord;
     this.errorReported = false;
     this.lagCaughtUp = false;
@@ -70,9 +72,6 @@ class PartitionConsumptionState {
   public boolean isEndOfPushReceived() {
     return this.offsetRecord.isEndOfPushReceived();
   }
-  public boolean isComplete() {
-    return isEndOfPushReceived() && lagCaughtUp;
-  }
   public boolean isWaitingForReplicationLag() {
     return isEndOfPushReceived() && !lagCaughtUp;
   }
@@ -93,6 +92,14 @@ class PartitionConsumptionState {
   }
   public void incrementProcessedRecordNum() {
     ++this.processedRecordNum;
+  }
+  public boolean isComplete() {
+    if (!isEndOfPushReceived()) {
+      return false;
+    }
+
+    //for regular push store, receiving EOP is good to go
+    return (!isIncrementalPushEnabled && !hybrid) || lagCaughtUp;
   }
 
   /**

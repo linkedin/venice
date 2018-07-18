@@ -104,8 +104,17 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setChunkingEnabled(boolean chunkingEnabled) {
     return putBoolean(CHUNKING_ENABLED, chunkingEnabled);
   }
+
   public Optional<Boolean> getChunkingEnabled() {
     return getBoolean(CHUNKING_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {
+    return putBoolean(INCREMENTAL_PUSH_ENABLED, incrementalPushEnabled);
+  }
+
+  public Optional<Boolean> getIncrementalPushEnabled() {
+    return getBoolean(INCREMENTAL_PUSH_ENABLED);
   }
 
   public UpdateStoreQueryParams setSingleGetRouterCacheEnabled(boolean singleGetRouterCacheEnabled) {

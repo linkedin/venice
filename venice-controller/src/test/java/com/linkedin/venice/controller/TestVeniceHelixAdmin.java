@@ -31,7 +31,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.HelixUtils;
@@ -544,7 +543,12 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
 
+    veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled(), true);
+
     // test hybrid config
+    //set incrementalPushEnabled to be false as hybrid and incremental are mutex
+    veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
     HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000);
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()

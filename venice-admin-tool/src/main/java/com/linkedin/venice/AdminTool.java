@@ -478,6 +478,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.BATCH_GET_ROUTER_CACHE_ENABLED, p -> params.setBatchGetRouterCacheEnabled(p));
     integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p));
     integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p));
+    booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p));
 
     ControllerResponse response = controllerClient.updateStore(storeName, params);
 

@@ -14,7 +14,6 @@ import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
-import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -391,12 +390,16 @@ public class TestAdminSparkServer {
     Assert.assertFalse(ownerRes.isError(), ownerRes.getError());
     Assert.assertEquals(ownerRes.getOwner(), owner);
 
-    UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams().setPartitionCount(partitionCount);
+    UpdateStoreQueryParams updateStoreQueryParams =
+        new UpdateStoreQueryParams()
+            .setPartitionCount(partitionCount)
+            .setIncrementalPushEnabled(true);
     ControllerResponse partitionRes = controllerClient.updateStore(storeName, updateStoreQueryParams);
     Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
 
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(storeResponse.getStore().getPartitionCount(), partitionCount);
+    Assert.assertEquals(storeResponse.getStore().isIncrementalPushEnabled(), true);
   }
 
   @Test(timeOut = TIME_OUT)
