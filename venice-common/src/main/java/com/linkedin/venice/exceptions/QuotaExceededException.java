@@ -1,9 +1,10 @@
 package com.linkedin.venice.exceptions;
 
-import org.apache.http.HttpStatus;
+import io.netty.handler.codec.http.HttpResponseStatus;
 
 
 public class QuotaExceededException extends VeniceException {
+
   public QuotaExceededException(String throttlerName, String currentUsage, String quota) {
     super(getErrorMessage(throttlerName, currentUsage, quota));
   }
@@ -14,7 +15,7 @@ public class QuotaExceededException extends VeniceException {
 
   @Override
   public int getHttpStatusCode() {
-    return HttpStatus.SC_FORBIDDEN;
+    return HttpResponseStatus.TOO_MANY_REQUESTS.code();
   }
 
   public static String getErrorMessage(String throttlerName, String currentUsage, String quota) {
