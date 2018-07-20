@@ -325,10 +325,9 @@ public class StoreIngestionTaskTest {
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
             mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, incrementalPushEnabled,0,
-            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode, diskUsage);
+            READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode,
+                diskUsage, false);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-
 
     Future testSubscribeTaskFuture = null;
     try {
@@ -1212,7 +1211,7 @@ public class StoreIngestionTaskTest {
         verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
         verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), Optional.empty());
+    }, Optional.empty(), true, Optional.empty());
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{

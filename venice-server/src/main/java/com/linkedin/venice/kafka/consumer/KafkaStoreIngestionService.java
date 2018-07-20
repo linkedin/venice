@@ -163,7 +163,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         isStoreVersionCurrent, hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStore.getTopicOffsetCheckIntervalMs(),
         veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs(),
         veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(),
-        veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode(), diskUsage);
+        veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode(), diskUsage,
+        veniceStore.isReadOnlyForBatchOnlyStoreEnabled());
   }
 
   /**

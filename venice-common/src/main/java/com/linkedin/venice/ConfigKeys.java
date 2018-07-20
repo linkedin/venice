@@ -179,6 +179,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES = "server.leaked.resource.clean.up.interval.in.minutes";
 
+  /**
+   * For batch-only store, enabling read-only could improve the performance greatly.
+   */
+  public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED = "server.db.read.only.for.batch.only.store.enabled";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

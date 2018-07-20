@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -58,13 +59,18 @@ public class VeniceSystemFactoryTest {
    */
   @Test
   public void testGetProducer() throws Exception {
-
     String storeName = TestUtils.getUniqueString("store");
 
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    // Enable hybrid
+    client.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
 
     //Configure and create a SystemProducer for Venice
-    SystemProducer veniceProducer = getVeniceProducer();
+    client.emptyPush(storeName, TestUtils.getUniqueString(storeName), 10000);
+
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
+
+    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.STREAM);
 
     //Create an AVRO record
     GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
@@ -75,19 +81,31 @@ public class VeniceSystemFactoryTest {
         "keystring",
         record);
 
-    //Send the record to Venice using the SystemProducer, and activate the version
+    //Send the record to Venice using the SystemProducer
     veniceProducer.send(storeName, envelope);
-    client.writeEndOfPush(storeName, 1); // presumably we created version 1.
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
     //read the record out of Venice
     AvroGenericStoreClient<String, GenericRecord> storeClient =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-    GenericRecord recordFromVenice = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
 
     //verify we got the right record
-    assertEquals(recordFromVenice.get("string").toString(), "somestring");
-    assertEquals(recordFromVenice.get("number"), 3.14);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      GenericRecord recordFromVenice;
+      try {
+        recordFromVenice = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+      assertNotNull(recordFromVenice, "Value for key: 'keystring' should not be null");
+
+      Object stringField = recordFromVenice.get("string");
+      assertNotNull(stringField, "'string' field should not be null");
+      assertEquals(stringField.toString(), "somestring");
+
+      Object numberField = recordFromVenice.get("number");
+      assertNotNull(numberField, "'number' field should not be null");
+      assertEquals(numberField, 3.14);
+    });
 
     //delete the record
     OutgoingMessageEnvelope deleteEnvelope = new OutgoingMessageEnvelope(
@@ -128,7 +146,7 @@ public class VeniceSystemFactoryTest {
   public void testSchemaMismatchError() {
     String storeName = TestUtils.getUniqueString("store");
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
-    SystemProducer veniceProducer = getVeniceProducer();
+    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.BATCH);
     //Create an AVRO record
     GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
     record.put("string", "somestring");
@@ -152,7 +170,7 @@ public class VeniceSystemFactoryTest {
    */
   private <K1, K2, V1, V2> void testSerializationCast(K1 writeKey, K2 readKey, V1 value, V2 expectedValue, String schema)
       throws InterruptedException, ExecutionException, TimeoutException {
-    VeniceSystemProducer producer = (VeniceSystemProducer) getVeniceProducer();
+    VeniceSystemProducer producer = (VeniceSystemProducer) getVeniceProducer(ControllerApiConstants.PushType.BATCH);
     ControllerClient client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     String storeName = TestUtils.getUniqueString("schema-test-store");
     client.createNewStore(storeName, "owner", schema, schema);
@@ -174,10 +192,10 @@ public class VeniceSystemFactoryTest {
     testSerializationCast(key, key, value, value, schema);
   }
 
-  private SystemProducer getVeniceProducer(){
+  private SystemProducer getVeniceProducer(ControllerApiConstants.PushType pushType){
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + VENICE_SYSTEM_NAME + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.BATCH.toString());
+    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, pushType.toString());
     samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
     samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
     samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("samza-push-id"));

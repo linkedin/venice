@@ -138,6 +138,10 @@ class PartitionConsumptionState {
     return hybrid;
   }
 
+  public boolean isBatchOnly() {
+    return !isHybrid() && !isIncrementalPushEnabled();
+  }
+
   @Override
   public String toString() {
     return "PartitionConsumptionState{" +
@@ -161,5 +165,9 @@ class PartitionConsumptionState {
   }
   public void resetProcessedRecordSizeSinceLastSync() {
     this.processedRecordSizeSinceLastSync = 0;
+  }
+
+  public boolean isIncrementalPushEnabled() {
+    return isIncrementalPushEnabled;
   }
 }

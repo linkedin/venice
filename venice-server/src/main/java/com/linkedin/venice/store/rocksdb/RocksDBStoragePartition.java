@@ -84,6 +84,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private final boolean deferredWrite;
 
+  /**
+   * Whether the database is read only or not.
+   */
+  private final boolean readOnly;
+
   public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir) {
     super(storagePartitionConfig.getPartitionId());
 
@@ -91,6 +96,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.storeName = storagePartitionConfig.getStoreName();
     this.partitionId = storagePartitionConfig.getPartitionId();
     this.deferredWrite = storagePartitionConfig.isDeferredWrite();
+    this.readOnly = storagePartitionConfig.isReadOnly();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeName, partitionId);
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     this.options = options;
@@ -101,11 +107,16 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // Direct write is not efficient when there are a lot of ongoing pushes
     this.envOptions.setUseDirectWrites(false);
     try {
-      this.rocksDB = RocksDB.open(options, fullPathForPartitionDB);
+      if (this.readOnly) {
+        this.rocksDB = RocksDB.openReadOnly(options, fullPathForPartitionDB);
+      } else {
+        this.rocksDB = RocksDB.open(options, fullPathForPartitionDB);
+      }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
     }
-    LOGGER.info("Opened RocksDB for store: " + storeName + ", partition id: " + partitionId);
+    LOGGER.info("Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
+        + (this.readOnly ? "read only" : "read write") + " mode and " + (this.deferredWrite ? "deferred write" : " non deferred write") + " mode");
   }
 
   private void makeSureAllPreviousSSTFilesBeforeCheckpointingExist() {
@@ -308,12 +319,17 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   public synchronized Map<String, String> sync() {
     if (!deferredWrite) {
       LOGGER.debug("Flush memtable to disk for store: " + storeName + ", partition id: " + partitionId);
-      try {
-        // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss during
-        // crash recovery
-        rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS);
-      } catch (RocksDBException e) {
-        throw new VeniceException("Failed to flush memtable to disk for store: " + storeName + ", partition id: " + partitionId, e);
+
+      if (this.readOnly) {
+        LOGGER.warn("Unexpected sync in RocksDB read-only mode");
+      } else {
+        try {
+          // Since Venice RocksDB database disables WAL, flush will be triggered for every 'sync' to avoid data loss during
+          // crash recovery
+          rocksDB.flush(WAIT_FOR_FLUSH_OPTIONS);
+        } catch (RocksDBException e) {
+          throw new VeniceException("Failed to flush memtable to disk for store: " + storeName + ", partition id: " + partitionId, e);
+        }
       }
       return Collections.emptyMap();
     }
@@ -401,9 +417,15 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was closed");
   }
 
+  /**
+   * Check {@link AbstractStoragePartition#verifyConfig(StoragePartitionConfig)}.
+   *
+   * @param storagePartitionConfig
+   * @return
+   */
   @Override
   public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
-    return deferredWrite == storagePartitionConfig.isDeferredWrite();
+    return deferredWrite == storagePartitionConfig.isDeferredWrite() && readOnly == storagePartitionConfig.isReadOnly();
   }
 
 }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import com.google.common.base.VerifyException;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
@@ -16,7 +15,6 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
-
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -26,7 +24,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import javax.swing.text.html.Option;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
