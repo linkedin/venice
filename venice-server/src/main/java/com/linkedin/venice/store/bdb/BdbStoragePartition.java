@@ -63,15 +63,22 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     this.databaseConfig.setNodeMaxEntries(bdbServerConfig.getBdbBtreeFanout());
     this.databaseConfig.setKeyPrefixing(bdbServerConfig.isBdbDatabaseKeyPrefixing());
     if (bdbServerConfig.isBdbDatabaseKeyPrefixing()) {
-      logger.info("Opening database for store: " + getBdbDatabaseName() + " with key-prefixing enabled");
+      logger.info("Opening BDB database for store: " + getBdbDatabaseName() + " with key-prefixing enabled");
     }
     if (storagePartitionConfig.isDeferredWrite()) {
       // Non-transactional
       this.databaseConfig.setDeferredWrite(true);
-      logger.info("Opening database for store: " + getBdbDatabaseName() + " in deferred-write mode");
+      logger.info("Opening BDB database for store: " + getBdbDatabaseName() + " in deferred-write mode");
     } else {
       this.databaseConfig.setTransactional(true);
-      logger.info("Opening database for store: " + getBdbDatabaseName() + " in transactional mode");
+      logger.info("Opening BDB database for store: " + getBdbDatabaseName() + " in transactional mode");
+    }
+    if (storagePartitionConfig.isReadOnly()) {
+      this.databaseConfig.setReadOnly(true);
+      logger.info("Opening BDB database for store: " + getBdbDatabaseName() + " in read-only mode");
+    } else {
+      this.databaseConfig.setReadOnly(false);
+      logger.info("Opening BDB database for store: " + getBdbDatabaseName() + " in read-write mode");
     }
     this.isBdbDroppedDbCleanUpEnabled = bdbServerConfig.isBdbDroppedDbCleanUpEnabled();
 
@@ -87,6 +94,9 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   }
 
   private void put(DatabaseEntry keyEntry, DatabaseEntry valueEntry) throws VeniceException {
+    if (this.databaseConfig.getReadOnly()) {
+      throw new VeniceException("Store: " + getBdbDatabaseName() + " is in read-only mode, 'put' operation is not expected");
+    }
     boolean succeeded = false;
     long startTimeNs = -1;
 
@@ -162,6 +172,9 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   }
 
   public void delete(byte[] key) {
+    if (this.databaseConfig.getReadOnly()) {
+      throw new VeniceException("Store: " + getBdbDatabaseName() + " is in read-only mode, 'delete' operation is not expected");
+    }
     boolean succeeded = false;
     long startTimeNs = -1;
 
@@ -298,11 +311,16 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     }
   }
 
+  /**
+   * Check {@link AbstractStoragePartition#verifyConfig(StoragePartitionConfig)}.
+   *
+   * @param storagePartitionConfig
+   * @return
+   */
   @Override
   public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
-    boolean databaseDeferredWrite = databaseConfig.getDeferredWrite();
-    boolean partitionConfigDeferredWrite = storagePartitionConfig.isDeferredWrite();
-    return (databaseDeferredWrite == partitionConfigDeferredWrite);
+    return storagePartitionConfig.isDeferredWrite() == databaseConfig.getDeferredWrite() &&
+        storagePartitionConfig.isReadOnly() == databaseConfig.getReadOnly();
   }
 
   private class ClosableBdbPartitionEntriesIterator extends AbstractCloseablePartitionEntriesIterator {

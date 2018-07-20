@@ -12,7 +12,6 @@ import java.io.File;
 import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.commons.io.FileUtils;

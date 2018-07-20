@@ -26,6 +26,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor keySizeSensor;
   private final Sensor valueSizeSensor;
 
+  private final Sensor unexpectedMessageSensor;
+
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
@@ -50,6 +52,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     String valueSizeSensorName = "record_value_size_in_bytes";
     valueSizeSensor = registerSensor(valueSizeSensorName, new Avg(), new Min(), new Max(),
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName, 40000, 1000000));
+
+    unexpectedMessageSensor = registerSensor("unexpected_message", new Rate());
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -87,6 +91,10 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordConsumerRecordsQueuePutLatency(double latency) {
     consumerRecordsQueuePutLatencySensor.record(latency);
+  }
+
+  public void recordUnexpectedMessage(int count) {
+    unexpectedMessageSensor.record(count);
   }
 
   public void recordKeySize(long bytes) {

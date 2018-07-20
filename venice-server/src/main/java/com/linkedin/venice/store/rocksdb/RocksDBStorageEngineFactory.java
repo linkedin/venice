@@ -3,7 +3,6 @@ package com.linkedin.venice.store.rocksdb;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
@@ -15,7 +14,9 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
+import org.rocksdb.Cache;
 import org.rocksdb.Env;
+import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
 
@@ -38,25 +39,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   private final Env env;
 
   /**
-   * Shared Options across all the RocksDB databases.
-   * The reason to use shared {@link Options} is that that is the only way to share block cache
-   * across all the RocksDB databases.
-   * Once the following code change gets released:
-   * https://github.com/facebook/rocksdb/commit/d5585bb605824e33a47359714b04b7bf14c0a2f6
-   * We could use different {@link Options} for different databases.
-   */
-  private final Options options;
-
-  /**
    * RocksDB root path
    */
   private final String rocksDBPath;
 
+  private final Cache sharedCache;
   private final Map<String, RocksDBStorageEngine> storageEngineMap = new HashMap<>();
+  private final Map<String, Options> storageEngineOptions = new HashMap<>();
+
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
-
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
 
     /**
@@ -66,29 +59,42 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     // Make them configurable
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), FLUSH_POOL);
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), COMPACTION_POOL);
-    this.options = new Options();
-    this.options.setEnv(this.env);
-    this.options.setCreateIfMissing(true);
-    this.options.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
-    this.options.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
-    this.options.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
+
+    // Shared cache across all the RocksDB databases
+    sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes());
+  }
+
+  private synchronized Options getOptionsForStore(String storeName) {
+    if (storageEngineOptions.containsKey(storeName)) {
+      return storageEngineOptions.get(storeName);
+    }
+    Options newOptions = new Options();
+    newOptions.setEnv(this.env);
+    newOptions.setCreateIfMissing(true);
+    newOptions.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
+    newOptions.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
+    newOptions.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
 
     // Cache index and bloom filter in block cache
     // and share the same cache across all the RocksDB databases
     BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
     tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
-    tableConfig.setBlockCacheSize(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes());
+    tableConfig.setBlockCache(sharedCache);
     tableConfig.setCacheIndexAndFilterBlocks(true);
     tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
     tableConfig.setFormatVersion(2); // Latest version
 
-    this.options.setTableFormatConfig(tableConfig);
+    newOptions.setTableFormatConfig(tableConfig);
 
     // Memtable options
-    this.options.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
-    this.options.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
-    this.options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
-    this.options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
+    newOptions.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
+    newOptions.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
+    newOptions.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
+    newOptions.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
+
+    storageEngineOptions.put(storeName, newOptions);
+
+    return newOptions;
   }
 
   @Override
@@ -97,7 +103,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     final String storeName = storeConfig.getStoreName();
     try {
       if (!storageEngineMap.containsKey(storeName)) {
-        storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, options, rocksDBPath));
+        Options storeOptions = getOptionsForStore(storeName);
+        storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, storeOptions, rocksDBPath));
       }
       return storageEngineMap.get(storeName);
     } catch (Exception e) {
@@ -126,9 +133,10 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     LOGGER.info("Closing RocksDBStorageEngineFactory");
     storageEngineMap.forEach( (storeName, storageEngine) -> {
       storageEngine.close();
+      getOptionsForStore(storeName).close();
     });
     storageEngineMap.clear();
-    this.options.close();
+    storageEngineOptions.clear();
     this.env.close();
     LOGGER.info("Closed RocksDBStorageEngineFactory");
   }
@@ -140,6 +148,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     if (storageEngineMap.containsKey(storeName)) {
       LOGGER.info("Started removing RocksDB storage engine for store: " + storeName);
       storageEngineMap.get(storeName).drop();
+      getOptionsForStore(storeName).close();
       LOGGER.info("Finished removing RocksDB storage engine for store: " + storeName);
     } else {
       LOGGER.info("RocksDB store: " + storeName + " doesn't exist");

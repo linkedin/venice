@@ -106,6 +106,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long storageLeakedResourceCleanUpIntervalInMS;
 
+  private final boolean readOnlyForBatchOnlyStoreEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -124,12 +126,24 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     topicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
-    fairStorageExecutionQueue = serverProperties.getBoolean(SERVER_FAIR_STORAGE_EXECUTION_QUEUE, true);
+    /**
+     * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
+     * Disable it by default for now.
+     *
+     * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
+     * to one or two storage nodes randomly. And when we restarted the node with high latency, the high latency could
+     * disappear, but other nodes could start high latency.
+     * After switching to {@link java.util.concurrent.LinkedBlockingQueue}, this issue never happened.
+     *
+     * TODO: figure out the issue with {@link com.linkedin.venice.utils.queues.FairBlockingQueue}.
+     */
+    fairStorageExecutionQueue = serverProperties.getBoolean(SERVER_FAIR_STORAGE_EXECUTION_QUEUE, false);
     databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.90);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
     storageLeakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 6 * 60)); // 6 hours by default
+    readOnlyForBatchOnlyStoreEnabled = serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -223,5 +237,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getStorageLeakedResourceCleanUpIntervalInMS() {
     return storageLeakedResourceCleanUpIntervalInMS;
+  }
+
+  public boolean isReadOnlyForBatchOnlyStoreEnabled() {
+    return readOnlyForBatchOnlyStoreEnabled;
   }
 }

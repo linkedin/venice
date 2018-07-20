@@ -8,11 +8,13 @@ public class StoragePartitionConfig {
   private final String storeName;
   private final int partitionId;
   private boolean deferredWrite;
+  private boolean readOnly;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.deferredWrite = false;
+    this.readOnly = false;
   }
 
   public String getStoreName() {
@@ -31,17 +33,35 @@ public class StoragePartitionConfig {
     return this.deferredWrite;
   }
 
+  public boolean isReadOnly() {
+    return readOnly;
+  }
+
+  public void setReadOnly(boolean readOnly) {
+    this.readOnly = readOnly;
+  }
+
   @Override
   public boolean equals(Object o) {
-    if (this == o) return true;
-    if (o == null || getClass() != o.getClass()) return false;
+    if (this == o) {
+      return true;
+    }
+    if (!(o instanceof StoragePartitionConfig)) {
+      return false;
+    }
 
     StoragePartitionConfig that = (StoragePartitionConfig) o;
 
-    if (partitionId != that.partitionId) return false;
-    if (deferredWrite != that.deferredWrite) return false;
+    if (partitionId != that.partitionId) {
+      return false;
+    }
+    if (deferredWrite != that.deferredWrite) {
+      return false;
+    }
+    if (readOnly != that.readOnly) {
+      return false;
+    }
     return storeName.equals(that.storeName);
-
   }
 
   @Override
@@ -49,11 +69,13 @@ public class StoragePartitionConfig {
     int result = storeName.hashCode();
     result = 31 * result + partitionId;
     result = 31 * result + (deferredWrite ? 1 : 0);
+    result = 31 * result + (readOnly ? 1 : 0);
     return result;
   }
 
   @Override
   public String toString() {
-    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite;
+    return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite +
+        ", read-only: " + readOnly;
   }
 }

@@ -148,6 +148,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
   private final boolean isIncrementalPushEnabled;
 
+  private final boolean readOnlyForBatchOnlyStoreEnabled;
+
 
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
@@ -170,7 +172,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             long emptyPollSleepMs,
                             long databaseSyncBytesIntervalForTransactionalMode,
                             long databaseSyncBytesIntervalForDeferredWriteMode,
-                            DiskUsage diskUsage) {
+                            DiskUsage diskUsage,
+                            boolean readOnlyForBatchOnlyStoreEnabled) {
     this.readCycleDelayMs = readCycleDelayMs;
     this.emptyPollSleepMs = emptyPollSleepMs;
     this.databaseSyncBytesIntervalForTransactionalMode = databaseSyncBytesIntervalForTransactionalMode;
@@ -214,6 +217,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.producerTrackerCreator = guid -> new ProducerTracker(guid, topic);
 
     this.diskUsage = diskUsage;
+
+    this.readOnlyForBatchOnlyStoreEnabled = readOnlyForBatchOnlyStoreEnabled;
   }
 
   private void validateState() {
@@ -283,15 +288,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
       PartitionConsumptionState partitionConsumptionState) {
     StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(topic, partitionId);
     boolean deferredWrites;
+    boolean readOnly = false;
     if (partitionConsumptionState.isEndOfPushReceived()) {
       // After EOP, we never enable deferred writes.
       // No matter what the sorted config was before the EOP message, it doesn't matter anymore.
       deferredWrites = false;
+      if (partitionConsumptionState.isBatchOnly() &&
+          this.readOnlyForBatchOnlyStoreEnabled) {
+        readOnly = true;
+      }
     } else {
       // Prior to the EOP, we can optimize the storage if the data is sorted.
       deferredWrites = sorted;
     }
     storagePartitionConfig.setDeferredWrite(deferredWrites);
+    storagePartitionConfig.setReadOnly(readOnly);
     return storagePartitionConfig;
   }
 
@@ -738,7 +749,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         ". Number of real records consumed: " + recordsConsumed + "/" + MAX_RECORDS);
   }
 
-  private boolean shouldProcessRecord(ConsumerRecord record) {
+  private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     String recordTopic = record.topic();
     if(!topic.equals(recordTopic)) {
       throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.topic + " Actual " + recordTopic);
@@ -754,6 +765,39 @@ public class StoreIngestionTask implements Runnable, Closeable {
         .getOffset();
     if(lastOffset >= record.offset()) {
       logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
+      return false;
+    }
+
+    if (partitionConsumptionState.isEndOfPushReceived() &&
+        partitionConsumptionState.isBatchOnly()) {
+
+      KafkaKey key = record.key();
+      KafkaMessageEnvelope value = record.value();
+      if (key.isControlMessage() &&
+          ControlMessageType.valueOf((ControlMessage)value.payloadUnion) == ControlMessageType.END_OF_SEGMENT) {
+        // Still allow END_OF_SEGMENT control message
+        return true;
+      }
+      // emit metric for unexpected messages
+      if (emitMetrics.get()) {
+        storeIngestionStats.recordUnexpectedMessage(storeNameWithoutVersionInfo, 1);
+      }
+
+      if (record.offset() % 100 == 0) {
+          // Report such kind of message once per 100 messages to reduce logging volume
+          /**
+           * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
+           * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
+           *
+           * Same thing for {@link #isIncrementalPushEnabled}.
+           *
+           * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
+           * incremental push feature of the store.
+           */
+          logger.warn(
+              "The record was received after 'EOP', but the store: " + topic +
+                  " is neither hybrid nor incremental push enabled, so will skip it.");
+      }
       return false;
     }
 
@@ -1024,6 +1068,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
         break;
       case END_OF_INCREMENTAL_PUSH:
+        // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
         CharSequence endVersion = ((EndOfIncrementalPush) controlMessage.controlMessageUnion).version;
         partitionConsumptionState.setIncrementalPush(null);
         notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, endVersion.toString());

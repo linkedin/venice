@@ -35,6 +35,11 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordConsumerRecordsQueuePutLatency(latency);
   }
 
+  public void recordUnexpectedMessage(String storeName, int count) {
+    totalStats.recordUnexpectedMessage(count);
+    getStoreStats(storeName).recordUnexpectedMessage(count);
+  }
+
   public void recordKeySize(String storeName, long bytes) {
     //keySize aggregation among multiple stores is not necessary
     getStoreStats(storeName).recordKeySize(bytes);
