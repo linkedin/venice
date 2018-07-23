@@ -14,6 +14,7 @@ public class TokenBucket {
   private final long capacity;
   private final long refillAmount;
   private final long refillIntervalMs;
+  private final float refillPerSecond;//only used for logging
   private final Clock clock;
   private final AtomicLong tokens;
   private volatile long nextUpdateTime;
@@ -26,7 +27,7 @@ public class TokenBucket {
    * @param refillUnit
    * @param clock
    */
-  protected TokenBucket(long capacity, long refillAmount, long refillInterval, TimeUnit refillUnit, Clock clock){
+  public TokenBucket(long capacity, long refillAmount, long refillInterval, TimeUnit refillUnit, Clock clock){
 
     if (capacity <= 0) {
       throw new IllegalArgumentException("TokenBucket capacity " + capacity + " is not valid.  Must be greater than 0");
@@ -46,6 +47,9 @@ public class TokenBucket {
 
     tokens = new AtomicLong(capacity);
     nextUpdateTime = clock.millis() + refillIntervalMs;
+
+    float refillIntervalSeconds = refillIntervalMs/(float)1000;
+    refillPerSecond = refillAmount/refillIntervalSeconds;
   }
 
   /**
@@ -116,4 +120,7 @@ public class TokenBucket {
     return tryConsume(1);
   }
 
+  public float getAmortizedRefillPerSecond(){
+    return refillPerSecond;
+  }
 }

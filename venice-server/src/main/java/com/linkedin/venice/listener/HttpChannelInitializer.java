@@ -85,6 +85,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
     ch.pipeline()
         .addLast(new GetRequestHttpHandler(statsHandler))
+        //.addLast(quotaEnforcer)
         .addLast("storageExecutionHandler", storageExecutionHandler)
         .addLast(new ErrorCatchingHandler());
   }
