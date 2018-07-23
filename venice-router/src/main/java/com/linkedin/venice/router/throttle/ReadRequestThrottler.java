@@ -30,7 +30,7 @@ import org.apache.log4j.Logger;
  * level quota then accept or reject it.
  */
 public class ReadRequestThrottler implements RoutersClusterManager.RouterCountChangedListener, RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener, RoutersClusterManager.RouterClusterConfigChangedListener {
-  // We want to give more tight restriction for store-level quota to protect router but more lienent restriction for storage node level quota. Because in some case per-storage node qutoa is too samall to user.
+  // We want to give more tight restriction for store-level quota to protect router but more lenient restriction for storage node level quota. Because in some case per-storage node quota is too small to user.
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
   public static final long DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(30);; // 30sec
 
