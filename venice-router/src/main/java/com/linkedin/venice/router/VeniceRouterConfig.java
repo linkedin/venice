@@ -54,6 +54,7 @@ public class VeniceRouterConfig {
   private boolean dnsCacheEnabled;
   private String hostPatternForDnsCache;
   private long dnsCacheRefreshIntervalInMs;
+  private boolean greedyMultiGet;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -86,6 +87,7 @@ public class VeniceRouterConfig {
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     stickyRoutingEnabledForSingleGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET, true);
     stickyRoutingEnabledForMultiGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET, true);
+    greedyMultiGet = props.getBoolean(ROUTER_GREEDY_MULTIGET, true); //TODO, if testing shows it isn't desirable, change this default
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
@@ -143,6 +145,10 @@ public class VeniceRouterConfig {
 
   public boolean isStickyRoutingEnabledForMultiGet() {
     return stickyRoutingEnabledForMultiGet;
+  }
+
+  public boolean isGreedyMultiGet() {
+    return greedyMultiGet;
   }
 
   public int getHeartbeatTimeoutMs() {

@@ -28,6 +28,7 @@ import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
+import com.linkedin.venice.router.api.VeniceDelegateModeConfig;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
@@ -267,7 +268,7 @@ public class RouterServer extends AbstractVeniceService {
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor);
-    scatterGatherMode = new VeniceDelegateMode(config.isStickyRoutingEnabledForSingleGet(), config.isStickyRoutingEnabledForMultiGet());
+    scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config));
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +

@@ -168,7 +168,11 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(false, false);
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        new VeniceDelegateModeConfig()
+        .withStickyRoutingEnabledForMultiGet(false)
+        .withStickyRoutingEnabledForSingleGet(false)
+    );
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
@@ -186,7 +190,11 @@ public class TestVeniceDelegateMode {
 
     // Test with sticky routing
     hostFinder = getHostFinder(partitionInstanceMap, true);
-    scatterMode = new VeniceDelegateMode(true, true);
+    scatterMode = new VeniceDelegateMode(
+        new VeniceDelegateModeConfig()
+        .withStickyRoutingEnabledForSingleGet(true)
+        .withStickyRoutingEnabledForMultiGet(true)
+    );
     scatterMode.initReadRequestThrottler(throttler);
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
@@ -220,7 +228,11 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(false, false);
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        new VeniceDelegateModeConfig()
+        .withStickyRoutingEnabledForSingleGet(false)
+        .withStickyRoutingEnabledForMultiGet(false)
+    );
     scatterMode.initReadRequestThrottler(throttler);
 
     scatterMode.scatter(scatter, requestMethod, resourceName,
@@ -304,7 +316,11 @@ public class TestVeniceDelegateMode {
     HostHealthMonitor monitor = getHostHealthMonitor();
     ReadRequestThrottler throttler = getReadRequestThrottle(false);
 
-    VeniceDelegateMode scatterMode = new VeniceDelegateMode(false, false);
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        new VeniceDelegateModeConfig()
+        .withStickyRoutingEnabledForSingleGet(false)
+        .withStickyRoutingEnabledForMultiGet(false)
+    );
     scatterMode.initReadRequestThrottler(throttler);
 
     Scatter<Instance, VenicePath, RouterKey> finalScatter =
@@ -331,7 +347,11 @@ public class TestVeniceDelegateMode {
     // test sticky routing
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     hostFinder = getHostFinder(partitionInstanceMap, true);
-    scatterMode = new VeniceDelegateMode(true, true);
+    scatterMode = new VeniceDelegateMode(
+        new VeniceDelegateModeConfig()
+        .withStickyRoutingEnabledForSingleGet(true)
+        .withStickyRoutingEnabledForMultiGet(true)
+    );
     scatterMode.initReadRequestThrottler(throttler);
     finalScatter =
         scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());

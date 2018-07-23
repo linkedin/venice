@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
@@ -34,8 +35,9 @@ public class TestHostFinder {
 
     List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_3", NULL_HOST_HEALTH_MONITOR, null);
     Assert.assertEquals(hosts.size(), 2);
-    Assert.assertEquals(hosts.get(0).getHost(), "localhost1");
-    Assert.assertEquals(hosts.get(1).getHost(), "localhost2");
+    List<String> hostNames = hosts.stream().map((h) -> h.getHost()).collect(Collectors.toList());
+    Assert.assertTrue(hostNames.contains("localhost1"), "\"localhost1\" not found in " + hostNames.toString());
+    Assert.assertTrue(hostNames.contains("localhost2"), "\"localhost2\" not found in " + hostNames.toString());
 
     // Mark dummyInstance1 as unhealthy
     HostHealthMonitor<Instance> anotherHostHealthyMonitor = ((hostName, partitionName) -> !hostName.equals(dummyInstance1));

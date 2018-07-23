@@ -41,9 +41,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_SINGLE_GET = new ScatterGatherModeForStickySingleGet();
 
   /**
+   * This mode will group all requests to the same host into a single request.  Hosts are selected as the first host returned
+   * by the VeniceHostFinder, so we must shuffle the order to get an even distribution.
+   */
+  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_MULTI_GET = ScatterGatherMode.GROUP_BY_PRIMARY_HOST;
+
+  /**
    * This mode will do the aggregation per host first, and then initiate a request per host.
    */
-  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_MULTI_GET = ScatterGatherMode.GROUP_BY_GREEDY_HOST;
+  private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_MULTI_GET_GREEDY = ScatterGatherMode.GROUP_BY_GREEDY_HOST;
 
   /**
    * This mode assumes there is only one host per partition (sticky routing), and the scattering logic is optimized
@@ -55,11 +61,13 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
   private final boolean stickyRoutingEnabledForSingleGet;
   private final boolean stickyRoutingEnabledForMultiGet;
+  private final boolean greedyMultiget;
 
-  public VeniceDelegateMode(boolean stickyRoutingEnabledForSingleGet, boolean stickyRoutingEnabledForMultiGet) {
+  public VeniceDelegateMode(VeniceDelegateModeConfig config) {
     super("VENICE_DELEGATE_MODE", false);
-    this.stickyRoutingEnabledForSingleGet = stickyRoutingEnabledForSingleGet;
-    this.stickyRoutingEnabledForMultiGet = stickyRoutingEnabledForMultiGet;
+    this.stickyRoutingEnabledForSingleGet = config.isStickyRoutingEnabledForSingleGet();
+    this.stickyRoutingEnabledForMultiGet = config.isStickyRoutingEnabledForMultiGet();
+    this.greedyMultiget = config.isGreedyMultiGetScatter();
   }
 
   public void initReadRequestThrottler(ReadRequestThrottler requestThrottler) {
@@ -93,7 +101,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         if (stickyRoutingEnabledForMultiGet) {
           scatterMode = SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET;
         } else {
-          scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET;
+          if (greedyMultiget){
+            scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET_GREEDY;
+          } else {
+            scatterMode = SCATTER_GATHER_MODE_FOR_MULTI_GET;
+          }
         }
         break;
       case SINGLE_GET:

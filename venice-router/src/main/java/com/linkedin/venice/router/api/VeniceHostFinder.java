@@ -14,6 +14,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
@@ -141,9 +142,10 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
         isSingleGet && !isStickyRoutingEnabledForSingleGet || // single-get but sticky routing is not enabled
         !isSingleGet && !isStickyRoutingEnabledForMultiGet) { // multi-get but sticky routing is not enabled
 
-      /**
-       * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
-       */
+      //Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
+
+      Collections.shuffle(newHosts); // Randomize order so that multiget using ScatterGatherMode.GROUP_BY_PRIMARY_HOST
+                                     // results in an even distribution of partitions to hosts.
       return newHosts;
     }
     newHosts.sort(INSTANCE_COMPARATOR);
