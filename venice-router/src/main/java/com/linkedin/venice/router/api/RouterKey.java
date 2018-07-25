@@ -38,4 +38,9 @@ public class RouterKey implements Comparable<RouterKey>{
   public String toString() {
     return EncodingUtils.base64EncodeToString(keyBuffer);
   }
+
+  @Override
+  public int hashCode() {
+    return keyBuffer.hashCode();
+  }
 }

@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -194,15 +195,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       if (hosts.isEmpty()) {
         scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), keySet, partitionName));
       } else if (hosts.size() > 1) {
-        P path = scatter.getPath();
-        if (! (path instanceof VenicePath)) {
-          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
-              "VenicePath is expected, but received " + path.getClass());
-        }
-        VenicePath venicePath = (VenicePath)path;
-        String storeName = venicePath.getStoreName();
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(), INTERNAL_SERVER_ERROR,
-            "There should be only one available host, but received " + hosts.size()  + " for store: " + storeName + ", partition: " + partitionName);
+        /**
+         * Key based sticky routing for single-get requests;
+         * use the hashcode of the key to choose a host; in this way, keys from the same partition are evenly
+         * distributed to all the replicas of that partition; besides, it's guaranteed that the same key will always
+         * go to the same host unless some hosts are down/stopped.
+         */
+        H host = chooseHostByKey(key, hosts);
+        scatter.addOnlineRequest(new ScatterGatherRequest<>(Arrays.asList(host), keySet, partitionName));
       } else {
         scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
       }
@@ -231,6 +231,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
       public void addKeyPartitions(TreeSet<K> keys, String partitionName) {
         this.keySet.addAll(keys);
+        this.partitionNames.add(partitionName);
+      }
+
+      public void addKeyPartition(K key, String partitionName) {
+        this.keySet.add(key);
         this.partitionNames.add(partitionName);
       }
     }
@@ -275,16 +280,27 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, hostHealthMonitor, roles);
         if (hosts.isEmpty()) {
           scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), entry.getValue(), partitionName));
-        } else if (hosts.size() > 1) {
-          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(), INTERNAL_SERVER_ERROR,
-              "There should be only one available host, but received " + hosts.size() + " for store: " + storeName + ", partition: " + partitionName);
-        }
-        else {
+        } else if (hosts.size() == 1) {
           H host = hosts.get(0);
           if (!hostMap.containsKey(host)) {
             hostMap.put(host, new KeyPartitionSet<>(hosts));
           }
           hostMap.get(host).addKeyPartitions(entry.getValue(), partitionName);
+        }
+        else {
+          for (K key : entry.getValue()) {
+            /**
+             * Key based sticky routing for multi-get requests;
+             * for each key, use the hashcode of each key to choose a host; in this way, keys are evenly distributed
+             * to all the hosts; besides, it's guaranteed that the same key will always go to the same host unless
+             * some hosts are down/stopped.
+             */
+            H host = chooseHostByKey(key, hosts);
+            if (!hostMap.containsKey(host)) {
+              hostMap.put(host, new KeyPartitionSet<>(Arrays.asList(host)));
+            }
+            hostMap.get(host).addKeyPartition(key, partitionName);
+          }
         }
       }
 
@@ -297,5 +313,11 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
       return scatter;
     }
+  }
+
+  public static <H, K> H chooseHostByKey(K key, List<H> hosts) {
+    int hostsSize = hosts.size();
+    int chosenIndex = Math.abs(key.hashCode()) % hostsSize;
+    return hosts.get(chosenIndex);
   }
 }
