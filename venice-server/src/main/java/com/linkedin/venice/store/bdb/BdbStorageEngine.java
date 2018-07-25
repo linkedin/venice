@@ -16,6 +16,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+
+import static com.linkedin.venice.store.bdb.BdbStoragePartition.*;
 
 
 /**
@@ -55,7 +58,8 @@ public class BdbStorageEngine extends AbstractStorageEngine {
 
   @Override
   protected Set<Integer> getPersistedPartitionIds() {
-    List<String> partitionNames = environment.getDatabaseNames();
+    List<String> partitionNames = environment.getDatabaseNames().stream()
+        .filter(partitionName -> !partitionName.endsWith(DELETE_FLAG_SUFFIX)).collect(Collectors.toList());
     Set<Integer> partitionIds = new HashSet<>();
     for (String partitionName : partitionNames) {
       // Make sure to extract partition id from the partitions belonging to current store

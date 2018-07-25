@@ -68,9 +68,10 @@ public class TestHostFinder {
     partitionHostMapping.put(4, "host_1");
     partitionHostMapping.put(5, "host_2");
     partitionHostMapping.forEach((partitionId, expectedHost) -> {
+      // Notice that the variable name `expectedHost` has lost its meaning here because partition-based sticky routing no longer exists
       List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, NULL_HOST_HEALTH_MONITOR, null);
-      Assert.assertEquals(hosts.size(), 1);
-      Assert.assertEquals(hosts.get(0).getHost(), expectedHost);
+      // key-based sticky routing; all replicas will be returned and one host will be chosen by the key
+      Assert.assertEquals(hosts.size(), 3);
     });
   }
 
@@ -101,9 +102,10 @@ public class TestHostFinder {
     partitionHostMapping.put(4, "host_0");
     partitionHostMapping.put(5, "host_2");
     partitionHostMapping.forEach((partitionId, expectedHost) -> {
+      // Notice that the variable name `expectedHost` has lost its meaning here because partition-based sticky routing no longer exists
       List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, NULL_HOST_HEALTH_MONITOR, null);
-      Assert.assertEquals(hosts.size(), 1);
-      Assert.assertEquals(hosts.get(0).getHost(), expectedHost);
+      // key-based sticky routing; all replicas will be returned and one host will be chosen by the key
+      Assert.assertEquals(hosts.size(), 2);
     });
     verify(mockSingleGetStats, times(partitionHostMapping.size())).recordFindUnhealthyHostRequest("store");
     verify(mockMultiGetStats, never()).recordFindUnhealthyHostRequest("store");

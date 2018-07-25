@@ -148,11 +148,13 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
                                      // results in an even distribution of partitions to hosts.
       return newHosts;
     }
-    newHosts.sort(INSTANCE_COMPARATOR);
-    int partitionId = HelixUtils.getPartitionId(partitionName);
-    int chosenIndex = partitionId % hostCount;
 
-    return Arrays.asList(newHosts.get(chosenIndex));
+    /**
+     * Return all the hosts that contain a replica of the partition;
+     * then scatter the keys to different hosts by the hashcode of the key
+     */
+    newHosts.sort(INSTANCE_COMPARATOR);
+    return newHosts;
   }
 
   @Override
