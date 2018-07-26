@@ -81,7 +81,7 @@ public class TestMultiDataCenterPush {
     IOUtils.closeQuietly(parentKafka);
   }
 
-  @Test(timeOut = 360 * Time.MS_PER_SECOND)
+  @Test(timeOut = 120 * Time.MS_PER_SECOND)
   public void testMultiDataCenterPush() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
