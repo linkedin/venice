@@ -47,8 +47,8 @@ def getRemote():
   remote_text = check_output(["git", "remote", "-v"])
   lines = [l.decode('UTF-8') for l in remote_text.splitlines()]
   for line in lines:
-    if "git@gitli.corp.linkedin.com:venice/venice.git" in line:
-      remote = str(line).split("\t")[0] # origin git@gitli... (fetch)
+    if "ssh://git.corp.linkedin.com:29418/venice/venice.git" in line:
+      remote = str(line).split("\t")[0] # origin ssh://git.corp... (fetch)
       print("Using remote: " + remote)
       return remote
   raise Exception("Failed to parse remotes for this git repository")
