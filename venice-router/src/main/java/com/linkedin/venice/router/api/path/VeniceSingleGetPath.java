@@ -44,7 +44,9 @@ public class VeniceSingleGetPath extends VenicePath {
       routerKey = RouterKey.fromString(key);
     }
     try {
-      String partition = Integer.toString(partitionFinder.findPartitionNumber(resourceName, routerKey));
+      int partitionId = partitionFinder.findPartitionNumber(resourceName, routerKey);
+      routerKey.setPartitionId(partitionId);
+      String partition = Integer.toString(partitionId);
       setPartitionKeys(Collections.singleton(routerKey));
       this.partition = partition;
     } catch (VeniceNoHelixResourceException e) {

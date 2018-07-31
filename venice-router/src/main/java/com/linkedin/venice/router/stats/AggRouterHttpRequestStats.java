@@ -206,4 +206,14 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordRequestUsage(usage);
     getStoreStats(storeName).recordRequestUsage(usage);
   }
+
+  public void recordRequestParsingLatency(String storeName, double latency) {
+    totalStats.recordRequestParsingLatency(latency);
+    getStoreStats(storeName).recordRequestParsingLatency(latency);
+  }
+
+  public void recordRequestRoutingLatency(String storeName, double latency) {
+    totalStats.recordRequestRoutingLatency(latency);
+    getStoreStats(storeName).recordRequestRoutingLatency(latency);
+  }
 }

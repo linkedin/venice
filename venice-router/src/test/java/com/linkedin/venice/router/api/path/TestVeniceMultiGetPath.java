@@ -47,21 +47,6 @@ public class TestVeniceMultiGetPath {
     return request;
   }
 
-  @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*duplicate.*")
-  public void testMultiGetReqWithDuplicateKeys() throws RouterException {
-    String resourceName = TestUtils.getUniqueString("test_store") + "_v1";
-    String keyPrefix = "key_";
-    List<ByteBuffer> keys = new ArrayList<>();
-    for (int i = 0; i < 5; ++i) {
-      keys.add(ByteBuffer.wrap((keyPrefix + i).getBytes()));
-    }
-    // duplicate
-    keys.add(keys.get(0));
-    BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
-
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 100);
-  }
-
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*exceeds the threshold.*")
   public void testMultiGetReqWithTooManyKeys() throws RouterException {
     String resourceName = TestUtils.getUniqueString("test_store") + "_v1";

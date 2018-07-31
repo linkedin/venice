@@ -58,7 +58,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
