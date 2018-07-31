@@ -14,10 +14,12 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -229,7 +231,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         this.hosts = hosts;
       }
 
-      public void addKeyPartitions(TreeSet<K> keys, String partitionName) {
+      public void addKeyPartitions(List<K> keys, String partitionName) {
         this.keySet.addAll(keys);
         this.partitionNames.add(partitionName);
       }
@@ -255,39 +257,33 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
             "VenicePath is expected, but received " + path.getClass());
       }
-      VenicePath venicePath = (VenicePath)path;
-      String storeName = venicePath.getStoreName();
-
-
       /**
        * Group by partition
+       *
+       * Using simple data structure, such as {@link LinkedList} instead of {@link SortedSet} to speed up operation,
+       * which is helpful for large batch-get use case.
        */
-      Map<String, TreeSet<K>> partitionKeys = new HashMap<>();
+      Map<Integer, List<K>> partitionKeys = new HashMap<>();
       for (K key : scatter.getPath().getPartitionKeys()) {
-        String partitionName = partitionFinder.findPartitionName(resourceName, key);
-        if (!partitionKeys.containsKey(partitionName)) {
-          partitionKeys.put(partitionName, new TreeSet<>());
+        int partitionId = ((RouterKey)key).getPartitionId();
+        List<K> partitionKeyList = partitionKeys.get(partitionId);
+        if (null == partitionKeyList) {
+          partitionKeyList = new LinkedList<>();
+          partitionKeys.put(partitionId, partitionKeyList);
         }
-        partitionKeys.get(partitionName).add(key);
+        partitionKeyList.add(key);
       }
 
       /**
        * Group by host
        */
       Map<H, KeyPartitionSet<H, K>> hostMap = new HashMap<>();
-      for (Map.Entry<String, TreeSet<K>> entry : partitionKeys.entrySet()) {
-        String partitionName = entry.getKey();
+      for (Map.Entry<Integer, List<K>> entry : partitionKeys.entrySet()) {
+        String partitionName = HelixUtils.getPartitionName(resourceName, entry.getKey());
         List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, hostHealthMonitor, roles);
         if (hosts.isEmpty()) {
-          scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), entry.getValue(), partitionName));
-        } else if (hosts.size() == 1) {
-          H host = hosts.get(0);
-          if (!hostMap.containsKey(host)) {
-            hostMap.put(host, new KeyPartitionSet<>(hosts));
-          }
-          hostMap.get(host).addKeyPartitions(entry.getValue(), partitionName);
-        }
-        else {
+          scatter.addOfflineRequest(new ScatterGatherRequest<>(Collections.emptyList(), new TreeSet<>(entry.getValue()), partitionName));
+        } else if (hosts.size() > 1) {
           for (K key : entry.getValue()) {
             /**
              * Key based sticky routing for multi-get requests;
@@ -296,11 +292,26 @@ public class VeniceDelegateMode extends ScatterGatherMode {
              * some hosts are down/stopped.
              */
             H host = chooseHostByKey(key, hosts);
-            if (!hostMap.containsKey(host)) {
-              hostMap.put(host, new KeyPartitionSet<>(Arrays.asList(host)));
+            /**
+             * Using {@link HashMap#get} and checking whether the result is null or not
+             * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
+             */
+            KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
+            if (null == keyPartitionSet) {
+              keyPartitionSet = new KeyPartitionSet<>(Arrays.asList(host));
+              hostMap.put(host, keyPartitionSet);
             }
-            hostMap.get(host).addKeyPartition(key, partitionName);
+            keyPartitionSet.addKeyPartition(key, partitionName);
           }
+        }
+        else {
+          H host = hosts.get(0);
+          KeyPartitionSet<H, K> keyPartitionSet = hostMap.get(host);
+          if (null == keyPartitionSet) {
+            keyPartitionSet = new KeyPartitionSet<>(Arrays.asList(host));
+            hostMap.put(host, keyPartitionSet);
+          }
+          keyPartitionSet.addKeyPartitions(entry.getValue(), partitionName);
         }
       }
 

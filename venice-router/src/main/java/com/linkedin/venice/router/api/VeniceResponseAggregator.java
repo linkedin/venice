@@ -139,6 +139,14 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       double waitingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordResponseWaitingTime(storeName, waitingTime);
     }
+    if (allMetrics.containsKey(ROUTER_PARSE_URI.name())) {
+      double parsingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_PARSE_URI.name()).getRawValue(TimeUnit.NANOSECONDS));
+      stats.recordRequestParsingLatency(storeName, parsingTime);
+    }
+    if (allMetrics.containsKey(ROUTER_ROUTING_TIME.name())) {
+      double routingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_ROUTING_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+      stats.recordRequestRoutingLatency(storeName, routingTime);
+    }
     if (HEALTHY_STATUSES.contains(responseStatus)) {
       // Only record successful response
       stats.recordResponseSize(storeName, finalResponse.content().readableBytes());

@@ -1,18 +1,32 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.EncodingUtils;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
 
-public class RouterKey implements Comparable<RouterKey>{
-  private ByteBuffer keyBuffer;
+public class RouterKey implements Comparable<RouterKey> {
+  private static final int UNKNOWN_PARTITION_ID = -1;
+
+  private final ByteBuffer keyBuffer;
+  /**
+   * Initializing hashCode during construction will speed up the following {@link #hashCode()} invocations.
+   */
+  private final int hashCode;
+  /**
+   * Maintaining the partition id here is to avoid multiple lookups in
+   * {@link com.linkedin.venice.router.api.path.VeniceMultiGetPath},
+   * {@link VeniceDelegateMode}
+   */
+  private int partitionId = UNKNOWN_PARTITION_ID;
 
   public RouterKey(byte[] key){
-    this.keyBuffer = ByteBuffer.wrap(key);
+    this(ByteBuffer.wrap(key));
   }
   public RouterKey(ByteBuffer key) {
     this.keyBuffer = key;
+    this.hashCode = this.keyBuffer.hashCode();
   }
   public static RouterKey fromString(String s){
     return new RouterKey(s.getBytes(StandardCharsets.UTF_8));
@@ -41,6 +55,20 @@ public class RouterKey implements Comparable<RouterKey>{
 
   @Override
   public int hashCode() {
-    return keyBuffer.hashCode();
+    return hashCode;
+  }
+
+  public void setPartitionId(int partitionId) {
+    if (UNKNOWN_PARTITION_ID != this.partitionId) {
+      throw new VeniceException("Partition id has been assigned: " + this.partitionId + ", and it is immutable after");
+    }
+    this.partitionId = partitionId;
+  }
+
+  public int getPartitionId() {
+    if (UNKNOWN_PARTITION_ID == partitionId) {
+      throw new VeniceException("Partition id hasn't been setup yet");
+    }
+    return this.partitionId;
   }
 }
