@@ -17,7 +17,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.Time;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
@@ -46,8 +45,6 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
-  //TODO: timeout should be configurable and be defined by the HttpAysncClient
-  private static final int TIMEOUT_THRESHOLD_IN_MS = 50 * Time.MS_PER_SECOND;
 
   private static final List<HttpResponseStatus> HEALTHY_STATUSES = Arrays.asList(OK, NOT_FOUND);
 
@@ -68,6 +65,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private final RecordSerializer<MultiGetResponseRecordV1> recordSerializer;
   private final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer;
 
+  //timeout is configurable and should be overwritten elsewhere
+  private long singleGetTimeoutThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
+  private long multiGetTimeoutThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
+
   public VeniceResponseAggregator(AggRouterHttpRequestStats statsForSingleGet,
                                   AggRouterHttpRequestStats statsForMultiGet) {
     this.statsForSingleGet = statsForSingleGet;
@@ -75,6 +76,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
     this.recordSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     this.recordDeserializer = SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+  }
+
+  public VeniceResponseAggregator withSingleGetTimeoutThreshold(long timeout, TimeUnit unit){
+    this.singleGetTimeoutThresholdInMs = unit.toMillis(timeout);
+    return this;
+  }
+
+  public VeniceResponseAggregator withMultiGetTimeoutThreshold(long timeout, TimeUnit unit){
+    this.multiGetTimeoutThresholdInMs = unit.toMillis(timeout);
+    return this;
   }
 
   @Nonnull
@@ -128,7 +139,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
       double latency = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
-      if (latency <= TIMEOUT_THRESHOLD_IN_MS && HEALTHY_STATUSES.contains(responseStatus)) {
+      if (isFastRequest(latency, requestType) && HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordHealthyRequest(storeName);
       } else {
         LOGGER.debug("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
@@ -153,6 +164,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
 
     return finalResponse;
+  }
+
+  private boolean isFastRequest(double requestLatencyMs, RequestType requestType){
+    if (requestType.equals(RequestType.SINGLE_GET)){
+      return requestLatencyMs < singleGetTimeoutThresholdInMs;
+    } else if (requestType.equals(RequestType.MULTI_GET)){
+      return requestLatencyMs < multiGetTimeoutThresholdInMs;
+    } else {
+      return false;
+    }
   }
 
   private FullHttpResponse buildSingleGetResponse(String storeName, int version, FullHttpResponse response, AggRouterHttpRequestStats stats) {

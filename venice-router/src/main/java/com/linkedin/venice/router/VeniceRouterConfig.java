@@ -55,6 +55,8 @@ public class VeniceRouterConfig {
   private String hostPatternForDnsCache;
   private long dnsCacheRefreshIntervalInMs;
   private boolean greedyMultiGet;
+  private long singleGetUnhealthyLatencyThresholdMs;
+  private long multiGetUnhealthyLatencyThresholdMs;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -117,6 +119,9 @@ public class VeniceRouterConfig {
     dnsCacheEnabled = props.getBoolean(ROUTER_DNS_CACHE_ENABLED, false);
     hostPatternForDnsCache = props.getString(ROUTE_DNS_CACHE_HOST_PATTERN, ".*prod.linkedin.com");
     dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3)); // 3 mins
+
+    singleGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_SINGLEGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    multiGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
   }
 
   public String getClusterName() {
@@ -257,6 +262,14 @@ public class VeniceRouterConfig {
 
   public long getDnsCacheRefreshIntervalInMs() {
     return dnsCacheRefreshIntervalInMs;
+  }
+
+  public long getSingleGetUnhealthyLatencyThresholdMs() {
+    return singleGetUnhealthyLatencyThresholdMs;
+  }
+
+  public long getMultiGetUnhealthyLatencyThresholdMs() {
+    return multiGetUnhealthyLatencyThresholdMs;
   }
 
   /**
