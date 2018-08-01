@@ -193,7 +193,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       hostSelected.setFailure(e);
       throw e;
     }
-    /**
+    /*
      * This function call is used to populate per-storage-node stats gradually since the connection pool
      * is empty at the very beginning.
      */
@@ -219,7 +219,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public void completed(org.apache.http.HttpResponse result) {
         int statusCode = result.getStatusLine().getStatusCode();
-        if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+        if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR || statusCode == HttpStatus.SC_SERVICE_UNAVAILABLE) {
           // Retry errored request
           if (!path.isRetryRequest()) {
             // Together with long-tail retry, for a single scatter request, it is possible to have at most two
@@ -243,7 +243,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             String partitionName = partitionIterator.next();
             if (partitionIterator.hasNext()) {
               logger.error(
-                  "There must be only one partition in a request, handling request as if there is only one partition");
+                  "There must be only one partition in a request, handling request as if there is only one partition."
+               + " Partitions in request: " + String.join(",",partitionNames));
             }
             if (statusCode == HttpStatus.SC_OK) {
               if (null == result.getFirstHeader(HttpConstants.VENICE_OFFSET)) {
@@ -368,7 +369,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         });
         recordResponseWaitingTime(host.getHost(), path, dispatchStartTSInNS);
 
-        /**
+        /*
          * The following codes will tie up the client thread after the response has been sent.
          *
          * we have tried performing the cache update asynchronously outside the client's thread by

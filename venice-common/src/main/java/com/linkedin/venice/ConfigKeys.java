@@ -487,4 +487,10 @@ public class ConfigKeys {
   public static final String ADMIN_TOPIC_REPLICATION_FACTOR = "admin.topic.replication.factor";
 
   public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
+
+  /**
+   * If a request is slower than this, it will be reported as unhealthy in the router metrics
+   */
+  public static final String ROUTER_SINGLEGET_UNHEALTHY_LATENCY_MS = "router.singleget.unhealthy.latency.ms";
+  public static final String ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS = "router.multiget.unhealthy.latency.ms";
 }
