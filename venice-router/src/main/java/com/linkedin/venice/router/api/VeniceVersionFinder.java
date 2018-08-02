@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.List;
 import java.util.Optional;
@@ -60,22 +61,40 @@ public class VeniceVersionFinder {
     }
    //This is a new version change, verify we have online replicas for each partition
     String kafkaTopic = Version.composeKafkaTopic(store, metadataCurrentVersion);
-    int partitionCount = veniceStore.getPartitionCount();
-    if (anyOfflinePartitions(routingData, kafkaTopic, partitionCount)){
-      logger.warn("Offline partitions for new active version " + kafkaTopic
-          + ", continuing to serve previous version: " + lastCurrentVersion.get(store));
-      return lastCurrentVersion.get(store);
+    if (anyOfflinePartitions(routingData, kafkaTopic)){
+      VersionStatus lastCurrentVersionStatus = veniceStore.getVersionStatus(lastCurrentVersion.get(store));
+      if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
+        logger.warn(
+            "Offline partitions for new active version " + kafkaTopic + ", continuing to serve previous version: " + lastCurrentVersion.get(store));
+        return lastCurrentVersion.get(store);
+      } else {
+        logger.warn(""
+            + "Offline partitions for new active version: " + kafkaTopic
+            + ", but previous version :" + lastCurrentVersion.get(store) + " has status: " + lastCurrentVersionStatus.toString()
+            + ".  Switching to serve new active version.");
+        lastCurrentVersion.put(store, metadataCurrentVersion);
+        return metadataCurrentVersion;
+      }
     } else { // all partitions are online
       lastCurrentVersion.put(store, metadataCurrentVersion);
       return metadataCurrentVersion;
     }
   }
 
-  private static boolean anyOfflinePartitions(Optional<RoutingDataRepository> routingData, String kafkaTopic, int partitionCount) {
+  private static boolean anyOfflinePartitions(Optional<RoutingDataRepository> routingData, String kafkaTopic) {
     if (routingData.isPresent()) { //If we passed an empty routingData object, assume the new version is safe
+      int partitionCount = routingData.get().getNumberOfPartitions(kafkaTopic);
       for (int p = 0; p < partitionCount; p++) {
         List<Instance> partitionHosts = routingData.get().getReadyToServeInstances(kafkaTopic, p);
         if (partitionHosts.isEmpty()) {
+          String partitionAssignment;
+          try {
+            partitionAssignment = routingData.get().getPartitionAssignments(kafkaTopic).getPartition(p).getAllInstances().toString();
+          } catch (Exception e) {
+            logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
+            partitionAssignment = "unknown";
+          }
+          logger.warn("No online replicas for partition " + p + " of " + kafkaTopic + ", partition assignment: " + partitionAssignment);
           return true;
         }
       }
