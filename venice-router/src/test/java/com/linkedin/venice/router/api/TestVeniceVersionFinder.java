@@ -6,6 +6,8 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import edu.emory.mathcs.backport.java.util.Arrays;
 import edu.emory.mathcs.backport.java.util.Collections;
@@ -69,9 +71,14 @@ public class TestVeniceVersionFinder {
     String storeName = TestUtils.getUniqueString("version-finder-test-store");
     int firstVersion = 1;
     int secondVersion = 2;
+    int thirdVersion = 3;
+    int fourthVersion = 4;
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
-    store.setCurrentVersion(firstVersion);
     store.setPartitionCount(3);
+    store.addVersion(new Version(storeName, firstVersion));
+    store.setCurrentVersion(firstVersion);
+    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+
     doReturn(store).when(storeRepository).getStore(storeName);
 
     //List<Instance> readyToServeInstances = Collections.singletonList(new Instance("id1", "host", 1234));
@@ -79,6 +86,7 @@ public class TestVeniceVersionFinder {
 
     RoutingDataRepository routingData = mock(RoutingDataRepository.class);
     doReturn(instances).when(routingData).getReadyToServeInstances(anyString(), anyInt());
+    doReturn(3).when(routingData).getNumberOfPartitions(anyString());
 
     //Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository, Optional.of(routingData));
@@ -87,11 +95,22 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
 
     // When the current version changes, without any online replicas the versionFinder returns the old version number
-    store.setCurrentVersion(2);
+    store.setCurrentVersion(secondVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
+
+    // When we retire an old version, we update to the new version anyways
+    store.setCurrentVersion(thirdVersion);
+    store.updateVersionStatus(1, VersionStatus.NOT_CREATED);
+    Assert.assertEquals(versionFinder.getVersion(storeName), thirdVersion);
+
+    // Next new version with no online instances still serves old ONLINE version
+    store.setCurrentVersion(fourthVersion);
+    store.addVersion(new Version(storeName, thirdVersion));
+    store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
+    Assert.assertEquals(versionFinder.getVersion(storeName), thirdVersion);
 
     // Once we have online replicas, the versionFinder reflects the new version
     instances.add(new Instance("id1", "host", 1234));
-    Assert.assertEquals(versionFinder.getVersion(storeName), secondVersion);
+    Assert.assertEquals(versionFinder.getVersion(storeName), fourthVersion);
   }
 }
