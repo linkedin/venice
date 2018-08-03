@@ -128,6 +128,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.consumer = consumer;
     this.offsetManager = offsetManager;
     this.executionIdAccessor = executionIdAccessor;
+    this.lastSucceedExecutionId = executionIdAccessor.getLastSucceedExecutionId(clusterName);
     this.producerTrackerMap = new HashMap<>();
   }
 
@@ -320,6 +321,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
     logger.info("Received message: " + adminMessage);
     long executionId = adminMessage.executionId;
+    if (executionId <= lastSucceedExecutionId) {
+      /**
+       * Since {@link com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager} will only keep the latest several
+       * producer guids, which could not filter very old messages.
+       * {@link #lastSucceedExecutionId} is monotonically increasing, and being persisted to Zookeeper after processing
+       * each message, so it is safe to filter out all the processed messages.
+       */
+      logger.warn("Execution id of message: " + adminMessage + " is not larger than last succeed execution id: " +
+          lastSucceedExecutionId + ", so will skip it");
+      persistRecordOffset(record);
+      return;
+    }
     switch (AdminMessageType.valueOf(adminMessage)) {
       case STORE_CREATION:
         handleStoreCreation((StoreCreation) adminMessage.payloadUnion);
@@ -368,7 +381,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     lastSucceedExecutionId = executionId;
     executionIdAccessor.updateLastSucceedExecutionId(clusterName, lastSucceedExecutionId);
-      persistRecordOffset(record);
+    persistRecordOffset(record);
   }
 
   private void skipMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {

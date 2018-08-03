@@ -240,10 +240,10 @@ public class TestAdminConsumptionTask {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
 
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 2),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
@@ -270,7 +270,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRunWhenStoreCreationGotExceptionForTheFirstTime() throws InterruptedException, IOException {
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName);
@@ -302,7 +302,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testSkipMessageAfterTimeout () throws IOException, InterruptedException {
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName);
@@ -325,7 +325,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testSkipMessageCommand() throws IOException, InterruptedException {
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName);
@@ -368,10 +368,10 @@ public class TestAdminConsumptionTask {
 
     VeniceWriter<byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).getBasicVeniceWriter(adminTopic);
 
-    byte[] message = getStoreCreationMessage(clusterName, "store-that-fails", owner, "invalid_key_schema", valueSchema); // This name is special
+    byte[] message = getStoreCreationMessage(clusterName, "store-that-fails", owner, "invalid_key_schema", valueSchema, 1); // This name is special
     long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
 
-    byte[] goodMessage = getStoreCreationMessage(clusterName, "good-store", owner, keySchema, valueSchema);
+    byte[] goodMessage = getStoreCreationMessage(clusterName, "good-store", owner, keySchema, valueSchema, 2);
     writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     Thread.sleep(5000); // Non deterministic, but whatever.  This should never fail.
@@ -386,10 +386,10 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithSameOffset() throws Exception {
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
@@ -455,10 +455,10 @@ public class TestAdminConsumptionTask {
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
 
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
 
     Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder = new LinkedList<>();
@@ -495,14 +495,14 @@ public class TestAdminConsumptionTask {
     String storeName2 = "test_store2";
     String storeName3 = "test_store3";
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offsetToSkip = ((RecordMetadata) veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get())
         .offset();
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(offsetToSkip - 1);
@@ -544,10 +544,10 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithDifferentOffset() throws InterruptedException, IOException {
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist for the first time, and exist for the second time
     when(admin.hasStore(clusterName, storeName))
@@ -579,12 +579,12 @@ public class TestAdminConsumptionTask {
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // This scenario mostly happens when master controller fails over
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
@@ -614,7 +614,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testParentControllerSkipKillOfflinePushJobMessage() throws InterruptedException, IOException {
     veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
@@ -664,7 +664,7 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);
     veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     String newOwner = owner+"updated";
@@ -693,6 +693,7 @@ public class TestAdminConsumptionTask {
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = setStore;
+    adminMessage.executionId = 2;
     byte[] message = adminOperationSerializer.serialize(adminMessage);
 
 
@@ -711,7 +712,7 @@ public class TestAdminConsumptionTask {
             eq(Optional.of(123L)), eq(Optional.of(1000L)), eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)));
   }
 
-  private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+  private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema, long executionId) {
     StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
     storeCreation.clusterName = clusterName;
     storeCreation.storeName = storeName;
@@ -725,6 +726,7 @@ public class TestAdminConsumptionTask {
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;
+    adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
   }
 
