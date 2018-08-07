@@ -678,6 +678,7 @@ public class Store {
     clonedStore.setBatchGetLimit(batchGetLimit);
     clonedStore.setNumVersionsToPreserve(numVersionsToPreserve);
     clonedStore.setIncrementalPushEnabled(incrementalPushEnabled);
+    clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

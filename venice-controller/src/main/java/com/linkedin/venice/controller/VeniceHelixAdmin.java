@@ -4,6 +4,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -335,14 +337,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } else {
                     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 }
-                // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
-                // could be deleted later after controller is recovered.
-                // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
-                // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
-                // delete this legacy store if isDeleting is true for this store.
-                StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
-                storeConfig.setDeleting(true);
-                storeConfigAccessor.updateConfig(storeConfig);
+
+                String currentlyDiscoveredClusterName = storeConfigAccessor.getStoreConfig(storeName).getCluster(); // This is for store migration
+                if (currentlyDiscoveredClusterName.equals(clusterName)) {
+                    // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
+                    // could be deleted later after controller is recovered.
+                    // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
+                    // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
+                    // delete this legacy store if isDeleting is true for this store.
+                    StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+                    storeConfig.setDeleting(true);
+                    storeConfigAccessor.updateConfig(storeConfig);
+                } else {
+                    // This is most likely the deletion after a store migration operation.
+                    // In this case the storeConfig should not be deleted,
+                    // because it is still being used to discover the cloned store
+                    logger.warn("storeConfig for this store " + storeName
+                        + " will not be deleted because it is currently pointing to another cluster: "
+                        + currentlyDiscoveredClusterName);
+                }
                 storeRepository.updateStore(store);
             } finally {
                 storeRepository.unLock();
@@ -363,30 +376,116 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
             // Helix will remove all data under this store's znode including key and value schemas.
             resources.getMetadataRepository().deleteStore(storeName);
+
             // Delete the config for this store after deleting the store.
-            storeConfigAccessor.deleteConfig(storeName);
-            logger.info("Store:" + storeName + "has been deleted.");
+            if (storeConfigAccessor.getStoreConfig(storeName).isDeleting()) {
+                storeConfigAccessor.deleteConfig(storeName);
+            }
+            logger.info("Store " + storeName + " in cluster " + clusterName + " has been deleted.");
         } finally {
             resources.unlockForMetadataOperation();
         }
     }
 
+    @Override
+    public synchronized void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore,
+        String keySchema, MultiSchemaResponse.Schema[] valueSchemas) {
+        if (srcClusterName.equals(destClusterName)) {
+            throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+        }
+
+        String storeName = srcStore.getName();
+        logger.info("Start cloning store: " + storeName);
+
+        VeniceHelixResources resources = getVeniceHelixResource(destClusterName);
+        HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
+
+        synchronized (resources) {
+            checkPreConditionForCloneStore(destClusterName, storeName);
+
+            // Create new store
+            VeniceControllerClusterConfig config = getVeniceHelixResource(destClusterName).getConfig();
+            Store clonedStore = new Store(storeName, srcStore.getOwner(), System.currentTimeMillis(), config.getPersistenceType(),
+                config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
+            HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
+            storeRepo.lock();
+            try {
+                Store existingStore = storeRepo.getStore(storeName);
+                if (existingStore != null) {
+                    throwStoreAlreadyExists(destClusterName, storeName);
+                }
+                storeRepo.addStore(clonedStore);
+                logger.info("Cloned store " + storeName + " has been created with largestUsedVersionNumber "
+                    + clonedStore.getLargestUsedVersionNumber());
+
+                //check store config
+                if (!storeConfigAccessor.containsConfig(storeName)) {
+                    logger.warn("Expecting but cannot find storeConfig for this store " + storeName);
+                    storeConfigAccessor.createConfig(storeName, destClusterName);
+                }
+            } finally {
+                storeRepo.unLock();
+            }
+
+            // Add key schema
+            new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema); // Check whether key schema is valid. It should, because this is from an existing store.
+            schemaRepo.initKeySchema(storeName, keySchema);
+
+            // Add value schemas
+            for (MultiSchemaResponse.Schema valueSchema : valueSchemas) {
+                new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema.getSchemaStr()); // Check whether value schema is valid. It should, because this is from an existing store.
+                schemaRepo.addValueSchema(storeName, valueSchema.getSchemaStr(), valueSchema.getId());
+            }
+
+            // Copy remaining properties that will make the cloned store almost identical to the original
+            UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore);
+            this.updateStore(destClusterName, storeName, params);
+
+            logger.info("Completed cloning Store: " + storeName);
+        }
+    }
+
+    @Override
+    public synchronized void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
+        StoreConfig storeConfig = this.storeConfigAccessor.getStoreConfig(storeName);
+        if (storeConfig == null) {
+            throw new VeniceException("Store config is empty!");
+        } else if (!storeConfig.getCluster().equals(oldCluster)) {
+            throw new VeniceException("Store " + storeName + " is expected to be in " + oldCluster + " cluster, but is actually in " + storeConfig.getCluster());
+        }
+
+        storeConfig.setCluster(newCluster);
+        this.storeConfigAccessor.updateConfig(storeConfig);
+        logger.info("Store " + storeName + " now belongs to cluster " + newCluster + " instead of " + oldCluster);
+    }
+
+    protected void checkPreConditionForCloneStore(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        checkStoreNameConflict(storeName);
+
+        if (storeConfigAccessor.containsConfig(storeName)) {
+            if (storeConfigAccessor.getStoreConfig(storeName).getCluster().equals(clusterName)) {
+                // store exists in dest cluster
+                throwStoreAlreadyExists(clusterName, storeName);
+            }
+        }
+    }
+
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
-        if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
-            throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
-        }
+        checkStoreNameConflict(storeName);
+
         // Before creating store, check the global stores configs at first.
         // TODO As some store had already been created before we introduced global store config
         // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
         // TODO put them into global store configs.
         boolean isLagecyStore = false;
-        if(storeConfigAccessor.containsConfig(storeName)){
+        if (storeConfigAccessor.containsConfig(storeName)) {
             // Controller was trying to delete the old store but failed.
             // Delete again before re-creating.
             // We lock the resource during deletion, so it's impossible to access the store which is being
             // deleted from here. So the only possible case is the deletion failed before.
-            if(!storeConfigAccessor.getStoreConfig(storeName).isDeleting()) {
+            if (!storeConfigAccessor.getStoreConfig(storeName).isDeleting()) {
                 throw new VeniceStoreAlreadyExistsException(storeName);
             } else {
                 isLagecyStore = true;
@@ -394,14 +493,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        Store  store= repository.getStore(storeName);
+        Store store = repository.getStore(storeName);
         // If the store exists in store repository and it's still active(not being deleted), we don't allow to re-create it.
         if (store != null && !isLagecyStore) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
+
         // Check whether the schema is valid or not
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
+    }
+
+    private void checkStoreNameConflict(String storeName) {
+        if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
+            throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
+        }
     }
 
     protected Store checkPreConditionForDeletion(String clusterName, String storeName) {
@@ -1689,14 +1795,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private void throwStoreAlreadyExists(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
-        logger.info(errorMessage);
-        throw new VeniceStoreAlreadyExistsException(storeName);
+        logger.error(errorMessage);
+        throw new VeniceStoreAlreadyExistsException(storeName, clusterName);
     }
 
     private void throwStoreDoesNotExist(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
-        logger.info(errorMessage);
-        throw new VeniceNoStoreException(storeName);
+        logger.error(errorMessage);
+        throw new VeniceNoStoreException(storeName, clusterName);
     }
 
     private void throwResourceAlreadyExists(String resourceName) {
@@ -2039,16 +2145,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public Optional<String> getClusterOfStoreInMasterController(String storeName) {
+    public List<String> getClusterOfStoreInMasterController(String storeName) {
+        List<String> matchingClusters = new LinkedList<>();
+
         for (VeniceDistClusterControllerStateModel model : controllerStateModelFactory.getAllModels()) {
             Optional<VeniceHelixResources> resources = model.getResources();
             if (resources.isPresent()) {
                 if (resources.get().getMetadataRepository().hasStore(storeName)) {
-                    return Optional.of(model.getClusterName());
+                    matchingClusters.add(model.getClusterName());
                 }
             }
         }
-        return Optional.empty();
+
+        // Most of the time there should be only one matching cluster
+        // During store migration there might be two matching clusters
+        if (matchingClusters.size() > 2) {
+            logger.warn("More than 2 matching clusters found for store " + storeName + "! Check these clusters: "
+                + matchingClusters);
+        }
+
+        return matchingClusters;
     }
 
     @Override

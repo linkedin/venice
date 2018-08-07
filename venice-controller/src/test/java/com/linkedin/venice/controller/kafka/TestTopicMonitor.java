@@ -8,7 +8,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.Optional;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -50,7 +51,7 @@ public class TestTopicMonitor {
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;
     doReturn(replicationFactor).when(mockAdmin).getReplicationFactor(clusterName, storeName);
-    doReturn(Optional.of(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
+    doReturn(Arrays.asList(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
     TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     mon.start();
 
@@ -84,7 +85,7 @@ public class TestTopicMonitor {
     doReturn(1).when(mockStore).getLargestUsedVersionNumber();
 
     Admin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
-    doReturn(Optional.empty()).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
+    doReturn(Collections.emptyList()).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
     doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeName);
     doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(Mockito.anyBoolean());
 
@@ -107,7 +108,7 @@ public class TestTopicMonitor {
     Mockito.verify(mockAdmin, Mockito.after(1000).never()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
 
     // Version creation after master controller fails over
-    doReturn(Optional.of(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
+    doReturn(Arrays.asList(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
     doReturn(true).when(mockAdmin).isMasterController(clusterName);
     Mockito.verify(mockAdmin, Mockito.timeout(1000).atLeastOnce()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
 

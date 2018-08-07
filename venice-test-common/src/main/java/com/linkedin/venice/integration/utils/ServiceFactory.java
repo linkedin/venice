@@ -49,6 +49,10 @@ public class ServiceFactory {
     return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService());
   }
 
+  public static ZkServerWrapper getZkServer(int port)  {
+    return getStatefulService(ZkServerWrapper.SERVICE_NAME, ZkServerWrapper.generateService(), port);
+  }
+
   /**
    * @return an instance of {@link KafkaBrokerWrapper}
    */
@@ -291,7 +295,18 @@ public class ServiceFactory {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES));
+            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.empty()));
+  }
+  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
+      int numberOfServers, int numberOfRouter, int zkPort) {
+    return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
+        VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
+            numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
+            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.of(zkPort)));
+  }
+
+  private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider, int port) {
+    return getService(serviceName, serviceProvider, port);
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {
@@ -299,6 +314,9 @@ public class ServiceFactory {
   }
 
   private static <S extends Closeable> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider) {
+    return getService(serviceName, serviceProvider, IntegrationTestUtils.getFreePort());
+  }
+  private static <S extends Closeable> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider, int port) {
     // Just some initial state. If the fabric of space-time holds up, you should never see these strings.
     Exception lastException = new VeniceException("There is no spoon.");
     String errorMessage = "If you see this message, something went horribly wrong.";
@@ -306,7 +324,7 @@ public class ServiceFactory {
     for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
       S wrapper = null;
       try {
-        wrapper = serviceProvider.get(serviceName, IntegrationTestUtils.getFreePort());
+        wrapper = serviceProvider.get(serviceName, port);
 
         if (wrapper instanceof ProcessWrapper) {
           LOGGER.info("Starting ProcessWrapper: " + serviceName);

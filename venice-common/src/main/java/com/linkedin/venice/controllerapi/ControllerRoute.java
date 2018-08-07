@@ -15,6 +15,7 @@ public enum ControllerRoute {
   END_OF_PUSH("/end_of_push", Arrays.asList(NAME, VERSION)), // write an END OF PUSH message into the topic
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
   NEW_STORE("/new_store", Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER),
+  MIGRATE_STORE("/migrate_store", Arrays.asList(NAME, CLUSTER, CLUSTER_SRC)),
   DELETE_STORE("/delete_store", Arrays.asList(NAME)),
   // Beside store name, others are all optional parameters for flexibility and compatibility.
   UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT,

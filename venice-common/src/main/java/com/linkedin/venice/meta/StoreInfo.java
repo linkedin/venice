@@ -1,7 +1,10 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import java.util.List;
 import java.util.Map;
+
+import static com.linkedin.venice.meta.Store.*;
 
 
 /**
@@ -31,6 +34,8 @@ public class StoreInfo {
     storeInfo.setBatchGetRouterCacheEnabled(store.isBatchGetRouterCacheEnabled());
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
+    storeInfo.setCompressionStrategy(store.getCompressionStrategy());
+    storeInfo.setNumVersionsToPreserve(store.getNumVersionsToPreserve());
 
     return storeInfo;
   }
@@ -123,6 +128,17 @@ public class StoreInfo {
    * a flag to see if the store supports incremental push or not
    */
   private boolean incrementalPushEnabled;
+
+  /**
+   * strategies used to compress/decompress Record's value
+   */
+  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+
+  /**
+   * How many versions this store preserve at most. By default it's 0 means we use the cluster level config to
+   * determine how many version is preserved.
+   */
+  private int numVersionsToPreserve = NUM_VERSION_PRESERVE_NOT_SET;
 
   public StoreInfo() {
   }
@@ -306,5 +322,21 @@ public class StoreInfo {
 
   public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     this.incrementalPushEnabled = incrementalPushEnabled;
+  }
+
+  public CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
+
+  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
+    this.compressionStrategy = compressionStrategy;
+  }
+
+  public int getNumVersionsToPreserve() {
+    return numVersionsToPreserve;
+  }
+
+  public void setNumVersionsToPreserve(int numVersionsToPreserve) {
+    this.numVersionsToPreserve = numVersionsToPreserve;
   }
 }

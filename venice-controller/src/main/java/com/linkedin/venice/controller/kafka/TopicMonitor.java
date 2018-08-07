@@ -8,6 +8,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -93,8 +96,10 @@ public class TopicMonitor extends AbstractVeniceService {
             if (logger.isDebugEnabled()) {
               logger.debug("Polling kafka: " + admin.getKafkaBootstrapServers(admin.isSslToKafka()) + " for new topics");
             }
-            Map<String, List<PartitionInfo>> topics = kafkaClient.listTopics();
-            for (Map.Entry<String, List<PartitionInfo>> entry : topics.entrySet()) {
+            ArrayList<Map.Entry<String, List<PartitionInfo>>> topics = new ArrayList<>(kafkaClient.listTopics().entrySet());
+            topics.sort(Comparator.comparing(Map.Entry::getKey));  // Build old version first during store migration, although there is still a small chance the newer version gets built first.
+
+            for (Map.Entry<String, List<PartitionInfo>> entry : topics) {
               String topic = entry.getKey();
               if (AdminTopicUtils.isAdminTopic(topic)) {
                 logger.debug("Skip admin topic: " + topic + " in Topic Monitor thread.");
@@ -111,38 +116,40 @@ public class TopicMonitor extends AbstractVeniceService {
               if (Version.topicIsValidStoreVersion(topic)) {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);
-                  Optional<String> clusterName = admin.getClusterOfStoreInMasterController(storeName);
-                if (!clusterName.isPresent()) {
+                List<String> matchingClusterNames = admin.getClusterOfStoreInMasterController(storeName);
+
+                if (matchingClusterNames.size() == 0) {
                   logger.debug(
                       "Could not handle topic: " + topic + " in this controller. Store does not exist in any cluster."
                           + " Or current controller is not the lead controller of the cluster owned that store.");
                   continue;
-                } else if (!admin.isMasterController(clusterName.get())) {
-                  // double check the master controller.
-                  logger.debug("Could not handle topic: " + topic
-                      + " in this controller. Current controller is not the lead controller of cluster: "
-                      + clusterName.get());
-                  continue;
                 }
-                // Found the cluster for store, and this controller is the master controller for that cluster.
-                // So we could continue to create version.
-                try {
-                  Store store = admin.getStore(clusterName.get(), storeName);
-                  if (null == store) {
-                    throw new VeniceNoStoreException(storeName);
-                  }
-                  if (version > store.getLargestUsedVersionNumber()) {
-                    int partitions = entry.getValue().size();
 
-                    admin.addVersion(clusterName.get(), storeName, version, partitions,
-                        admin.getReplicationFactor(clusterName.get(), storeName));
+                for (String clusterName : matchingClusterNames) {
+                  if (!admin.isMasterController(clusterName)) {
+                    // double check the master controller.
+                    logger.debug("Could not handle topic: " + topic
+                        + " in this controller. Current controller is not the lead controller of cluster: " + clusterName);
+                    continue;
                   }
-                } catch (VeniceNoStoreException e) {
-                  logger.warn("There is a topic " + topic + " for store " + storeName + " but that store is not initialized in Venice");
-                  continue; /* skip to the next topic */
-                } catch (StoreDisabledException se) {
-                  logger.info("There is a topic " + topic + " for store " + storeName + ". But store has been paused.", se);
-                  continue;
+                  // Found the cluster for store, and this controller is the master controller for that cluster.
+                  // So we could continue to create version.
+                  try {
+                    Store store = admin.getStore(clusterName, storeName);
+                    if (null == store) {
+                      throw new VeniceNoStoreException(storeName, clusterName);
+                    }
+                    if (version > store.getLargestUsedVersionNumber()) {
+                      int partitions = entry.getValue().size();
+                      admin.addVersion(clusterName, storeName, version, partitions, admin.getReplicationFactor(clusterName, storeName));
+                    }
+                  } catch (VeniceNoStoreException e) {
+                    logger.warn("There is a topic " + topic + " for store " + storeName + " but that store is not initialized in Venice");
+                    continue; /* skip to the next topic */
+                  } catch (StoreDisabledException se) {
+                    logger.info("There is a topic " + topic + " for store " + storeName + ". But store has been paused.", se);
+                    continue;
+                  }
                 }
               } else if (Version.isRealTimeTopic(topic)) {
                 logger.debug("Skip real-time buffer topic: " + topic + " in Topic Monitor thread");
