@@ -2,31 +2,35 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
@@ -35,6 +39,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class StoresRoutes {
+  private static final Logger logger = Logger.getLogger(StoresRoutes.class);
+
   public static Route getAllStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
       @Override
@@ -81,6 +87,78 @@ public class StoresRoutes {
         storeInfo.setColoToCurrentVersions(
             admin.getCurrentVersionsForMultiColos(veniceResponse.getCluster(), veniceResponse.getName()));
         veniceResponse.setStore(storeInfo);
+      }
+    };
+  }
+
+  public static Route migrateStore(Admin admin) {
+    return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
+        String srcClusterName = request.queryParams(CLUSTER_SRC);
+        String destClusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+
+        veniceResponse.setSrcClusterName(srcClusterName);
+        veniceResponse.setCluster(destClusterName);
+        veniceResponse.setName(storeName);
+
+        // Get original store properties
+        String srcControllerUrl = admin.getMasterController(srcClusterName).getUrl();
+        ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
+        StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+        String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
+        MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
+
+        Thread thread = new Thread(() -> {
+          admin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
+
+          // Wait until latest version comes online, unless reach timeout
+          final long TIMEOUT = TimeUnit.DAYS.toMillis(2);
+          long startTime = System.currentTimeMillis();
+
+          while (System.currentTimeMillis() - startTime < TIMEOUT) {
+            List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName).getStore()
+                .getVersions()
+                .stream()
+                .sorted(Comparator.comparingInt(Version::getNumber).reversed()) // descending order
+                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE))
+                .collect(Collectors.toList());
+
+            if (srcSortedOnlineVersions.size() == 0) {
+              logger.warn("Original store does not have any online versions!");
+              // In this case updating cluster discovery information won't make it worse
+              admin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+              return;
+            }
+            int srcLatestOnlineVersionNum = srcSortedOnlineVersions.get(0).getNumber();
+
+            Optional<Version> destLatestOnlineVersion = admin.getStore(destClusterName, storeName)
+                .getVersions()
+                .stream()
+                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE)
+                    && version.getNumber() == srcLatestOnlineVersionNum)
+                .findAny();
+
+            if (destLatestOnlineVersion.isPresent()) {
+              // Switch read traffic from new clients; existing clients still need redeploy
+              admin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+              return;
+            }
+
+            Utils.sleep(1000);
+          }
+          logger.warn(TIMEOUT + " milliseconds elapsed but the latest version "
+              + " in dest cluster " + destClusterName + " has not become online."
+              + " You will have to manually update the cluster discovery information for this store " + storeName
+              + ". The original store has the following versions: "
+              + srcControllerClient.getStore(storeName).getStore().getVersions()
+              + ". The cloned store has the following versions: "
+              + admin.getStore(destClusterName, storeName).getVersions());
+        });
+
+        thread.start();
       }
     };
   }
@@ -139,8 +217,6 @@ public class StoresRoutes {
       }
     };
   }
-
-
 
   public static Route setOwner(Admin admin) {
     return new VeniceRouteHandler<OwnerResponse>(OwnerResponse.class) {

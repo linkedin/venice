@@ -6,6 +6,8 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Executors;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
@@ -29,14 +31,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
       int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes) {
-    ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
+      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes, Optional<Integer> zkPort) {
+    ZkServerWrapper zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
     String clusterToD2="";
     String[] clusterNames = new String[numberOfClusters];
     for (int i = 0; i < numberOfClusters; i++) {
-      String clusterName = TestUtils.getUniqueString("venice-cluster");
+      String clusterName = TestUtils.getUniqueString("venice-cluster" + i);
       clusterNames[i] = clusterName;
       clusterToD2+=TestUtils.getClusterToDefaultD2String(clusterName)+",";
     }
@@ -85,7 +87,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     Iterator<String> clusterIter = clusters.keySet().iterator();
     while (clusterIter.hasNext()) {
       String cluster = clusterIter.next();
-      clusters.get(cluster).close();
+      Executors.newCachedThreadPool().execute(() -> {
+        clusters.get(cluster).close();
+      });
       clusterIter.remove();
     }
   }
@@ -98,6 +102,10 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   public Map<String, VeniceClusterWrapper> getClusters() {
     return clusters;
+  }
+
+  public Map<Integer, VeniceControllerWrapper> getControllers() {
+    return controllers;
   }
 
   public ZkServerWrapper getZkServerWrapper() {
@@ -114,6 +122,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   public VeniceControllerWrapper getRandomController() {
     return this.controllers.values().stream().filter(controller -> controller.isRunning()).findAny().get();
+  }
+
+  public VeniceControllerWrapper getMasterController(String clusterName) {
+    return this.controllers.values()
+        .stream()
+        .filter(controller -> controller.isRunning())
+        .filter(c -> c.isMasterController(clusterName))
+        .findAny()
+        .get();
   }
 
   public String getControllerConnectString(){

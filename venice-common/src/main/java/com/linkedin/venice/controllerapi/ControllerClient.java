@@ -13,7 +13,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -23,7 +22,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
@@ -250,6 +248,21 @@ public class ControllerClient implements Closeable {
       return mapper.readValue(responseJson, NewStoreResponse.class);
     } catch (Exception e){
       return handleError(new VeniceException("Error creating store: " + storeName, e), new NewStoreResponse());
+    }
+  }
+
+  public StoreMigrationResponse migrateStore(String storeName, String srcClusterName) {
+    try {
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(CLUSTER, this.clusterName)
+          .add(CLUSTER_SRC, srcClusterName);
+      String responseJson = postRequest(ControllerRoute.MIGRATE_STORE.getPath(), params);
+      return mapper.readValue(responseJson, StoreMigrationResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException( "Error migrating store: " + storeName
+                  + " from: " + srcClusterName + " to: " + this.clusterName, e),
+          new StoreMigrationResponse());
     }
   }
 

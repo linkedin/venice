@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
@@ -69,6 +70,8 @@ public interface Admin {
     boolean isClusterValid(String clusterName);
 
     void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
+
+    void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore, String keySchema, MultiSchemaResponse.Schema[] valueSchemas);
 
     /**
     * Delete the entire store includeing both metadata and real user's data. Before deleting a store, we should disable
@@ -404,11 +407,11 @@ public interface Admin {
     void setStorePushStrategyForMigration(String voldemortStoreName, String strategy);
 
     /**
-     * Return the cluster which the given store belongs to. And it will only work in the master controller of that
-     * cluster. For example, storeA belongs to Cluster1, but the current controller is not hte master controller of
+     * Return the clusters which the given store belongs to. And it will only work in the master controller of that
+     * cluster. For example, storeA belongs to Cluster1, but the current controller is not the master controller of
      * cluster1, it will not return cluster name for that store.
      */
-    Optional<String> getClusterOfStoreInMasterController(String storeName);
+    List<String> getClusterOfStoreInMasterController(String storeName);
 
     /**
      * Find the cluster which the given store belongs to. Return the pair of the cluster name and the d2 service
@@ -451,4 +454,6 @@ public interface Admin {
      * @return
      */
     boolean isResourceStillAlive(String resourceName);
+
+    void updateClusterDiscovery(String storeName, String oldCluster, String newCluster);
 }

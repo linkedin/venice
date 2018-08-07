@@ -63,7 +63,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   @Override
   public SchemaEntry getKeySchema(String storeName) {
     if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
+      throw new VeniceNoStoreException(storeName, clusterName);
     }
     String keySchemaPath = HelixReadOnlySchemaRepository.getKeySchemaPath(clusterName, storeName);
     return dataAccessor.get(keySchemaPath, null, AccessOption.PERSISTENT);

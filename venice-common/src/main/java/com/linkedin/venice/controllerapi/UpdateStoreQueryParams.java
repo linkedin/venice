@@ -1,6 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.StoreInfo;
 import java.util.Map;
 import java.util.Optional;
 
@@ -13,6 +15,38 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams() {
     super();
+  }
+
+  /**
+   * Useful for store migration
+    * @param srcStore The original store
+   */
+  public UpdateStoreQueryParams(StoreInfo srcStore) {
+    // Copy everything except current version number and largest used version number
+    UpdateStoreQueryParams updateStoreQueryParams =
+        new UpdateStoreQueryParams()
+            .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
+            .setReadQuotaInCU(srcStore.getReadQuotaInCU())
+            .setAccessControlled(srcStore.isAccessControlled())
+            .setChunkingEnabled(srcStore.isChunkingEnabled())
+            .setSingleGetRouterCacheEnabled(srcStore.isSingleGetRouterCacheEnabled())
+            .setBatchGetRouterCacheEnabled(srcStore.isBatchGetRouterCacheEnabled())
+            .setBatchGetLimit(srcStore.getBatchGetLimit())
+            .setOwner(srcStore.getOwner())
+            .setCompressionStrategy(srcStore.getCompressionStrategy())
+            .setEnableReads(srcStore.isEnableStoreReads())
+            .setEnableWrites(srcStore.isEnableStoreWrites())
+            .setPartitionCount(srcStore.getPartitionCount())
+            .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
+            .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve());
+
+    HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
+    if (hybridStoreConfig != null) {
+      updateStoreQueryParams.setHybridOffsetLagThreshold(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
+      updateStoreQueryParams.setHybridRewindSeconds(hybridStoreConfig.getRewindTimeInSeconds());
+    }
+
+    this.params.putAll(updateStoreQueryParams.params);
   }
 
   public UpdateStoreQueryParams setOwner(String owner) {
@@ -104,7 +138,6 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setChunkingEnabled(boolean chunkingEnabled) {
     return putBoolean(CHUNKING_ENABLED, chunkingEnabled);
   }
-
   public Optional<Boolean> getChunkingEnabled() {
     return getBoolean(CHUNKING_ENABLED);
   }
@@ -112,7 +145,6 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     return putBoolean(INCREMENTAL_PUSH_ENABLED, incrementalPushEnabled);
   }
-
   public Optional<Boolean> getIncrementalPushEnabled() {
     return getBoolean(INCREMENTAL_PUSH_ENABLED);
   }
@@ -141,11 +173,11 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams setNumVersionsToPreserve(int numVersionsToPreserve){
     return putInteger(NUM_VERSIONS_TO_PRESERVE, numVersionsToPreserve);
   }
-
   public Optional<Integer> getNumVersionsToPreserve(){
     return getInteger(NUM_VERSIONS_TO_PRESERVE);
   }
 
+  //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);
   }

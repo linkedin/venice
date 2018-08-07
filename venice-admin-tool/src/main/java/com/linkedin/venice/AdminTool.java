@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -34,6 +35,7 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
@@ -297,6 +299,9 @@ public class AdminTool {
           break;
         case DUMP_CONTROL_MESSAGES:
           dumpControlMessages(cmd);
+          break;
+        case MIGRATE_STORE:
+          migrateStore(cmd);
           break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
@@ -701,6 +706,58 @@ public class AdminTool {
     int messageCount = Integer.parseInt(getRequiredArgument(cmd, Arg.MESSAGE_COUNT));
 
     new ControlMessageDumper(consumerProps, kafkaTopic, partitionNumber, startingOffset, messageCount).fetch().display();
+  }
+
+  private static void migrateStore(CommandLine cmd) {
+    String routerHosts = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+    }
+
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, routerHosts);
+    StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
+    printObject(storeMigrationResponse);
+
+    // Progress monitor
+    if (!storeMigrationResponse.isError()) {
+      System.err.println("\nThe migration request has been submitted successfully.\n"
+          + "Make sure at least one version is online before deleting the original store.\n"
+          + "If you terminate this process, the migration will continue and "
+          + "you can verify the process by describing the store in the destination cluster.");
+
+      boolean isOnline = false;
+      while (!isOnline) {
+        Utils.sleep(5000);
+        System.err.println();
+        System.err.println(new java.util.Date());
+        List<Version> versions = destControllerClient.getStore(storeName).getStore().getVersions();
+
+        for (Version v : versions) {
+          System.err.println(v);
+        }
+
+        if (versions.size() != 0 &&
+            versions.stream().filter(v -> v.getStatus().equals(VersionStatus.ONLINE)).count() == versions.size()) {
+          isOnline = true;
+        }
+      }
+
+      Utils.sleep(1000);
+      String clusterDiscovered = controllerClient.discoverCluster(routerHosts, storeName).getCluster();
+      if (destClusterName.equals(clusterDiscovered)) {
+        System.err.println("\nThe cloned store in " + destClusterName + " has bootstrapped successfully.");
+        System.err.println("Please verify that the original store in " + srcClusterName
+            + " has zero read activity, and then delete it.");
+      } else {
+        System.err.println("\nThe cloned store in " + destClusterName
+                + " has bootstrapped successfully. BUT CLUSTER DISCOVERY INFORMATION IS NOT YET UPDATED!");
+        System.err.println("Expected cluster discovery result: " + destClusterName);
+        System.err.println("Actual cluster discovery result: " + clusterDiscovered);
+      }
+    }
   }
 
   /* Things that are not commands */

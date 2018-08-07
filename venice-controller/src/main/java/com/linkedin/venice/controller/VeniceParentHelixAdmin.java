@@ -33,6 +33,7 @@ import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -301,6 +302,12 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseLock();
     }
+  }
+
+  @Override
+  public void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore,
+      String keySchema, MultiSchemaResponse.Schema[] valueSchemas) {
+    throw new VeniceException("This feature is not implemented yet on parent controller.");
   }
 
   @Override
@@ -1384,7 +1391,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Optional<String> getClusterOfStoreInMasterController(String storeName) {
+  public List<String> getClusterOfStoreInMasterController(String storeName) {
     return veniceHelixAdmin.getClusterOfStoreInMasterController(storeName);
   }
 
@@ -1468,5 +1475,10 @@ public class VeniceParentHelixAdmin implements Admin {
   /* Used by test only*/
   protected void setOfflinePushAccessor(ParentHelixOfflinePushAccessor offlinePushAccessor) {
     this.offlinePushAccessor = offlinePushAccessor;
+  }
+
+  @Override
+  public void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
+    veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster);
   }
 }

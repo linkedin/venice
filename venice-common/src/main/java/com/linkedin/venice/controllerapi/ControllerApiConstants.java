@@ -4,6 +4,7 @@ public class ControllerApiConstants {
 
   public static final String HOSTNAME = "hostname";
   public static final String CLUSTER = "cluster_name";
+  public static final String CLUSTER_SRC = "cluster_name_src";
 
   public static final String NAME = "store_name";
   public static final String OWNER = "owner";

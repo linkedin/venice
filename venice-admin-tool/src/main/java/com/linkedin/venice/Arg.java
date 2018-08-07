@@ -11,6 +11,8 @@ public enum Arg {
   ACCESS_CONTROL("access-control", "acl", true, "Enable/disable store-level access control"),
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
+  CLUSTER_SRC("cluster-src", "cs", true, "Store migration original Venice cluster name"),
+  CLUSTER_DEST("cluster-dest", "cd", true, "Store migration destination Venice cluster name"),
   STORE("store", "s", true, "Name of Venice store"),
   VERSION("version", "v", true, "Active store version number"),
   LARGEST_USED_VERSION_NUMBER("largest-used-version", "luv", true, "Largest used store version number (whether active or not)"),

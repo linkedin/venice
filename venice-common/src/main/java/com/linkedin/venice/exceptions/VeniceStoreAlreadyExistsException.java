@@ -9,18 +9,38 @@ import org.apache.http.HttpStatus;
 public class VeniceStoreAlreadyExistsException extends VeniceException {
   private final String storeName;
 
-  public VeniceStoreAlreadyExistsException(String storeName){
-    super("Store: " + storeName + " already exists");
+  private final String clusterName;
+
+  public VeniceStoreAlreadyExistsException(String storeName, String clusterName) {
+    super("Store: " + storeName + " already exists in cluster " + clusterName);
     this.storeName = storeName;
+    this.clusterName = clusterName;
   }
 
-  public VeniceStoreAlreadyExistsException(String storeName, Throwable t){
+  public VeniceStoreAlreadyExistsException(String storeName, String clusterName, Throwable t) {
+    super("Store: " + storeName + " already exists in cluster " + clusterName, t);
+    this.storeName = storeName;
+    this.clusterName = clusterName;
+  }
+
+  public VeniceStoreAlreadyExistsException(String storeName) {
+    super("Store: " + storeName + " already exists");
+    this.storeName = storeName;
+    this.clusterName = "unspecified";
+  }
+
+  public VeniceStoreAlreadyExistsException(String storeName, Throwable t) {
     super("Store: " + storeName + " already exists", t);
     this.storeName = storeName;
+    this.clusterName = "unspecified";
   }
 
   public String getStoreName(){
     return storeName;
+  }
+
+  public String getClusterName() {
+    return clusterName;
   }
 
   @Override
