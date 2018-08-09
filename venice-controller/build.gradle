@@ -48,6 +48,12 @@ dependencies {
   compile 'com.sleepycat:je:5.0.104'
   compile 'com.sparkjava:spark-core:2.5.5'
 
+  compile (libraries.d2){
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
+    // this will introduce another different mockito-all version
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
   testCompile project(':venice-server')
   testCompile project(':venice-router')
   testCompile project(':venice-brooklin')

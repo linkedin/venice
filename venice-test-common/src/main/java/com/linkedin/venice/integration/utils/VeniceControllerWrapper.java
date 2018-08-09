@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -13,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
@@ -31,18 +33,21 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final List<VeniceProperties> configs;
   private VeniceController service;
   private final int port;
+  private final List<D2Server> d2ServerList;
 
-  VeniceControllerWrapper(String serviceName, File dataDirectory, VeniceController service, int port, List<VeniceProperties> configs) {
+  VeniceControllerWrapper(String serviceName, File dataDirectory, VeniceController service, int port,
+      List<VeniceProperties> configs, List<D2Server> d2ServerList) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
     this.configs = configs;
+    this.d2ServerList = d2ServerList;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
       long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper[] childControllers,
-      VeniceProperties extraProps, String clusterToD2, boolean sslToKafka) {
+      VeniceProperties extraProps, String clusterToD2, boolean sslToKafka, boolean d2Enabled) {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
       int adminPort = IntegrationTestUtils.getFreePort();
@@ -117,19 +122,22 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         VeniceProperties props = builder.build();
         propertiesList.add(props);
       }
-
-      VeniceController veniceController = new VeniceController(propertiesList);
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, propertiesList);
+      List<D2Server> d2ServerList = Collections.emptyList();
+      if (d2Enabled) {
+        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + adminPort);
+      }
+      VeniceController veniceController = new VeniceController(propertiesList, d2ServerList);
+      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, propertiesList, d2ServerList);
     };
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
       long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper[] childControllers,
-      VeniceProperties extraProps, boolean sslToKafak) {
+      VeniceProperties extraProps, boolean sslToKafka) {
 
     return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, delayToReblanceMS, minActiveReplica, childControllers, extraProps, null, sslToKafak);
+        partitionSize, delayToReblanceMS, minActiveReplica, childControllers, extraProps, null, sslToKafka, false);
   }
 
   @Override
@@ -161,7 +169,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   @Override
   protected void newProcess()
       throws Exception {
-    service = new VeniceController(configs);
+    service = new VeniceController(configs, d2ServerList);
   }
 
   /***

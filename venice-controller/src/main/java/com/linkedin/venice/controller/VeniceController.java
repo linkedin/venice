@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
@@ -11,6 +12,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import org.apache.log4j.Logger;
 
@@ -30,28 +32,31 @@ public class VeniceController {
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
+  private final List<D2Server> d2ServerList;
 
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
+  // This constructor is being used in local mode
   public VeniceController(VeniceProperties props) {
-    this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME));
+    this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), Collections.emptyList());
   }
 
-  public VeniceController(List<VeniceProperties> propertiesList) {
-    multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
-    metricsRepository = TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
-    createServices();
+  // This constructor is being used in integration test
+  public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList) {
+    this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList);
   }
 
-  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository) {
-    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository);
+  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList) {
+    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository, d2ServerList);
   }
 
-  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository) {
-    multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
+  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList) {
+    this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
+    this.d2ServerList = d2ServerList;
     createServices();
   }
+
 
   public void createServices(){
     controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository);
@@ -85,11 +90,21 @@ public class VeniceController {
       topicMonitor.start();
     }
     topicCleanupService.start();
+    // start d2 service at the end
+    d2ServerList.forEach( d2Server -> {
+      d2Server.forceStart();
+      logger.info("Started d2 announcer: " + d2Server);
+    });
     logger.info("Controller is started.");
   }
 
 
   public void stop(){
+    // stop d2 service first
+    d2ServerList.forEach( d2Server -> {
+      d2Server.notifyShutdown();
+      logger.info("Stopped d2 announcer: " + d2Server);
+    });
     //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     AbstractVeniceService.stopIfNotNull(topicCleanupService);
     AbstractVeniceService.stopIfNotNull(topicMonitor);

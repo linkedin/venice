@@ -49,7 +49,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
-          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false);
+          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false);
       controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
     }
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();

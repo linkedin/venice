@@ -2,6 +2,9 @@ package com.linkedin.venice.controllerapi;
 
 import com.google.common.net.HttpHeaders;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -92,6 +95,33 @@ public class TestControllerClient {
     try(D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress())) {
       String masterControllerUrl = d2ControllerClient.getMasterControllerUrl(mockController.getZkAddress());
       Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
+    }
+  }
+
+  @Test
+  public void testD2ControllerClientWithExternalD2Client() throws Exception{
+    String d2ClusterName = "VeniceRouter";
+    String d2ServiceName = "VeniceRouter";
+    String veniceClusterName = TestUtils.getUniqueString("test-cluster");
+    String fakeMasterControllerUri = TestUtils.getUniqueString("http://fake_uri");
+
+    MockD2ServerWrapper mockController =
+        ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName);
+    String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
+    mockController.addResponseForUriPattern(uriPattern,
+        constructMasterControllerResponse(veniceClusterName, fakeMasterControllerUri));
+    D2Client d2Client = new D2ClientBuilder()
+        .setZkHosts(mockController.getZkAddress())
+        .build();
+    try {
+      D2ClientUtils.startClient(d2Client);
+      try (D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName,
+          d2Client)) {
+        String masterControllerUrl = d2ControllerClient.getMasterControllerUrl(mockController.getZkAddress());
+        Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
+      }
+    } finally {
+      D2ClientUtils.shutdownClient(d2Client);
     }
   }
 
