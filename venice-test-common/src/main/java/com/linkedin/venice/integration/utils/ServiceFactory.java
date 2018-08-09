@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.commons.io.IOUtils;
@@ -105,12 +104,12 @@ public class ServiceFactory {
       int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica,
       BrooklinWrapper brooklinWrapper, boolean sslToKafka) {
     return getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
-        delayToRebalanceMS, minActiveReplica, brooklinWrapper, null, sslToKafka);
+        delayToRebalanceMS, minActiveReplica, brooklinWrapper, null, sslToKafka, false);
   }
 
   public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
       KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize, long delayToRebalanceMS,
-      int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2, boolean sslToKafka) {
+      int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2, boolean sslToKafka, boolean d2Enabled) {
     VeniceProperties extraProperties;
     if (null == brooklinWrapper) {
       extraProperties = EMPTY_VENICE_PROPS;
@@ -124,7 +123,7 @@ public class ServiceFactory {
     }
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
-            delayToRebalanceMS, minActiveReplica, null, extraProperties, clusterToD2, sslToKafka));
+            delayToRebalanceMS, minActiveReplica, null, extraProperties, clusterToD2, sslToKafka, d2Enabled));
   }
 
   /**

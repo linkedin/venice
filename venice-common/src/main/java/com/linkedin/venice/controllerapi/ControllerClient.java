@@ -726,17 +726,21 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {
+    return new QueryParams()
+        // Cluster name is not required for cluster discovery request. But could not null otherwise an exception will be
+        // thrown on server side.
+        .add(CLUSTER, "*")
+        .add(HOSTNAME, Utils.getHostName())
+        .add(NAME, storeName);
+  }
+
   public static D2ServiceDiscoveryResponse discoverCluster(String veniceUrls, String storeName) {
     List<String> urlList = Arrays.asList(veniceUrls.split(","));
     Exception lastException = null;
     for (String url : urlList) {
       try {
-        QueryParams queryParams = new QueryParams()
-        // Cluster name is not required for cluster discovery request. But could not null otherwise an exception will be
-        // thrown on server side.
-            .add(CLUSTER, "*")
-            .add(HOSTNAME, Utils.getHostName())
-            .add(NAME, storeName);
+        QueryParams queryParams = getQueryParamsToDiscoverCluster(storeName);
         String responseJson = getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath(), queryParams);
         return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
       } catch (Exception e) {
@@ -803,10 +807,14 @@ public class ControllerClient implements Closeable {
     return getRequest(masterControllerUrl, path, params);
   }
 
+  protected static String encodeQueryParams(QueryParams queryParams) {
+    return URLEncodedUtils.format(queryParams.getNameValuePairs(), StandardCharsets.UTF_8);
+  }
+
   private static String getRequest(String url, String path, QueryParams params)
       throws ExecutionException, InterruptedException {
     url = url.trim();
-    String queryString = URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
+    String queryString = encodeQueryParams(params);
     final HttpGet get = new HttpGet(url + path + "?" + queryString);
     return getJsonFromHttp(get, false);
   }
