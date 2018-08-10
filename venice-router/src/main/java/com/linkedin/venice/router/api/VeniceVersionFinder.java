@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.List;
 import java.util.Optional;
@@ -23,6 +24,7 @@ public class VeniceVersionFinder {
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final Optional<RoutingDataRepository> routingData;
+  private final StaleVersionStats stats;
   private ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
 
   /**
@@ -30,9 +32,10 @@ public class VeniceVersionFinder {
    * @param metadataRepository for getting the current version from zookeeper
    * @param routingData for validating that a new version has online replicas.  Pass null to disable this check (for tests)
    */
-  public VeniceVersionFinder(@NotNull ReadOnlyStoreRepository metadataRepository, Optional<RoutingDataRepository> routingData){
+  public VeniceVersionFinder(@NotNull ReadOnlyStoreRepository metadataRepository, Optional<RoutingDataRepository> routingData, StaleVersionStats stats){
     this.metadataRepository = metadataRepository;
     this.routingData = routingData;
+    this.stats = stats;
   }
 
   public int getVersion(@NotNull String store)
@@ -57,6 +60,7 @@ public class VeniceVersionFinder {
       lastCurrentVersion.put(store, metadataCurrentVersion);
     }
     if (lastCurrentVersion.get(store).equals(metadataCurrentVersion)){
+      stats.recordNotStale();
       return metadataCurrentVersion;
     }
    //This is a new version change, verify we have online replicas for each partition
@@ -66,6 +70,7 @@ public class VeniceVersionFinder {
       if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
         logger.warn(
             "Offline partitions for new active version " + kafkaTopic + ", continuing to serve previous version: " + lastCurrentVersion.get(store));
+        stats.recordStale(metadataCurrentVersion, lastCurrentVersion.get(store));
         return lastCurrentVersion.get(store);
       } else {
         logger.warn(""
@@ -73,10 +78,12 @@ public class VeniceVersionFinder {
             + ", but previous version :" + lastCurrentVersion.get(store) + " has status: " + lastCurrentVersionStatus.toString()
             + ".  Switching to serve new active version.");
         lastCurrentVersion.put(store, metadataCurrentVersion);
+        stats.recordNotStale();
         return metadataCurrentVersion;
       }
     } else { // all partitions are online
       lastCurrentVersion.put(store, metadataCurrentVersion);
+      stats.recordNotStale();
       return metadataCurrentVersion;
     }
   }

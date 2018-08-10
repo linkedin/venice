@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
 import edu.emory.mathcs.backport.java.util.Arrays;
 import edu.emory.mathcs.backport.java.util.Collections;
@@ -32,7 +33,8 @@ public class TestVeniceVersionFinder {
   public void throws404onMissingStore(){
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     doReturn(null).when(mockRepo).getStore(anyString());
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, Optional.empty());
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, Optional.empty(), stats);
     try{
       versionFinder.getVersion("");
       Assert.fail("versionFinder.getVersion() on previous line should throw a RouterException");
@@ -52,7 +54,8 @@ public class TestVeniceVersionFinder {
     // disable store, should return the number indicates that none of version is avaiable to read.
     store.setEnableReads(false);
     doReturn(store).when(mockRepo).getStore(storeName);
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, Optional.empty());
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, Optional.empty(), stats);
     try {
       versionFinder.getVersion(storeName);
       Assert.fail("Store should be disabled and forbidden to read.");
@@ -88,8 +91,10 @@ public class TestVeniceVersionFinder {
     doReturn(instances).when(routingData).getReadyToServeInstances(anyString(), anyInt());
     doReturn(3).when(routingData).getNumberOfPartitions(anyString());
 
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+
     //Object under test
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository, Optional.of(routingData));
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository, Optional.of(routingData), stats);
 
     // for a new store, the versionFinder returns the current version, no matter the online replicas
     Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);

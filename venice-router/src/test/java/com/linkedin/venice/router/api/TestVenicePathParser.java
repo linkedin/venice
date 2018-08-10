@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.StaleVersionStats;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
@@ -33,8 +34,8 @@ public class TestVenicePathParser {
     doReturn(true).when(mockStore).isEnableReads();
     ReadOnlyStoreRepository mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
-
-    return new VeniceVersionFinder(mockMetadataRepository, Optional.empty());
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    return new VeniceVersionFinder(mockMetadataRepository, Optional.empty(), stats);
   }
 
   AggRouterHttpRequestStats getMockedStats() {

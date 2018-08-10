@@ -45,6 +45,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.DnsLookupStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
+import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -303,8 +304,13 @@ public class RouterServer extends AbstractVeniceService {
         statsForSingleGet, statsForMultiGet,
         liveInstanceMonitor);
 
-    VenicePathParser pathParser = new VenicePathParser(new VeniceVersionFinder(metadataRepository, Optional.of(routingDataRepository)), partitionFinder,
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(
+        metadataRepository,
+        Optional.of(routingDataRepository),
+        new StaleVersionStats(metricsRepository, "stale_version"));
+    VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
         statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository);
+
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
     RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
