@@ -21,7 +21,7 @@ apply plugin: 'eclipse'
 
 // Internal LinkedIn Kafka release
 def internalKafkaGroup = "kafka"
-def internalKafkaVersion = "0.10.2.48"
+def internalKafkaVersion = "0.11.1.3"
 
 // OSS Kafka release (currently not used)
 def ossKafkaGroup = "org.apache.kafka"
