@@ -600,6 +600,9 @@ public class VeniceParentHelixAdmin implements Admin {
     lastTopicCreationTime = timer.getMilliseconds();
   }
 
+  /**
+   * TODO: refactor so that this method and the counterpart in {@link VeniceHelixAdmin} should have same behavior
+   */
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
@@ -620,16 +623,22 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       int topicVersion = Version.parseVersionFromKafkaTopicName(topic);
       boolean matchingPushId = false;
+      String existingPushId = null;
       for (Version version : storeVersions){
-        if (version.getNumber() == topicVersion && version.getPushJobId().equals(pushJobId)){
-          matchingPushId = true;
-          break;
+        if (version.getNumber() == topicVersion) {
+          if (version.getPushJobId().equals(pushJobId)) {
+            matchingPushId = true;
+            break;
+          } else {
+            existingPushId = version.getPushJobId();
+          }
         }
       }
       if (!matchingPushId){
-        throw new VeniceException("Topic " + topic + " already exists for store " + storeName + " and does not match " +
-        "pushJobId " + pushJobId + ".  This topic represents a different ongoing push which must complete before " +
-        "starting another push");
+        throw new VeniceException(
+            "Topic " + topic + " already exists for store " + storeName + " and does not match pushJobId "
+                + pushJobId + ".  This topic represents a different ongoing push initiated from " + existingPushId
+                + " which must be killed or let complete before starting another push.");
       }
     }
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push

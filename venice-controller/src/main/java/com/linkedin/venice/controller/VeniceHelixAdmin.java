@@ -653,6 +653,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /**
      * Note: this doesn't currently use the pushID to guarantee idempotence, unexpected behavior may result if multiple
      * batch jobs push to the same store at the same time.
+     * TODO: refactor so that this method and the counterpart in {@link VeniceParentHelixAdmin} should have same behavior
      */
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
