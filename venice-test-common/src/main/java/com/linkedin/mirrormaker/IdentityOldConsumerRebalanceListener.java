@@ -1,5 +1,6 @@
 package com.linkedin.mirrormaker;
 
+import com.linkedin.venice.kafka.TopicManager;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -16,8 +17,6 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.errors.TopicExistsException;
-import org.apache.kafka.common.protocol.Errors;
-import org.apache.kafka.common.requests.MetadataResponse;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.utils.Utils;
 import org.apache.log4j.Logger;
@@ -325,30 +324,9 @@ public class IdentityOldConsumerRebalanceListener implements kafka.javaapi.consu
    */
   private void mirrorTopics(String consumerId, Map<String, Integer> newTopicsToBeMirrored) {
     for (Map.Entry<String, Integer> topicEntry : newTopicsToBeMirrored.entrySet()) {
-      createTopic(consumerId, topicEntry.getKey(), topicEntry.getValue(), getTopicReplicationFactor(topicEntry.getKey(), _zkutilsSource),
+      createTopic(consumerId, topicEntry.getKey(), topicEntry.getValue(), TopicManager.getReplicationFactor(topicEntry.getKey(), _zkutilsSource),
           _zkUtilsTarget);
     }
-  }
-
-
-
-  /**
-   * Get the topic replication factor from a zookeeper cluster.  If we can't get the information (for example, the topic doesn't exist)
-   * we throw an exception.
-   *
-   * @param topic topic to get the factor of
-   * @param zkInstance the zookeeper instance to communicate to
-   * @return the repliaction factor of topic according to zkInstance
-   */
-  private static int getTopicReplicationFactor(String topic, ZkUtils zkInstance) {
-    MetadataResponse.TopicMetadata topicMetadata = AdminUtils.fetchTopicMetadataFromZk(topic, zkInstance);
-    if (topicMetadata.error() != Errors.NONE) {
-      String errorMessage = "Could not retrieve replication factor for topic: " + topic + " from  " + zkInstance;
-      IdentityOldConsumerRebalanceListener.logger.error(errorMessage);
-      throw new IllegalStateException(errorMessage);
-    }
-    List<MetadataResponse.PartitionMetadata> partitionMetadatas = topicMetadata.partitionMetadata();
-    return partitionMetadatas.get(0).replicas().size();
   }
 
   /**

@@ -72,6 +72,7 @@ public class TopicManagerTest {
     manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
     Assert.assertTrue(manager.containsTopic(topicNameWithDefaultRetentionPolicy));
     Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+    Assert.assertEquals(1, manager.getReplicationFactor(topicNameWithDefaultRetentionPolicy));
   }
 
   @Test
