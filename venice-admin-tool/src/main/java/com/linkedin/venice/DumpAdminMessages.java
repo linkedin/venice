@@ -14,10 +14,14 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.TimeZone;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -38,6 +42,7 @@ public class DumpAdminMessages {
     public int schemaId;
     public String operationType;
     public String adminOperation;
+    public String publishTimeStamp;
   }
 
   public static List<AdminOperationInfo> dumpAdminMessages(String kafkaUrl, String clusterName,
@@ -52,6 +57,8 @@ public class DumpAdminMessages {
       AdminOperationSerializer deserializer = new AdminOperationSerializer();
       List<AdminOperationInfo> adminOperations = new ArrayList<>();
       int curMsgCnt = 0;
+      DateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z");
+      dateFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
       while (curMsgCnt < messageCnt) {
         ConsumerRecords records = consumer.poll(1000); // 1 second
         if (records.isEmpty()) {
@@ -76,6 +83,7 @@ public class DumpAdminMessages {
           adminOperationInfo.schemaId = put.schemaId;
           adminOperationInfo.adminOperation = adminMessage.toString();
           adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
+          adminOperationInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
           adminOperations.add(adminOperationInfo);
         }
         if (curMsgCnt > messageCnt) {
