@@ -109,7 +109,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
    * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, TopicManager)} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String)} won't truncate them;
-   * 3. {@link #getCurrentPushJob(String, String)} will truncate the errored topics based on {@link #maxErroredTopicNumToKeep};
+   * 3. {@link #getTopicForCurrentPushJob(String, String)} will truncate the errored topics based on {@link #maxErroredTopicNumToKeep};
    *
    * It means error topic retiring is only be triggered by next push.
    *
@@ -438,14 +438,34 @@ public class VeniceParentHelixAdmin implements Admin {
    * @param storeName
    * @return
    */
-  protected Optional<String> getCurrentPushJob(String clusterName, String storeName) {
+  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName) {
     Optional<String> latestKafkaTopic = getLatestKafkaTopic(storeName);
     /**
      * Check current topic retention to decide whether the previous job is already done or not
      */
     if (latestKafkaTopic.isPresent()) {
       logger.debug("Latest kafka topic for store: " + storeName + " is " + latestKafkaTopic.get());
+
+
       if (!isTopicTruncated(latestKafkaTopic.get())) {
+        /**
+         * Check whether the corresponding version exists or not, since it is possible that last push
+         * meets Kafka topic creation timeout.
+         * When Kafka topic creation timeout happens, topic/job could be still running, but the version
+         * should not exist according to the logic in {@link VeniceHelixAdmin#addVersion}.
+         *
+         * If the corresponding version doesn't exist, this function will issue command to kill job to deprecate
+         * the incomplete topic/job.
+         */
+        Store store = getStore(clusterName, storeName);
+        Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(latestKafkaTopic.get()));
+        if (! version.isPresent()) {
+          // The corresponding version doesn't exist.
+          killOfflinePush(clusterName, latestKafkaTopic.get());
+          logger.info("Found topic: " + latestKafkaTopic.get() + " without the corresponding version, will kill it");
+          return Optional.empty();
+        }
+
         /**
          * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
          * job status by sending requests to each individual datacenter.
@@ -539,7 +559,7 @@ public class VeniceParentHelixAdmin implements Admin {
      * {@link #getOffLinePushStatus(String, String)} will remove the topic if the offline job has been terminated,
      * so we don't need to explicitly remove it here.
      */
-    Optional<String> currentPush = getCurrentPushJob(clusterName, storeName);
+    Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName);
     if (currentPush.isPresent()) {
       throw new VeniceException("Topic: " + currentPush.get() + " exists for store: " + storeName +
           ", please wait for previous job to be finished, and reach out Venice team if it is" +
@@ -606,41 +626,22 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
-    List<String> existingTopicsForStore = existingTopicsForStore(storeName);
-    List<Version> storeVersions = veniceHelixAdmin.getStore(clusterName, storeName).getVersions();
-    for (String topic : existingTopicsForStore){
-      /**
-       * If the topic is truncated, no need to check the actual job status.
-       */
-      if (isTopicTruncated(topic)) {
-        logger.info("Skip truncated topic: " + topic);
-        continue;
+    Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName);
+    if (currentPush.isPresent()) {
+      int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPush.get());
+      Optional<Version> version = getStore(clusterName, storeName).getVersion(currentPushVersion);
+      if (! version.isPresent()) {
+        throw new VeniceException("There should be a corresponding version with the ongoing push: " + currentPush);
       }
-      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
-      if (offlineJobStatus.getExecutionStatus().isTerminal()) {
-        logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
-        continue;
-      }
-      int topicVersion = Version.parseVersionFromKafkaTopicName(topic);
-      boolean matchingPushId = false;
-      String existingPushId = null;
-      for (Version version : storeVersions){
-        if (version.getNumber() == topicVersion) {
-          if (version.getPushJobId().equals(pushJobId)) {
-            matchingPushId = true;
-            break;
-          } else {
-            existingPushId = version.getPushJobId();
-          }
-        }
-      }
-      if (!matchingPushId){
+      String existingPushId = version.get().getPushJobId();
+      if (! existingPushId.equals(pushJobId)) {
         throw new VeniceException(
-            "Topic " + topic + " already exists for store " + storeName + " and does not match pushJobId "
+            "Topic " + currentPush + " already exists for store " + storeName + " and does not match pushJobId "
                 + pushJobId + ".  This topic represents a different ongoing push initiated from " + existingPushId
                 + " which must be killed or let complete before starting another push.");
       }
     }
+
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
     Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, false, isIncrementalPush);
     cleanupHistoricalVersions(clusterName, storeName);

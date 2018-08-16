@@ -502,7 +502,7 @@ public class Store {
     return increaseVersion(Version.guidBasedDummyPushId(), false);
   }
 
-  private Optional<Version> getVersion(int versionNumber) {
+  public Optional<Version> getVersion(int versionNumber) {
     return versions.stream().filter(version -> version.getNumber() == versionNumber).findAny();
   }
 
