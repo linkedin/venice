@@ -45,7 +45,7 @@ public class TestZkClientStatusStats {
   public void testZkClientCanUpdateStatus() {
     ZkServerWrapper zkServer = ServiceFactory.getZkServer();
     ZkClient zkClient = new ZkClient(zkServer.getAddress());
-    zkClient.waitUntilConnected();
+    zkClient.waitUntilConnected(5000, TimeUnit.MILLISECONDS);
     zkClient.subscribeStateChanges(zkStats);
 
     Assert.assertEquals(reporter.query("." + clientName + "--zk_client_disconnection_times.Count").value(), 0d);

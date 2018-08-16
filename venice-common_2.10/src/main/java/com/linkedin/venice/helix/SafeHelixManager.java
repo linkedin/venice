@@ -214,4 +214,8 @@ public class SafeHelixManager {
   public ParticipantHealthReportCollector getHealthReportCollector() {
     return helixManager.getHealthReportCollector();
   }
+
+  public HelixManager getOriginalManager(){
+    return helixManager;
+  }
 }

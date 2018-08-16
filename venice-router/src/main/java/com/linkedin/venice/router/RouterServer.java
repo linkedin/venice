@@ -574,8 +574,10 @@ public class RouterServer extends AbstractVeniceService {
       }
 
       try {
-        logger.info(this.toString() + " started on port: " + ((InetSocketAddress) serverFuture.get()).getPort()
-            + " and ssl port: " + ((InetSocketAddress) secureServerFuture.get()).getPort());
+        int port = ((InetSocketAddress) serverFuture.get()).getPort();
+        int sslPort = ((InetSocketAddress) secureServerFuture.get()).getPort();
+        logger.info(this.toString() + " started on port: " + port
+            + " and ssl port: " + sslPort);
       } catch (Exception e) {
         logger.error("Exception while waiting for " + this.toString() + " to start", e);
         serviceState.set(ServiceState.STOPPED);
