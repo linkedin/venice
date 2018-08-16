@@ -57,7 +57,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       // Create a wrapper for cluster without controller.
       VeniceClusterWrapper clusterWrapper =
           ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
-              clusterNames[i], 0, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
+              clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
               enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false);
       clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
     }

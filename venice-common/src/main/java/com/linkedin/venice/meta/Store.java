@@ -167,6 +167,14 @@ public class Store {
    */
   private boolean incrementalPushEnabled = false;
 
+  /**
+   * Whether or not the store is in the process of migration.
+   */
+  private boolean migrating = false;
+
+
+
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -614,6 +622,7 @@ public class Store {
     result = 31 * result + batchGetLimit;
     result = 31 * result + numVersionsToPreserve;
     result = 31 * result + (incrementalPushEnabled ? 1 : 0);
+    result = 31 * result + (migrating ? 1 : 0);
     return result;
   }
 
@@ -647,6 +656,7 @@ public class Store {
     if (batchGetLimit != store.batchGetLimit) return false;
     if (numVersionsToPreserve != store.numVersionsToPreserve) return false;
     if (incrementalPushEnabled != store.incrementalPushEnabled) return false;
+    if (migrating != store.migrating) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -684,6 +694,7 @@ public class Store {
     clonedStore.setNumVersionsToPreserve(numVersionsToPreserve);
     clonedStore.setIncrementalPushEnabled(incrementalPushEnabled);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    clonedStore.setMigrating(migrating);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
@@ -719,6 +730,14 @@ public class Store {
 
   public void setAccessControlled(boolean accessControlled) {
     this.accessControlled = accessControlled;
+  }
+
+  public boolean isMigrating() {
+    return migrating;
+  }
+
+  public void setMigrating(boolean migrating) {
+    this.migrating = migrating;
   }
 
   public int getNumVersionsToPreserve() {

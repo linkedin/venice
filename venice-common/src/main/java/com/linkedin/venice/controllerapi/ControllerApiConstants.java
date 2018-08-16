@@ -51,6 +51,7 @@ public class ControllerApiConstants {
   public static final String PUSH_STRATEGY = "push_strategy";
 
   public static final String ACCESS_CONTROLLED = "access_controlled";
+  public static final String STORE_MIGRATION = "store_migration";
 
   private ControllerApiConstants(){}
 

@@ -36,6 +36,7 @@ public class StoreInfo {
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
     storeInfo.setNumVersionsToPreserve(store.getNumVersionsToPreserve());
+    storeInfo.setMigrating(store.isMigrating());
 
     return storeInfo;
   }
@@ -94,7 +95,7 @@ public class StoreInfo {
   private HybridStoreConfig hybridStoreConfig;
 
   /**
-   * Store-level ACL switch. When disabled, Venice Router should access every request.
+   * Store-level ACL switch. When disabled, Venice Router should accept every request.
    */
   private boolean accessControlled = false;
 
@@ -139,6 +140,11 @@ public class StoreInfo {
    * determine how many version is preserved.
    */
   private int numVersionsToPreserve = NUM_VERSION_PRESERVE_NOT_SET;
+
+  /**
+   * Whether or not the store is in the process of migration.
+   */
+  private boolean migrating = false;
 
   public StoreInfo() {
   }
@@ -338,5 +344,13 @@ public class StoreInfo {
 
   public void setNumVersionsToPreserve(int numVersionsToPreserve) {
     this.numVersionsToPreserve = numVersionsToPreserve;
+  }
+
+  public boolean isMigrating() {
+    return migrating;
+  }
+
+  public void setMigrating(boolean migrating) {
+    this.migrating = migrating;
   }
 }

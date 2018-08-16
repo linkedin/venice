@@ -1,6 +1,14 @@
 #!/bin/bash
 
-DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | head -n 1`
+mkdir -p avro
+avro_tools=`ls avro | sort -rV | head -n 1`
+
+if [ -z $avro_tools ]; then
+  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/1.4.0/avro-tools-1.4.0.jar" -P avro
+  avro_tools=`ls avro | sort -rV | head -n 1`
+fi
+
+DEFAULT_AVRO_TOOLS_JAR="avro/$avro_tools"
 
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v6/*"
@@ -8,7 +16,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/StoreVersionState/v3/*"
   "venice-common/src/main/resources/avro/ChunkedValueManifest/v-20/*"
   "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"
-  "venice-controller/src/main/resources/avro/AdminOperation/v18/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v19/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"
@@ -39,7 +47,7 @@ FULL_CODE_GEN_PATH=(
 if [[ $# < 1 ]]; then
   echo "Usage: $0 avro_tools_path"
   echo ""
-  echo "    avro_tools_path: full path to the avro-tools-1.4.0.jar file (required). If you use 'default', it will take:"
+  echo "    avro_tools_path: full path to the avro-tools-1.4.x.jar file (required). If you use 'default', it will take:"
   echo ""
   echo "$DEFAULT_AVRO_TOOLS_JAR"
   echo ""

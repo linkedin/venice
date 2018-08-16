@@ -18,6 +18,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -113,6 +114,11 @@ public class StoresRoutes {
 
         Thread thread = new Thread(() -> {
           admin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
+
+          // Set store migration flag for both original and cloned store
+          srcControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(true));
+          UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
+          admin.updateStore(destClusterName, storeName, params);
 
           // Wait until latest version comes online, unless reach timeout
           final long TIMEOUT = TimeUnit.DAYS.toMillis(2);

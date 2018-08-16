@@ -93,7 +93,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName,
+      KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName, String clusterToD2,
       int numberOfControllers, int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize,
       boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica,
       boolean sslToStorageNodes, boolean sslToKafka) {
@@ -103,8 +103,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     try {
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper veniceControllerWrapper =
-            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, replicaFactor, partitionSize,
-                delayToReblanceMS, minActiveReplica, brooklinWrapper, sslToKafka);
+            ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
+                delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, false);
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 
@@ -117,7 +117,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
       for (int i = 0; i < numberOfRouters; i++) {
         VeniceRouterWrapper veniceRouterWrapper =
-            ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes);
+            ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2);
         veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
       }
 
@@ -153,7 +153,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
        * so we can assume they're reliable enough.
        */
-      return generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, numberOfControllers,
+      return generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, null, numberOfControllers,
           numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
           delayToReblanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
     } catch (Exception e) {

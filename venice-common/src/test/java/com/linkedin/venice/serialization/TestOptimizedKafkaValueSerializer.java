@@ -1,5 +1,6 @@
 package com.linkedin.venice.serialization;
 
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfSegment;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -63,8 +64,7 @@ public class TestOptimizedKafkaValueSerializer {
     record.producerMetadata.producerGUID = new GUID();
     record.producerMetadata.segmentNumber = 1;
     Put put = new Put();
-    int schemaId = 18;
-    put.schemaId = schemaId;
+    put.schemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
     byte[] putValueBytes = "put_value".getBytes();
     put.putValue = ByteBuffer.wrap(putValueBytes);
     record.payloadUnion = put;
