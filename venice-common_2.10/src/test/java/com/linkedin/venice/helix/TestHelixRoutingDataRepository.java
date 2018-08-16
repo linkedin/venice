@@ -82,6 +82,8 @@ public class TestHelixRoutingDataRepository {
     readManager.connect();
     repository = new HelixRoutingDataRepository(readManager);
     repository.refresh();
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
+        () -> repository.containsKafkaTopic(resourceName));
   }
 
   @AfterMethod
@@ -98,6 +100,7 @@ public class TestHelixRoutingDataRepository {
   @Test
   public void testGetInstances()
       throws Exception {
+
     List<Instance> instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);

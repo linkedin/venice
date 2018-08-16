@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -33,7 +34,6 @@ import java.util.Arrays;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Optional;
 import java.util.TreeMap;
-import javafx.util.Pair;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -978,9 +978,9 @@ public class KafkaPushJob extends AbstractJob {
       Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fileStatuses);
 
       VsonSchema vsonKeySchema = Utils.isNullOrEmpty(this.keyField) ?
-          vsonSchemaPair.getKey() : vsonSchemaPair.getKey().recordSubtype(this.keyField);
+          vsonSchemaPair.getFirst() : vsonSchemaPair.getFirst().recordSubtype(this.keyField);
       VsonSchema vsonValueSchema = Utils.isNullOrEmpty(this.valueField) ?
-          vsonSchemaPair.getValue() : vsonSchemaPair.getValue().recordSubtype(this.valueField);
+          vsonSchemaPair.getSecond() : vsonSchemaPair.getSecond().recordSubtype(this.valueField);
 
       keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
       valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
@@ -1033,10 +1033,10 @@ public class KafkaPushJob extends AbstractJob {
       if (vsonSchema == null) {
         vsonSchema = newSchema;
       } else {
-        if (!vsonSchema.getKey().equals(newSchema.getKey()) || !vsonSchema.getValue().equals(newSchema.getValue())) {
+        if (!vsonSchema.getFirst().equals(newSchema.getFirst()) || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
           throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
                           + "Expected value schema: %s.\n File key schema: %s.\n File value schema: %s.", status.getPath().getName(),
-                  vsonSchema.getKey().toString(), vsonSchema.getValue().toString(), newSchema.getKey().toString(), newSchema.getValue().toString()));
+                  vsonSchema.getFirst().toString(), vsonSchema.getSecond().toString(), newSchema.getFirst().toString(), newSchema.getSecond().toString()));
         }
       }
     }
