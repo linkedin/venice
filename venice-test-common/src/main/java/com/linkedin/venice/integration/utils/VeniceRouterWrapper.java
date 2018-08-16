@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   }
 
   static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes, Properties properties) {
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes, String clusterToD2, Properties properties) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
@@ -52,7 +53,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
-          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
+          .put(CLUSTER_TO_D2, Utils.isNullOrEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
           // Below configs are to attempt to minimize resource utilization in tests
           .put(ROUTER_CONNECTION_LIMIT, 20)
           .put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2)

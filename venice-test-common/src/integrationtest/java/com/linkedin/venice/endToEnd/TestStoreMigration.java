@@ -5,13 +5,16 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -22,8 +25,11 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -274,6 +280,143 @@ public class TestStoreMigration {
     }
   }
 
+  @Test
+  public void testTopicDeletion() {
+    boolean sharedControllerTested = false;
+    boolean diffControllerTested = false;
+    int retry = 0;
+
+    while (!(sharedControllerTested && diffControllerTested) && retry++ < MAX_RETRY) {
+      if (NUM_OF_CONTROLLERS == 1) {
+        // When numOfControllers == 1, controller will always be shared
+        diffControllerTested = true;
+      }
+        String store0 = TestUtils.getUniqueString("test-store0"); // Store in src cluster
+        String store1 = TestUtils.getUniqueString("test-store1"); // Store in dest cluster
+
+      VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(3, NUM_OF_CONTROLLERS, 2, 2);
+      String[] clusterNames = multiClusterWrapper.getClusterNames();
+      Assert.assertTrue(clusterNames.length >= 2, "For this test there must be at least two clusters");
+
+      Arrays.sort(clusterNames);
+      String srcClusterName = clusterNames[0];  // venice-cluster0-XXXXXXXXX
+      String destClusterName = clusterNames[1]; // venice-cluster1-XXXXXXXXX
+
+      VeniceControllerWrapper randomController = multiClusterWrapper.getRandomController();
+      String randomControllerUrl = randomController.getControllerUrl();
+      Admin randomVeniceAdmin = randomController.getVeniceAdmin();
+      Admin srcAdmin = multiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
+      Admin destAdmin = multiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
+
+      if (multiClusterWrapper.getMasterController(srcClusterName)
+          .getControllerUrl()
+          .equals(multiClusterWrapper.getMasterController(destClusterName).getControllerUrl())) {
+        if (sharedControllerTested) {
+          // tested this case already
+          multiClusterWrapper.close();
+          continue;
+        }
+        sharedControllerTested = true;
+      } else {
+        if (diffControllerTested) {
+          // tested this case already
+          multiClusterWrapper.close();
+          continue;
+        }
+        diffControllerTested = true;
+      }
+
+      // Create one store in each cluster
+      srcAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", "\"string\"");
+      srcAdmin.updateStore(srcClusterName, store0, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+      destAdmin.addStore(destClusterName, store1, "tester", "\"string\"", "\"string\"");
+      destAdmin.updateStore(destClusterName, store1, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+      Assert.assertEquals(randomVeniceAdmin.discoverCluster(store0).getFirst(), srcClusterName);
+      Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
+
+      String srcRouterUrl = multiClusterWrapper.getClusters().get(srcClusterName).getRandomRouterURL();
+      String destRouterUrl = multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL();
+      ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcRouterUrl);
+      ControllerClient destControllerClient = new ControllerClient(destClusterName, destRouterUrl);
+
+      // Populate store
+      populateStore(srcRouterUrl, srcClusterName, store0, 1);
+      populateStore(srcRouterUrl, srcClusterName, store0, 2);
+      populateStore(srcRouterUrl, srcClusterName, store0, 3);
+
+      // The first topic should have been deleted, this is the default behavior
+      KafkaBrokerWrapper kafka = multiClusterWrapper.getKafkaBrokerWrapper();
+      String kafkaAddr = kafka.getHost() + ":" + kafka.getPort();
+      Assert.assertFalse(getExistingTopics(kafkaAddr).contains(store0 + "_v1"), "This topic should be deleted");
+
+      // Move store0 from src to dest
+      StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
+      Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
+      Utils.sleep(3000);
+
+      // Both original and new cluster should be able to serve read traffic
+      Assert.assertTrue(srcAdmin.hasStore(srcClusterName, store0));
+      Assert.assertTrue(destAdmin.hasStore(destClusterName, store0));
+      Assert.assertTrue(srcAdmin.getStore(srcClusterName  , store0).containsVersion(3));
+      Assert.assertTrue(destAdmin.getStore(destClusterName, store0).containsVersion(3));
+      Assert.assertEquals(srcAdmin.getStore(srcClusterName, store0).getCurrentVersion(), 3);
+      Assert.assertEquals(destAdmin.getStore(destClusterName, store0).getCurrentVersion(), 3);
+      verifyStoreData(store0, srcRouterUrl);
+      verifyStoreData(store0, destRouterUrl);
+
+      // Store discovery should point to the new cluster
+      D2ServiceDiscoveryResponse discoveryResponse = destControllerClient.discoverCluster(randomControllerUrl, store0);
+      String newCluster = discoveryResponse.getCluster();
+      Assert.assertEquals(newCluster, destClusterName);
+
+      // Topic deletion should have been disabled during store migration
+      populateStore(destRouterUrl, newCluster, store0, 4);
+      Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).isMigrating());
+      Assert.assertTrue(destAdmin.getStore(destClusterName, store0).isMigrating());
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should not be deleted");
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v3"));
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v4"));
+
+      // Test one more time
+      populateStore(destRouterUrl, newCluster, store0, 5);
+      Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).isMigrating());
+      Assert.assertTrue(destAdmin.getStore(destClusterName, store0).isMigrating());
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should not be deleted");
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v3"), "This topic should not be deleted");
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v4"));
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v5"));
+
+      // Delete old store, but topics should remain
+      srcControllerClient.updateStore(store0, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      srcControllerClient.deleteStore(store0);
+      Assert.assertFalse(srcAdmin.hasStore(srcClusterName, store0));
+      Assert.assertTrue(destAdmin.hasStore(destClusterName, store0));
+      Assert.assertTrue(destAdmin.getStore(destClusterName, store0).isMigrating());
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should not be deleted");
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v3"), "This topic should not be deleted");
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v4"));
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v5"));
+
+      // After migration, reset the flag, push again, and old topics should be deleted
+      destControllerClient.updateStore(store0, new UpdateStoreQueryParams().setStoreMigration(false));
+      populateStore(destRouterUrl, newCluster, store0, 6);
+      Assert.assertFalse(srcAdmin.hasStore(srcClusterName, store0));
+      Assert.assertFalse(destAdmin.getStore(destClusterName, store0).isMigrating());
+      Assert.assertFalse(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should have been deleted");
+      Assert.assertFalse(getExistingTopics(kafkaAddr).contains(store0 + "_v3"), "This topic should have been deleted");
+      Assert.assertFalse(getExistingTopics(kafkaAddr).contains(store0 + "_v4"), "This topic should have been deleted");
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v5"));
+      Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v6"));
+
+      // Check store status
+      Assert.assertTrue(destAdmin.getStore(destClusterName, store0).containsVersion(6));
+      Assert.assertEquals(destAdmin.getStore(destClusterName, store0).getCurrentVersion(), 6);
+      verifyStoreData(store0, destRouterUrl);
+
+      multiClusterWrapper.close();
+    }
+  }
+
   private void moveStoreBackAndForth(String storeName,
       String srcClusterName,
       String destClusterName,
@@ -339,6 +482,25 @@ public class TestStoreMigration {
     System.out.println(msg);
   }
 
+  public static Set getExistingTopics(String kafkaAddr) {
+    Properties props = new Properties();
+    props.setProperty("bootstrap.servers", kafkaAddr);
+    props.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+    props.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
+
+    KafkaConsumer kafkaConsumer = new KafkaConsumer(props);
+    return kafkaConsumer.listTopics().keySet();
+  }
+
+  public static void printExistingTopics(String kafkaAddr) {
+    Set topics = getExistingTopics(kafkaAddr);
+    String msg = "\n==============  Existing topics  ==============\n";
+    msg += topics;
+    msg += "\n===============================================";
+
+    System.out.println(msg);
+  }
+
   public static void populateStore(String routerUrl, String clusterName, String storeName, int expectedVersion) {
     // Push
     try {
@@ -364,10 +526,12 @@ public class TestStoreMigration {
       Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
       // Verify the data in Venice Store
+      Utils.sleep(3000);
       verifyPushJobStatus(clusterName, routerUrl, job);
       verifyStoreData(storeName, routerUrl);
     } catch (Exception e) {
       logger.error(e);
+      throw new VeniceException(e);
     }
   }
 

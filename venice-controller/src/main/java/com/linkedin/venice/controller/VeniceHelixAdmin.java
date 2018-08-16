@@ -906,16 +906,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
             killOfflinePush(clusterName, resourceName);
+
+            Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             if (topicReplicator.isPresent()) {
-                String realTimeTopic = Version.composeRealTimeTopic(storeName);
-                topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+                // Do not delete topic replicator during store migration
+                // In such case, the topic replicator will be deleted after store migration, triggered by a new push job
+                if (!store.isMigrating()) {
+                    String realTimeTopic = Version.composeRealTimeTopic(storeName);
+                    topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+                }
             }
             Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
             if (deletedVersion.isPresent()) {
-                truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
+                // Do not delete topic during store migration
+                // In such case, the topic will be deleted after store migration, triggered by a new push job
+                if (!store.isMigrating()) {
+                    truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
+                }
             }
             stopMonitorOfflinePush(clusterName, resourceName);
-        }finally{
+        } finally {
             resources.unlockForMetadataOperation();
         }
     }
@@ -1004,6 +1014,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      *
      */
     void truncateOldKafkaTopics(Store store, boolean forStoreDeletion) {
+        if (store.isMigrating())  {
+            logger.info("This store " + store.getName() + " is being migrated. Skip topic deletion.");
+            return;
+        }
+
         Set<Integer> currentlyKnownVersionNumbers = store.getVersions().stream()
             .map(version -> version.getNumber())
             .collect(Collectors.toSet());
@@ -1318,6 +1333,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setStoreMigration(String clusterName, String storeName, boolean migrating) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setMigrating(migrating);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1374,7 +1396,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> batchGetRouterCacheEnabled,
         Optional<Integer> batchGetLimit,
         Optional<Integer> numVersionsToPreserve,
-        Optional<Boolean> incrementalPushEnabled) {
+        Optional<Boolean> incrementalPushEnabled,
+        Optional<Boolean> storeMigration) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
@@ -1463,6 +1486,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (incrementalPushEnabled.isPresent()) {
                 setIncrementalPushEnabled(clusterName, storeName, incrementalPushEnabled.get());
+            }
+
+            if (storeMigration.isPresent()) {
+                setStoreMigration(clusterName, storeName, storeMigration.get());
             }
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {

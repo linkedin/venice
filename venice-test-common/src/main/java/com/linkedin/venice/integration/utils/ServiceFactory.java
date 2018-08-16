@@ -33,7 +33,7 @@ public class ServiceFactory {
   private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties(new Properties());
 
   // Test config
-  private static final int MAX_ATTEMPT = 10;
+  private static final int MAX_ATTEMPT = 5;
   private static final int MAX_ASYNC_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REPLICATION_FACTOR =1;
   private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
@@ -184,13 +184,19 @@ public class ServiceFactory {
    */
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes){
     return getService(VeniceRouterWrapper.SERVICE_NAME,
-      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, new Properties()));
+      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, null,  new Properties()));
   }
 
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean sslToStorageNodes, Properties properties){
     return getService(VeniceRouterWrapper.SERVICE_NAME,
-        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, properties));
+        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, null, properties));
+  }
+
+  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean sslToStorageNodes, String  clusterToD2){
+    return getService(VeniceRouterWrapper.SERVICE_NAME,
+        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2, new Properties()));
   }
 
   public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes, Properties extraConfigs){
@@ -272,6 +278,7 @@ public class ServiceFactory {
       KafkaBrokerWrapper kafkaBrokerWrapper,
       BrooklinWrapper brooklinWrapper,
       String clusterName,
+      String clusterToD2,
       int numberOfControllers,
       int numberOfServers,
       int numberOfRouter,
@@ -284,7 +291,7 @@ public class ServiceFactory {
       boolean sslToStorageNodes,
       boolean sslToKafka) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName,
+        VeniceClusterWrapper.generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, clusterToD2,
             numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize, enableWhitelist,
             enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka));
   }
@@ -313,7 +320,23 @@ public class ServiceFactory {
   }
 
   private static <S extends Closeable> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider) {
-    return getService(serviceName, serviceProvider, IntegrationTestUtils.getFreePort());
+    // Just some initial state. If the fabric of space-time holds up, you should never see these strings.
+    Exception lastException = new VeniceException("There is no spoon.");
+    String errorMessage = "If you see this message, something went horribly wrong.";
+
+    for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
+      int freePort = IntegrationTestUtils.getFreePort();
+      try {
+        return getService(serviceName, serviceProvider, freePort);
+      } catch (Exception e) {
+        lastException = e;
+        errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName +
+            " with random port number " + freePort + ". Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
+        LOGGER.warn(errorMessage, e);
+      }
+    }
+
+    throw new VeniceException(errorMessage + " Aborting.", lastException);
   }
   private static <S extends Closeable> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider, int port) {
     // Just some initial state. If the fabric of space-time holds up, you should never see these strings.
@@ -338,8 +361,8 @@ public class ServiceFactory {
       } catch (Exception e) {
         lastException = e;
         errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName +
-            ". Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
-        LOGGER.info(errorMessage, e);
+            " with given port number " + port + ". Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
+        LOGGER.warn(errorMessage, e);
         IOUtils.closeQuietly(wrapper);
       }
     }

@@ -217,7 +217,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     if (!request.pathInfo().equals(MASTER_CONTROLLER.getPath())
         && !request.pathInfo().equals(CLUSTER_DISCOVERY.getPath()) && !admin.isMasterController(clusterName)) {
       // Skip master controller check for '/master_controller' and '/discover_cluster' request
-      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This is not the active controller");
+      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This controller " + Utils.getHostName() + " is not the active controller");
     }
     for (String param : requiredParams) {
       if (Utils.isNullOrEmpty(request.queryParams(param))) {

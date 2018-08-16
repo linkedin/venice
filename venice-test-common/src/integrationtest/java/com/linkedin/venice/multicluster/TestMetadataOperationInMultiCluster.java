@@ -114,7 +114,10 @@ public class TestMetadataOperationInMultiCluster {
     }
 
     for (String clusterName : clusterNames) {
-      runH2V(propertiesMap.get(clusterName), 1,
+      Properties properties = propertiesMap.get(clusterName);
+      properties.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
+      properties.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, multiClusterWrapper.getClusters().get(clusterName).getRandomRouterURL());
+      runH2V(properties, 1,
           new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl()));
     }
 

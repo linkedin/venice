@@ -177,6 +177,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getInteger(NUM_VERSIONS_TO_PRESERVE);
   }
 
+  public UpdateStoreQueryParams setStoreMigration(boolean migrating) {
+    return putBoolean(STORE_MIGRATION, migrating);
+  }
+  public Optional<Boolean> getStoreMigration() {
+    return getBoolean(STORE_MIGRATION);
+  }
+
+
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);

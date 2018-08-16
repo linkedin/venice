@@ -303,6 +303,9 @@ public class AdminTool {
         case MIGRATE_STORE:
           migrateStore(cmd);
           break;
+        case END_MIGRATION:
+          endMigration(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -759,6 +762,18 @@ public class AdminTool {
       }
     }
   }
+
+  private static void endMigration(CommandLine cmd) {
+    String routerHosts = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+
+    ControllerClient controllerClient = new ControllerClient(clusterName, routerHosts);
+    ControllerResponse controllerResponse =
+        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(true));
+    printObject(controllerResponse);
+  }
+
 
   /* Things that are not commands */
 
