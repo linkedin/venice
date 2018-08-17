@@ -9,11 +9,13 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.channel.ChannelHandlerContext;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -35,6 +37,7 @@ public class StorageQuotaEnforcementHandlerTest {
   ReadOnlyStoreRepository storeRepository;
   RoutingDataRepository routingRepository;
   StorageQuotaEnforcementHandler quotaEnforcer;
+  AggServerQuotaUsageStats stats;
 
   @BeforeMethod
   public void setup(){
@@ -45,7 +48,10 @@ public class StorageQuotaEnforcementHandlerTest {
     doReturn(currentTime).when(clock).millis();
     storeRepository = mock(ReadOnlyStoreRepository.class);
     routingRepository = mock(RoutingDataRepository.class);
-    quotaEnforcer = new StorageQuotaEnforcementHandler(nodeCapacity, storeRepository, routingRepository, thisNodeId, clock);
+    stats = mock(AggServerQuotaUsageStats.class);
+    quotaEnforcer = new StorageQuotaEnforcementHandler(
+        nodeCapacity, storeRepository, CompletableFuture.completedFuture(routingRepository), thisNodeId, stats, clock);
+
   }
 
   /**

@@ -108,6 +108,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean readOnlyForBatchOnlyStoreEnabled;
 
+  private final boolean quotaEnforcementEnabled;
+
+  private final long nodeCapacityInRcu;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -144,6 +148,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
     storageLeakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 6 * 60)); // 6 hours by default
     readOnlyForBatchOnlyStoreEnabled = serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
+    quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
+    //June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys per second
+    nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 50000);
   }
 
   public int getListenerPort() {
@@ -241,5 +248,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {
     return readOnlyForBatchOnlyStoreEnabled;
+  }
+
+  public boolean isQuotaEnforcementDisabled() {
+    return !quotaEnforcementEnabled;
+  }
+
+  public long getNodeCapacityInRcu(){
+    return nodeCapacityInRcu;
   }
 }

@@ -11,12 +11,14 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.utils.TestUtils;
 import edu.emory.mathcs.backport.java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -25,10 +27,6 @@ import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 
-/**
- * This test makes sure the registration/unregistration listener logic on the StorageQuotaEnforcementHandler
- * all works to keep the Enforcer up-to-date
- */
 public class StorageQuotaEnforcementHandlerCalculationTest {
   private String nodeId = "thisNodeId";
 

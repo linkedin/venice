@@ -12,6 +12,9 @@ import static com.linkedin.venice.stats.StatsErrorCode.NULL_DIV_STATS;
 public class VersionedDIVStatsReporterTest {
   @Test
   public void testVersionedDIVStatsReporterCanReport() {
+
+    VeniceVersionedStatsReporter.resetStats();
+
     MetricsRepository metricsRepository = new MetricsRepository();
     MockTehutiReporter reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);

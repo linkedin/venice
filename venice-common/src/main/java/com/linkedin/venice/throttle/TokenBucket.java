@@ -93,10 +93,9 @@ public class TokenBucket {
 
   /**
    * This method does not call #update(), so it is only accurate as of the last time #tryConsume() was called
-   * This method is only for tests.
    * @return number of tokens remaining in the bucket
    */
-  protected long getStaleTokenCount(){
+  public long getStaleTokenCount(){
     return tokens.get();
   }
 

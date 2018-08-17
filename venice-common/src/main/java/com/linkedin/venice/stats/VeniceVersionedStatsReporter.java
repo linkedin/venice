@@ -108,4 +108,12 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
       super(() -> supplier.get());
     }
   }
+
+  /**
+   * Only for tests, to reset the global state
+   * TODO: Fix, VOLDENG-4211
+   */
+  public static void resetStats(){
+    isVersionStatsSetup.set(false);
+  }
 }

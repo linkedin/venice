@@ -11,6 +11,8 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
@@ -18,6 +20,7 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -29,8 +32,12 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
+import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -130,8 +137,19 @@ public class VeniceServer {
 
     AggVersionedBdbStorageEngineStats storageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     storageService.setAggBdbStorageEngineStats(storageEngineStats);
+
+    //HelixParticipationService below creates a Helix manager and connects asynchronously below.  The listener service
+    //needs a routing data repository that relies on a connected helix manager.  So we pass the listener service a future
+    //that will be completed with a routing data repository once the manager connects.
+    CompletableFuture<SafeHelixManager> managerFuture = new CompletableFuture<>();
+    CompletableFuture<RoutingDataRepository> routingRepositoryFuture = managerFuture.thenApply(manager -> {
+      RoutingDataRepository routingData = new HelixRoutingDataRepository(manager);
+      routingData.refresh();
+      return routingData;
+    });
+
     //create and add ListenerServer for handling GET requests
-    ListenerService listenerService = new ListenerService(storageService.getStoreRepository(),
+    ListenerService listenerService = new ListenerService(storageService.getStoreRepository(), metadataRepo, routingRepositoryFuture,
         kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory, accessController);
     services.add(listenerService);
 
@@ -143,7 +161,7 @@ public class VeniceServer {
     HelixParticipationService helixParticipationService =
         new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader, metricsRepository,
             clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-            veniceConfigLoader.getVeniceServerConfig().getListenerPort());
+            veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
     services.add(helixParticipationService);
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
     // that helix is disconnected but consumption service try to send message by helix.
@@ -183,10 +201,12 @@ public class VeniceServer {
         clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
     // Load existing store config and setup watches
     metadataRepo.refresh();
+
     this.schemaRepo = new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName,
         clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
     schemaRepo.refresh();
   }
+
 
   public StorageService getStorageService(){
     if (isStarted()){

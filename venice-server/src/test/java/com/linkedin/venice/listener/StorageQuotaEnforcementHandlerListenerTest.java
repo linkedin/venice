@@ -11,11 +11,14 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import edu.emory.mathcs.backport.java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -29,7 +32,7 @@ public class StorageQuotaEnforcementHandlerListenerTest {
   private String nodeId = "thisNodeId";
 
   @Test
-  public void doTest(){
+  public void quotaEnforcementHandlerStaysUpToDateWithStoreChanges(){
     Set<String> registeredTopics = new HashSet<>();
 
     long storageNodeRcuCapacity = 100; //RCU per second
@@ -58,9 +61,11 @@ public class StorageQuotaEnforcementHandlerListenerTest {
       return getDummyPartitionAssignment(topic, nodeId);
     }).when(routingRepository).getPartitionAssignments(anyString());
 
+    AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+
     // Object under test
     StorageQuotaEnforcementHandler quotaEnforcer =
-        new StorageQuotaEnforcementHandler(storageNodeRcuCapacity, storeRepository, routingRepository, nodeId);
+        new StorageQuotaEnforcementHandler(storageNodeRcuCapacity, storeRepository, CompletableFuture.completedFuture(routingRepository), nodeId, stats);
 
     //Add a store (call store created) verify all versions in buckets and in subscriptions
     Store store1 = getDummyStore("store1", Arrays.asList(new Integer[]{1}), 10);
