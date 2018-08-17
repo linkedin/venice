@@ -53,6 +53,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final VeniceConfigLoader veniceConfigLoader;
 
   private SafeHelixManager manager;
+  private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
 
   private ThreadPoolExecutor helixStateTransitionExecutorService;
 
@@ -64,7 +65,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
           @NotNull MetricsRepository metricsRepository,
           @NotNull String zkAddress,
           @NotNull String clusterName,
-          @NotNull int port) {
+          @NotNull int port,
+          @NotNull CompletableFuture<SafeHelixManager> managerFuture) {
     this.ingestionService = storeIngestionService;
     this.storageService = storageService;
     this.clusterName = clusterName;
@@ -85,6 +87,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     new ThreadPoolStats(metricsRepository, helixStateTransitionExecutorService, "Venice_ST_thread_pool");
     stateModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
         helixStateTransitionExecutorService);
+    this.managerFuture = managerFuture;
   }
 
   @Override
@@ -136,7 +139,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       logger.info(instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName + " start cleaning up local storage.");
       storageService.cleanupAllStores(veniceConfigLoader);
       logger.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
-    }finally {
+    } finally {
       admin.close();
     }
   }
@@ -165,6 +168,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         manager.connect();
         //setup instance config for participant used by CRUSH alg
         HelixUtils.setupInstanceConfig(clusterName, instance.getNodeId(), zkAddress);
+        managerFuture.complete(manager);
       } catch (Exception e) {
         logger.error(e.getMessage(), e);
         logger.error("Venice server is about to close");

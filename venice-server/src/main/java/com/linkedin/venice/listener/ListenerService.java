@@ -3,10 +3,12 @@ package com.linkedin.venice.listener;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
-import com.linkedin.venice.storage.MetadataRetriever;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.storage.MetadataRetriever;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -15,6 +17,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
@@ -36,6 +39,8 @@ public class ListenerService extends AbstractVeniceService{
   private static int nettyBacklogSize = 1000;
 
   public ListenerService(StoreRepository storeRepository,
+                         ReadOnlyStoreRepository storeMetadataRepository,
+                         CompletableFuture<RoutingDataRepository> routingRepository,
                          MetadataRetriever metadataRetriever,
                          VeniceConfigLoader veniceConfigLoader,
                          MetricsRepository metricsRepository,
@@ -50,8 +55,8 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository, metadataRetriever,
-            metricsRepository, sslFactory, serverConfig, accessController))
+        .childHandler(new HttpChannelInitializer(storeRepository, storeMetadataRepository, routingRepository,
+            metadataRetriever, metricsRepository, sslFactory, serverConfig, accessController))
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

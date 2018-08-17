@@ -1,0 +1,21 @@
+package com.linkedin.venice.stats;
+
+import com.linkedin.venice.listener.StorageQuotaEnforcementHandler;
+import io.tehuti.metrics.MetricsRepository;
+
+
+public class AggServerQuotaUsageStats extends AbstractVeniceAggStats<ServerQuotaUsageStats>{
+  public AggServerQuotaUsageStats(MetricsRepository metricsRepository) {
+    super(metricsRepository, (metrics, storeName) -> new ServerQuotaUsageStats(metrics, storeName));
+  }
+
+  public void recordAllowed(String storeName, long rcu){
+    totalStats.recordAllowed(rcu);
+    getStoreStats(storeName).recordAllowed(rcu);
+  }
+
+  public void recordRejected(String storeName, long rcu){
+    totalStats.recordRejected(rcu);
+    getStoreStats(storeName).recordRejected(rcu);
+  }
+}

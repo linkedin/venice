@@ -13,49 +13,63 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.throttle.TokenBucket;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 import static java.util.concurrent.TimeUnit.*;
 
-
+@ChannelHandler.Sharable
 public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest> implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
 
   private static final Logger logger = Logger.getLogger(StorageQuotaEnforcementHandler.class);
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new ConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ReadOnlyStoreRepository storeRepository;
-  private final RoutingDataRepository routingRepository;
+  private RoutingDataRepository routingRepository;
   private final String thisNodeId;
+  private final AggServerQuotaUsageStats stats;
   private final Clock clock;
+  private boolean enforcing = true;
+
+  private volatile boolean initializedVolatile = false;
+  private boolean initialized = false;
 
   //TODO make these configurable
   private final int enforcementIntervalSeconds = 10; // TokenBucket refill interval
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
 
 
-  public StorageQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, RoutingDataRepository routingRepository, String nodeId){
-    this(storageNodeRcuCapacity, storeRepository, routingRepository, nodeId, Clock.systemUTC());
+  public StorageQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, CompletableFuture<RoutingDataRepository> routingRepository, String nodeId, AggServerQuotaUsageStats stats){
+    this(storageNodeRcuCapacity, storeRepository, routingRepository, nodeId, stats, Clock.systemUTC());
   }
 
-  //TODO: How does storeVersionBuckets get initialized
-  public  StorageQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, RoutingDataRepository routingRepository, String nodeId, Clock clock){
+  public  StorageQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, CompletableFuture<RoutingDataRepository> routingRepositoryFuture, String nodeId, AggServerQuotaUsageStats stats, Clock clock){
     this.clock = clock;
     this.storageNodeBucket = tokenBucketfromRcuPerSecond(storageNodeRcuCapacity, 1);
     this.storeRepository = storeRepository;
-    this.routingRepository = routingRepository;
     this.thisNodeId = nodeId;
-    init();
+    this.stats = stats;
+    routingRepositoryFuture.thenAccept(routing -> {
+      logger.info("Initializing StorageQuotaEnforcementHandler with completed RoutingDataRepository");
+      this.routingRepository = routing;
+      init();
+    });
   }
 
   /**
@@ -65,29 +79,58 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
     ResourceAssignment resourceAssignment = routingRepository.getResourceAssignment();
     if (null == resourceAssignment) {
       logger.error("Null resource assignment from RoutingDataRepository in StorageQuotaEnforcementHandler");
-      return;
+    } else {
+      for (String resource : routingRepository.getResourceAssignment().getAssignedResources()) {
+        this.onRoutingDataChanged(routingRepository.getPartitionAssignments(resource));
+      }
     }
-    for (String resource : routingRepository.getResourceAssignment().getAssignedResources()){
-      this.onRoutingDataChanged(routingRepository.getPartitionAssignments(resource));
+    this.initializedVolatile = true;
+  }
+
+  /**
+   *  We only ever expect the initialized value to flip from false to true, but that initialization might happen in
+   *  a different thread.  By only checking the volatile variable if it is false, we guarantee that we see the change
+   *  as early as possible and also allow the thread to cache the value once it goes true.
+   * @return
+   */
+  public boolean isInitialized(){
+    if (initialized){
+      return true;
     }
+    if (initializedVolatile){
+      initialized = true;
+      return true;
+    }
+    return false;
   }
 
   @Override
   public void channelRead0(ChannelHandlerContext ctx, RouterRequest request) {
+    if (!isInitialized()) {
+      // If we haven't completed initialization, allow all requests
+      // Note: not recording any metrics.  Lack of metrics indicates an issue with initialization
+      logger.info("Skipping quota enforcement, StorageQuotaEnforcementHandler is not initialized");
+      ReferenceCountUtil.retain(request);
+      ctx.fireChannelRead(request);
+      return;
+    }
     int rcu = getRcu(request); //read capacity units
+    String storeName = Version.parseStoreFromKafkaTopicName(request.getResourceName());
 
     //First check store bucket for capacity
     if (storeVersionBuckets.containsKey(request.getResourceName())) {
       if (!storeVersionBuckets.get(request.getResourceName()).tryConsume(rcu)) {
         // TODO: check if extra node capacity and can still process this request out of quota
-        String storeName = Version.parseStoreFromKafkaTopicName(request.getResourceName());
-        long storeQuota = storeRepository.getStore(storeName).getReadQuotaInCU();
-        float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
-        String errorMessage = "Total quota for store " + storeName + " is " + storeQuota + ", this node's portion is "
-            + thisNodeRcuPerSecond + " which has been exceeded.";
-        ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
-        ctx.close();
-        return;
+        stats.recordRejected(storeName, rcu);
+        if (enforcing) {
+          long storeQuota = storeRepository.getStore(storeName).getReadQuotaInCU();
+          float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
+          String errorMessage = "Total quota for store " + storeName + " is " + storeQuota + ", this node's portion is "
+              + thisNodeRcuPerSecond + " which has been exceeded.";
+          ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
+          ctx.close();
+          return;
+        }
       }
     } else { // If this happens it is probably due to a short-lived race condition
       // of the resource being allocated before the bucket is allocated.
@@ -97,13 +140,17 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
 
     //Once we know store bucket has capacity, check node bucket for capacity
     if (!storageNodeBucket.tryConsume(rcu)) {
-      ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
-      ctx.close();
-      return;
+      stats.recordRejected(storeName, rcu);
+      if (enforcing) {
+        ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
+        ctx.close();
+        return;
+      }
     }
 
     ReferenceCountUtil.retain(request);
     ctx.fireChannelRead(request);
+    stats.recordAllowed(storeName, rcu);
     return;
   }
 
@@ -160,6 +207,10 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
   @Override
   public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
     String topic = partitionAssignment.getTopic();
+    if (partitionAssignment.getAllPartitions().isEmpty()){
+      logger.warn("QuotaEnforcementHandler updated with an empty partition map for topic: " + topic + ".  Skipping update process");
+      return;
+    }
     double thisNodeQuotaResponsibility = getNodeResponsibilityForQuota(partitionAssignment, thisNodeId);
     if (thisNodeQuotaResponsibility <= 0){
       logger.warn("Routing data changed on quota enforcement handler with 0 replicas assigned to this node, removing quota for resource: " + topic);
@@ -249,5 +300,23 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
    */
   protected Set<String> listTopics(){
     return storeVersionBuckets.keySet();
+  }
+
+
+  public TokenBucket getBucketForStore(String storeName){
+    if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)){
+      return storageNodeBucket;
+    } else {
+      int currentVersion = storeRepository.getStore(storeName).getCurrentVersion();
+      String topic = Version.composeKafkaTopic(storeName, currentVersion);
+      return storeVersionBuckets.get(topic);
+    }
+  }
+
+  /**
+   * The quota enforcer normally enforces quota, disable enforcement to have a "Dry-run" mode
+   */
+  public void disableEnforcement(){
+    this.enforcing = false;
   }
 }

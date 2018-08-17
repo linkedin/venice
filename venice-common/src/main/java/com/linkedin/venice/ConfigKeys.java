@@ -184,6 +184,16 @@ public class ConfigKeys {
    */
   public static final String SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED = "server.db.read.only.for.batch.only.store.enabled";
 
+  /**
+   * Set to true to enable enforcement of quota by the storage node
+   */
+  public static final String SERVER_QUOTA_ENFORCEMENT_ENABLED = "server.quota.enforcement.enabled";
+
+  /**
+   * Number of Read Capacity Units per second that the node can handle across all stores.
+   */
+  public static final String SERVER_NODE_CAPACITY_RCU = "server.node.capacity.rcu.per.second";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

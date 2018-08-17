@@ -44,12 +44,6 @@ public class HelixUtils {
   public static String getHelixClusterZkPath(String clusterName){
     return "/"+clusterName;
   }
-  /**
-   * Converts the Venice Server Node Id to Helix Participant name.
-   */
-  public static String convertNodeIdToHelixParticipantName(int nodeId) {
-    return "Participant_" + String.valueOf(nodeId);
-  }
 
   private final static Character SEPARATOR = '_';
   public static int getPartitionId(String helixPartitionName) {
