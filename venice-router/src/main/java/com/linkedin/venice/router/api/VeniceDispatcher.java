@@ -48,6 +48,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -95,6 +96,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
+
+  private static List<Integer> passThroughErrorCodes = Arrays.asList(new Integer[]{
+      HttpResponseStatus.TOO_MANY_REQUESTS.code()
+  });
 
   /**
    * Single-get throttling needs to happen here because of caching.
@@ -315,6 +320,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           return;
         }
 
+        if (passThroughErrorCodes.contains(responseStatus)){
+          completeWithError(HttpResponseStatus.valueOf(responseStatus), contentToByte);
+        }
+
         int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
         CompressionStrategy compressionStrategy = result.containsHeader(VENICE_COMPRESSION_STRATEGY)
             ? CompressionStrategy.valueOf(Integer.valueOf(result.getFirstHeader(VENICE_COMPRESSION_STRATEGY).getValue()))
@@ -414,13 +423,20 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       }
 
       private void completeWithError(HttpResponseStatus status, Throwable e) {
-
         String errMsg = e.getMessage();
         if (null == errMsg) {
           errMsg = "Unknown error, caught: " + e.getClass().getCanonicalName();
         }
         ByteBuf content =  Unpooled.wrappedBuffer(errMsg.getBytes(StandardCharsets.UTF_8));
+        completeWithError(status, content);
+      }
 
+      private void completeWithError(HttpResponseStatus status, byte[] contentByteArray){
+        ByteBuf content =  Unpooled.wrappedBuffer(contentByteArray);
+        completeWithError(status, content);
+      }
+
+      private void completeWithError(HttpResponseStatus status, ByteBuf content) {
         FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);
         response.headers()
             .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.TEXT_PLAIN)
