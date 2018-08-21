@@ -330,13 +330,22 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 
+
   @Override
   public Schema getKeySchema() {
+    /**
+     * Leveraging the following function to do safe D2 discovery for the following schema fetches.
+      */
+    getKeySerializer();
     return schemaReader.getKeySchema();
   }
 
   @Override
   public Schema getLatestValueSchema() {
+    /**
+     * Leveraging the following function to do safe D2 discovery for the following schema fetches.
+     */
+    getKeySerializer();
     return schemaReader.getLatestValueSchema();
   }
 }
