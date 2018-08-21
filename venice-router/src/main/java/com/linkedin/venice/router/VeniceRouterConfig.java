@@ -57,6 +57,7 @@ public class VeniceRouterConfig {
   private boolean greedyMultiGet;
   private long singleGetUnhealthyLatencyThresholdMs;
   private long multiGetUnhealthyLatencyThresholdMs;
+  private boolean readThrottlingEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -122,6 +123,8 @@ public class VeniceRouterConfig {
 
     singleGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_SINGLEGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
     multiGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+
+    readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
   }
 
   public String getClusterName() {
@@ -270,6 +273,10 @@ public class VeniceRouterConfig {
 
   public long getMultiGetUnhealthyLatencyThresholdMs() {
     return multiGetUnhealthyLatencyThresholdMs;
+  }
+
+  public boolean isReadThrottlingEnabled() {
+    return readThrottlingEnabled;
   }
 
   /**

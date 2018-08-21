@@ -28,6 +28,7 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -104,7 +105,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   /**
    * Single-get throttling needs to happen here because of caching.
    */
-  private ReadRequestThrottler readRequestThrottler;
+  private RouterThrottler readRequestThrottler;
 
   private final HttpConnectionPoolStats poolStats;
 
@@ -159,7 +160,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
   }
 
-  public void initReadRequestThrottler(ReadRequestThrottler requestThrottler) {
+  public void initReadRequestThrottler(RouterThrottler requestThrottler) {
     if (null != this.readRequestThrottler) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
           "ReadRequestThrottle has already been initialized before, and no further update expected!");

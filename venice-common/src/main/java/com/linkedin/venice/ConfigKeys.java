@@ -503,4 +503,6 @@ public class ConfigKeys {
    */
   public static final String ROUTER_SINGLEGET_UNHEALTHY_LATENCY_MS = "router.singleget.unhealthy.latency.ms";
   public static final String ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS = "router.multiget.unhealthy.latency.ms";
+
+  public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 }

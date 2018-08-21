@@ -47,7 +47,9 @@ import com.linkedin.venice.router.stats.DnsLookupStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -539,11 +541,16 @@ public class RouterServer extends AbstractVeniceService {
 
 
       // Setup read requests throttler.
-      ReadRequestThrottler throttler =
-          new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
-              config.getMaxReadCapacityCu(), statsForSingleGet, config.getPerStorageNodeReadQuotaBuffer());
+      RouterThrottler throttler;
+      if (config.isReadThrottlingEnabled()) {
+        throttler = new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, config.getMaxReadCapacityCu(), statsForSingleGet, config.getPerStorageNodeReadQuotaBuffer());
+      } else {
+        throttler = new NoopRouterThrottler();
+      }
+
       scatterGatherMode.initReadRequestThrottler(throttler);
       dispatcher.initReadRequestThrottler(throttler);
+
 
       /**
        * When the listen port is open, we would like to have current Router to be fully ready.

@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.Arrays;
 import java.util.Collections;
@@ -60,7 +61,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    */
   private static final ScatterGatherMode SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET = new ScatterGatherModeForStickyMultiGet();
 
-  private ReadRequestThrottler readRequestThrottler;
+  private RouterThrottler readRequestThrottler;
 
   private final boolean stickyRoutingEnabledForSingleGet;
   private final boolean stickyRoutingEnabledForMultiGet;
@@ -73,7 +74,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     this.greedyMultiget = config.isGreedyMultiGetScatter();
   }
 
-  public void initReadRequestThrottler(ReadRequestThrottler requestThrottler) {
+  public void initReadRequestThrottler(RouterThrottler requestThrottler) {
     if (null != this.readRequestThrottler) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
           "ReadRequestThrottle has already been initialized before, and no further update expected!");
