@@ -29,7 +29,7 @@ import org.apache.log4j.Logger;
  * For each read request throttler will ask the related StoreReadThrottler to check both store level quota and storage
  * level quota then accept or reject it.
  */
-public class ReadRequestThrottler implements RoutersClusterManager.RouterCountChangedListener, RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener, RoutersClusterManager.RouterClusterConfigChangedListener {
+public class ReadRequestThrottler implements RouterThrottler, RoutersClusterManager.RouterCountChangedListener, RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener, RoutersClusterManager.RouterClusterConfigChangedListener {
   // We want to give more tight restriction for store-level quota to protect router but more lenient restriction for storage node level quota. Because in some case per-storage node quota is too small to user.
   public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
   public static final long DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(30);; // 30sec
@@ -94,6 +94,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
    *
    * @throws QuotaExceededException if the usage exceeded the quota throw this exception to reject the request.
    */
+  @Override
   public void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId)
       throws QuotaExceededException {
     if (!zkRoutersManager.isThrottlingEnabled()) {
@@ -109,6 +110,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
 
   // TODO will update once we complete some experiments to finalize the correlation between size and read capacity unit.
   // TODO right now read capacity unit is just QPS;
+  @Override
   public int getReadCapacity() {
     return 1;
   }

@@ -109,7 +109,6 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
     if (!isInitialized()) {
       // If we haven't completed initialization, allow all requests
       // Note: not recording any metrics.  Lack of metrics indicates an issue with initialization
-      logger.info("Skipping quota enforcement, StorageQuotaEnforcementHandler is not initialized");
       ReferenceCountUtil.retain(request);
       ctx.fireChannelRead(request);
       return;
@@ -125,8 +124,8 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
         if (enforcing) {
           long storeQuota = storeRepository.getStore(storeName).getReadQuotaInCU();
           float thisNodeRcuPerSecond = storeVersionBuckets.get(request.getResourceName()).getAmortizedRefillPerSecond();
-          String errorMessage = "Total quota for store " + storeName + " is " + storeQuota + ", this node's portion is "
-              + thisNodeRcuPerSecond + " which has been exceeded.";
+          String errorMessage = "Total quota for store " + storeName + " is " + storeQuota + " RCU per second. Storage Node "
+              + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
           ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
           ctx.close();
           return;
