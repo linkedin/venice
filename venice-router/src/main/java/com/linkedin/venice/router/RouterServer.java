@@ -9,6 +9,7 @@ import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
 import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.Router;
+import com.linkedin.ddsstorage.router.impl.netty4.Router4Impl;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
@@ -252,8 +253,11 @@ public class RouterServer extends AbstractVeniceService {
     /**
      * {@link ResourceRegistry#globalShutdown()} will be invoked automatically since {@link ResourceRegistry} registers
      * runtime shutdown hook, so we need to make sure all the clean up work will be done before the actual shutdown.
+     *
+     * Global shutdown delay will be longer (2 times) than the grace shutdown logic in {@link #stopInner()} since
+     * we would like to execute Router owned shutdown logic first to avoid race condition.
      */
-    ResourceRegistry.setGlobalShutdownDelayMillis(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
+    ResourceRegistry.setGlobalShutdownDelayMillis(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds() * 2));
 
     metadataRepository.refresh();
     storeConfigRepository.refresh();
@@ -442,8 +446,35 @@ public class RouterServer extends AbstractVeniceService {
     if (!secureServerFuture.cancel(false)){
       secureServerFuture.awaitUninterruptibly();
     }
+    /**
+     * The following change is trying to solve the router stop stuck issue.
+     * From the logs, it seems {@link ResourceRegistry.State#performShutdown()} is not shutting down
+     * resources synchronously when necessary, which could cause some race condition.
+     * For example, "executor" initialized in {@link #startInner()} could be shutdown earlier than
+     * {@link #router} and {@link #secureRouter}, then the shutdown of {@link #router} and {@link #secureRouter}
+     * would be blocked because of the following exception:
+     * 2018/08/21 17:55:40.855 ERROR [rejectedExecution] [shutdown-com.linkedin.ddsstorage.router.impl.netty4.Router4Impl$$Lambda$230/594142688@5a8fd55c]
+     * [venice-router-war] [] Failed to submit a listener notification task. Event loop shut down?
+     * java.util.concurrent.RejectedExecutionException: event executor terminated
+     *
+     * The following shutdown logic is trying to shutdown resources in order.
+     *
+     * {@link Router4Impl#shutdown()} will trigger the shutdown thread, so here will trigger shutdown thread of {@link #router}
+     * and {@link #secureRouter} together, and wait for them to complete after.
+     *
+     * TODO: figure out the root cause why {@link ResourceRegistry.State#performShutdown()} is not executing shutdown logic
+     * correctly.
+     */
+    router.shutdown();
+    secureRouter.shutdown();
+    router.waitForShutdown();
+    logger.info("Non-secure router has been shutdown completely");
+    secureRouter.waitForShutdown();
+    logger.info("Secure router has been shutdown completely");
     registry.shutdown();
     registry.waitForShutdown();
+    logger.info("Other resources managed by local ResourceRegistry have been shutdown completely");
+
     routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getPort()));
     routersClusterManager.clear();
     dispatcher.close();
