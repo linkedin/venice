@@ -191,17 +191,17 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
           while (isRunning.get() && admin.isMasterController(clusterName) && recordsIterator.hasNext()) {
             ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
-            int retryCount = 0;
+            boolean isRetry = false;
             long retryStartTime = System.currentTimeMillis();
             while (isRunning.get() && admin.isMasterController(clusterName)) {
               try {
-                boolean isRetry = retryCount > 0;
                 processMessage(record, isRetry);
                 break;
               } catch (Exception e) {
                 // Retry should happen in message level, not in batch
-                retryCount += 1; // increment and report count if we have a failure
-                stats.recordFailedAdminConsumption(retryCount);
+                isRetry = true;
+                // report number of retries if we have a failure
+                stats.recordFailedAdminConsumption();
                 lastFailedOffset=record.offset();
                 logger.error("Error when processing admin message with offset "+record.offset()+", will retry", e);
                 admin.setLastException(clusterName, e);
