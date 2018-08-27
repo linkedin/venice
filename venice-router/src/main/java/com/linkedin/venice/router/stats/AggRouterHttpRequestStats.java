@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import io.tehuti.metrics.MetricsRepository;
@@ -215,5 +214,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   public void recordRequestRoutingLatency(String storeName, double latency) {
     totalStats.recordRequestRoutingLatency(latency);
     getStoreStats(storeName).recordRequestRoutingLatency(latency);
+  }
+
+  public void recordUnavailableRequest(String storeName) {
+    totalStats.recordUnavailableRequest();
+    getStoreStats(storeName).recordUnavailableRequest();
   }
 }

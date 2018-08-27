@@ -58,6 +58,7 @@ public class VeniceRouterConfig {
   private long singleGetUnhealthyLatencyThresholdMs;
   private long multiGetUnhealthyLatencyThresholdMs;
   private boolean readThrottlingEnabled;
+  private long maxPendingRequestPerHttpClient;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -125,6 +126,7 @@ public class VeniceRouterConfig {
     multiGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
 
     readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
+    maxPendingRequestPerHttpClient = props.getLong(ROUTER_MAX_PENDING_REQUEST_PER_HTTP_CLIENT, 2500l);
   }
 
   public String getClusterName() {
@@ -277,6 +279,10 @@ public class VeniceRouterConfig {
 
   public boolean isReadThrottlingEnabled() {
     return readThrottlingEnabled;
+  }
+
+  public long getMaxPendingRequestPerHttpClient() {
+    return maxPendingRequestPerHttpClient;
   }
 
   /**

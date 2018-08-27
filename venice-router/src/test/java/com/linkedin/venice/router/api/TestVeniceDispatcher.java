@@ -91,6 +91,7 @@ public class TestVeniceDispatcher {
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();
     doReturn(5).when(routerConfig).getMaxOutgoingConnPerRoute();
+    doReturn(10l).when(routerConfig).getMaxPendingRequestPerHttpClient();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);

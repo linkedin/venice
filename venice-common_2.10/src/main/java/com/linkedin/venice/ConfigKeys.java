@@ -249,6 +249,17 @@ public class ConfigKeys {
    * The max connection number in one Router to storage nodes;
    */
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
+
+  /**
+   * This config is used to bound the pending request per Http Async Client.
+   * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
+   * which would put Router in a non-recoverable state because of long GC pause introduced
+   * by the increasing memory usage.
+   *
+   * If the incoming request exceeds this configured threshold, Router will return 503 (Service Unavailable).
+   */
+  public static final String ROUTER_MAX_PENDING_REQUEST_PER_HTTP_CLIENT = "router.max.pending.request.per.http.client";
+
   /**
    * Whether sticky routing for single-get is enabled in Router.
    * Basically, sticky routing will ensure that the requests belonging to the same partition will always go to
