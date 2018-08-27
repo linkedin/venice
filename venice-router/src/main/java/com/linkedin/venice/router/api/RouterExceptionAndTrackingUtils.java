@@ -92,6 +92,14 @@ public class RouterExceptionAndTrackingUtils {
       } else {
         stats.recordUnhealthyRequest();
       }
+
+      if (responseStatus.equals(SERVICE_UNAVAILABLE)) {
+        if (storeName.isPresent()) {
+          stats.recordUnavailableRequest(storeName.get());
+        } else {
+          throw new VeniceException("Received a SERVICE_UNAVAILABLE error without store name present");
+        }
+      }
     }
   }
 

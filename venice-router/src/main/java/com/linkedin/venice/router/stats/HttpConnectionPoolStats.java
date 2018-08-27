@@ -39,10 +39,17 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
    */
   private final Sensor connectionLeaseRequestLatency;
 
+  /**
+   * This is used to track the pending request count per http client.
+   */
+  private final Sensor pendingRequestCount;
+
   public HttpConnectionPoolStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
     connectionLeaseRequestLatency = registerSensor("connection_lease_request_latency", new Avg(), new Max());
+
+    pendingRequestCount = registerSensor("pending_request_count", new Avg(), new Max());
     /**
      * Total connections being actively used
      *
@@ -110,6 +117,10 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
 
   public void recordConnectionLeaseRequestLatency(long latency) {
     connectionLeaseRequestLatency.record(latency);
+  }
+
+  public void recordPendingRequestCount(long pendingRequestCount) {
+    this.pendingRequestCount.record(pendingRequestCount);
   }
 
   class RouteHttpConnectionPoolStats extends AbstractVeniceStats {

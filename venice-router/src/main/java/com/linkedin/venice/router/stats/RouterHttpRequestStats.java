@@ -48,6 +48,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
 
+  private final Sensor unAvailableRequestSensor;
+
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
       ScatterGatherStats scatterGatherStats) {
@@ -106,6 +108,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
+
+    unAvailableRequestSensor = registerSensor("unavailable_request", new Count());
   }
 
   public void recordRequest() {
@@ -216,5 +220,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordRequestRoutingLatency(double latency) {
     requestRoutingLatencySensor.record(latency);
+  }
+
+  public void recordUnavailableRequest() {
+    unAvailableRequestSensor.record();
   }
 }
