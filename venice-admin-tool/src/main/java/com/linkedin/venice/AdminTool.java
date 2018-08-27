@@ -133,6 +133,13 @@ public class AdminTool {
         controllerClient = new ControllerClient(clusterName, routerHosts);
       }
 
+      if (cmd.hasOption(Arg.FLAT_JSON.toString())){
+        jsonWriter = new ObjectMapper().writer();
+      }
+      if (cmd.hasOption(Arg.FILTER_JSON.toString())) {
+        fieldsToDisplay = Arrays.asList(cmd.getOptionValue(Arg.FILTER_JSON.first()).split(","));
+      }
+
       switch (foundCommand) {
         case LIST_STORES:
           storeResponse = controllerClient.queryStoreList();
