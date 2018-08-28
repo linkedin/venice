@@ -24,6 +24,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
@@ -35,9 +36,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
-import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -129,7 +127,7 @@ public class VeniceServer {
     services.add(storageService);
 
     // Create ReadOnlyStore/SchemaRepository
-    createHelixStoreAndSchemaRepository(clusterConfig);
+    createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
 
     //create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService =
@@ -193,8 +191,9 @@ public class VeniceServer {
     return ImmutableList.copyOf(services);
   }
 
-  private void createHelixStoreAndSchemaRepository(VeniceClusterConfig clusterConfig) {
+  private void createHelixStoreAndSchemaRepository(VeniceClusterConfig clusterConfig, MetricsRepository metricsRepository) {
     ZkClient zkClient = new ZkClient(clusterConfig.getZookeeperAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "server-zk-client"));
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
     this.metadataRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,

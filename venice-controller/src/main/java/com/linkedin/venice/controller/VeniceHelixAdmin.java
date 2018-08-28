@@ -34,6 +34,7 @@ import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.*;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -146,6 +147,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
             ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
         this.adapterSerializer = new HelixAdapterSerializer();
         veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
         this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(),
