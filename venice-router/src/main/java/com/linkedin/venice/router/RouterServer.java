@@ -53,6 +53,7 @@ import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -212,6 +213,8 @@ public class RouterServer extends AbstractVeniceService {
       MetricsRepository metricsRepository, boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
     zkClient = new ZkClient(config.getZkConnection());
+    zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "router-zk-client"));
+
     this.adapter = new HelixAdapterSerializer();
     if(isCreateHelixManager) {
       this.manager = new SafeHelixManager(new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection()));

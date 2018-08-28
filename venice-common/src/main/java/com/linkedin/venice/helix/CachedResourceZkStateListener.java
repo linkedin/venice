@@ -1,7 +1,6 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
 import org.I0Itec.zkclient.IZkStateListener;
