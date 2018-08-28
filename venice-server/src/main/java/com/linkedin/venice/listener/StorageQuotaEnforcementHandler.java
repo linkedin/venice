@@ -16,6 +16,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.throttle.TokenBucket;
+import com.linkedin.venice.utils.ExpiringSet;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -29,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -46,6 +48,7 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
   private final AggServerQuotaUsageStats stats;
   private final Clock clock;
   private boolean enforcing = true;
+  private ExpiringSet<String> noBucketStores = new ExpiringSet<>(30, TimeUnit.SECONDS);
 
   private volatile boolean initializedVolatile = false;
   private boolean initialized = false;
@@ -76,6 +79,7 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
    * Initialize token buckets for all resources in the routingDataRepository
    */
   public void init(){
+    storeRepository.registerStoreDataChangedListener(this);
     ResourceAssignment resourceAssignment = routingRepository.getResourceAssignment();
     if (null == resourceAssignment) {
       logger.error("Null resource assignment from RoutingDataRepository in StorageQuotaEnforcementHandler");
@@ -133,8 +137,12 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
       }
     } else { // If this happens it is probably due to a short-lived race condition
       // of the resource being allocated before the bucket is allocated.
-      logger.warn("Request for resource " + request.getResourceName() + " but no TokenBucket for that resource.  Not yet enforcing quota");
-      //TODO: We could consider initializing a bucket.  Would need to carefully consider this case.
+      if (!noBucketStores.contains(request.getResourceName())){
+        logger.warn("Request for resource " + request.getResourceName() + " but no TokenBucket for that resource.  Not yet enforcing quota");
+        //TODO: We could consider initializing a bucket.  Would need to carefully consider this case.
+        noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
+      }
+
     }
 
     //Once we know store bucket has capacity, check node bucket for capacity

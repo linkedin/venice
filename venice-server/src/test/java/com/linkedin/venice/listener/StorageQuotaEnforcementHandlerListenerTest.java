@@ -10,15 +10,18 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import edu.emory.mathcs.backport.java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -30,6 +33,26 @@ import static org.testng.Assert.*;
  */
 public class StorageQuotaEnforcementHandlerListenerTest {
   private String nodeId = "thisNodeId";
+
+  @Test
+  public void quotaEnforcementHandlerRegistersAsStoreChangeListener(){
+    long storageNodeRcuCapacity = 100; //RCU per second
+    RoutingDataRepository routingRepository = mock(RoutingDataRepository.class);
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    AggServerQuotaUsageStats stats = mock(AggServerQuotaUsageStats.class);
+
+    List<StoreDataChangedListener> listeners = new ArrayList<>();
+    doAnswer((invocation) -> {
+      StoreDataChangedListener listener = invocation.getArgument(0);
+      listeners.add(listener);
+      return null;
+    }).when(storeRepository).registerStoreDataChangedListener(any());
+
+    StorageQuotaEnforcementHandler quotaEnforcer =
+        new StorageQuotaEnforcementHandler(storageNodeRcuCapacity, storeRepository, CompletableFuture.completedFuture(routingRepository), nodeId, stats);
+
+    Assert.assertEquals(listeners.get(0), quotaEnforcer);
+  }
 
   @Test
   public void quotaEnforcementHandlerStaysUpToDateWithStoreChanges(){
