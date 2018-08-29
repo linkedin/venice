@@ -32,6 +32,10 @@ import java.util.concurrent.TimeUnit;
 public class D2TestUtils {
   public static final String DEFAULT_TEST_CLUSTER_NAME = "VeniceStorageService";
   public static final String DEFAULT_TEST_SERVICE_NAME = "venice-service";
+
+  public static final String CONTROLLER_CLUSTER_NAME = "VeniceController";
+  public static final String CONTROLLER_SERVICE_NAME = "VeniceController";
+
   private static final ObjectMapper mapper = new ObjectMapper();
 
 

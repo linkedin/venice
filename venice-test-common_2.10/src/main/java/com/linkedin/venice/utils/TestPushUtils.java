@@ -451,12 +451,13 @@ public class TestPushUtils {
     }
   }
 
-  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice){
+  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName){
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.STREAM.toString());
-    samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
-    samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
+    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+    samzaConfig.put(D2_ZK_HOSTS_PROPERTY, venice.getZk().getAddress());
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
     samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("venice-push-id"));
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);

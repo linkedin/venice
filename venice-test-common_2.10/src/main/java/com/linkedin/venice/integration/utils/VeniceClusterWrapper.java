@@ -101,10 +101,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
     try {
+      // Setup D2 for controller
+      String zkAddress = zkServerWrapper.getAddress();
+      D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper veniceControllerWrapper =
             ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
-                delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, false);
+                delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, true);
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 

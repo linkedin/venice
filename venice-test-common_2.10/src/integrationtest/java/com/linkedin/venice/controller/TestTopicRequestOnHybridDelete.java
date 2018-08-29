@@ -59,7 +59,7 @@ public class TestTopicRequestOnHybridDelete {
       controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
       //write streaming records
-      veniceProducer = getSamzaProducer(venice);
+      veniceProducer = getSamzaProducer(venice, storeName);
       for (int i=1; i<=10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
@@ -117,7 +117,7 @@ public class TestTopicRequestOnHybridDelete {
 
 
       //write more streaming records
-      veniceProducer = getSamzaProducer(venice);
+      veniceProducer = getSamzaProducer(venice, storeName);
       for (int i=11; i<=20; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }

@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
@@ -34,14 +33,16 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private VeniceController service;
   private final int port;
   private final List<D2Server> d2ServerList;
+  private final String zkAddress;
 
   VeniceControllerWrapper(String serviceName, File dataDirectory, VeniceController service, int port,
-      List<VeniceProperties> configs, List<D2Server> d2ServerList) {
+      List<VeniceProperties> configs, List<D2Server> d2ServerList, String zkAddress) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
     this.configs = configs;
     this.d2ServerList = d2ServerList;
+    this.zkAddress = zkAddress;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
@@ -122,12 +123,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         VeniceProperties props = builder.build();
         propertiesList.add(props);
       }
-      List<D2Server> d2ServerList = Collections.emptyList();
+      List<D2Server> d2ServerList = new ArrayList<>();
       if (d2Enabled) {
-        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + adminPort);
+        d2ServerList.add(createD2Server(zkAddress, adminPort));
       }
       VeniceController veniceController = new VeniceController(propertiesList, d2ServerList);
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, propertiesList, d2ServerList);
+      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, propertiesList, d2ServerList, zkAddress);
     };
   }
 
@@ -166,9 +167,26 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     service.stop();
   }
 
+  private static D2Server createD2Server(String zkAddress, int port) {
+    return D2TestUtils.getD2Server(zkAddress, "http://localhost:" + port, D2TestUtils.CONTROLLER_CLUSTER_NAME);
+  }
+
   @Override
   protected void newProcess()
       throws Exception {
+    /**
+     * {@link D2Server} can't be reused for restart because of the following exception:
+     * Caused by: java.lang.IllegalStateException: Can not start ZKConnection when STOPPED
+     *  at com.linkedin.d2.discovery.stores.zk.ZKPersistentConnection.start(ZKPersistentConnection.java:200)
+     *  at com.linkedin.d2.balancer.servers.ZooKeeperConnectionManager.start(ZooKeeperConnectionManager.java:113)
+     *  at com.linkedin.d2.spring.D2ServerManager.doStart(D2ServerManager.java:226)
+     *  ... 36 more
+     */
+    if (!d2ServerList.isEmpty()) {
+      d2ServerList.clear();
+      d2ServerList.add(createD2Server(zkAddress, port));
+    }
+
     service = new VeniceController(configs, d2ServerList);
   }
 
