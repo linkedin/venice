@@ -1,7 +1,13 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
-import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.IndexedRecord;
@@ -23,6 +30,7 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
+import org.apache.log4j.Logger;
 import org.apache.samza.SamzaException;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -31,6 +39,8 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class VeniceSystemProducer implements SystemProducer {
+  private static final Logger LOGGER = Logger.getLogger(VeniceSystemProducer.class);
+
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
   private static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
@@ -46,51 +56,84 @@ public class VeniceSystemProducer implements SystemProducer {
   private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
-  //TODO:  A lot of these maps use store as the key, we could build a VeniceContext object that has all the value info
-  /**
-   * key is Venice store name (same as Samza stream name)
-   * value is VeniceWriter to use for writing to that store
-   */
-  private ConcurrentMap<String, VeniceWriter<byte[], byte[]>> writerMap = new ConcurrentHashMap<>();
+  private final VeniceWriter<byte[], byte[]> veniceWriter;
 
-  /**
-   * key is store name and value schema
-   * value is Venice value schema ID
-   */
-  private ConcurrentMap<StoreAndSchema, Integer> schemaIds = new ConcurrentHashMap<>();
+  private final ConcurrentMap<Schema, Integer> valueSchemaIds = new ConcurrentHashMap<>();
 
-  /**
-   * key is store name
-   * value is schema
-   */
-  private ConcurrentMap<String, Schema> keySchemas = new ConcurrentHashMap<>();
+  private final Schema keySchema;
 
   /**
    * key is schema
    * value is Avro serializer
    */
-  private ConcurrentMap<String, VeniceAvroGenericSerializer> serializers = new ConcurrentHashMap<>();
+  private final ConcurrentMap<String, VeniceAvroGenericSerializer> serializers = new ConcurrentHashMap<>();
 
-  /**
-   * key is Venice store name
-   * value is Kafka bootstrap server
-   */
-  private ConcurrentMap<String, VersionCreationResponse> storeInfo = new ConcurrentHashMap<>();
+  private final VersionCreationResponse versionCreationResponse;
 
-  private String samzaJobId;
-  private ControllerApiConstants.PushType pushType;
-  private ControllerClient veniceControllerClient;
+  private final D2Client d2Client;
+  private final D2ControllerClient controllerClient;
+  private final String storeName;
   private final Time time;
 
-  public VeniceSystemProducer(String veniceUrl, String veniceCluster, ControllerApiConstants.PushType pushType, String samzaJobId) {
-    this(veniceUrl, veniceCluster, pushType, samzaJobId, SystemTime.INSTANCE);
+  public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
+      ControllerApiConstants.PushType pushType, String samzaJobId) {
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, SystemTime.INSTANCE);
   }
 
-  public VeniceSystemProducer(String veniceUrl, String veniceCluster, ControllerApiConstants.PushType pushType, String samzaJobId, Time time) {
-    this.pushType = pushType;
-    this.samzaJobId = samzaJobId;
-    this.veniceControllerClient = new ControllerClient(veniceCluster, veniceUrl);
+  public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
+      ControllerApiConstants.PushType pushType, String samzaJobId, Time time) {
+    this.storeName = storeName;
     this.time = time;
+
+    this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost).build();
+    D2ClientUtils.startClient(d2Client);
+    // Discover cluster
+    D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse)
+        controllerRequestWithRetry(() -> D2ControllerClient.discoverCluster(this.d2Client, d2ServiceName, this.storeName)
+        );
+    String clusterName = discoveryResponse.getCluster();
+    LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
+
+    this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, this.d2Client);
+
+    // Request all the necessary info from Venice Controller
+    this.versionCreationResponse = (VersionCreationResponse)controllerRequestWithRetry(
+        () -> this.controllerClient.requestTopicForWrites(this.storeName, 1, pushType, samzaJobId)
+    );
+    LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
+    this.veniceWriter = getVeniceWriter(this.versionCreationResponse);
+
+    SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
+        () -> this.controllerClient.getKeySchema(this.storeName)
+    );
+    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
+    this.keySchema = Schema.parse(keySchemaResponse.getSchemaStr());
+
+    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
+        () -> this.controllerClient.getAllValueSchema(this.storeName)
+    );
+    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
+    for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
+      valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), valueSchema.getId());
+    }
+  }
+
+  protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
+    String errorMsg = "";
+    for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
+      ControllerResponse controllerResponse = supplier.get();
+      if (!controllerResponse.isError()) {
+        return controllerResponse;
+      } else {
+        try {
+          time.sleep(1000);
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+        errorMsg = controllerResponse.getError();
+      }
+    }
+    throw new SamzaException("Failed to send request to Controller, error: " + errorMsg);
   }
 
   protected VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
@@ -110,9 +153,9 @@ public class VeniceSystemProducer implements SystemProducer {
 
   @Override
   public void stop() {
-    for (VeniceWriter writer : writerMap.values()) {
-      writer.close();
-    }
+    veniceWriter.close();
+    controllerClient.close();
+    D2ClientUtils.shutdownClient(d2Client);
   }
 
   @Override
@@ -122,48 +165,19 @@ public class VeniceSystemProducer implements SystemProducer {
 
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
-    String store = outgoingMessageEnvelope.getSystemStream().getStream();
-    String topic = storeInfo.computeIfAbsent(store, s -> {
-      VersionCreationResponse versionCreationResponse = null;
-      for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
-        versionCreationResponse = veniceControllerClient.requestTopicForWrites(s, 1, pushType, samzaJobId); // TODO, store size?
-        if (!versionCreationResponse.isError()) {
-          return versionCreationResponse;
-        } else {
-          try {
-            time.sleep(1000);
-          } catch (InterruptedException e) {
-            throw new VeniceException(e);
-          }
-        }
-      }
-      throw new SamzaException("Failed to get target version from Venice for store " + s + ": " + versionCreationResponse.getError());
-    }).getKafkaTopic();
+    String storeOfIncomingMessage = outgoingMessageEnvelope.getSystemStream().getStream();
+    if (! storeOfIncomingMessage.equals(storeName)) {
+      throw new SamzaException("The store of the incoming message: " + storeOfIncomingMessage +
+          " is unexpected, and it should be " + storeName);
+    }
+    String topic = versionCreationResponse.getKafkaTopic();
 
     Object keyObject = outgoingMessageEnvelope.getKey();
     Object valueObject = outgoingMessageEnvelope.getMessage();
 
-    Schema keySchema = getSchemaFromObject(keyObject);
+    Schema keyObjectSchema = getSchemaFromObject(keyObject);
 
-    Schema remoteKeySchema = keySchemas.computeIfAbsent(store, s -> {
-      SchemaResponse keySchemaResponse = null;
-      for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
-        keySchemaResponse = veniceControllerClient.getKeySchema(s);
-        if (!keySchemaResponse.isError()) {
-          String schemaString = keySchemaResponse.getSchemaStr();
-          return Schema.parse(schemaString);
-        } else {
-          try {
-            time.sleep(1000);
-          } catch (InterruptedException e) {
-            throw new VeniceException(e);
-          }
-        }
-      }
-      throw new SamzaException("Failed to get Venice key schema for store " + s + ": " + keySchemaResponse.getError());
-    });
-
-    if (!remoteKeySchema.equals(keySchema)) {
+    if (!keySchema.equals(keyObjectSchema)) {
       String serializedObject;
       if (keyObject instanceof byte[]){
         serializedObject = new String((byte[]) keyObject);
@@ -172,39 +186,26 @@ public class VeniceSystemProducer implements SystemProducer {
       } else {
         serializedObject = keyObject.toString();
       }
-      throw new SamzaException("Cannot write record to Venice store " + store + ", key object has schema " + keySchema
-          + " which does not match Venice key schema " + remoteKeySchema + ".  Key object: " + serializedObject);
+      throw new SamzaException("Cannot write record to Venice store " + storeName + ", key object has schema " + keyObjectSchema
+          + " which does not match Venice key schema " + keySchema + ".  Key object: " + serializedObject);
     }
-
-    VeniceWriter<byte[], byte[]> writer = writerMap.computeIfAbsent(store, s -> getVeniceWriter(storeInfo.get(s)));
 
     byte[] key = serializeObject(topic, keyObject);
 
     if (null == valueObject) {
-      writer.delete(key);
+      veniceWriter.delete(key);
     } else {
-      Schema valueSchema = getSchemaFromObject(valueObject);
-      int valueSchemaId = schemaIds.computeIfAbsent(new StoreAndSchema(store, valueSchema), storeAndSchema -> {
-        SchemaResponse valueSchemaResponse = null;
-        for (int currentAttempt = 0; currentAttempt < 60; currentAttempt++) {
-          valueSchemaResponse =  veniceControllerClient.getValueSchemaID(storeAndSchema.getStoreName(),
-              storeAndSchema.getSchema().toString());
-          if (!valueSchemaResponse.isError()) {
-            return valueSchemaResponse.getId();
-          } else {
-            try {
-              time.sleep(1000);
-            } catch (InterruptedException e) {
-              throw new VeniceException(e);
-            }
-          }
-        }
-        throw new SamzaException("Failed to get Venice schema ID for store " + store + ": " + valueSchemaResponse.getError());
+      Schema valueObjectSchema = getSchemaFromObject(valueObject);
+      int valueSchemaId = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
+        SchemaResponse valueSchemaResponse = (SchemaResponse)controllerRequestWithRetry(
+            () -> controllerClient.getValueSchemaID(storeName, valueSchema.toString())
+        );
+        LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for schema: " + valueSchema);
+        return valueSchemaResponse.getId();
       });
-
       byte[] value = serializeObject(topic, valueObject);
 
-      writer.put(key, value, valueSchemaId);
+      veniceWriter.put(key, value, valueSchemaId);
     }
   }
 
@@ -277,58 +278,5 @@ public class VeniceSystemProducer implements SystemProducer {
       throw new RuntimeException("Failed to write intput: " + input + " to binary encoder", e);
     }
     return out.toByteArray();
-  }
-
-  /**
-   * Used as key for schemaIds map
-   */
-  private static class StoreAndSchema {
-    private final String storeName;
-    private final Schema schema;
-
-    String getStoreName() {
-      return storeName;
-    }
-
-    Schema getSchema() {
-      return schema;
-    }
-
-    StoreAndSchema(String storeName, Schema schema) {
-      if (null == storeName) {
-        throw new SamzaException("Store name cannot be null");
-      }
-      if (null == schema) {
-        throw new SamzaException("Schema cannot be null");
-      }
-      this.storeName = storeName;
-      this.schema = schema;
-    }
-
-    //Autogenerated equals and hashcode
-
-    @Override
-    public boolean equals(Object o) {
-      if (this == o) {
-        return true;
-      }
-      if (o == null || getClass() != o.getClass()) {
-        return false;
-      }
-
-      StoreAndSchema that = (StoreAndSchema) o;
-
-      if (!storeName.equals(that.storeName)) {
-        return false;
-      }
-      return schema.equals(that.schema);
-    }
-
-    @Override
-    public int hashCode() {
-      int result = storeName.hashCode();
-      result = 31 * result + schema.hashCode();
-      return result;
-    }
   }
 }

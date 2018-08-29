@@ -21,12 +21,12 @@ public class TestD2ControllerClient {
   public void testD2ControllerClientEnd2End() {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
-    D2TestUtils.setupD2Config(zkAddress);
+    D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
 
     VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, null, true, true);
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
-    String d2ServiceName = D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+    String d2ServiceName = D2TestUtils.CONTROLLER_SERVICE_NAME;
 
     D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, CLUSTER_NAME, d2Client);
 

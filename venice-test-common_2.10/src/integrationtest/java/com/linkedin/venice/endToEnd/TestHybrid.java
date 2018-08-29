@@ -144,7 +144,7 @@ public class TestHybrid {
     }
 
     //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice);
+    SystemProducer veniceProducer = getSamzaProducer(venice, storeName);
     for (int i=1; i<=10; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);
     }
@@ -171,7 +171,7 @@ public class TestHybrid {
 
     // Write more streaming records
     if (multiDivStream) {
-      veniceProducer = getSamzaProducer(venice); // new producer, new DIV segment.
+      veniceProducer = getSamzaProducer(venice, storeName); // new producer, new DIV segment.
     }
     for (int i=10; i<=20; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);

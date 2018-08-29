@@ -55,7 +55,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
     //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice);
+    SystemProducer veniceProducer = getSamzaProducer(venice, storeName);
     for (int i=1; i<=10; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);
     }

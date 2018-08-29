@@ -4,8 +4,9 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
-import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -40,12 +41,15 @@ public class VeniceSystemFactoryTest {
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VENICE_SYSTEM_NAME = "venice"; //This is the Samza system name for use by the Samza API.
   private VeniceClusterWrapper venice;
-  private ControllerClient client;
+  private D2ControllerClient client;
+  private String zkAddress;
+
 
   @BeforeClass
   private void setUp() {
     venice = ServiceFactory.getVeniceCluster();
-    client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+    zkAddress = venice.getZk().getAddress();
+    client = new D2ControllerClient(D2TestUtils.CONTROLLER_SERVICE_NAME, venice.getClusterName(), zkAddress);
   }
 
   @AfterClass
@@ -70,7 +74,7 @@ public class VeniceSystemFactoryTest {
 
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
-    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.STREAM);
+    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.STREAM, storeName);
 
     //Create an AVRO record
     GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
@@ -146,7 +150,7 @@ public class VeniceSystemFactoryTest {
   public void testSchemaMismatchError() {
     String storeName = TestUtils.getUniqueString("store");
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
-    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.BATCH);
+    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.BATCH, storeName);
     //Create an AVRO record
     GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
     record.put("string", "somestring");
@@ -170,10 +174,9 @@ public class VeniceSystemFactoryTest {
    */
   private <K1, K2, V1, V2> void testSerializationCast(K1 writeKey, K2 readKey, V1 value, V2 expectedValue, String schema)
       throws InterruptedException, ExecutionException, TimeoutException {
-    VeniceSystemProducer producer = (VeniceSystemProducer) getVeniceProducer(ControllerApiConstants.PushType.BATCH);
-    ControllerClient client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     String storeName = TestUtils.getUniqueString("schema-test-store");
     client.createNewStore(storeName, "owner", schema, schema);
+    VeniceSystemProducer producer = (VeniceSystemProducer) getVeniceProducer(ControllerApiConstants.PushType.BATCH, storeName);
     producer.send(storeName, new OutgoingMessageEnvelope(
         new SystemStream(VENICE_SYSTEM_NAME, storeName),
         writeKey,value));
@@ -192,12 +195,13 @@ public class VeniceSystemFactoryTest {
     testSerializationCast(key, key, value, value, schema);
   }
 
-  private SystemProducer getVeniceProducer(ControllerApiConstants.PushType pushType){
+  private SystemProducer getVeniceProducer(ControllerApiConstants.PushType pushType, String storeName){
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + VENICE_SYSTEM_NAME + DOT;
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, pushType.toString());
-    samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
-    samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
+    samzaConfig.put(configPrefix + VENICE_STORE, storeName);
+    samzaConfig.put(D2_ZK_HOSTS_PROPERTY, zkAddress);
+    samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
     samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("samza-push-id"));
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer(VENICE_SYSTEM_NAME, new MapConfig(samzaConfig), null);
