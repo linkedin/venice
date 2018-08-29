@@ -14,7 +14,7 @@ configurations.compile {
 }
 
 configurations.all {
-  resolutionStrategy { 
+  resolutionStrategy {
     force libraries.kafka
   }
 }
@@ -104,7 +104,7 @@ dependencies {
   compile libraries.brooklinKafkaTransport
 
   compile project(':venice-schema-common')
-  compile project(':venice-common')
+  compile project(':venice-common_2.10')
   compile project(':venice-server')
   compile project(':venice-controller')
   compile project(':venice-router')

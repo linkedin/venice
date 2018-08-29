@@ -1,7 +1,7 @@
 apply plugin: 'java'
 
 dependencies {
-    compile project(':venice-common')
+    compile project(':venice-common_2.10')
 
     compile (libraries.avro) {
         exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api

@@ -3,9 +3,9 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Pair;
 import com.sleepycat.je.Environment;
 import io.tehuti.metrics.MetricsRepository;
-import javafx.util.Pair;
 import org.apache.log4j.Logger;
 
 
@@ -22,7 +22,7 @@ public class AggVersionedBdbStorageEngineStats
     Pair<String, Integer> storeInfo = getStoreNameAndVersionFromTopic(topicName);
     if (storeInfo != null) {
       try {
-        getStats(storeInfo.getKey(), storeInfo.getValue()).setBdbEnvironment(environment);
+        getStats(storeInfo.getFirst(), storeInfo.getSecond()).setBdbEnvironment(environment);
       } catch (VeniceException e) {
         logger.warn("Could not create BDB storage engine stats for store: " + topicName, e);
       }
@@ -33,7 +33,7 @@ public class AggVersionedBdbStorageEngineStats
     Pair<String, Integer> storeInfo = getStoreNameAndVersionFromTopic(topicName);
     if (storeInfo != null) {
       try {
-        getStats(storeInfo.getKey(), storeInfo.getValue()).removeBdbEnvironment();
+        getStats(storeInfo.getFirst(), storeInfo.getSecond()).removeBdbEnvironment();
       } catch (VeniceException e) {
         logger.warn("Could not remove BDB storage engine stats for store: " + topicName, e);
       }

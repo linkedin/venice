@@ -36,7 +36,7 @@ dependencies {
   }
   compile libraries.rocksdbjni
 
-  compile project(':venice-common')
+  compile project(':venice-common_2.10')
   compile project(':venice-controller')
 
   testCompile (project(':venice-thin-client')){
@@ -50,6 +50,6 @@ dependencies {
   testCompile 'commons-io:commons-io:2.4'
   testCompile libraries.tehuti
 
-  testCompile project(':venice-test-common')
+  testCompile project(':venice-test-common_2.10')
   testCompile project(':venice-router')
 }

@@ -42,7 +42,7 @@ dependencies {
   }
   compile libraries.brooklinCommon
 
-  compile project(':venice-common')
+  compile project(':venice-common_2.10')
 
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'

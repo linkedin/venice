@@ -59,7 +59,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import javax.validation.constraints.NotNull;
-import kafka.common.TopicAndPartition;
 import org.apache.commons.collections4.map.PassiveExpiringMap;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -1372,6 +1371,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * ttlMs
    */
   private static class CachedLatestOffsetGetter {
+    private class TopicAndPartition {
+      String topic;
+      int partitionId;
+      public TopicAndPartition(String topic, int partitionId) {
+        this.topic = topic;
+        this.partitionId = partitionId;
+      }
+
+      public String topic() {
+        return topic;
+      }
+      public int partition() {
+        return partitionId;
+      }
+    }
     private final TopicManager topicManager;
     private final Map<TopicAndPartition, Long> cachedLatestOffsets;
 
