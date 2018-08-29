@@ -3,7 +3,7 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
-import javafx.util.Pair;
+import com.linkedin.venice.utils.Pair;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.hadoop.io.BytesWritable;
@@ -53,13 +53,13 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
         new VeniceAvroGenericSerializer((VsonAvroSchemaAdapter.parse(fileValueSchemaStr).toString()));
 
     Pair<BytesWritable, BytesWritable> record = generateRecord();
-    mapper.map(record.getKey(), record.getValue(), collector, null);
+    mapper.map(record.getFirst(), record.getSecond(), collector, null);
 
     Mockito.verify(collector).collect(keyCaptor.capture(), valueCaptor.capture());
     Assert.assertEquals(keyCaptor.getValue().getBytes(),
-        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getKey().getBytes())));
+        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getFirst().getBytes())));
     Assert.assertEquals(valueCaptor.getValue().getBytes(),
-        valueSerializer.serialize("fake_topic", valueDeserializer.bytesToAvro(record.getValue().getBytes())));
+        valueSerializer.serialize("fake_topic", valueDeserializer.bytesToAvro(record.getSecond().getBytes())));
   }
 
   @Test
@@ -77,13 +77,13 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
         new VeniceAvroGenericSerializer(schema.getField("userId").schema().toString());
 
     Pair<BytesWritable, BytesWritable> record = generateRecord();
-    mapper.map(record.getKey(), record.getValue(), collector, null);
+    mapper.map(record.getFirst(), record.getSecond(), collector, null);
 
     Mockito.verify(collector).collect(keyCaptor.capture(), valueCaptor.capture());
     Assert.assertEquals(keyCaptor.getValue().getBytes(),
-        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getKey().getBytes())));
+        keySerializer.serialize("fake_topic", keyDeserializer.bytesToAvro(record.getFirst().getBytes())));
 
-    GenericData.Record valueRecord = (GenericData.Record) valueDeserializer.bytesToAvro(record.getValue().getBytes());
+    GenericData.Record valueRecord = (GenericData.Record) valueDeserializer.bytesToAvro(record.getSecond().getBytes());
     Assert.assertEquals(valueCaptor.getValue().getBytes(),
         valueSerializer.serialize("fake_topic", valueRecord.get("userId")));
   }

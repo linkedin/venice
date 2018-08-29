@@ -18,8 +18,8 @@ jar {
 
 
 dependencies {
-    compile project(':venice-common')
-    compile(project(':venice-test-common')) {
+    compile project(':venice-common_2.10')
+    compile(project(':venice-test-common_2.10')) {
       // Used by the command that spins up a MirrorMaker
       transitive = false
     }

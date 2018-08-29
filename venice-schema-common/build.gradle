@@ -45,5 +45,5 @@ dependencies {
     compile libraries.tehuti
     compile libraries.xerces // d2Client brings in an old version of xerces
 
-    testCompile project(':venice-test-common')
+    testCompile project(':venice-test-common_2.10')
 }

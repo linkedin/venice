@@ -12,7 +12,7 @@ dependencies {
 
   // Schema related dependencies
   compile project(':venice-schema-common')
-  compile project(':venice-common') //TODO, pull venice writer out of venice common so this is a smaller dependency
+  compile project(':venice-common_2.10') //TODO, pull venice writer out of venice common so this is a smaller dependency
 
   compile (libraries.brooklinKafkaTransport) {
     exclude group: 'org.apache.kafka'

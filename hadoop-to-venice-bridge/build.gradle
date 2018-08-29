@@ -1,5 +1,5 @@
 dependencies {
-    compile project(':venice-common')
+    compile project(':venice-common_2.10')
     compile project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
 
     compile libraries.commonsIo
