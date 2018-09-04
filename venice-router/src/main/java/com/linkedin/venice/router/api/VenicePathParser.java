@@ -12,7 +12,6 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.utils.Utils;
-import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -89,34 +88,42 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
           BAD_REQUEST, "Request URI must have storeName.  Uri is: " + uri);
     }
-    String resourceName = getResourceFromStoreName(storeName);
 
-    String method = fullHttpRequest.method().name();
     VenicePath path = null;
-    AggRouterHttpRequestStats stats = null;
-    int keyNum = 1;
-    if (VeniceRouterUtils.isHttpGet(method)) {
-      // single-get request
-      path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
-      stats = statsForSingleGet;
-    } else if (VeniceRouterUtils.isHttpPost(method)) {
-      // multi-get request
-      path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName));
-      stats = statsForMultiGet;
-      /**
-       * Here we only track key num for batch-get request, since single-get request will be always 1.
-       */
-      keyNum = path.getPartitionKeys().size();
-      stats.recordKeyNum(storeName, keyNum);
-    } else {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-          BAD_REQUEST, "Method: " + method + " is not allowed");
+    try {
+      // this method may throw store not exist exception; track the exception under unhealthy request metric
+      String resourceName = getResourceFromStoreName(storeName);
+
+      String method = fullHttpRequest.method().name();
+      AggRouterHttpRequestStats stats = null;
+      int keyNum = 1;
+      if (VeniceRouterUtils.isHttpGet(method)) {
+        // single-get request
+        path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
+        stats = statsForSingleGet;
+      } else if (VeniceRouterUtils.isHttpPost(method)) {
+        // multi-get request
+        path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName));
+        stats = statsForMultiGet;
+        /**
+         * Here we only track key num for batch-get request, since single-get request will be always 1.
+         */
+        keyNum = path.getPartitionKeys().size();
+        stats.recordKeyNum(storeName, keyNum);
+      } else {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
+            BAD_REQUEST, "Method: " + method + " is not allowed");
+      }
+      // Always record request usage in the single get stats, so we could compare it with the quota easily.
+      // Right now we use key num as request usage, in the future we might consider the Capacity unit.
+      statsForSingleGet.recordRequestUsage(storeName, keyNum);
+      stats.recordRequest(storeName);
+      stats.recordRequestSize(storeName, path.getRequestSize());
+    } catch (RouterException e) {
+      // log the store/version not exist error and add track it in the unhealthy request metric
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
+          BAD_REQUEST, e.getMessage());
     }
-    // Always record request usage in the single get stats, so we could compare it with the quota easily.
-    // Right now we use key num as request usage, in the future we might consider the Capacity unit.
-    statsForSingleGet.recordRequestUsage(storeName, keyNum);
-    stats.recordRequest(storeName);
-    stats.recordRequestSize(storeName, path.getRequestSize());
     return path;
   }
 
