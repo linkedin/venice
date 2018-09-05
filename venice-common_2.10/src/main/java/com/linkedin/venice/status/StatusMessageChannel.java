@@ -23,10 +23,10 @@ public interface StatusMessageChannel {
   public void sendToController(StatusMessage message);
 
   /**
-   * Send message to all storage nodes assigned to the given resource. If met any error during the sending, retry it
+   * Send message to all storage nodes in the given cluster. If met any error during the sending, retry it
    * after retryDurationMs until retry @retryCount times.
    */
-  public void sendToStorageNodes(StatusMessage message, String resourceName, int retryCount);
+  public void sendToStorageNodes(String clusterName, StatusMessage message, String resourceName, int retryCount);
 
   /**
    * Register a handler to handle a specific message type.

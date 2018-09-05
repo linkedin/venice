@@ -119,7 +119,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   }
 
   @Override
-  public void sendToStorageNodes(StatusMessage message, String resourceName, int retryCount) {
+  public void sendToStorageNodes(String clusterName, StatusMessage message, String resourceName, int retryCount) {
     Message helixMessage = convertVeniceMessageToHelixMessage(message);
     helixMessage.setTgtSessionId("*");
     Criteria criteria = new Criteria();
@@ -128,6 +128,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     // Broad messages to all alive storage nodes.
     criteria.setDataSource(Criteria.DataSource.LIVEINSTANCES);
     criteria.setInstanceName("%");
+    criteria.setClusterName(clusterName);
 
     ControlMessageCallback callBack = new ControlMessageCallback();
     //Send and wait until getting response or time out.

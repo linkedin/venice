@@ -15,6 +15,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixManager;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -252,7 +255,7 @@ public class TestHelixStatusMessageChannel {
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     try {
-      controllerChannel.sendToStorageNodes(veniceMessage, kafkaTopic, timeoutCount);
+      controllerChannel.sendToStorageNodes(cluster,  veniceMessage, kafkaTopic, timeoutCount);
     } catch (VeniceException e) {
       Assert.fail("Sending should be successful after retry " + timeoutCount + " times", e);
     } finally {
@@ -284,7 +287,7 @@ public class TestHelixStatusMessageChannel {
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     try {
-      controllerChannel.sendToStorageNodes(veniceMessage, kafkaTopic, timeoutCount);
+      controllerChannel.sendToStorageNodes(cluster, veniceMessage, kafkaTopic, timeoutCount);
       Assert.assertTrue(received[0], "We should send message to all live instance regardless it's assigned to resource or not.");
     } catch (VeniceException e) {
       Assert.fail("Sending should be successful after retry " + timeoutCount + " times", e);
@@ -312,7 +315,7 @@ public class TestHelixStatusMessageChannel {
         getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     try {
-      controllerChannel.sendToStorageNodes(veniceMessage, kafkaTopic, timeoutCount);
+      controllerChannel.sendToStorageNodes(cluster, veniceMessage, kafkaTopic, timeoutCount);
       Assert.fail("Sending should be failed, because storage node have not processed this message.");
     } catch (VeniceException e) {
       //expected.
@@ -342,10 +345,48 @@ public class TestHelixStatusMessageChannel {
     HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
     StoreStatusMessage veniceMessage = new StoreStatusMessage("wrong kafak topic", partitionId, instanceId, status);
     try {
-      controllerChannel.sendToStorageNodes(veniceMessage, "wrong kafka topic", timeoutCount);
+      controllerChannel.sendToStorageNodes(cluster, veniceMessage, "wrong kafka topic", timeoutCount);
       Assert.fail("Sending should be failed due to wrong resource name");
     } catch (VeniceException e) {
       //expected.
+    }
+  }
+
+  @Test
+  public void testSendMessageCrossingClusters()
+      throws Exception {
+    int timeoutCount = 1;
+
+    String newCluster = "testSendMessageCrossingClusters";
+    admin.addCluster(newCluster);
+    HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
+        forCluster(newCluster).build();
+    Map<String, String> helixClusterProperties = new HashMap<String, String>();
+    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+    admin.setConfig(configScope, helixClusterProperties);
+    admin.addStateModelDef(newCluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.getDefinition());
+    boolean isReceived[] = new boolean[1];
+    channel.registerHandler(StoreStatusMessage.class, new StatusMessageHandler<StoreStatusMessage>() {
+          @Override
+          public void handleMessage(StoreStatusMessage message) {
+            isReceived[0] = true;
+          }
+        });
+
+        String id = Utils.getHelixNodeIdentifier(port + 10);
+    SafeHelixManager newClusterParticipant = TestUtils.getParticipant(newCluster, id, zkAddress, port+10,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    newClusterParticipant.connect();
+    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newClusterParticipant);
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    try {
+      newChannel.sendToStorageNodes(cluster,  veniceMessage, kafkaTopic, timeoutCount);
+      Assert.assertTrue(isReceived[0], "Storage node in another cluster should receive the message.");
+    } catch (VeniceException e) {
+      Assert.fail("Sending should be successful after retry " + timeoutCount + " times", e);
+    } finally {
+      newClusterParticipant.disconnect();
     }
   }
 
