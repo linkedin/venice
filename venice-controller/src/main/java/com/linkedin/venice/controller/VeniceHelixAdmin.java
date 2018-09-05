@@ -2145,7 +2145,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to resource,
         // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
         // our cluster is not too big, so it's not a big deal here.
-        messageChannel.sendToStorageNodes(new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
+        messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
     }
 
     @Override
