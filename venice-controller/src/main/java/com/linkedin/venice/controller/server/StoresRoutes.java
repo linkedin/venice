@@ -2,9 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
-import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
@@ -18,18 +17,14 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import spark.Request;
@@ -105,66 +100,27 @@ public class StoresRoutes {
         veniceResponse.setCluster(destClusterName);
         veniceResponse.setName(storeName);
 
-        // Get original store properties
-        String srcControllerUrl = admin.getMasterController(srcClusterName).getUrl();
-        ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
-        StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
-        String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
-        MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
 
-        Thread thread = new Thread(() -> {
-          admin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
+        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        // Store should belong to src cluster already
+        if (!clusterDiscovered.equals(srcClusterName)) {
+          veniceResponse.setError("Store " + storeName + " belongs to cluster " + destClusterName
+              + ", which is different from the given src cluster name " + srcClusterName);
+          return;
+        }
+        // Store should not belong to dest cluster already
+        if (clusterDiscovered.equals(destClusterName)) {
+          veniceResponse.setError("Store " + storeName + " already belongs to cluster " + destClusterName);
+          return;
+        }
 
-          // Set store migration flag for both original and cloned store
-          srcControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(true));
-          UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
-          admin.updateStore(destClusterName, storeName, params);
+        // return child controller(s) url to admin-tool monitor if this is parent controller
+        if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
+          List<String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildControllerUrls(destClusterName);
+          veniceResponse.setChildControllerUrls(childControllerUrls);
+        }
 
-          // Wait until latest version comes online, unless reach timeout
-          final long TIMEOUT = TimeUnit.DAYS.toMillis(2);
-          long startTime = System.currentTimeMillis();
-
-          while (System.currentTimeMillis() - startTime < TIMEOUT) {
-            List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName).getStore()
-                .getVersions()
-                .stream()
-                .sorted(Comparator.comparingInt(Version::getNumber).reversed()) // descending order
-                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE))
-                .collect(Collectors.toList());
-
-            if (srcSortedOnlineVersions.size() == 0) {
-              logger.warn("Original store does not have any online versions!");
-              // In this case updating cluster discovery information won't make it worse
-              admin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-              return;
-            }
-            int srcLatestOnlineVersionNum = srcSortedOnlineVersions.get(0).getNumber();
-
-            Optional<Version> destLatestOnlineVersion = admin.getStore(destClusterName, storeName)
-                .getVersions()
-                .stream()
-                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE)
-                    && version.getNumber() == srcLatestOnlineVersionNum)
-                .findAny();
-
-            if (destLatestOnlineVersion.isPresent()) {
-              // Switch read traffic from new clients; existing clients still need redeploy
-              admin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-              return;
-            }
-
-            Utils.sleep(1000);
-          }
-          logger.warn(TIMEOUT + " milliseconds elapsed but the latest version "
-              + " in dest cluster " + destClusterName + " has not become online."
-              + " You will have to manually update the cluster discovery information for this store " + storeName
-              + ". The original store has the following versions: "
-              + srcControllerClient.getStore(storeName).getStore().getVersions()
-              + ". The cloned store has the following versions: "
-              + admin.getStore(destClusterName, storeName).getVersions());
-        });
-
-        thread.start();
+        admin.migrateStore(srcClusterName, destClusterName, storeName);
       }
     };
   }
@@ -202,8 +158,10 @@ public class StoresRoutes {
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
         //TODO: we may want to have a specific response for store updating
-        veniceResponse.setCluster(request.queryParams(CLUSTER));
-        veniceResponse.setName(request.queryParams(NAME));
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
 
         Map<String, String[]> sparkRequestParams = request.queryMap().toMap();
 
@@ -211,15 +169,21 @@ public class StoresRoutes {
             .anyMatch(strings -> strings.length > 1);
 
         if (anyParamContainsMoreThanOneValue) {
-          throw new VeniceException(
-              "Array parameters are not supported. Provided request parameters: " + sparkRequestParams.toString());
+          String errMsg =
+              "Array parameters are not supported. Provided request parameters: " + sparkRequestParams.toString();
+          veniceResponse.setError(errMsg);
+          throw new VeniceException(errMsg);
         }
 
         Map<String, String> params = sparkRequestParams.entrySet().stream()
             // Extract the first (and only) value of each param
             .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
 
-        admin.updateStore(veniceResponse.getCluster(), veniceResponse.getName(), new UpdateStoreQueryParams(params));
+        try {
+          admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams(params));
+        } catch (Exception e) {
+          veniceResponse.setError(e.getMessage());
+        }
       }
     };
   }

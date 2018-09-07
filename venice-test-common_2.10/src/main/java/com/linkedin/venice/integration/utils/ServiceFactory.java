@@ -141,6 +141,19 @@ public class ServiceFactory {
             DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, sslToKafka));
   }
 
+  public static VeniceControllerWrapper getVeniceParentController(
+      String[] clusterNames,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      VeniceControllerWrapper[] childControllers,
+      String clusterToD2,
+      boolean sslToKafka) {
+    return getStatefulService(
+        VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, clusterToD2, sslToKafka, true));
+  }
+
   /**
    * Get a running admin spark server with a passed-in {@link Admin}, good for tests that want to provide a mock admin
    * @param admin
@@ -301,15 +314,49 @@ public class ServiceFactory {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.empty()));
+            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.empty(), true));
   }
+
+  /**
+   * Preditable cluster name
+   */
+  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
+      int numberOfServers, int numberOfRouter, boolean randomizeClusterName) {
+    return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
+        VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
+            numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
+            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.empty(), randomizeClusterName));
+  }
+
+  /**
+   * Allows specific Zookeeper port for debugging
+   */
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
       int numberOfServers, int numberOfRouter, int zkPort) {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
-            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.of(zkPort)));
+            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.of(zkPort), true));
   }
+
+  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
+      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters) {
+    return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo,
+            numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.empty()));
+  }
+
+  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
+      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters, int zkPort) {
+    return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo,
+            numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.of(zkPort)));
+  }
+
+
+
+
+
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider, int port) {
     return getService(serviceName, serviceProvider, port);

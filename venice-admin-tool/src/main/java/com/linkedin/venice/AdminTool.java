@@ -49,6 +49,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +58,7 @@ import java.util.Properties;
 import java.util.StringJoiner;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -121,16 +123,16 @@ public class AdminTool {
       Command foundCommand = ensureOnlyOneCommand(cmd);
 
       // Variables used within the switch case need to be defined in advance
-      String routerHosts = null, clusterName, storeName, versionString, topicName;
+      String veniceUrl = null, clusterName, storeName, versionString, topicName;
       int version;
       MultiStoreResponse storeResponse;
       ControllerResponse response;
 
       if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.URL)) &&
           Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.CLUSTER))) {
-        routerHosts = getRequiredArgument(cmd, Arg.URL);
+        veniceUrl = getRequiredArgument(cmd, Arg.URL);
         clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-        controllerClient = new ControllerClient(clusterName, routerHosts);
+        controllerClient = new ControllerClient(clusterName, veniceUrl);
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){
@@ -254,7 +256,7 @@ public class AdminTool {
           printReplicaListForStorageNode(cmd);
           break;
         case QUERY:
-          queryStoreForKey(cmd, routerHosts);
+          queryStoreForKey(cmd, veniceUrl);
           break;
         case SHOW_SCHEMAS:
           showSchemas(cmd);
@@ -339,7 +341,7 @@ public class AdminTool {
     return Command.getCommand(foundCommand);
   }
 
-  private static void queryStoreForKey(CommandLine cmd, String routerHosts)
+  private static void queryStoreForKey(CommandLine cmd, String veniceUrl)
       throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
@@ -347,7 +349,7 @@ public class AdminTool {
     boolean isVsonStore = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
     Optional<String> sslConfigFile =
         Utils.isNullOrEmpty(sslConfigFileStr) ? Optional.empty() : Optional.of(sslConfigFileStr);
-    printObject(QueryTool.queryStoreForKey(store, keyString, routerHosts, isVsonStore, sslConfigFile));
+    printObject(QueryTool.queryStoreForKey(store, keyString, veniceUrl, isVsonStore, sslConfigFile));
   }
 
   private static void showSchemas(CommandLine cmd){
@@ -719,7 +721,7 @@ public class AdminTool {
   }
 
   private static void migrateStore(CommandLine cmd) {
-    String routerHosts = getRequiredArgument(cmd, Arg.URL);
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
     String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
@@ -727,57 +729,189 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, routerHosts);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
     StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
     printObject(storeMigrationResponse);
 
+    if (storeMigrationResponse.isError()) {
+      System.err.println("ERROR: Store migration failed!");
+      return;
+    }
+
+    // Logging to stderr means users can see it but it gets ignored
+    // if you (for example) pipe the output to jq.
+    // This maintains the ability to easily write scripts around the admin tool that do parsing of the output.
+    System.err.println("\nThe migration request has been submitted successfully.\n"
+        + "Make sure at least one version is online before deleting the original store.\n"
+        + "If you terminate this process, the migration will continue and "
+        + "you can verify the process by describing the store in the destination cluster.");
+
     // Progress monitor
-    if (!storeMigrationResponse.isError()) {
-      System.err.println("\nThe migration request has been submitted successfully.\n"
-          + "Make sure at least one version is online before deleting the original store.\n"
-          + "If you terminate this process, the migration will continue and "
-          + "you can verify the process by describing the store in the destination cluster.");
-
-      boolean isOnline = false;
-      while (!isOnline) {
-        Utils.sleep(5000);
-        System.err.println();
-        System.err.println(new java.util.Date());
-        List<Version> versions = destControllerClient.getStore(storeName).getStore().getVersions();
-
-        for (Version v : versions) {
-          System.err.println(v);
-        }
-
-        if (versions.size() != 0 &&
-            versions.stream().filter(v -> v.getStatus().equals(VersionStatus.ONLINE)).count() == versions.size()) {
-          isOnline = true;
-        }
-      }
-
-      Utils.sleep(1000);
-      String clusterDiscovered = controllerClient.discoverCluster(routerHosts, storeName).getCluster();
-      if (destClusterName.equals(clusterDiscovered)) {
-        System.err.println("\nThe cloned store in " + destClusterName + " has bootstrapped successfully.");
-        System.err.println("Please verify that the original store in " + srcClusterName
-            + " has zero read activity, and then delete it.");
-      } else {
-        System.err.println("\nThe cloned store in " + destClusterName
-                + " has bootstrapped successfully. BUT CLUSTER DISCOVERY INFORMATION IS NOT YET UPDATED!");
-        System.err.println("Expected cluster discovery result: " + destClusterName);
-        System.err.println("Actual cluster discovery result: " + clusterDiscovered);
-      }
+    if (null != storeMigrationResponse.getChildControllerUrls()) {
+      // This must be parent controller
+      System.err.println("When complete, the \"cluster\" property of this store should become " + destClusterName);
+      monitorMultiClusterAfterMigration(destControllerClient, storeMigrationResponse);
+    } else {
+      // Child controller
+      System.err.println("When complete, this store should have at least one online version.");
+      monitorSingleClusterAfterMigration(srcControllerClient, destControllerClient, storeMigrationResponse);
     }
   }
 
-  private static void endMigration(CommandLine cmd) {
-    String routerHosts = getRequiredArgument(cmd, Arg.URL);
-    String storeName = getRequiredArgument(cmd, Arg.STORE);
-    String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+  private static boolean isClonedStoreOnline(ControllerClient srcControllerClient, ControllerClient destControllerClient,
+      String storeName) {
+    List<Version> srcVersions = srcControllerClient.getStore(storeName).getStore().getVersions();
+    List<Version> destVersions = destControllerClient.getStore(storeName).getStore().getVersions();
 
-    ControllerClient controllerClient = new ControllerClient(clusterName, routerHosts);
+    int srcLatestOnlineVersion = getLatestOnlineVersionNum(srcVersions);
+    int destLatestOnlineVersion = getLatestOnlineVersionNum(destVersions);
+
+    System.err.println(destControllerClient.getMasterControllerUrl());
+    for (Version v : destVersions) {
+      System.err.println(v);
+    }
+
+    return destLatestOnlineVersion >= srcLatestOnlineVersion;
+  }
+
+  private static void monitorSingleClusterAfterMigration(ControllerClient srcControllerClient,
+      ControllerClient destControllerClient, StoreMigrationResponse storeMigrationResponse) {
+
+    String srcClusterName = storeMigrationResponse.getSrcClusterName();
+    String destClusterName = storeMigrationResponse.getCluster();
+    String storeName = storeMigrationResponse.getName();
+
+    boolean isOnline = false;
+    while (!isOnline) {
+      Utils.sleep(5000);
+      System.err.println();
+      System.err.println(new java.util.Date());
+
+      isOnline = isClonedStoreOnline(srcControllerClient, destControllerClient, storeName);
+    }
+
+    // Cluster discovery info should be updated accordingly
+    Utils.sleep(5000);
+    String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
+    if (destClusterName.equals(clusterDiscovered)) {
+      System.err.println("\nThe cloned store in " + destClusterName + " has bootstrapped successfully.");
+      System.err.println("Please verify that the original store in " + srcClusterName
+          + " has zero read activity, and then delete it.");
+    } else {
+      System.err.println("\nWARN: The cloned store in " + destClusterName
+          + " has bootstrapped successfully. BUT CLUSTER DISCOVERY INFORMATION IS NOT YET UPDATED!");
+      System.err.println("Expected cluster discovery result: " + destClusterName);
+      System.err.println("Actual cluster discovery result: " + clusterDiscovered);
+    }
+  }
+
+  private static void monitorMultiClusterAfterMigration(ControllerClient destControllerClient,
+      StoreMigrationResponse storeMigrationResponse) {
+
+    String srcClusterName = storeMigrationResponse.getSrcClusterName();
+    String destClusterName = storeMigrationResponse.getCluster();
+    String storeName = storeMigrationResponse.getName();
+    int numChildClusters = storeMigrationResponse.getChildControllerUrls().size();
+
+    ControllerClient[] srcChildControllerClients = new ControllerClient[numChildClusters];
+    ControllerClient[] destChildControllerClients = new ControllerClient[numChildClusters];
+
+    for (int i = 0; i < numChildClusters; i++) {
+      String controllerUrl = storeMigrationResponse.getChildControllerUrls().get(i);
+      ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, controllerUrl);
+      ControllerClient destChildControllerClient = new ControllerClient(destClusterName, controllerUrl);
+      srcChildControllerClients[i] = srcChildControllerClient;
+      destChildControllerClients[i] = destChildControllerClient;
+    }
+
+    boolean isOnline = false;
+    while (!isOnline) {
+      Utils.sleep(5000);
+      System.err.println();
+      System.err.println(new java.util.Date());
+
+      int onlineChildCount = 0;
+
+      for (int i = 0; i < numChildClusters; i++) {
+        ControllerClient srcChildController = srcChildControllerClients[i];
+        ControllerClient destChildController = destChildControllerClients[i];
+
+        if (isClonedStoreOnline(srcChildController, destChildController, storeName)) {
+          onlineChildCount++;
+        }
+      }
+
+      if (onlineChildCount == numChildClusters) {
+        isOnline = true;
+      }
+    }
+
+    // All child clusters are online, the parent cluster should also have update cluster discovery info
+    Utils.sleep(15000);
+    String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
+    if (clusterDiscovered.equals(destClusterName)) {
+      System.err.println(
+          "\nStore migration complete.\n" + "Please make sure read activity to the original cluster is zero, "
+              + "and then delete the original store using admin-tool command --end-migration");
+    } else {
+      System.err.println("\nWARN: Store migration complete in child clusters but not in parent yet. "
+          + "Make sure cluster discovery in parent controller gets updated, "
+          + "then confirm the original store has zero read activity and delete it using --end-migration command");
+      System.err.println("Expected cluster discovery result: " + destClusterName);
+      System.err.println("Actual cluster discovery result: " + clusterDiscovered);
+    }
+  }
+
+  private static int getLatestOnlineVersionNum(List<Version> versions) {
+    if (versions.size() == 0) {
+      return -1;
+    }
+
+    if (versions.stream().filter(v -> v.getStatus().equals(VersionStatus.ONLINE)).count() == 0) {
+      return -1;
+    }
+
+    return versions.stream()
+        .filter(v -> v.getStatus().equals(VersionStatus.ONLINE))
+        .sorted(Comparator.comparingInt(Version::getNumber).reversed())
+        .collect(Collectors.toList())
+        .get(0)
+        .getNumber();
+  }
+
+  private static void endMigration(CommandLine cmd) {
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+
+    // Make sure destClusternName does agree with the cluster discovery result
+    String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
+    if (!clusterDiscovered.equals(destClusterName)) {
+      System.err.println("ERROR: store " + storeName + " belongs to cluster " + clusterDiscovered
+          + ", which is different from the src cluster name " + destClusterName + " in your command!");
+      return;
+    }
+
+    // Skip original store deletion if it has already been deleted
+    if (null != srcControllerClient.getStore(storeName).getStore()) {
+      // Delete original store
+      srcControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(storeName);
+      printObject(deleteResponse);
+      if (deleteResponse.isError()) {
+        System.err.println("ERROR: failed to delete store " + storeName + " in the original cluster " + srcClusterName);
+        return;
+      }
+    }
+
+    // Reset migration flag
     ControllerResponse controllerResponse =
-        controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(true));
+        destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(false));
     printObject(controllerResponse);
   }
 

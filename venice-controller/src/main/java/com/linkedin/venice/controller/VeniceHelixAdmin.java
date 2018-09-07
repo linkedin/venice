@@ -4,6 +4,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
@@ -44,6 +45,7 @@ import java.util.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
@@ -389,7 +391,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    @Override
     public synchronized void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore,
         String keySchema, MultiSchemaResponse.Schema[] valueSchemas) {
         if (srcClusterName.equals(destClusterName)) {
@@ -397,38 +398,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         String storeName = srcStore.getName();
+        checkPreConditionForCloneStore(destClusterName, storeName);
         logger.info("Start cloning store: " + storeName);
 
         VeniceHelixResources resources = getVeniceHelixResource(destClusterName);
         HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
+        HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
 
-        synchronized (resources) {
-            checkPreConditionForCloneStore(destClusterName, storeName);
+        // Create new store
+        VeniceControllerClusterConfig config = getVeniceHelixResource(destClusterName).getConfig();
+        Store clonedStore = new Store(storeName, srcStore.getOwner(), System.currentTimeMillis(), config.getPersistenceType(),
+            config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
 
-            // Create new store
-            VeniceControllerClusterConfig config = getVeniceHelixResource(destClusterName).getConfig();
-            Store clonedStore = new Store(storeName, srcStore.getOwner(), System.currentTimeMillis(), config.getPersistenceType(),
-                config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-            HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
-            storeRepo.lock();
-            try {
-                Store existingStore = storeRepo.getStore(storeName);
-                if (existingStore != null) {
-                    throwStoreAlreadyExists(destClusterName, storeName);
-                }
-                storeRepo.addStore(clonedStore);
-                logger.info("Cloned store " + storeName + " has been created with largestUsedVersionNumber "
-                    + clonedStore.getLargestUsedVersionNumber());
-
-                //check store config
-                if (!storeConfigAccessor.containsConfig(storeName)) {
-                    logger.warn("Expecting but cannot find storeConfig for this store " + storeName);
-                    storeConfigAccessor.createConfig(storeName, destClusterName);
-                }
-            } finally {
-                storeRepo.unLock();
+        storeRepo.lock();
+        try {
+            Store existingStore = storeRepo.getStore(storeName);
+            if (existingStore != null) {
+                throwStoreAlreadyExists(destClusterName, storeName);
             }
+            storeRepo.addStore(clonedStore);
+            logger.info("Cloned store " + storeName + " has been created with largestUsedVersionNumber "
+                + clonedStore.getLargestUsedVersionNumber());
 
+            //check store config
+            if (!storeConfigAccessor.containsConfig(storeName)) {
+                logger.warn("Expecting but cannot find storeConfig for this store " + storeName);
+                storeConfigAccessor.createConfig(storeName, destClusterName);
+            }
+        } finally {
+            storeRepo.unLock();
+        }
+
+        // Copy schemas
+        synchronized (schemaRepo) {
             // Add key schema
             new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema); // Check whether key schema is valid. It should, because this is from an existing store.
             schemaRepo.initKeySchema(storeName, keySchema);
@@ -438,13 +440,84 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema.getSchemaStr()); // Check whether value schema is valid. It should, because this is from an existing store.
                 schemaRepo.addValueSchema(storeName, valueSchema.getSchemaStr(), valueSchema.getId());
             }
-
-            // Copy remaining properties that will make the cloned store almost identical to the original
-            UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore);
-            this.updateStore(destClusterName, storeName, params);
-
-            logger.info("Completed cloning Store: " + storeName);
         }
+
+        // Copy remaining properties that will make the cloned store almost identical to the original
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore);
+        this.updateStore(destClusterName, storeName, params);
+
+        logger.info("Completed cloning Store: " + storeName);
+    }
+
+    @Override
+    public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
+        if (srcClusterName.equals(destClusterName)) {
+            throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+        }
+
+        // Get original store properties
+        String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
+        ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
+        StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+        String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
+        MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
+
+        this.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
+
+        // Set store migration flag for both original and cloned store
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
+        srcControllerClient.updateStore(storeName, params);
+        // Also decrease the largestUsedVersionNumber to trigger bootstrap
+        params.setLargestUsedVersionNumber(0);
+        this.updateStore(destClusterName, storeName, params);
+
+
+        Thread thread = new Thread(() -> {
+            // Wait until latest version comes online, unless reach timeout
+            final long TIMEOUT = TimeUnit.DAYS.toMillis(2);
+            long startTime = System.currentTimeMillis();
+
+            while (System.currentTimeMillis() - startTime < TIMEOUT) {
+                List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName).getStore()
+                    .getVersions()
+                    .stream()
+                    .sorted(Comparator.comparingInt(Version::getNumber).reversed()) // descending order
+                    .filter(version -> version.getStatus().equals(VersionStatus.ONLINE))
+                    .collect(Collectors.toList());
+
+                if (srcSortedOnlineVersions.size() == 0) {
+                    logger.warn("Original store does not have any online versions!");
+                    // In this case updating cluster discovery information won't make it worse
+                    this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+                    return;
+                }
+                int srcLatestOnlineVersionNum = srcSortedOnlineVersions.get(0).getNumber();
+
+                Optional<Version> destLatestOnlineVersion = this.getStore(destClusterName, storeName)
+                    .getVersions()
+                    .stream()
+                    .filter(version -> version.getStatus().equals(VersionStatus.ONLINE)
+                        && version.getNumber() == srcLatestOnlineVersionNum)
+                    .findAny();
+
+                if (destLatestOnlineVersion.isPresent()) {
+                    // Switch read traffic from new clients; existing clients still need redeploy
+                    this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+                    return;
+                }
+
+                Utils.sleep(10000);
+            }
+            logger.warn(TIMEOUT + " milliseconds elapsed but the latest version "
+                + " in dest cluster " + destClusterName + " has not become online."
+                + " You will have to manually update the cluster discovery information for this store " + storeName
+                + ". The original store has the following versions: "
+                + srcControllerClient.getStore(storeName).getStore().getVersions()
+                + ". The cloned store has the following versions: "
+                + this.getStore(destClusterName, storeName).getVersions());
+        });
+
+        thread.start();
     }
 
     @Override
@@ -1401,6 +1474,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> incrementalPushEnabled,
         Optional<Boolean> storeMigration) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
+
+        if (originalStore.isMigrating()) {
+            if (!(storeMigration.isPresent() || readability.isPresent() || writeability.isPresent())) {
+                String errMsg = "This update operation is not allowed during store migration!";
+                logger.warn(errMsg + " Store name: " + storeName);
+                throw new VeniceException(errMsg);
+            }
+        }
 
         Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
