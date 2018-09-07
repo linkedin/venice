@@ -735,6 +735,10 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName);
   }
 
+  public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
+    return this.discoverCluster(urlsToFindMasterController, storeName);
+  }
+
   public static D2ServiceDiscoveryResponse discoverCluster(String veniceUrls, String storeName) {
     List<String> urlList = Arrays.asList(veniceUrls.split(","));
     Exception lastException = null;
@@ -745,7 +749,7 @@ public class ControllerClient implements Closeable {
         return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
       } catch (Exception e) {
         try {
-          logger.info("Met error to discover cluster from: " + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + ", try "
+          logger.debug("Met error to discover cluster from: " + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + ", try "
               + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + "/" + storeName + "...", e);
           // Because the way to get parameter is different between controller and router, in order to support query cluster
           // from both cluster and router, we send the path "/discover_cluster?storename=$storename" at first, if it does
@@ -903,5 +907,10 @@ public class ControllerClient implements Closeable {
 
   protected String getClusterName() {
     return this.clusterName;
+  }
+
+  public String getMasterControllerUrl() {
+    refreshControllerUrl();
+    return masterControllerUrl;
   }
 }

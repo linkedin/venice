@@ -38,7 +38,9 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setEnableWrites(srcStore.isEnableStoreWrites())
             .setPartitionCount(srcStore.getPartitionCount())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
-            .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve());
+            .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
+            .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
+            .setStoreMigration(srcStore.isMigrating());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {

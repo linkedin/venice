@@ -71,7 +71,7 @@ public interface Admin {
 
     void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
 
-    void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore, String keySchema, MultiSchemaResponse.Schema[] valueSchemas);
+    void migrateStore(String srcClusterName, String destClusterName, String srcStore);
 
     /**
     * Delete the entire store includeing both metadata and real user's data. Before deleting a store, we should disable

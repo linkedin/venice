@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -35,6 +36,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -302,12 +304,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseLock();
     }
-  }
-
-  @Override
-  public void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore,
-      String keySchema, MultiSchemaResponse.Schema[] valueSchemas) {
-    throw new VeniceException("This feature is not implemented yet on parent controller.");
   }
 
   @Override
@@ -945,6 +941,14 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
 
+      if (store.isMigrating()) {
+        if (!(storeMigration.isPresent() || readability.isPresent() || writeability.isPresent())) {
+          String errMsg = "This update operation is not allowed during store migration!";
+          logger.warn(errMsg + " Store name: " + storeName);
+          throw new VeniceException(errMsg);
+        }
+      }
+
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
@@ -1540,5 +1544,79 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
     veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster);
+  }
+
+  public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
+    MigrateStore migrateStore = (MigrateStore) AdminMessageType.MIGRATE_STORE.getNewInstance();
+    migrateStore.srcClusterName = srcClusterName;
+    migrateStore.destClusterName = destClusterName;
+    migrateStore.storeName = storeName;
+
+    // Set src store migration flag
+    String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
+    srcControllerClient.updateStore(storeName, params);
+
+    // Trigger store migration operation
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.MIGRATE_STORE.getValue();
+    message.payloadUnion = migrateStore;
+    sendAdminMessageAndWaitForConsumed(destClusterName, message);
+
+    Thread thread = new Thread(() -> {
+      List<ControllerClient> controllerClients = new ArrayList<>();
+      for (String controllerUrl : getChildControllerUrls(srcClusterName)) {
+        ControllerClient controllerClient = new ControllerClient(srcClusterName, controllerUrl);
+        controllerClients.add(controllerClient);
+      }
+
+      // Wait until latest version comes online, unless reach timeout
+      final long TIMEOUT = TimeUnit.DAYS.toMillis(2);
+      long startTime = System.currentTimeMillis();
+      int readyCount;
+
+      while (System.currentTimeMillis() - startTime < TIMEOUT) {
+        readyCount = 0;
+        for (ControllerClient controller : controllerClients) {
+          String clusterDiscovered = controller.discoverCluster(storeName).getCluster();
+          if (clusterDiscovered.equals(destClusterName)) {
+            // CLuster discovery information has been updated,
+            // which means store migration is this particular cluster is successful
+            readyCount++;
+          }
+        }
+
+        if (readyCount == controllerClients.size()) {
+          // All child clusters have completed store migration
+          // Finish off store migration in the parent cluster by creating a clone store
+
+          // Get original store properties
+          StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+          String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
+          MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
+
+          veniceHelixAdmin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
+          veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+          return;
+        }
+
+        Utils.sleep(10000);
+      }
+
+      // Something went wrong in child controlers.
+      // To roll back to previous state, delete cloned stores in child clusters and reset migration flag
+      // But this is a risky operation so let human handle it for now
+      String msg = "";
+      for (ControllerClient controller : controllerClients) {
+        msg += controller.getMasterControllerUrl() + ": " + controller.getStore(storeName).getStore().getVersions() + "\n";
+      }
+      logger.error(TIMEOUT + " milliseconds elapsed but not all " + destClusterName + " child clusters have finished migration.\n" + msg);
+    });
+    thread.start();
+  }
+
+  public List<String> getChildControllerUrls(String clusterName) {
+    return new ArrayList<>(multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap().values());
   }
 }

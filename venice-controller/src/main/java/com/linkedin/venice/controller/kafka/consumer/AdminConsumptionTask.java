@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
@@ -376,6 +377,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case DELETE_OLD_VERSION:
         handleDeleteOldVersion((DeleteOldVersion) adminMessage.payloadUnion);
         break;
+      case MIGRATE_STORE:
+        handleStoreMigration((MigrateStore)adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -607,5 +611,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     admin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
 
     logger.info("Deleted store: " + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleStoreMigration(MigrateStore message) {
+    if (this.isParentController) {
+      // Parent controller should not process this message again
+      return;
+    }
+
+    String srcClusterName = message.srcClusterName.toString();
+    String destClusterName = message.destClusterName.toString();
+    String storeName = message.storeName.toString();
+
+    admin.migrateStore(srcClusterName, destClusterName, storeName);
   }
 }

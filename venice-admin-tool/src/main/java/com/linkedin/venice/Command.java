@@ -133,7 +133,7 @@ public enum Command {
   MIGRATE_STORE("migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
   END_MIGRATION("end-migration", "Send this command to complete store migration",
-      new Arg[] {URL, STORE, CLUSTER});
+      new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST});
 
   private final String commandName;
   private final String description;
