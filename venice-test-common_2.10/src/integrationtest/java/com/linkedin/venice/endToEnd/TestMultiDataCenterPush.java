@@ -3,6 +3,16 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
+import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
+import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
+import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
+import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -15,8 +25,12 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.tehuti.Metric;
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -45,9 +59,11 @@ public class TestMultiDataCenterPush {
   private List<VeniceControllerWrapper> parentControllers;
   private VeniceTwoLayerMultiColoMultiClusterWrapper multiColoMultiClusterWrapper;
 
+  private final byte[] emptyKeyBytes = new byte[]{'a'};
+
   @BeforeClass
   public void setUp() {
-    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, 2, 1, 1, 1, 1);
+    multiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(NUMBER_OF_CHILD_DATACENTERS, NUMBER_OF_CLUSTERS, 1, 1, 1, 1);
 
     childClusters = multiColoMultiClusterWrapper.getClusters();
     childControllers = childClusters.stream()
@@ -199,5 +215,88 @@ public class TestMultiDataCenterPush {
         }
       }
     }
+  }
+
+  @Test
+  public void testFailedAdminMessages() {
+    String storeName = TestUtils.getUniqueString("store");
+
+    VeniceControllerWrapper parentController =
+        parentControllers.stream().filter(c -> c.isMasterController(CLUSTER_NAMES[1])).findAny().get();
+    Admin admin = parentController.getVeniceAdmin();
+    VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
+    VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(CLUSTER_NAMES[1]));
+
+    AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreCreationMessage(
+            CLUSTER_NAMES[1],
+            storeName,
+            "store-owner",
+            "\"string\"",
+            "\"string\"",
+            1,
+            adminOperationSerializer),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    // send a bad admin message
+    veniceWriter.put(
+        emptyKeyBytes,
+        getStoreUpdateMessage(
+            CLUSTER_NAMES[1],
+            "store-not-exist",
+            "store-owner",
+            2,
+            adminOperationSerializer),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicCompletion(60000, TimeUnit.MILLISECONDS, () -> {
+      boolean allDataCenterReceivedFailedAdminMessage = true;
+      for (List<VeniceControllerWrapper> controllers : childControllers) {
+        AdminConsumerService adminConsumerService = controllers.get(0).getAdminConsumerServiceByCluster(CLUSTER_NAMES[1]);
+        Map<String, ? extends Metric> metrics = adminConsumerService.getMetricsRepository().metrics();
+        if (metrics.containsKey("." + CLUSTER_NAMES[1] + "-admin_consumption_task--failed_admin_messages.Count")) {
+          allDataCenterReceivedFailedAdminMessage &= (metrics.get("." + CLUSTER_NAMES[1] + "-admin_consumption_task--failed_admin_messages.Count").value() >= 1.0);
+        } else {
+          return false;
+        }
+      }
+      return allDataCenterReceivedFailedAdminMessage;
+    });
+  }
+
+  private byte[] getStoreUpdateMessage(String clusterName, String storeName, String owner, long executionId, AdminOperationSerializer adminOperationSerializer) {
+    UpdateStore updateStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+    updateStore.clusterName = clusterName;
+    updateStore.storeName = storeName;
+    updateStore.owner = owner;
+    updateStore.partitionNum = 20;
+    updateStore.currentVersion = 1;
+    updateStore.enableReads = true;
+    updateStore.enableWrites = true;
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
+    adminMessage.payloadUnion = updateStore;
+    adminMessage.executionId = executionId;
+    return adminOperationSerializer.serialize(adminMessage);
+  }
+
+  private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema, long executionId, AdminOperationSerializer adminOperationSerializer) {
+    StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
+    storeCreation.clusterName = clusterName;
+    storeCreation.storeName = storeName;
+    storeCreation.owner = owner;
+    storeCreation.keySchema = new SchemaMeta();
+    storeCreation.keySchema.definition = keySchema;
+    storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.getValue();
+    storeCreation.valueSchema = new SchemaMeta();
+    storeCreation.valueSchema.definition = valueSchema;
+    storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
+    adminMessage.payloadUnion = storeCreation;
+    adminMessage.executionId = executionId;
+    return adminOperationSerializer.serialize(adminMessage);
   }
 }

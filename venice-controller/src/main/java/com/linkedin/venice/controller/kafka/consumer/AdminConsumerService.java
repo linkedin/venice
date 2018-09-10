@@ -111,4 +111,9 @@ public class AdminConsumerService extends AbstractVeniceService {
 
     return consumerFactory.getConsumer(kafkaConsumerProperties);
   }
+
+  // for test purpose
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
 }

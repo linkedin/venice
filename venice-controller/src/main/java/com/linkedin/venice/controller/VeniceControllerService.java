@@ -76,4 +76,13 @@ public class VeniceControllerService extends AbstractVeniceService {
   public Admin getVeniceHelixAdmin() {
     return admin;
   }
+
+  /**
+   * This method is for testing.
+   * @param cluster
+   * @return the admin consumer service for the cluster
+   */
+  public AdminConsumerService getAdminConsumerServiceByCluster(String cluster) {
+    return consumerServices.get(cluster);
+  }
 }
