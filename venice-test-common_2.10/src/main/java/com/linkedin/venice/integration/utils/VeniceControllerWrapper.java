@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
@@ -225,5 +226,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public Admin getVeniceAdmin() {
     return service.getVeniceControllerService().getVeniceHelixAdmin();
+  }
+
+  // for test purpose
+  public AdminConsumerService getAdminConsumerServiceByCluster(String cluster) {
+    return service.getVeniceControllerService().getAdminConsumerServiceByCluster(cluster);
   }
 }

@@ -10,7 +10,7 @@ import org.apache.log4j.Logger;
 
 
 public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceStatsReporter<STATS>> {
-  private static final Logger logger = Logger.getLogger(AbstractVeniceStats.class);
+  private static final Logger logger = Logger.getLogger(VeniceVersionedStats.class);
 
   private final String storeName;
   private final Map<Integer, STATS> versionedStats;
