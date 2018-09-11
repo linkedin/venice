@@ -62,6 +62,7 @@ public class TestRouterCache {
     routerProperties.put(ConfigKeys.ROUTER_CACHE_ENABLED, "true");
     // avoid long tail retry
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 60000); // 60 seconds
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:3600000"); // 1 hour
     for (int i = 0; i < routerNum; ++i) {
       VeniceRouterWrapper router = veniceCluster.addVeniceRouter(routerProperties);
       routerUrls[i] = "http://" + router.getAddress();
