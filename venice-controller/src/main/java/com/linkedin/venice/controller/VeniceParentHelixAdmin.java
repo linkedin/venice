@@ -427,14 +427,15 @@ public class VeniceParentHelixAdmin implements Admin {
     return Optional.of(existingTopics.get(0));
   }
 
+  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName) {
+    return getTopicForCurrentPushJob(clusterName, storeName, false);
+  }
+
   /**
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
-   * else will return the ongoing Kafka topic
-   * @param clusterName
-   * @param storeName
-   * @return
+   * else will return the ongoing Kafka topic. It will also try to clean up legacy topics.
    */
-  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName) {
+  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName, boolean isIncrementalPush) {
     Optional<String> latestKafkaTopic = getLatestKafkaTopic(storeName);
     /**
      * Check current topic retention to decide whether the previous job is already done or not
@@ -498,12 +499,12 @@ public class VeniceParentHelixAdmin implements Admin {
           return latestKafkaTopic;
         } else {
           /**
-           * If the job status of latestKafkaTopic is terminal, it will be truncated in {@link #getOffLinePushStatus(String, String)}.
+           * If the job status of latestKafkaTopic is terminal and it is not an incremental push,
+           * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
            */
-          /**
-           * Truncate topics based on {@link #maxErroredTopicNumToKeep}.
-           */
-          truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
+          if (!isIncrementalPush) {
+            truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
+          }
         }
       }
     }
@@ -512,6 +513,11 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Only keep {@link #maxErroredTopicNumToKeep} non-truncated topics ordered by version
+   * N.B. This method was originally introduced to debug KMM issues. But now it works
+   * as a general method for cleaning up leaking topics. ({@link #maxErroredTopicNumToKeep}
+   * is always 0.)
+   *
+   * TODO: rename the method once we remove the rest of KMM debugging logic.
    */
   protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(String storeName) {
     List<String> topics = existingTopicsForStore(storeName);
@@ -622,7 +628,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
-    Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName);
+    Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
     if (currentPush.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPush.get());
       Optional<Version> version = getStore(clusterName, storeName).getVersion(currentPushVersion);
