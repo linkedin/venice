@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.kafka;
 
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.stats.TopicMonitorStats;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -16,7 +18,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.*;
+
 
 public class TestTopicMonitor {
 
@@ -40,19 +43,21 @@ public class TestTopicMonitor {
 
     KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
 
-    Store mockStore = Mockito.mock(Store.class);
+    Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getLargestUsedVersionNumber();
 
-    Admin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
+    Admin mockAdmin = mock(VeniceHelixAdmin.class);
     doReturn(true).when(mockAdmin).isMasterController(clusterName);
     doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeName);
-    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(Mockito.anyBoolean());
+    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(anyBoolean());
+
+    TopicMonitorStats stats = mock(TopicMonitorStats.class);
 
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;
     doReturn(replicationFactor).when(mockAdmin).getReplicationFactor(clusterName, storeName);
     doReturn(Arrays.asList(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
-    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()), stats);
     mon.start();
 
     int partitionNumber = 4;
@@ -66,8 +71,8 @@ public class TestTopicMonitor {
         () -> kafkaClient.listTopics().containsKey(storeName + "_v2"));
     kafkaClient.close();
 
-    Mockito.verify(mockAdmin, Mockito.timeout(100).atLeastOnce()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
-    Mockito.verify(mockAdmin, Mockito.never()).addVersion(clusterName, storeName, 1, partitionNumber, replicationFactor);
+    verify(mockAdmin, timeout(100).atLeastOnce()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
+    verify(mockAdmin, never()).addVersion(clusterName, storeName, 1, partitionNumber, replicationFactor);
 
     mon.stop();
     kafka.close();
@@ -81,18 +86,20 @@ public class TestTopicMonitor {
 
     KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
 
-    Store mockStore = Mockito.mock(Store.class);
+    Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getLargestUsedVersionNumber();
 
-    Admin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
+    Admin mockAdmin = mock(VeniceHelixAdmin.class);
     doReturn(Collections.emptyList()).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
     doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeName);
-    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(Mockito.anyBoolean());
+    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(anyBoolean());
+
+    TopicMonitorStats stats = mock(TopicMonitorStats.class);
 
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;
     doReturn(replicationFactor).when(mockAdmin).getReplicationFactor(clusterName, storeName);
-    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()), stats);
     mon.start();
 
     int partitionNumber = 4;
@@ -105,12 +112,63 @@ public class TestTopicMonitor {
         () -> kafkaClient.listTopics().containsKey(storeName + "_v2"));
     kafkaClient.close();
     // No version creation if not master controller
-    Mockito.verify(mockAdmin, Mockito.after(1000).never()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
+    verify(mockAdmin, after(1000).never()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
 
     // Version creation after master controller fails over
     doReturn(Arrays.asList(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
     doReturn(true).when(mockAdmin).isMasterController(clusterName);
-    Mockito.verify(mockAdmin, Mockito.timeout(1000).atLeastOnce()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
+    verify(mockAdmin, timeout(1000).atLeastOnce()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
+
+    mon.stop();
+    kafka.close();
+    topicManager.close();
+  }
+
+  @Test
+  public void topicMonitorWithSingleTopicFailure() throws Exception {
+    String storeNameA = "aStore";
+    String storeNameB = "bStore";
+    String clusterName = "myCluster";
+    KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
+
+    Store mockStore = mock(Store.class);
+    doReturn(0).when(mockStore).getLargestUsedVersionNumber();
+
+    Admin mockAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(true).when(mockAdmin).isMasterController(clusterName);
+    doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeNameA);
+    doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeNameB);
+    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(anyBoolean());
+
+    TopicMonitorStats stats = mock(TopicMonitorStats.class);
+
+    int replicationFactor = 1;
+    int partitionNumber = 4;
+    // The first store will always fail with a VeniceException on addVersion
+    doThrow(new VeniceException()).when(mockAdmin).addVersion(clusterName, storeNameA, 1, partitionNumber, replicationFactor);
+
+    int pollIntervalMs = 1; /* ms */
+    doReturn(replicationFactor).when(mockAdmin).getReplicationFactor(clusterName, storeNameA);
+    doReturn(Arrays.asList(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeNameA);
+    doReturn(Arrays.asList(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeNameB);
+    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()), stats);
+    mon.start();
+
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    topicManager.createTopic(storeNameA + "_v1", partitionNumber, 1); /* topic, partitions, replication */
+    topicManager.createTopic(storeNameB + "_v1", partitionNumber, 1); /* topic, partitions, replication */
+    KafkaConsumer<String, String> kafkaClient = getKafkaConsumer(kafka.getAddress());
+
+    /* wait for kafka broker to create the topic */
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+        () -> kafkaClient.listTopics().containsKey(storeNameA + "_v1") && kafkaClient.listTopics().containsKey(storeNameB + "_v1"));
+    kafkaClient.close();
+
+    // Ensure the method addVersion is called on the first store to throw a VeniceException
+    verify(mockAdmin, timeout(100).atLeastOnce()).addVersion(clusterName, storeNameA, 1, partitionNumber, replicationFactor);
+    verify(stats, atLeastOnce()).recordClusterSkippedByException();
+    // Verify the second store is getting processed despite of the failure from the first store
+    verify(mockAdmin, timeout(100).atLeastOnce()).getStore(clusterName, storeNameB);
 
     mon.stop();
     kafka.close();
