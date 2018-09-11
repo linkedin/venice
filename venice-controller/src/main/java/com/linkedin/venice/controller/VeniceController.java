@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.stats.TopicMonitorStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -71,7 +72,8 @@ public class VeniceController {
     {
       topicMonitor =
           new TopicMonitor(controllerService.getVeniceHelixAdmin(), multiClusterConfigs.getTopicMonitorPollIntervalMs(),
-              controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory());
+              controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory(),
+              new TopicMonitorStats(metricsRepository, multiClusterConfigs.getControllerName() + ".topic_monitor"));
     }
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.stats.TopicMonitorStats;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
@@ -9,11 +10,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -35,12 +34,15 @@ public class TopicMonitor extends AbstractVeniceService {
   private TopicMonitorRunnable monitor;
   private Thread runner;
   private VeniceConsumerFactory veniceConsumerFactory;
+  private TopicMonitorStats topicMonitorStats;
 
 
-  public TopicMonitor(Admin admin, long pollIntervalMs, VeniceConsumerFactory veniceConsumerFactory) {
+  public TopicMonitor(Admin admin, long pollIntervalMs, VeniceConsumerFactory veniceConsumerFactory,
+      TopicMonitorStats topicMonitorStats) {
     this.admin = admin;
     this.pollIntervalMs = pollIntervalMs;
     this.veniceConsumerFactory = veniceConsumerFactory;
+    this.topicMonitorStats = topicMonitorStats;
   }
 
   @Override
@@ -149,6 +151,10 @@ public class TopicMonitor extends AbstractVeniceService {
                   } catch (StoreDisabledException se) {
                     logger.info("There is a topic " + topic + " for store " + storeName + ". But store has been paused.", se);
                     continue;
+                  } catch (Exception e) {
+                    topicMonitorStats.recordClusterSkippedByException();
+                    logger.error(e.getMessage());
+                    continue;
                   }
                 }
               } else if (Version.isRealTimeTopic(topic)) {
@@ -160,6 +166,7 @@ public class TopicMonitor extends AbstractVeniceService {
               }
             }
           } catch (Exception e) {
+            topicMonitorStats.recordAbortByException();
             if (stop) {
               logger.info("Topic monitor caught " + e.getMessage() + " and stop is signaled");
               break;
