@@ -60,6 +60,12 @@ public class VeniceSystemFactory implements SystemFactory {
     throw new SamzaException("There is no Venice Consumer");
   }
 
+  // Extra `Config` parameter is to ease the internal implementation
+  protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
+      ControllerApiConstants.PushType venicePushType, String samzaJobId, Config config) {
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId);
+  }
+
   @Override
   public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
     String samzaJobId = config.get(DEPLOYMENT_ID);
@@ -106,7 +112,7 @@ public class VeniceSystemFactory implements SystemFactory {
       veniceD2Service = VENICE_LOCAL_D2_SERVICE;
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId);
+    return createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config);
   }
 
   private static boolean isEmpty(String input) {
