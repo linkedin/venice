@@ -768,8 +768,10 @@ public class AdminTool {
     int destLatestOnlineVersion = getLatestOnlineVersionNum(destVersions);
 
     System.err.println(destControllerClient.getMasterControllerUrl());
-    for (Version v : destVersions) {
-      System.err.println(v);
+    if (srcLatestOnlineVersion == -1) {
+      System.err.println("Original store doesn't have online version");
+    } else {
+      destVersions.stream().forEach(System.err::println);
     }
 
     return destLatestOnlineVersion >= srcLatestOnlineVersion;
@@ -792,7 +794,8 @@ public class AdminTool {
     }
 
     // Cluster discovery info should be updated accordingly
-    Utils.sleep(5000);
+    System.err.println("\nCloned store is ready in dest cluster " + destClusterName + ". Checking cluster discovery info ...");
+    Utils.sleep(15000);
     String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
     if (destClusterName.equals(clusterDiscovered)) {
       System.err.println("\nThe cloned store in " + destClusterName + " has bootstrapped successfully.");
@@ -848,6 +851,7 @@ public class AdminTool {
     }
 
     // All child clusters are online, the parent cluster should also have update cluster discovery info
+    System.err.println("\nCloned store is ready in dest cluster " + destClusterName + ". Checking cluster discovery info ...");
     Utils.sleep(15000);
     String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
     if (clusterDiscovered.equals(destClusterName)) {

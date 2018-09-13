@@ -114,8 +114,8 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       });
     }
 
-    zkServerWrapper.close();
     parentKafkaBrokerWrapper.close();
+    zkServerWrapper.close();
   }
 
   @Override

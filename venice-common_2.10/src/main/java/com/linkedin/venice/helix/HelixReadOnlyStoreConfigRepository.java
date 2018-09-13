@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.utils.HelixUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -94,6 +95,11 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     } else {
       return Optional.empty();
     }
+  }
+
+  @Override
+  public List<StoreConfig> getAllStoreConfigs() {
+    return new ArrayList<>(storeConfigMap.get().values());
   }
 
   protected StoreConfigAddedOrDeletedChangedListener getStoreConfigAddedOrDeletedListener() {
