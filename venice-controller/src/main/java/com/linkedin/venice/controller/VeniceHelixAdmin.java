@@ -14,6 +14,7 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
@@ -45,7 +46,6 @@ import java.util.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
@@ -111,6 +111,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final long deprecatedJobTopicRetentionMs;
     private final long deprecatedJobTopicMaxRetentionMs;
     private final ZkStoreConfigAccessor storeConfigAccessor;
+    protected final HelixReadOnlyStoreConfigRepository storeConfigRepo;
     private final VeniceWriterFactory veniceWriterFactory;
     private final VeniceControllerConsumerFactory veniceConsumerFactory;
     private final int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -156,8 +157,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(), veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-        this.storeConfigAccessor =
-            new ZkStoreConfigAccessor(zkClient, adapterSerializer);
+        this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
+        this.storeConfigRepo = new HelixReadOnlyStoreConfigRepository(zkClient, adapterSerializer,
+            commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
         this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
         veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
         this.topicReplicator =
@@ -173,6 +175,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         // Initialized the helix manger for the level1 controller.
         initLevel1Controller();
+
+        // Start store migration monitor background thread
+        storeConfigRepo.refresh();
+        startStoreMigrationMonitor();
     }
 
     private void initLevel1Controller() {
@@ -464,60 +470,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         this.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
 
+        // Update migration src and dest cluster in storeConfig
+        setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+
         // Set store migration flag for both original and cloned store
         UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
-        srcControllerClient.updateStore(storeName, params);
+        srcControllerClient.updateStore(storeName, params);     // update original store
         // Also decrease the largestUsedVersionNumber to trigger bootstrap
         params.setLargestUsedVersionNumber(0);
-        this.updateStore(destClusterName, storeName, params);
-
-
-        Thread thread = new Thread(() -> {
-            // Wait until latest version comes online, unless reach timeout
-            final long TIMEOUT = TimeUnit.DAYS.toMillis(2);
-            long startTime = System.currentTimeMillis();
-
-            while (System.currentTimeMillis() - startTime < TIMEOUT) {
-                List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName).getStore()
-                    .getVersions()
-                    .stream()
-                    .sorted(Comparator.comparingInt(Version::getNumber).reversed()) // descending order
-                    .filter(version -> version.getStatus().equals(VersionStatus.ONLINE))
-                    .collect(Collectors.toList());
-
-                if (srcSortedOnlineVersions.size() == 0) {
-                    logger.warn("Original store does not have any online versions!");
-                    // In this case updating cluster discovery information won't make it worse
-                    this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-                    return;
-                }
-                int srcLatestOnlineVersionNum = srcSortedOnlineVersions.get(0).getNumber();
-
-                Optional<Version> destLatestOnlineVersion = this.getStore(destClusterName, storeName)
-                    .getVersions()
-                    .stream()
-                    .filter(version -> version.getStatus().equals(VersionStatus.ONLINE)
-                        && version.getNumber() == srcLatestOnlineVersionNum)
-                    .findAny();
-
-                if (destLatestOnlineVersion.isPresent()) {
-                    // Switch read traffic from new clients; existing clients still need redeploy
-                    this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-                    return;
-                }
-
-                Utils.sleep(10000);
-            }
-            logger.warn(TIMEOUT + " milliseconds elapsed but the latest version "
-                + " in dest cluster " + destClusterName + " has not become online."
-                + " You will have to manually update the cluster discovery information for this store " + storeName
-                + ". The original store has the following versions: "
-                + srcControllerClient.getStore(storeName).getStore().getVersions()
-                + ". The cloned store has the following versions: "
-                + this.getStore(destClusterName, storeName).getVersions());
-        });
-
-        thread.start();
+        this.updateStore(destClusterName, storeName, params);   // update cloned store
     }
 
     @Override
@@ -2452,5 +2413,103 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public boolean isMasterControllerOfControllerCluster() {
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
         return leader.getId().equals(this.controllerName);
+    }
+
+    public void setStoreConfigForMigration(String storeName, String srcClusterName, String destClusterName) {
+        StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
+        storeConfig.setMigrationSrcCluster(srcClusterName);
+        storeConfig.setMigrationDestCluster(destClusterName);
+        storeConfigAccessor.updateConfig(storeConfig);
+    }
+
+    /**
+     * This thread will run in the background and update cluster discovery information when necessary
+     */
+    private void startStoreMigrationMonitor() {
+        Thread thread = new Thread(() -> {
+            Map<String, ControllerClient> srcControllerClients = new HashMap<>();
+
+            while (true) {
+                try {
+                    Utils.sleep(10000);
+
+                    // Get a list of clusters that this controller is responsible for
+                    List<String> activeClusters = this.multiClusterConfigs.getClusters()
+                        .stream()
+                        .filter(cluster -> this.isMasterController(cluster))
+                        .collect(Collectors.toList());
+
+                    for (String clusterName : activeClusters) {
+                        // For each cluster, get a list of stores that are migrating
+                        HelixReadWriteStoreRepository storeRepo = this.getVeniceHelixResource(clusterName).getMetadataRepository();
+                        List<Store> migratingStores = storeRepo.listStores()
+                            .stream()
+                            .filter(s -> s.isMigrating())
+                            .filter(s -> this.storeConfigRepo.getStoreConfig(s.getName()).get().getMigrationSrcCluster() != null)
+                            .filter(s -> this.storeConfigRepo.getStoreConfig(s.getName()).get().getMigrationDestCluster() != null)
+                            .collect(Collectors.toList());
+
+                        // For each migrating stores, check if store migration is complete.
+                        // If so, update cluster discovery according to storeConfig
+                        for (Store store : migratingStores) {
+                            String storeName = store.getName();
+                            StoreConfig storeConfig = this.storeConfigRepo.getStoreConfig(storeName).get();
+                            String srcClusterName = storeConfig.getMigrationSrcCluster();
+                            String destClusterName = storeConfig.getMigrationDestCluster();
+                            String clusterDiscovered = storeConfig.getCluster();
+
+                            // Both src and dest controller can do the job. Just pick one.
+                            if (!clusterName.equals(destClusterName)) {
+                                // Source controller will ignore
+                                continue;
+                            }
+
+                            if (clusterDiscovered.equals(destClusterName)) {
+                                // Migration complete already
+                                continue;
+                            }
+
+                            ControllerClient srcControllerClient =
+                                srcControllerClients.computeIfAbsent(srcClusterName,
+                                    src_cluster_name -> new ControllerClient(src_cluster_name,
+                                        this.getMasterController(src_cluster_name).getUrl(false)));
+
+                            List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName)
+                                .getStore()
+                                .getVersions()
+                                .stream()
+                                .sorted(Comparator.comparingInt(Version::getNumber).reversed()) // descending order
+                                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE))
+                                .collect(Collectors.toList());
+
+                            if (srcSortedOnlineVersions.size() == 0) {
+                                logger.warn("Original store " + storeName + " in cluster " + srcClusterName + " does not have any online versions!");
+                                // In this case updating cluster discovery information won't make it worse
+                                this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+                                continue;
+                            }
+                            int srcLatestOnlineVersionNum = srcSortedOnlineVersions.get(0).getNumber();
+
+                            Optional<Version> destLatestOnlineVersion = this.getStore(destClusterName, storeName)
+                                .getVersions()
+                                .stream()
+                                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE)
+                                    && version.getNumber() >= srcLatestOnlineVersionNum)
+                                .findAny();
+
+                            if (destLatestOnlineVersion.isPresent()) {
+                                // Switch read traffic from new clients; existing clients still need redeploy
+                                this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+                                continue;
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("Caught exception in store migration monitor", e);
+                }
+            }
+        });
+
+        thread.start();
     }
 }

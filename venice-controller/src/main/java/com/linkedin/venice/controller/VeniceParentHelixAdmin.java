@@ -156,6 +156,9 @@ public class VeniceParentHelixAdmin implements Admin {
     this.maxErroredTopicNumToKeep = multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
     this.offlinePushAccessor =
         new ParentHelixOfflinePushAccessor(veniceHelixAdmin.getZkClient(), veniceHelixAdmin.getAdapterSerializer());
+
+    // Start store migration monitor background thread
+    startStoreMigrationMonitor();
   }
 
   // For testing purpose
@@ -1553,6 +1556,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+    }
+
     MigrateStore migrateStore = (MigrateStore) AdminMessageType.MIGRATE_STORE.getNewInstance();
     migrateStore.srcClusterName = srcClusterName;
     migrateStore.destClusterName = destClusterName;
@@ -1564,65 +1571,112 @@ public class VeniceParentHelixAdmin implements Admin {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
     srcControllerClient.updateStore(storeName, params);
 
+    // Update migration src and dest cluster in storeConfig
+    veniceHelixAdmin.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+
     // Trigger store migration operation
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.MIGRATE_STORE.getValue();
     message.payloadUnion = migrateStore;
     sendAdminMessageAndWaitForConsumed(destClusterName, message);
-
-    Thread thread = new Thread(() -> {
-      List<ControllerClient> controllerClients = new ArrayList<>();
-      for (String controllerUrl : getChildControllerUrls(srcClusterName)) {
-        ControllerClient controllerClient = new ControllerClient(srcClusterName, controllerUrl);
-        controllerClients.add(controllerClient);
-      }
-
-      // Wait until latest version comes online, unless reach timeout
-      final long TIMEOUT = TimeUnit.DAYS.toMillis(2);
-      long startTime = System.currentTimeMillis();
-      int readyCount;
-
-      while (System.currentTimeMillis() - startTime < TIMEOUT) {
-        readyCount = 0;
-        for (ControllerClient controller : controllerClients) {
-          String clusterDiscovered = controller.discoverCluster(storeName).getCluster();
-          if (clusterDiscovered.equals(destClusterName)) {
-            // CLuster discovery information has been updated,
-            // which means store migration is this particular cluster is successful
-            readyCount++;
-          }
-        }
-
-        if (readyCount == controllerClients.size()) {
-          // All child clusters have completed store migration
-          // Finish off store migration in the parent cluster by creating a clone store
-
-          // Get original store properties
-          StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
-          String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
-          MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
-
-          veniceHelixAdmin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
-          veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-          return;
-        }
-
-        Utils.sleep(10000);
-      }
-
-      // Something went wrong in child controlers.
-      // To roll back to previous state, delete cloned stores in child clusters and reset migration flag
-      // But this is a risky operation so let human handle it for now
-      String msg = "";
-      for (ControllerClient controller : controllerClients) {
-        msg += controller.getMasterControllerUrl() + ": " + controller.getStore(storeName).getStore().getVersions() + "\n";
-      }
-      logger.error(TIMEOUT + " milliseconds elapsed but not all " + destClusterName + " child clusters have finished migration.\n" + msg);
-    });
-    thread.start();
   }
 
   public List<String> getChildControllerUrls(String clusterName) {
     return new ArrayList<>(multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap().values());
+  }
+
+  /**
+   * This thread will run in the background and update cluster discovery information when necessary
+   */
+  private void startStoreMigrationMonitor() {
+    Thread thread = new Thread(() -> {
+      Map<String, ControllerClient> srcControllerClients = new HashMap<>();
+      Map<String, List<ControllerClient>> childControllerClientsMap = new HashMap<>();
+
+      while (true) {
+        try {
+          Utils.sleep(10000);
+
+          // Get a list of clusters that this controller is responsible for
+          List<String> activeClusters = this.multiClusterConfigs.getClusters()
+              .stream()
+              .filter(cluster -> this.isMasterController(cluster))
+              .collect(Collectors.toList());
+
+          // Get a list of stores from storeConfig that are migrating
+          List<StoreConfig> allStoreConfigs = veniceHelixAdmin.storeConfigRepo.getAllStoreConfigs();
+          List<String> migratingStores = allStoreConfigs.stream()
+              .filter(storeConfig -> storeConfig.getMigrationSrcCluster() != null)  // Store might be migrating
+              .filter(storeConfig -> storeConfig.getMigrationSrcCluster().equals(storeConfig.getCluster())) // Migration not complete
+              .filter(storeConfig -> storeConfig.getMigrationDestCluster() != null)
+              .filter(storeConfig -> activeClusters.contains(storeConfig.getMigrationDestCluster())) // This controller is eligible for this store
+              .map(storeConfig -> storeConfig.getStoreName())
+              .collect(Collectors.toList());
+
+          // For each migrating stores, check if store migration is complete.
+          // If so, update cluster discovery according to storeConfig
+          for (String storeName : migratingStores) {
+            StoreConfig storeConfig = veniceHelixAdmin.storeConfigRepo.getStoreConfig(storeName).get();
+            String srcClusterName = storeConfig.getMigrationSrcCluster();
+            String destClusterName = storeConfig.getMigrationDestCluster();
+            String clusterDiscovered = storeConfig.getCluster();
+
+            if (clusterDiscovered.equals(destClusterName)) {
+              // Migration complete already
+              continue;
+            }
+
+            List<ControllerClient> childControllerClients = childControllerClientsMap.computeIfAbsent(srcClusterName,
+                sCN -> {
+                  List<ControllerClient> child_controller_clients = new ArrayList<>();
+
+                  for (String childControllerUrl : this.getChildControllerUrls(sCN)) {
+                    ControllerClient childControllerClient = new ControllerClient(sCN, childControllerUrl);
+                    child_controller_clients.add(childControllerClient);
+                  }
+
+                  return child_controller_clients;
+                });
+
+
+            // Check if latest version is online in each child cluster
+            int readyCount = 0;
+
+            for (ControllerClient childController : childControllerClients) {
+              String childClusterDiscovered = childController.discoverCluster(storeName).getCluster();
+              if (childClusterDiscovered.equals(destClusterName)) {
+                // CLuster discovery information has been updated,
+                // which means store migration is this particular cluster is successful
+                readyCount++;
+              }
+            }
+
+            if (readyCount == childControllerClients.size()) {
+              // All child clusters have completed store migration
+              // Finish off store migration in the parent cluster by creating a clone store
+
+              // Get original store properties
+              ControllerClient srcControllerClient = srcControllerClients.computeIfAbsent(srcClusterName,
+                  src_cluster_name -> new ControllerClient(src_cluster_name,
+                      this.getMasterController(src_cluster_name).getUrl(false)));
+              StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+              String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
+              MultiSchemaResponse.Schema[] srcValueSchemasResponse =
+                  srcControllerClient.getAllValueSchema(storeName).getSchemas();
+
+              // Finally finish off store migration in parent controller
+              veniceHelixAdmin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema,
+                  srcValueSchemasResponse);
+              veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+              continue;
+            }
+          }
+        } catch (Exception e) {
+          logger.error("Caught exception in store migration monitor", e);
+        }
+      }
+    });
+
+    thread.start();
   }
 }

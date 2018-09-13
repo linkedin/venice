@@ -9,9 +9,10 @@ import java.util.Map;
  * Configurations of a store which are non-cluster specified.
  */
 public class StoreConfig {
-  // TODO we could add "clusterMigratingTo" later once we implement the feature that migration one store to another.
   public static final String CLUSTER_PROPERTY = "cluster";
   public static final String IS_DELETING_PROPERTY = "is_deleting";
+  public static final String MIGRATION_SRC_CLUSTER = "migration_src_cluster";
+  public static final String MIGRATION_DEST_CLUSTER = "migration_dest_cluster";
   private String storeName;
   private Map<String, String> configs;
 
@@ -48,6 +49,20 @@ public class StoreConfig {
   public void setCluster(String cluster) {
     configs.put(CLUSTER_PROPERTY, cluster);
   }
+
+  public String getMigrationSrcCluster() {
+    return configs.get(MIGRATION_SRC_CLUSTER);  // This will return null if key does not exist
+  }
+
+  public void setMigrationSrcCluster(String srcClusterName) {
+    configs.put(MIGRATION_SRC_CLUSTER, srcClusterName);
+  }
+
+  public String getMigrationDestCluster() {
+    return configs.get(MIGRATION_DEST_CLUSTER); // This will return null if key does not exist
+  }
+
+  public void setMigrationDestCluster(String destClusterName) {
+    configs.put(MIGRATION_DEST_CLUSTER, destClusterName);
+  }
 }
-
-

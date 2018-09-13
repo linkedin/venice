@@ -377,7 +377,7 @@ public class TestStoreMigration {
 
       // Store discovery should point to the new cluster
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
-        D2ServiceDiscoveryResponse discoveryResponse = destControllerClient.discoverCluster(randomControllerUrl, store0);
+        ControllerResponse discoveryResponse = destControllerClient.discoverCluster(store0);
         String newCluster = discoveryResponse.getCluster();
         Assert.assertEquals(newCluster, destClusterName);
       });
@@ -434,7 +434,7 @@ public class TestStoreMigration {
   @Test
   public void testMultiClusterMigration() {
     VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(2, 2, 3, 3, 2, 2);
+        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(2, 2, NUM_OF_CONTROLLERS, NUM_OF_CONTROLLERS, 2, 2);
     List<VeniceMultiClusterWrapper> multiClusters = twoLayerMultiColoMultiClusterWrapper.getClusters();
     List<VeniceControllerWrapper> parentControllers = twoLayerMultiColoMultiClusterWrapper.getParentControllers();
 
@@ -469,9 +469,9 @@ public class TestStoreMigration {
     StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
     Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
     Assert.assertTrue(storeMigrationResponse.getChildControllerUrls() != null, "Parent controller should return child controller urls");
-    TestUtils.waitForNonDeterministicAssertion(150, TimeUnit.SECONDS, () -> {
-      // Store discovery should point to the new cluster
-      D2ServiceDiscoveryResponse discoveryResponse = destControllerClient.discoverCluster(store0);
+    TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
+      // Store discovery should point to the new cluster after migration
+      ControllerResponse discoveryResponse = destControllerClient.discoverCluster(store0);
       String newCluster = discoveryResponse.getCluster();
       Assert.assertEquals(newCluster, destClusterName);
     });
@@ -601,8 +601,8 @@ public class TestStoreMigration {
     StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
     Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
 
-    TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
-      // Store discovery should point to the new cluster when finish
+    TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
+      // Store discovery should point to the new cluster after migration
       ControllerResponse discoveryResponse = destControllerClient.discoverCluster(storeName);
       String newCluster = discoveryResponse.getCluster();
       Assert.assertNotEquals(newCluster, srcClusterName);
@@ -716,9 +716,10 @@ public class TestStoreMigration {
       Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
       if (verify) {
-        Utils.sleep(3000);
-        verifyPushJobStatus(clusterName, routerUrl, job);
-        verifyStoreData(storeName, routerUrl);
+        TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+          verifyPushJobStatus(clusterName, routerUrl, job);
+          verifyStoreData(storeName, routerUrl);
+        });
       }
     } catch (Exception e) {
       logger.error(e);

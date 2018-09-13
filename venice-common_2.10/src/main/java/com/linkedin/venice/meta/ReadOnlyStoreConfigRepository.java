@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import java.util.List;
 import java.util.Optional;
 
 
@@ -8,4 +9,6 @@ import java.util.Optional;
  */
 public interface ReadOnlyStoreConfigRepository {
   Optional<StoreConfig> getStoreConfig(String storeName);
+
+  List<StoreConfig> getAllStoreConfigs();
 }
