@@ -1434,7 +1434,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Integer> numVersionsToPreserve,
         Optional<Boolean> incrementalPushEnabled,
         Optional<Boolean> storeMigration) {
-        Store originalStore = getStore(clusterName, storeName).cloneStore();
+        Store originalStoreToBeCloned = getStore(clusterName, storeName);
+        if (null == originalStoreToBeCloned) {
+            throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
+        }
+        Store originalStore = originalStoreToBeCloned.cloneStore();
 
         if (originalStore.isMigrating()) {
             if (!(storeMigration.isPresent() || readability.isPresent() || writeability.isPresent())) {
