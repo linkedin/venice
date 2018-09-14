@@ -121,7 +121,6 @@ public class TestTopicRequestOnHybridDelete {
       for (int i=11; i<=20; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
-      veniceProducer.stop();
 
       //verify new records appear
       TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
@@ -150,6 +149,7 @@ public class TestTopicRequestOnHybridDelete {
       IOUtils.closeQuietly(client);
       IOUtils.closeQuietly(controllerClient);
       if (veniceProducer != null) {
+        // notice that D2 clients can be closed for more than one time
         veniceProducer.stop();
       }
     }
