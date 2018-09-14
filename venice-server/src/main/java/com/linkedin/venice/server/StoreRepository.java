@@ -66,6 +66,14 @@ public class StoreRepository {
       throw new VeniceException(errorMessage);
     }
 
+    /**
+     * It's necessary to get the storage engine instance from the map again,
+     * because `putIfAbsent()` method return "the previous value associated with the specified key,
+     * or{@code null} if there was no mapping for the key";
+     * Without getting storage engine from the map, the condition check below would always fail
+     * and the bdb environment in versioned stats would never be set
+     */
+    found = localStorageEngines.getOrDefault(engine.getName(), null);
     if (stats != null && found != null && found.getType() == BDB) {
       stats.setBdbEnvironment(engine.getName(), ((BdbStorageEngine) engine).getBdbEnvironment());
     }
@@ -81,7 +89,7 @@ public class StoreRepository {
     //load all existing bdb engine environments
     for (AbstractStorageEngine engine : getAllLocalStorageEngines()) {
       if (engine.getType() == BDB) {
-        stats.setBdbEnvironment(engine.getName(), ((BdbStorageEngine) engine).getBdbEnvironment());
+        this.stats.setBdbEnvironment(engine.getName(), ((BdbStorageEngine) engine).getBdbEnvironment());
       }
     }
   }

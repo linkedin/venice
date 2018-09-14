@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -22,10 +23,9 @@ import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.Metric;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -53,7 +53,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import spark.utils.IOUtils;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 
@@ -116,21 +115,7 @@ public class StorageNodeReadTest {
 
     String keyPrefix = "key_";
     String valuePrefix = "value_";
-
-    veniceWriter.broadcastStartOfPush(new HashMap<>());
-    // Insert test record and wait synchronously for it to succeed
-    for (int i = 0; i < 100; ++i) {
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId).get();
-    }
-    // Write end of push message to make node become ONLINE from BOOTSTRAP
-    veniceWriter.broadcastEndOfPush(new HashMap<>());
-
-    // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
-      return currentVersion == pushVersion;
-    });
+    pushSyntheticData(keyPrefix, valuePrefix, 100, veniceCluster, veniceWriter, pushVersion);
 
     try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
       client.start();
@@ -233,5 +218,100 @@ public class StorageNodeReadTest {
     for (int i = 0; i < 10; ++i) {
       Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
     }
+  }
+
+  @Test (timeOut = 100000)
+  public void testVersionedBdbSpaceMetrics() throws Exception {
+    // create a new version
+    VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 1024);
+    int pushVersion = Version.parseVersionFromKafkaTopicName(creationResponse.getKafkaTopic());
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
+
+    pushSyntheticData("key_", "value_", 100, veniceCluster, veniceWriter, pushVersion);
+
+    // check current version bdb space in bytes metric is positive
+    List<VeniceServerWrapper> serverList = veniceCluster.getVeniceServers();
+    for (VeniceServerWrapper server : serverList) {
+      Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
+      Assert.assertTrue(map.containsKey("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat"));
+      Assert.assertTrue(map.get("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat").value() > 0.0);
+    }
+
+    // create a new version
+    creationResponse = veniceCluster.getNewVersion(storeName, 1024);
+    pushVersion = Version.parseVersionFromKafkaTopicName(creationResponse.getKafkaTopic());
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
+
+    pushSyntheticData("key_", "value_", 100, veniceCluster, veniceWriter, pushVersion);
+
+    // check both current and backup version bdb space in bytes metric is positive
+    for (VeniceServerWrapper server : serverList) {
+      Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
+      Assert.assertTrue(map.containsKey("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat"));
+      Assert.assertTrue(map.get("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat").value() > 0.0);
+      Assert.assertTrue(map.containsKey("." + storeName + "_backup--bdb_space_size_in_bytes.SpaceSizeStat"));
+      Assert.assertTrue(map.get("." + storeName + "_backup--bdb_space_size_in_bytes.SpaceSizeStat").value() > 0.0);
+    }
+
+    // create a new version
+    creationResponse = veniceCluster.getNewVersion(storeName, 1024);
+    int lastVersion = Version.parseVersionFromKafkaTopicName(creationResponse.getKafkaTopic());
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    // Insert test record and wait synchronously for it to succeed
+    for (int i = 0; i < 100; ++i) {
+      veniceWriter.put("key_" + i, "value_" + i, valueSchemaId).get();
+    }
+
+    // do not send end of push; check whether the future version bdb space is positive
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      for (VeniceServerWrapper server : serverList) {
+        Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
+        if (!map.containsKey("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat")) {
+          return false;
+        }
+        if (map.get("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat").value() <= 0.0) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // send end of push
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    // Wait for storage node to finish consuming, and new version to be activated
+    String controllerUrl = veniceCluster.getAllControllersURLs();
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      return currentVersion == lastVersion;
+    });
+
+    // check whether backup version bdb space in bytes metric shows NULL_BDB_ENVIRONMENT.code after the push job completes
+    for (VeniceServerWrapper server : serverList) {
+      Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
+      Assert.assertTrue(map.containsKey("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat"));
+      Assert.assertTrue(map.get("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat").value() < 0.0);
+    }
+
+  }
+
+  private void pushSyntheticData(String keyPrefix, String valuePrefix, int numOfRecords, VeniceClusterWrapper veniceCluster, VeniceWriter<Object, Object> veniceWriter, int pushVersion) throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    // Insert test record and wait synchronously for it to succeed
+    for (int i = 0; i < numOfRecords; ++i) {
+      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId).get();
+    }
+    // Write end of push message to make node become ONLINE from BOOTSTRAP
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    // Wait for storage node to finish consuming, and new version to be activated
+    String controllerUrl = veniceCluster.getAllControllersURLs();
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      return currentVersion == pushVersion;
+    });
   }
 }

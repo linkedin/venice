@@ -7,7 +7,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
