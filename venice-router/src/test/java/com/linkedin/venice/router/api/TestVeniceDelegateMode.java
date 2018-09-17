@@ -37,7 +37,7 @@ import static org.mockito.Mockito.*;
 public class TestVeniceDelegateMode {
 
   private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys) {
-    return new VenicePath(resourceName) {
+    return new VenicePath(resourceName, false, -1) {
       @Override
       public RequestType getRequestType() {
         return requestType;

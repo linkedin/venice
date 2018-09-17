@@ -48,7 +48,7 @@ public class TestVenicePathParser {
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     doReturn(3).when(partitionFinder).findPartitionNumber(Mockito.anyString(), Mockito.anyObject());
     VenicePathParser parser = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
-        TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class));
+        TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class), false, -1);
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
     String keyb64 = Base64.getEncoder().encodeToString("key".getBytes());
@@ -70,7 +70,7 @@ public class TestVenicePathParser {
 
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, myUri, 0, 0);
     VenicePath path = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
-        TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class))
+        TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class), false, -1)
         .parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
     Assert.assertEquals(path.getPartitionKey().getKeyBuffer(), ByteBuffer.wrap(expectedKey.getBytes()),
@@ -81,7 +81,7 @@ public class TestVenicePathParser {
   public void failsToParseOtherActions() throws RouterException {
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
-        TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class))
+        TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class), false, -1)
         .parseResourceUri("/badaction/storename/key");
   }
 

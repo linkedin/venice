@@ -30,6 +30,8 @@ public class VeniceRouterConfig {
   private long maxReadCapacityCu;
   private int longTailRetryForSingleGetThresholdMs;
   private TreeMap<Integer, Integer> longTailRetryForBatchGetThresholdMs;
+  private boolean smartLongTailRetryEnabled;
+  private int smartLongTailRetryAbortThresholdMs;
   private int maxKeyCountInMultiGetReq;
   private int connectionLimit;
   private int httpClientPoolSize;
@@ -83,6 +85,8 @@ public class VeniceRouterConfig {
     longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
     longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
         props.getString(ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
+    smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
+    smartLongTailRetryAbortThresholdMs = props.getInt(ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, 100);
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
     httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
@@ -283,6 +287,14 @@ public class VeniceRouterConfig {
 
   public long getMaxPendingRequestPerHttpClient() {
     return maxPendingRequestPerHttpClient;
+  }
+
+  public boolean isSmartLongTailRetryEnabled() {
+    return smartLongTailRetryEnabled;
+  }
+
+  public int getSmartLongTailRetryAbortThresholdMs() {
+    return smartLongTailRetryAbortThresholdMs;
   }
 
   /**

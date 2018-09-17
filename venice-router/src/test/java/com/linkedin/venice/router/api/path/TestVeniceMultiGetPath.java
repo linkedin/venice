@@ -58,7 +58,7 @@ public class TestVeniceMultiGetPath {
     }
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
 
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3);
+    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1);
   }
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
@@ -71,6 +71,6 @@ public class TestVeniceMultiGetPath {
     }
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.of(VeniceMultiGetPath.EXPECTED_PROTOCOL.getProtocolVersion() + 1));
 
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3);
+    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1);
   }
 }

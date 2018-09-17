@@ -220,4 +220,14 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordUnavailableRequest();
     getStoreStats(storeName).recordUnavailableRequest();
   }
+
+  public void recordDelayConstraintAbortedRetryRequest(String storeName) {
+    totalStats.recordDelayConstraintAbortedRetryRequest();
+    getStoreStats(storeName).recordDelayConstraintAbortedRetryRequest();
+  }
+
+  public void recordSlowRouteAbortedRetryRequest(String storeName) {
+    totalStats.recordSlowRouteAbortedRetryRequest();
+    getStoreStats(storeName).recordSlowRouteAbortedRetryRequest();
+  }
 }

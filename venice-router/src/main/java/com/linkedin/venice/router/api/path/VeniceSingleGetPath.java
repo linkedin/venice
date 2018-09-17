@@ -32,7 +32,7 @@ public class VeniceSingleGetPath extends VenicePath {
 
   public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder)
       throws RouterException {
-    super(resourceName);
+    super(resourceName, false, -1);
     if (Utils.isNullOrEmpty(key)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_REQUEST,
           "Request URI must have non-empty key.  Uri is: " + uri);
@@ -56,13 +56,6 @@ public class VeniceSingleGetPath extends VenicePath {
           e.getHttpResponseStatus(),
           e.getMessage());
     }
-  }
-
-  public VeniceSingleGetPath(String resourceName, RouterKey routerKey, String partition) {
-    super(resourceName);
-    this.routerKey = routerKey;
-    this.partition = partition;
-    setPartitionKeys(Collections.singleton(routerKey));
   }
 
   @Override
