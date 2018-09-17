@@ -889,6 +889,9 @@ public class AdminTool {
     String storeName = getRequiredArgument(cmd, Arg.STORE);
     String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
     String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+    }
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
