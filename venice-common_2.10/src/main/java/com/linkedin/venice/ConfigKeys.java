@@ -233,6 +233,34 @@ public class ConfigKeys {
   public static final String ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS = "router.long.tail.retry.for.batch.get.threshold.ms";
 
   /**
+   * Whether to enable smart long tail retry logic, and this logic is only useful for batch-get retry currently.
+   * This feature is used to avoid the unnecessary retries in the following scenarios:
+   * 1. Router is suffering long GC pause, no matter whether Storage Node is fast or not;
+   * 2. The retried Storage Node is slow according to the original request;
+   *
+   * For case 1, unnecessary retries will make Router GC behavior even worse;
+   * For case 2, unnecessary retries to the slow Storage Node will make the slow Storage Node even slower, and the
+   * overall latency won't be improved;
+   *
+   * For case 1, here is how smart retry works:
+   * 1. When the delay between the retry request and the original request is over {@link #ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS}
+   *   + {@link #ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS}, smart retry logic will treat the current Router to be
+   *   in bad state (long GC pause or too busy), the retry request will be aborted;
+   * 2.{@link #ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS} is the way to measure whether Router is in good state or not,
+   *   and need to be tuned in prod;
+   *
+   * For case 2, the retry request will be aborted if the original request to the same storage node hasn't returned,
+   * and the slowness measurement is inside one request when scatter-gathering.
+   */
+  public static final String ROUTER_SMART_LONG_TAIL_RETRY_ENABLED = "router.smart.long.tail.retry.enabled";
+
+  /**
+   * This config is used to tune the smart long-tail retry logic to avoid unnecessary retries,
+   * check more details: {@link #ROUTER_SMART_LONG_TAIL_RETRY_ENABLED}
+   */
+  public static final String ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS = "router.smart.long.tail.retry.abort.threshold.ms";
+
+  /**
    * The max key count allowed in one multi-get request.
    * For now, it is configured in host level, and we could consider to configure it in store level.
    */

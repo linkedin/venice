@@ -28,7 +28,6 @@ import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
 import com.linkedin.venice.router.stats.RouteHttpStats;
 import com.linkedin.venice.router.throttle.PendingRequestThrottler;
-import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -230,6 +229,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(path.getRequestType()),
           SERVICE_UNAVAILABLE, "The incoming request exceeds pending request threshold, please contact Venice team");
     }
+    path.recordOriginalRequestStartTimestamp();
     CloseableHttpAsyncClient selectedClient = clientPool.get(selectedClientId);
     try {
       selectedClient.execute(routerRequest, new FutureCallback<org.apache.http.HttpResponse>() {
@@ -237,6 +237,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         @Override
         public void completed(org.apache.http.HttpResponse result) {
           selectedClientPendingRequestThrottler.take();
+          path.markStorageNodeAsFast(host.getNodeId());
 
           int statusCode = result.getStatusLine().getStatusCode();
           if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR || statusCode == HttpStatus.SC_SERVICE_UNAVAILABLE) {

@@ -58,16 +58,21 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final AggRouterHttpRequestStats statsForMultiGet;
   private final int maxKeyCountInMultiGetReq;
   private final ReadOnlyStoreRepository storeRepository;
+  private final boolean smartLongTailRetryEnabled;
+  private final int smartLongTailRetryAbortThresholdMs;
 
   public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
       AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet,
-      int maxKeyCountInMultiGetReq, ReadOnlyStoreRepository storeRepository){
+      int maxKeyCountInMultiGetReq, ReadOnlyStoreRepository storeRepository, boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs){
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
     this.maxKeyCountInMultiGetReq = maxKeyCountInMultiGetReq;
     this.storeRepository = storeRepository;
+    this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
+    this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
   };
 
   @Override
@@ -103,7 +108,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         stats = statsForSingleGet;
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         // multi-get request
-        path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName));
+        path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
+            smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
         stats = statsForMultiGet;
         /**
          * Here we only track key num for batch-get request, since single-get request will be always 1.

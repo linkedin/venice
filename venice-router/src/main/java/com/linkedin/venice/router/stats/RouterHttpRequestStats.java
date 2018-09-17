@@ -50,6 +50,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   private final Sensor unAvailableRequestSensor;
 
+  private final Sensor delayConstraintAbortedRetryRequest;
+  private final Sensor slowRouteAbortedRetryRequest;
+
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
       ScatterGatherStats scatterGatherStats) {
@@ -110,6 +113,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
 
     unAvailableRequestSensor = registerSensor("unavailable_request", new Count());
+
+    delayConstraintAbortedRetryRequest = registerSensor("delay_constraint_aborted_retry_request", new Count());
+    slowRouteAbortedRetryRequest = registerSensor("slow_route_aborted_retry_request", new Count());
   }
 
   public void recordRequest() {
@@ -224,5 +230,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordUnavailableRequest() {
     unAvailableRequestSensor.record();
+  }
+
+  public void recordDelayConstraintAbortedRetryRequest() {
+    delayConstraintAbortedRetryRequest.record();
+  }
+
+  public void recordSlowRouteAbortedRetryRequest() {
+    slowRouteAbortedRetryRequest.record();
   }
 }

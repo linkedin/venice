@@ -13,7 +13,6 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
-import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.Arrays;
@@ -99,6 +98,13 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
     VenicePath venicePath = (VenicePath)path;
     String storeName = venicePath.getStoreName();
+
+    // Check whether retry request is too late or not
+    if (venicePath.isRetryRequestTooLate()) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+          SERVICE_UNAVAILABLE, "The retry request aborted because of delay constraint of smart long-tail retry",
+          RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT);
+    }
     ScatterGatherMode scatterMode = null;
     switch (venicePath.getRequestType()) {
       case MULTI_GET:
@@ -151,6 +157,16 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             INTERNAL_SERVER_ERROR, "Ready-to-serve host must be an 'Instance'");
       }
       Instance veniceInstance = (Instance)host;
+      String instanceNodeId = veniceInstance.getNodeId();
+      if (! venicePath.canRequestStorageNode(instanceNodeId)) {
+        /**
+         * When retry request is aborted, Router will wait for the original request.
+         */
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+            SERVICE_UNAVAILABLE, "Retry request aborted because of slow route: " + instanceNodeId,
+            RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
+      }
+
       if (venicePath.getRequestType().equals(RequestType.MULTI_GET) && !venicePath.isRetryRequest()) {
         /**
          * Here is the only suitable place to throttle multi-get request since we want to fail the whole request if

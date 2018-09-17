@@ -40,9 +40,9 @@ public class VeniceMultiGetPath extends VenicePath {
   private final Map<Integer, RouterKey> keyIdxToRouterKey;
 
   public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
-      int maxKeyCount)
+      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs)
       throws RouterException {
-    super(resourceName);
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
 
     // Validate API version
     int apiVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
@@ -108,8 +108,8 @@ public class VeniceMultiGetPath extends VenicePath {
   }
 
   private VeniceMultiGetPath(String resourceName, Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey, int keyNum) {
-    super(resourceName);
+      Map<Integer, RouterKey> keyIdxToRouterKey, int keyNum, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
     this.routerKeyMap = routerKeyMap;
     this.keyIdxToRouterKey = keyIdxToRouterKey;
     this.keyNum = keyNum;
@@ -161,10 +161,8 @@ public class VeniceMultiGetPath extends VenicePath {
    * @param subPath
    * @return
    */
-  private VeniceMultiGetPath fixRetryRequestFlagForSubPath(VeniceMultiGetPath subPath) {
-    if (isRetryRequest()) {
-      subPath.setRetryRequest();
-    }
+  private VeniceMultiGetPath fixRetryRequestForSubPath(VeniceMultiGetPath subPath) {
+    subPath.setupRetryRelatedInfo(this);
     return subPath;
   }
 
@@ -190,7 +188,8 @@ public class VeniceMultiGetPath extends VenicePath {
     newRouterKeyMap.put(s, routerRequestKey);
     newKeyIdxToRouterKey.put(routerRequestKey.keyIndex, s);
 
-    return fixRetryRequestFlagForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey, 1));
+    return fixRetryRequestForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey,
+        1, isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs()));
   }
 
   /**
@@ -228,7 +227,8 @@ public class VeniceMultiGetPath extends VenicePath {
       newKeyIdxToRouterKey.put(routerRequestKey.keyIndex, key);
     }
 
-    return fixRetryRequestFlagForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey, s.size()));
+    return fixRetryRequestForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey,
+        s.size(), isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs()));
   }
 
   @Override

@@ -318,7 +318,8 @@ public class RouterServer extends AbstractVeniceService {
         Optional.of(routingDataRepository),
         new StaleVersionStats(metricsRepository, "stale_version"));
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
-        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository);
+        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository,
+        config.isSmartLongTailRetryEnabled(), config.getSmartLongTailRetryAbortThresholdMs());
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
@@ -337,6 +338,7 @@ public class RouterServer extends AbstractVeniceService {
           @Nonnull String methodName) {
         if (VeniceRouterUtils.isHttpGet(methodName)) {
           // single-get
+          path.setLongTailRetryThresholdMs(config.getLongTailRetryForSingleGetThresholdMs());
           return singleGetRetryFuture;
         } else {
           /**
@@ -350,7 +352,9 @@ public class RouterServer extends AbstractVeniceService {
           /**
            * Refer to {@link ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS} to get more info.
            */
-          return new SuccessAsyncFuture<>(() -> longTailRetryConfigForBatchGet.floorEntry(keyNum).getValue());
+          int longTailRetryThresholdMs = longTailRetryConfigForBatchGet.floorEntry(keyNum).getValue();
+          path.setLongTailRetryThresholdMs(longTailRetryThresholdMs);
+          return new SuccessAsyncFuture<>(() -> longTailRetryThresholdMs);
         }
       }
     };
