@@ -196,6 +196,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             long retryStartTime = System.currentTimeMillis();
             while (isRunning.get() && admin.isMasterController(clusterName)) {
               try {
+                if (record.offset() > lastFailedOffset) {
+                  stats.setAdminConsumeFailOffsetValue(-1);
+                }
                 processMessage(record, isRetry);
                 break;
               } catch (Exception e) {
@@ -203,7 +206,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 isRetry = true;
                 // report number of retries if we have a failure
                 stats.recordFailedAdminConsumption();
-                lastFailedOffset=record.offset();
+                lastFailedOffset = record.offset();
+                stats.setAdminConsumeFailOffsetValue(lastFailedOffset);
                 logger.error("Error when processing admin message with offset "+record.offset()+", will retry", e);
                 admin.setLastException(clusterName, e);
                 if (System.currentTimeMillis() - retryStartTime >= failureRetryTimeoutMs) {
