@@ -300,6 +300,35 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
+  public void testConsumeFailOffsetStats() throws IOException, InterruptedException {
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 2),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    doThrow(new VeniceException("Mock store creation exception"))
+        .doNothing()
+        .when(admin)
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), 1, false, mockStats);
+    executor.submit(task);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+    });
+
+    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumeFailOffsetValue(1);
+    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumeFailOffsetValue(-1);
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test (timeOut = TIMEOUT)
   public void testSkipMessageAfterTimeout () throws IOException, InterruptedException {
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
