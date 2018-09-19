@@ -4,7 +4,6 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
-import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -72,6 +71,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     Map<String, StoreConfig> configMap = new HashMap<>();
     for (StoreConfig config : configList) {
       configMap.put(config.getStoreName(), config);
+      accessor.subscribeStoreConfigDataChangedListener(config.getStoreName(), storeConfigChangedListener);
     }
     storeConfigMap.set(configMap);
     zkClient.subscribeStateChanges(zkStateListener);
@@ -82,6 +82,9 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   public void clear() {
     logger.info("Clearing all store configs in local");
     accessor.unsubscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
+    for (String storeName : storeConfigMap.get().keySet()) {
+      accessor.unsubscribeStoreConfigDataChangedListener(storeName, storeConfigChangedListener);
+    }
     this.storeConfigMap.set(Collections.emptyMap());
     zkClient.unsubscribeStateChanges(zkStateListener);
     logger.info("Cleared all store configs in local");

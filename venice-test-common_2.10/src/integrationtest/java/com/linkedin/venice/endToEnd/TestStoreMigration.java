@@ -465,6 +465,13 @@ public class TestStoreMigration {
     // Populate store0
     populateStoreForMultiCluster(parentControllerUrl, srcClusterName, store0, 1);
 
+    // Restart controllers to force storeConfig reload.
+    // StoreConfigRepository had a bug that failed to register listeners for existing stores.
+    // The following would reveal that problem.
+    for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
+      multiCluster.restartControllers();
+    }
+
     // Move store0 from src to dest
     StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
     Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
