@@ -104,8 +104,8 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
     Rate requestKeyCount = new OccurrenceRate();
     Rate successRequestKeyCount = new OccurrenceRate();
-    requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
-    successRequestKeyCountSensor = registerSensor("success_request_key_count", successRequestKeyCount,
+    requestKeyCountSensor = registerSensor("request_key_count", new Rate(), requestKeyCount, new Avg(), new Max());
+    successRequestKeyCountSensor = registerSensor("success_request_key_count", new Rate(), successRequestKeyCount,
         new Avg(), new Max());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));

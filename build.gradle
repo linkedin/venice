@@ -157,7 +157,8 @@ subprojects {
     useTestNG()
 
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
-    maxParallelForks = 10
+    maxParallelForks = 2
+    forkEvery = 10
 
     testLogging {
       events "started", "failed", "passed", "skipped"
