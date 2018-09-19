@@ -1667,6 +1667,9 @@ public class VeniceParentHelixAdmin implements Admin {
               // Finally finish off store migration in parent controller
               veniceHelixAdmin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema,
                   srcValueSchemasResponse);
+
+              logger.info("All child clusters have " + storeName + " cloned store ready in " + destClusterName
+                  + ". Will update cluster discovery in parent.");
               veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
               continue;
             }

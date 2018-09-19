@@ -731,6 +731,19 @@ public class AdminTool {
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+
+    StoreResponse storeResponse = srcControllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      printObject(storeResponse);
+      return;
+    } else {
+      // Store migration should not be started already.
+      if (storeResponse.getStore().isMigrating()) {
+        System.err.println("ERROR: store " + storeName + " is migrating. Finish the current migration before starting a new one.");
+        return;
+      }
+    }
+
     StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
     printObject(storeMigrationResponse);
 
@@ -862,8 +875,15 @@ public class AdminTool {
       System.err.println("\nWARN: Store migration complete in child clusters but not in parent yet. "
           + "Make sure cluster discovery in parent controller gets updated, "
           + "then confirm the original store has zero read activity and delete it using --end-migration command");
-      System.err.println("Expected cluster discovery result: " + destClusterName);
-      System.err.println("Actual cluster discovery result: " + clusterDiscovered);
+
+      System.err.println("\nExpected cluster discovery result: " + destClusterName);
+      System.err.println("Actual cluster discovery result in parent: " + clusterDiscovered);
+      for (int i = 0; i < numChildClusters; i++) {
+        ControllerClient destChildController = destChildControllerClients[i];
+        String childControllerUrl = destChildController.getMasterControllerUrl();
+        String clusterDiscoveredInChild = destChildController.discoverCluster(storeName).getCluster();
+        System.err.println("Actual cluster discovery result in " + childControllerUrl + " : " + clusterDiscoveredInChild);
+      }
     }
   }
 

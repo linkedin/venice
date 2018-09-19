@@ -148,4 +148,15 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   public String[] getClusterNames() {
     return clusters.keySet().toArray(new String[clusters.keySet().size()]);
   }
+
+  public void restartControllers() {
+    controllers.values().stream().forEach(veniceControllerWrapper -> {
+      try {
+        veniceControllerWrapper.stop();
+        veniceControllerWrapper.restart();
+      } catch (Exception e) {
+        throw new VeniceException("Can not restart controller " + veniceControllerWrapper.getControllerUrl(), e);
+      }
+    });
+  }
 }
