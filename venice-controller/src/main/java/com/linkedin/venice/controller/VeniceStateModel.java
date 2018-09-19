@@ -17,19 +17,34 @@ public class VeniceStateModel {
 
   public static final String PARTITION_ONLINE_OFFLINE_STATE_MODEL = "PartitionOnlineOfflineModel";
 
-  private static final int PRIORITY_HIGHEST = 1;
-
   private static final String UPPER_BOUND_REPLICATION_FACTOR = "R";
 
   public static StateModelDefinition getDefinition() {
 
     StateModelDefinition.Builder builder = new StateModelDefinition.Builder(PARTITION_ONLINE_OFFLINE_STATE_MODEL);
 
-    // States and their priority in which we want the instances to be in.
-    builder.addState(HelixState.ONLINE.toString(), PRIORITY_HIGHEST);
-    builder.addState(HelixState.BOOTSTRAP_STATE.toString());
-    builder.addState(HelixState.OFFLINE.toString());
-    builder.addState(HelixDefinedState.DROPPED.toString());
+    /**
+     * States and their priority in which we want the instances to be in.
+     *
+     * The implication is that transitioning to a state which has a higher number is
+     * considered a "downward" transition by Helix. Downward transitions are not
+     * throttled.
+     *
+     * Therefore, with the priority scheme outlined below, and the valid transitions
+     * defined further below, we allow the following transitions to occur unthrottled:
+     *
+     * ONLINE -> OFFLINE
+     * BOOTSTRAP -> OFFLINE
+     * ONLINE -> ERROR
+     * BOOTSTRAP -> ERROR
+     * OFFLINE -> ERROR
+     * Any -> DROPPED
+     */
+    builder.addState(HelixState.ONLINE.toString(), 1);
+    builder.addState(HelixState.BOOTSTRAP_STATE.toString() ,2);
+    builder.addState(HelixState.OFFLINE.toString(), 2);
+    builder.addState(HelixDefinedState.ERROR.toString(), 3);
+    builder.addState(HelixDefinedState.DROPPED.toString(), 4);
 
     builder.initialState(HelixState.OFFLINE.toString());
 
