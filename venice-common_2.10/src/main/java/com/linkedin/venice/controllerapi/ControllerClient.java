@@ -3,6 +3,7 @@ package com.linkedin.venice.controllerapi;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.controllerapi.routes.JobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -361,6 +362,20 @@ public class ControllerClient implements Closeable {
       return mapper.readValue(responseJson, JobStatusQueryResponse.class);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying job status for topic: " + kafkaTopic, e), new JobStatusQueryResponse());
+    }
+  }
+
+  public JobStatusUploadResponse uploadJobStatus(String storeName, int version, JobStatus status) {
+    try {
+      QueryParams queryParams = newParams()
+          .add(CLUSTER, clusterName)
+          .add(NAME, storeName)
+          .add(VERSION, version)
+          .add(JOB_STATUS, status.toString());
+      String responseJson = postRequest(ControllerRoute.UPLOAD_JOB_STATUS.getPath(), queryParams);
+      return mapper.readValue(responseJson, JobStatusUploadResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error uploading job status", e), new JobStatusUploadResponse());
     }
   }
 

@@ -53,6 +53,8 @@ public class ControllerApiConstants {
   public static final String ACCESS_CONTROLLED = "access_controlled";
   public static final String STORE_MIGRATION = "store_migration";
 
+  public static final String JOB_STATUS = "job_status";
+
   private ControllerApiConstants(){}
 
   /**
@@ -62,5 +64,14 @@ public class ControllerApiConstants {
     BATCH, //This is a batch push that will create a new version
     INCREMENTAL, //This is a batch push that will re-use current version's topic
     STREAM //This is a stream job that writes into a buffer topic (or possibly the current version topic depending on store-level configs)
+  }
+
+  /**
+   * Possible job status at the end of its lifecycle.
+   */
+  public enum JobStatus {
+    SUCCESS, // The job succeeded
+    ERROR, // Some error has occurred during the job
+    KILLED // The job was terminated by user
   }
 }
