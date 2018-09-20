@@ -23,6 +23,7 @@ public class TestTopicCleanupServiceForParentController {
     doReturn(topicManager).when(admin).getTopicManager();
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
     doReturn(1000l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
+    doReturn(2).when(config).getTopicCleanupDelayFactor();
     topicCleanupService = new TopicCleanupServiceForParentController(admin, config);
   }
 
@@ -40,7 +41,20 @@ public class TestTopicCleanupServiceForParentController {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
 
     topicCleanupService.cleanupVeniceTopics();
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
 
+    topicCleanupService.cleanupVeniceTopics();
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+
+    topicCleanupService.cleanupVeniceTopics();
     verify(topicManager).ensureTopicIsDeletedAndBlock("store1_rt");
     verify(topicManager).ensureTopicIsDeletedAndBlock("store1_v1");
     verify(topicManager).ensureTopicIsDeletedAndBlock("store1_v2");

@@ -88,6 +88,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
   }
 
+  public int getTopicCleanupDelayFactor() {
+    return getCommonConfig().getTopicCleanupDelayFactor();
+  }
+
   public String getControllerClusterZkAddresss() {
     return getCommonConfig().getControllerClusterZkAddresss();
   }

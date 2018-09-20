@@ -121,6 +121,7 @@ public class ConfigKeys {
    * We don't want to hit Kafka Zookeeper too frequently.
    */
   public static final String TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS = "topic.cleanup.sleep.interval.between.topic.list.fetch.ms";
+  public static final String TOPIC_CLEANUP_DELAY_FACTOR = "topic.cleanup.delay.factor";
 
   public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
   public static final String ENABLE_TOPIC_REPLICATOR_SSL = "controller.enable.topic.replicator.ssl";

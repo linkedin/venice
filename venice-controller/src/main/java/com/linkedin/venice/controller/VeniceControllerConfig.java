@@ -37,6 +37,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long deprecatedJobTopicRetentionMs;
   private final long deprecatedJobTopicMaxRetentionMs;
   private final long topicCleanupSleepIntervalBetweenTopicListFetchMs;
+  private final int topicCleanupDelayFactor;
   private final int topicManagerKafkaOperationTimeOutMs;
   private final boolean enableTopicReplicatorSSL;
   private int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -79,6 +80,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
           " should be larger than config: " + DEPRECATED_TOPIC_RETENTION_MS + " with value: " + this.deprecatedJobTopicRetentionMs);
     }
     this.topicCleanupSleepIntervalBetweenTopicListFetchMs = props.getLong(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, TimeUnit.SECONDS.toMillis(30)); // 30 seconds
+    this.topicCleanupDelayFactor = props.getInt(TOPIC_CLEANUP_DELAY_FACTOR, 2); // thisFactor * topicCleanupSleepIntervalBetweenTopicListFetchMs = delayBeforeTopicDeletion
 
     this.topicManagerKafkaOperationTimeOutMs = props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
 
@@ -127,6 +129,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTopicCleanupSleepIntervalBetweenTopicListFetchMs() {
     return topicCleanupSleepIntervalBetweenTopicListFetchMs;
+  }
+
+  public int getTopicCleanupDelayFactor() {
+    return topicCleanupDelayFactor;
   }
 
   /**
