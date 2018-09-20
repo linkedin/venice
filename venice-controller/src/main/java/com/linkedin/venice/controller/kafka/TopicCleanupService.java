@@ -53,7 +53,8 @@ public class TopicCleanupService extends AbstractVeniceService {
 
   private final Admin admin;
   private final Thread cleanupThread;
-  private final long sleepIntervalBetweenTopicListFetchMs;
+  protected final long sleepIntervalBetweenTopicListFetchMs;
+  protected final int delayFactor;
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private boolean stop = false;
   private boolean isMasterControllerOfControllerCluster = false;
@@ -61,6 +62,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   public TopicCleanupService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.admin = admin;
     this.sleepIntervalBetweenTopicListFetchMs = multiClusterConfigs.getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
+    this.delayFactor = multiClusterConfigs.getTopicCleanupDelayFactor();
     this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
     this.cleanupThread = new Thread(new TopicCleanupTask(), "TopicCleanupTask");
   }
