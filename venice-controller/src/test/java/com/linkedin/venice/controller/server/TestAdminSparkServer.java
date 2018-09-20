@@ -22,6 +22,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.controllerapi.routes.JobStatusUploadResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -722,6 +723,17 @@ public class TestAdminSparkServer {
       p.setProperty(i+"venice.push.properteis.xyz"+i, "http://testinfo.url"+i);
     }
     controllerClient.uploadPushProperties(storeName, version, p);
+  }
+
+  @Test(timeOut = TIME_OUT)
+  public void controllerClientCanUploadJobStatus() {
+    String storeName = "controllerClientCanUploadJobStatus";
+    int version = 1;
+    JobStatusUploadResponse jobStatusUploadResponse= controllerClient.uploadJobStatus(storeName, version,
+        ControllerApiConstants.JobStatus.SUCCESS);
+    Assert.assertEquals(jobStatusUploadResponse.isError(), false);
+    Assert.assertEquals(jobStatusUploadResponse.getName(), storeName);
+    Assert.assertEquals(jobStatusUploadResponse.getVersion(), version);
   }
 
   private void deleteStore(String storeName){

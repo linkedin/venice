@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.routes.JobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -104,6 +105,23 @@ public class JobRoutes {
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
 
         admin.killOfflinePush(cluster, topic);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route uploadJobStatus(Admin admin) {
+    return  (request, response) -> {
+      JobStatusUploadResponse responseObject = new JobStatusUploadResponse();
+      try {
+        AdminSparkServer.validateParams(request, UPLOAD_JOB_STATUS.getParams(), admin);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

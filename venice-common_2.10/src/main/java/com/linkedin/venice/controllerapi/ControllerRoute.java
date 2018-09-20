@@ -68,7 +68,9 @@ public enum ControllerRoute {
   CLUSTER_DISCOVERY("/discover_cluster", Arrays.asList(NAME)),
   LIST_BOOTSTRAPPING_VERSIONS("/list_bootstrapping_versions", Arrays.asList()),
 
-  OFFLINE_PUSH_INFO("/offline_push_info", Arrays.asList(NAME, VERSION));
+  OFFLINE_PUSH_INFO("/offline_push_info", Arrays.asList(NAME, VERSION)),
+
+  UPLOAD_JOB_STATUS("/upload_job_status", Arrays.asList(CLUSTER, NAME, VERSION, JOB_STATUS));
 
   private final String path;
   private final List<String> params;
