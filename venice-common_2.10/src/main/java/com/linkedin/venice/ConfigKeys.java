@@ -289,14 +289,14 @@ public class ConfigKeys {
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
   /**
-   * This config is used to bound the pending request per Http Async Client.
+   * This config is used to bound the pending request.
    * Without this config, the accumulated requests in Http Async Client could grow unlimitedly,
    * which would put Router in a non-recoverable state because of long GC pause introduced
    * by the increasing memory usage.
    *
    * If the incoming request exceeds this configured threshold, Router will return 503 (Service Unavailable).
    */
-  public static final String ROUTER_MAX_PENDING_REQUEST_PER_HTTP_CLIENT = "router.max.pending.request.per.http.client";
+  public static final String ROUTER_MAX_PENDING_REQUEST = "router.max.pending.request";
 
   /**
    * Whether sticky routing for single-get is enabled in Router.
@@ -381,6 +381,52 @@ public class ConfigKeys {
    * Refresh interval of cached dns entries if {@link #ROUTER_DNS_CACHE_ENABLED} is true.
    */
   public static final String ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS = "router.dns.cache.refresh.interval.ms";
+
+  /**
+   * Whether the router use netty http client or apache http async client
+   */
+  public static final String ROUTER_STORAGE_NODE_CLIENT_TYPE = "router.storage.node.client.type";
+
+  /**
+   * Number of event loop; one thread for each event loop.
+   */
+  public static final String ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS = "router.netty.client.event.loop.threads";
+
+  /**
+   * Timeout for getting a channel from channel pool; if timeout, create a new channel
+   */
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS = "router.netty.client.channel.pool.acquire.timeout.ms";
+
+  /**
+   * Minimum connections for each host (a host is identified by InetSocketAddress)
+   */
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS = "router.netty.client.channel.pool.min.connections";
+
+  /**
+   * Maximum connections for each host/InetSocketAddress
+   */
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS = "router.netty.client.channel.pool.max.connections";
+
+  /**
+   * The maximum number of pending acquires for a channel in the channel pool.
+   *
+   * If the pending acquires exceed the threshold, netty client will fail the new requests without blocking and it won't
+   * throw exception in the router thread.
+   */
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES = "router.netty.client.channel.pool.max.pending.acquires";
+
+  /**
+   * Interval between each channel health check
+   */
+  public static final String ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS = "router.netty.client.channel.pool.health.check.interval.ms";
+
+  /**
+   * The maximum length of the aggregated content (response from SN to router) in bytes.
+   *
+   * If the length of the aggregated content exceeds this value, an exception will be thrown in router and the channel that
+   * receives this response will be closed.
+   */
+  public static final String ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH = "router.netty.client.max.aggregated.object.length";
 
   /**
    * Netty graceful shutdown period considering the following factors:

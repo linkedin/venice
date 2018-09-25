@@ -18,6 +18,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
+import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.TestUtils;
@@ -41,11 +42,13 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
-public class TestRouterCache {
+public abstract class TestRouterCache {
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
 
   private String zkAddress;
+
+  protected abstract StorageNodeClientType getStorageNodeClientType();
 
   //We're instantiate Venice cluster before the method since MetricsRepository can't reset.
   //TODO: optimize it if any chances
@@ -63,6 +66,7 @@ public class TestRouterCache {
     // avoid long tail retry
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 60000); // 60 seconds
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:3600000"); // 1 hour
+    routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, getStorageNodeClientType());
     for (int i = 0; i < routerNum; ++i) {
       VeniceRouterWrapper router = veniceCluster.addVeniceRouter(routerProperties);
       routerUrls[i] = "http://" + router.getAddress();

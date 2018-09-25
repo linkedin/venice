@@ -13,16 +13,22 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
+import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
-import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.MultithreadEventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -32,8 +38,8 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.client.methods.HttpGet;
-import org.jetbrains.annotations.NotNull;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -48,9 +54,14 @@ public class TestVeniceDispatcher {
     Assert.assertEquals(number, "2");
   }
 
-  @Test
-  public void testErrorRetry() {
-    VeniceDispatcher dispatcher = getMockDispatcher();
+  @DataProvider(name = "isNettyClientEnabled")
+  public static Object[][] routerHttpClientStatus() {
+    return new Object[][]{{false}, {true}};
+  }
+
+  @Test(dataProvider = "isNettyClientEnabled")
+  public void testErrorRetry(boolean useNettyClient) {
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient);
 
     AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
     AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -67,9 +78,9 @@ public class TestVeniceDispatcher {
 
   }
 
-  @Test
-  public void passesThroughHttp429() {
-    VeniceDispatcher dispatcher = getMockDispatcher();
+  @Test(dataProvider = "isNettyClientEnabled")
+  public void passesThroughHttp429(boolean useNettyClient) {
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient);
 
     AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
     AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -86,20 +97,29 @@ public class TestVeniceDispatcher {
 
   }
 
-  private VeniceDispatcher getMockDispatcher(){
+  private VeniceDispatcher getMockDispatcher(boolean useNettyClient){
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();
     doReturn(5).when(routerConfig).getMaxOutgoingConnPerRoute();
-    doReturn(10l).when(routerConfig).getMaxPendingRequestPerHttpClient();
+    doReturn(10).when(routerConfig).getNettyClientChannelPoolMaxPendingAcquires();
+    doReturn(10l).when(routerConfig).getMaxPendingRequest();
+    doReturn(false).when(routerConfig).isSslToStorageNodes();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
     MetricsRepository mockMetricsRepo = new MetricsRepository();
     VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
 
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, Optional.empty(), mockStoreRepo,
-        Optional.empty(), mockStatsForSingleGet, mockStatsForMultiGet, Optional.empty(), mockMetricsRepo);
+    StorageNodeClient storageNodeClient;
+    if (useNettyClient) {
+      storageNodeClient = new NettyStorageNodeClient(routerConfig, Optional.empty(),
+          mockStatsForSingleGet, mockStatsForMultiGet, new EpollEventLoopGroup(1));
+    } else {
+      storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo);
+    }
+    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo,
+        Optional.empty(), mockStatsForSingleGet, mockStatsForMultiGet, mockMetricsRepo, storageNodeClient);
     dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;
   }
@@ -116,6 +136,10 @@ public class TestVeniceDispatcher {
     VenicePath mockPath = mock(VenicePath.class);
     doReturn("test_store").when(mockPath).getStoreName();
     doReturn(RequestType.SINGLE_GET).when(mockPath).getRequestType();
+    doReturn(Unpooled.EMPTY_BUFFER).when(mockPath).getRequestBody();
+    doReturn(HttpMethod.GET).when(mockPath).getHttpMethod();
+    doReturn(Integer.toString(
+        ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion())).when(mockPath).getVeniceApiVersionHeader();
 
     BasicHttpRequest mockRequest = mock(BasicHttpRequest.class);
 

@@ -148,7 +148,15 @@ public class TestVeniceResponseAggregator {
 
 
     // Test with different headers among sub responses
+    // build the previous 3 response again because the ByteBuf in the response.content() has been released
+    response1 = buildFullHttpResponse(OK, getResponseContentWithSchemaString(value1), headers);
+    response2 = buildFullHttpResponse(OK, getResponseContentWithSchemaString(value2), headers);
+    response3 = buildFullHttpResponse(OK, getResponseContentWithSchemaString(value3), headers);
     FullHttpResponse response4 = buildFullHttpResponse(OK, getResponseContentWithSchemaString(value3), new HashMap<>());
+    gatheredResponses.clear();
+    gatheredResponses.add(response1);
+    gatheredResponses.add(response2);
+    gatheredResponses.add(response3);
     gatheredResponses.add(response4);
 
     try {

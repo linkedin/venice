@@ -3,6 +3,7 @@ package com.linkedin.venice.router;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.router.cache.CacheEviction;
 import com.linkedin.venice.router.cache.CacheType;
+import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.List;
@@ -60,7 +61,15 @@ public class VeniceRouterConfig {
   private long singleGetUnhealthyLatencyThresholdMs;
   private long multiGetUnhealthyLatencyThresholdMs;
   private boolean readThrottlingEnabled;
-  private long maxPendingRequestPerHttpClient;
+  private long maxPendingRequest;
+  private StorageNodeClientType storageNodeClientType;
+  private int nettyClientEventLoopThreads;
+  private long nettyClientChannelPoolAcquireTimeoutMs;
+  private int nettyClientChannelPoolMinConnections;
+  private int nettyClientChannelPoolMaxConnections;
+  private int nettyClientChannelPoolMaxPendingAcquires;
+  private long nettyClientChannelPoolHealthCheckIntervalMs;
+  private int nettyClientMaxAggregatedObjectLength;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -130,7 +139,24 @@ public class VeniceRouterConfig {
     multiGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
 
     readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
-    maxPendingRequestPerHttpClient = props.getLong(ROUTER_MAX_PENDING_REQUEST_PER_HTTP_CLIENT, 2500l);
+    maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500l * 12l);
+
+    storageNodeClientType = StorageNodeClientType.valueOf(props.getString(ROUTER_STORAGE_NODE_CLIENT_TYPE, StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT.name())); // Use ApacheHttpAsynClient by default
+    // TODO: what is the best setting? 5*NUMBER_OF_CORES?
+    nettyClientEventLoopThreads = props.getInt(ROUTER_NETTY_CLIENT_EVENT_LOOP_THREADS, 24); // 24 threads by default
+    nettyClientChannelPoolAcquireTimeoutMs = props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_ACQUIRE_TIMEOUT_MS, 10); // 10ms by default
+    nettyClientChannelPoolMinConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MIN_CONNECTIONS, 160); // 160 connections by default
+    nettyClientChannelPoolMaxConnections = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_CONNECTIONS, 165); // 165 connections by default
+    /**
+     * ignore this config by default; only rely on the ROUTER_MAX_PENDING_REQUEST config for pending request throttling
+      */
+    nettyClientChannelPoolMaxPendingAcquires = props.getInt(ROUTER_NETTY_CLIENT_CHANNEL_POOL_MAX_PENDING_ACQUIRES, Integer.MAX_VALUE);
+    /**
+     * A channel will be closed if a request fails while using this channel, so there is no need to do frequent health check unless the system doesn't receive much traffic
+     */
+    nettyClientChannelPoolHealthCheckIntervalMs =
+        props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES));
+    nettyClientMaxAggregatedObjectLength = props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20); // 20MB by default; change it according to the max response size
   }
 
   public String getClusterName() {
@@ -285,8 +311,8 @@ public class VeniceRouterConfig {
     return readThrottlingEnabled;
   }
 
-  public long getMaxPendingRequestPerHttpClient() {
-    return maxPendingRequestPerHttpClient;
+  public long getMaxPendingRequest() {
+    return maxPendingRequest;
   }
 
   public boolean isSmartLongTailRetryEnabled() {
@@ -295,6 +321,38 @@ public class VeniceRouterConfig {
 
   public int getSmartLongTailRetryAbortThresholdMs() {
     return smartLongTailRetryAbortThresholdMs;
+  }
+
+  public StorageNodeClientType getStorageNodeClientType() {
+    return storageNodeClientType;
+  }
+
+  public int getNettyClientEventLoopThreads() {
+    return nettyClientEventLoopThreads;
+  }
+
+  public long getNettyClientChannelPoolAcquireTimeoutMs() {
+    return nettyClientChannelPoolAcquireTimeoutMs;
+  }
+
+  public int getNettyClientChannelPoolMinConnections() {
+    return nettyClientChannelPoolMinConnections;
+  }
+
+  public int getNettyClientChannelPoolMaxConnections() {
+    return nettyClientChannelPoolMaxConnections;
+  }
+
+  public int getNettyClientChannelPoolMaxPendingAcquires() {
+    return nettyClientChannelPoolMaxPendingAcquires;
+  }
+
+  public long getNettyClientChannelPoolHealthCheckIntervalMs() {
+    return nettyClientChannelPoolHealthCheckIntervalMs;
+  }
+
+  public int getNettyClientMaxAggregatedObjectLength() {
+    return nettyClientMaxAggregatedObjectLength;
   }
 
   /**

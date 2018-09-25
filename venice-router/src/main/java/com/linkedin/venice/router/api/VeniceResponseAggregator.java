@@ -187,6 +187,17 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(storeName, version, compressionStrategy,
         response.content().nioBuffer(), stats));
 
+    if (compressionStrategy != CompressionStrategy.NO_OP) {
+      /**
+       * When using compression, the data in response is already copied to `decompressedData`, so we can explicitly
+       * release the ByteBuf in the response immediately to avoid any memory leak.
+       *
+       * When not using compression, the backing byte array in the response will be reused to construct the response to
+       * client, and the ByteBuf will be released in the netty pipeline.
+       */
+      response.content().release();
+    }
+
     FullHttpResponse fullHttpResponse = response.replace(decompressedData);
     fullHttpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, decompressedData.readableBytes());
     fullHttpResponse.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
@@ -240,6 +251,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         byte[] content = response.content().array();
         resultLen += addResponseToList(content, contentList, storeName, version, compressionStrategy, stats);
       }
+
     }
 
     // Concat all the responses
@@ -261,12 +273,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   private ByteBuffer decompressRecord(String storeName, int version, CompressionStrategy compressionStrategy, ByteBuffer compressedData, AggRouterHttpRequestStats stats) {
     try {
+      // record the response size first before copying data from ByteBuffer in case the offset in ByteBuffer is changed
+      stats.recordCompressedResponseSize(storeName, compressedData.remaining());
       long decompressionStartTimeInNs = System.nanoTime();
       ByteBuffer decompressed = CompressorFactory.getCompressor(compressionStrategy).decompress(compressedData);
-
       stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(decompressionStartTimeInNs));
-      stats.recordCompressedResponseSize(storeName, compressedData.remaining());
-
       return decompressed;
     } catch (IOException e) {
       throw new VeniceException(String.format("failed to decompress data. Store: %s; Version: %d", storeName, version), e);

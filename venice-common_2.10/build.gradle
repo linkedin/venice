@@ -31,11 +31,15 @@ dependencies {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
-  compile libraries.oss
+  compile libraries.asyncHttpClient
+
   compile libraries.bouncyCastle
+
   compile libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
   compile libraries.commonsCodec
+
   compile libraries.guava
+
   compile (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
     // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
     exclude group: 'com.github.sgroschupf'
@@ -43,15 +47,12 @@ dependencies {
     exclude module:'zookeeper'
   }
 
-  compile libraries.asyncHttpClient
-  compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
-  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
   compile libraries.jacksonMapper
 
+  compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   compile libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
 
-  compile project(':venice-schema-common')
+  compile libraries.oss
 
   compile (libraries.routerLnkd){ // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
@@ -61,6 +62,11 @@ dependencies {
     exclude group: 'com.github.rholder', module: 'guava-retrying' // Keepin' it clean.
     exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keepin' it clean.
   }
+
+  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
+
+  compile project(':venice-schema-common')
 
   // Test dependencies are allowed to be bulkier.
   // testCompile libraries.kafka //restore this if we remove it from the compile dependencies

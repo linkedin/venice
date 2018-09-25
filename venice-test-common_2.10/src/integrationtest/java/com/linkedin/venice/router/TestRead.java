@@ -18,6 +18,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.SslUtils;
@@ -33,6 +34,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.httpclient.HttpStatus;
@@ -53,7 +55,7 @@ import static com.linkedin.venice.meta.PersistenceType.*;
 
 //TODO: merge TestRead and TestRouterCache.
 @Test(singleThreaded = true)
-public class TestRead {
+public abstract class TestRead {
   private static final int MAX_KEY_LIMIT = 10;
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
@@ -66,6 +68,7 @@ public class TestRead {
   private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object> veniceWriter;
 
+  protected abstract StorageNodeClientType getStorageNodeClientType();
 
   @BeforeClass
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
@@ -84,9 +87,11 @@ public class TestRead {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
-    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 2);
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
     routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
-    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:2");
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
+    // set config for whether use Netty client in Router or not
+    routerProperties.put(ConfigKeys.ROUTER_STORAGE_NODE_CLIENT_TYPE, getStorageNodeClientType());
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
@@ -256,16 +261,20 @@ public class TestRead {
         localhostRequestCountForMultiGet += metrics.get(".localhost--multiget_request.Count").value();
       }
     }
-    Assert.assertTrue(totalMaxConnectionCount > 0, "Max connection count must be positive");
-    Assert.assertTrue(connectionLeaseRequestLatencyMax > 0, "Connection lease max latency should be positive");
-    Assert.assertTrue(totalActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
-    Assert.assertTrue(totalPendingConnectionRequestCount == 0, "Pending connection request count should be 0 since test queries are finished");
-    Assert.assertTrue(totalIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
 
-    Assert.assertTrue(totalLocalhostMaxConnectionCount > 0, "Max connection count must be positive");
-    Assert.assertTrue(totalLocalhostActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
-    Assert.assertTrue(totalLocalhostPendingConnectionCount == 0, "Pending connection request count should be 0 since test queries are finished");
-    Assert.assertTrue(totalLocalhostIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
+    if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
+      // TODO: add connection pool stats for netty client
+      Assert.assertTrue(totalMaxConnectionCount > 0, "Max connection count must be positive");
+      Assert.assertTrue(connectionLeaseRequestLatencyMax > 0, "Connection lease max latency should be positive");
+      Assert.assertTrue(totalActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
+      Assert.assertTrue(totalPendingConnectionRequestCount == 0, "Pending connection request count should be 0 since test queries are finished");
+      Assert.assertTrue(totalIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
+
+      Assert.assertTrue(totalLocalhostMaxConnectionCount > 0, "Max connection count must be positive");
+      Assert.assertTrue(totalLocalhostActiveConnectionCount == 0, "Active connection count should be 0 since test queries are finished");
+      Assert.assertTrue(totalLocalhostPendingConnectionCount == 0, "Pending connection request count should be 0 since test queries are finished");
+      Assert.assertTrue(totalLocalhostIdleConnectionCount > 0, "There should be some idle connections since test queries are finished");
+    }
 
     Assert.assertTrue(localhostResponseWaitingTimeForSingleGet > 0);
     Assert.assertTrue(localhostResponseWaitingTimeForMultiGet > 0);

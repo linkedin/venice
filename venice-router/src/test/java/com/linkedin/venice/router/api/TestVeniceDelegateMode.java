@@ -13,8 +13,11 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -38,6 +41,8 @@ public class TestVeniceDelegateMode {
 
   private VenicePath getVenicePath(String resourceName, RequestType requestType, List<RouterKey> keys) {
     return new VenicePath(resourceName, false, -1) {
+      private final String ROUTER_REQUEST_VERSION = Integer.toString(
+          ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
       @Override
       public RequestType getRequestType() {
         return requestType;
@@ -56,6 +61,24 @@ public class TestVeniceDelegateMode {
       @Override
       public HttpUriRequest composeRouterRequest(String storageNodeUri) {
         return null;
+      }
+
+      @Override
+      public HttpMethod getHttpMethod() {
+        if (requestType.equals(RequestType.SINGLE_GET)) {
+          return HttpMethod.GET;
+        } else {
+          return HttpMethod.POST;
+        }
+      }
+
+      @Override
+      public ByteBuf getRequestBody() {
+        return Unpooled.EMPTY_BUFFER;
+      }
+
+      public String getVeniceApiVersionHeader() {
+        return ROUTER_REQUEST_VERSION;
       }
 
       @Nonnull

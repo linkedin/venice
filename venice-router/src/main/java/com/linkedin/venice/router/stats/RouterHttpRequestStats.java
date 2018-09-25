@@ -53,6 +53,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor delayConstraintAbortedRetryRequest;
   private final Sensor slowRouteAbortedRetryRequest;
 
+  private final Sensor nettyClientFirstResponseLatencySensor;
+  private final Sensor nettyClientLastResponseLatencySensor;
+
+  private final Sensor nettyClientAcquireChannelFutureLatencySensor;
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
       ScatterGatherStats scatterGatherStats) {
@@ -116,6 +120,26 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     delayConstraintAbortedRetryRequest = registerSensor("delay_constraint_aborted_retry_request", new Count());
     slowRouteAbortedRetryRequest = registerSensor("slow_route_aborted_retry_request", new Count());
+
+    /**
+     * For each response, the response consumer will first accept a `HttpResponse` that doesn't contain any content;
+     * then it will accept one or multiple `HttpContent` that contains the response content; finally, it will receive
+     * a `LastHttpContent` which indicates the end of a response.
+     *
+     * The metric below tracks the latency from receiving a request in dispatcher to receiving the `HttpResponse` message.
+     */
+    nettyClientFirstResponseLatencySensor = registerSensor("netty_client_first_response_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_first_response_latency")));
+    /**
+     * The metric below tracks the latency from receiving a request in dispacher to receiving the `LastHttpContent`
+     * message. The gap between this metric and the previous metric can tell us how much time is spent on concatenating
+     * all the response contents.
+     */
+    nettyClientLastResponseLatencySensor = registerSensor("netty_client_last_response_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_last_response_latency")));
+
+    nettyClientAcquireChannelFutureLatencySensor = registerSensor("netty_client_acquire_channel_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_acquire_channel_latency")));
   }
 
   public void recordRequest() {
@@ -210,6 +234,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordCachePutLatency(double latency) {
     cachePutLatencySensor.record(latency);
+  }
+
+  public void recordNettyClientFirstResponseLatency(double latency) {
+    nettyClientFirstResponseLatencySensor.record(latency);
+  }
+
+  public void recordNettyClientLastResponseLatency(double latency) {
+    nettyClientLastResponseLatencySensor.record(latency);
+  }
+
+  public void recordNettyClientAcquireChannelLatency(double latency) {
+    nettyClientAcquireChannelFutureLatencySensor.record(latency);
   }
 
   public void recordKeyNum(int keyNum) {
