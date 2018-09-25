@@ -2,8 +2,12 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Time;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -18,6 +22,9 @@ public class TestVenicePath {
   private static final String STORAGE_NODE2 = "s2";
 
   private static class SmartRetryVenicePath extends VenicePath {
+    private final String ROUTER_REQUEST_VERSION = Integer.toString(
+        ReadAvroProtocolDefinition.SINGLE_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+
     public SmartRetryVenicePath(Time time) {
       super("fake_resource_v1", true, SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, time);
     }
@@ -40,6 +47,20 @@ public class TestVenicePath {
     @Override
     public HttpUriRequest composeRouterRequest(String storageNodeUri) {
       return null;
+    }
+
+    @Override
+    public HttpMethod getHttpMethod() {
+      return HttpMethod.GET;
+    }
+
+    @Override
+    public ByteBuf getRequestBody() {
+      return Unpooled.EMPTY_BUFFER;
+    }
+
+    public String getVeniceApiVersionHeader() {
+      return ROUTER_REQUEST_VERSION;
     }
 
     @Nonnull

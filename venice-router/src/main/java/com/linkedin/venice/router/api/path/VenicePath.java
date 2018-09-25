@@ -7,6 +7,8 @@ import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import io.netty.util.internal.ConcurrentSet;
+import io.netty.buffer.ByteBuf;
+import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
 import java.util.Set;
 import javax.annotation.Nonnull;
@@ -187,4 +189,10 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   public abstract VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s);
 
   public abstract HttpUriRequest composeRouterRequest(String storageNodeUri);
+
+  public abstract HttpMethod getHttpMethod();
+
+  public abstract ByteBuf getRequestBody();
+
+  public abstract String getVeniceApiVersionHeader();
 }

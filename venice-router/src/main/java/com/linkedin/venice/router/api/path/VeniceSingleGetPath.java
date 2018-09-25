@@ -12,6 +12,9 @@ import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.HttpMethod;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
@@ -116,5 +119,20 @@ public class VeniceSingleGetPath extends VenicePath {
 
   public String getPartition() {
     return this.partition;
+  }
+
+  @Override
+  public HttpMethod getHttpMethod() {
+    return HttpMethod.GET;
+  }
+
+  @Override
+  public ByteBuf getRequestBody() {
+    return Unpooled.EMPTY_BUFFER;
+  }
+
+  @Override
+  public String getVeniceApiVersionHeader() {
+    return ROUTER_REQUEST_VERSION;
   }
 }

@@ -118,7 +118,7 @@ public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpR
         requestParts.length >=2 &&
         requestParts[1].equalsIgnoreCase(QueryAction.STORAGE.toString())) {
       return QueryAction.STORAGE;
-    } else if (req.method().equals(HttpMethod.GET) &&
+    } else if (reqMethod.equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
         requestParts[1].equalsIgnoreCase(QueryAction.HEALTH.toString())) {
       return QueryAction.HEALTH;

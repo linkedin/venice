@@ -14,6 +14,9 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.HttpMethod;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashMap;
@@ -33,6 +36,9 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceMultiGetPath extends VenicePath {
   private static final Logger LOGGER = Logger.getLogger(VeniceMultiGetPath.class);
+  private static final String ROUTER_REQUEST_VERSION = Integer.toString(
+      ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
+
   public static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
 
   private int keyNum;
@@ -261,5 +267,19 @@ public class VeniceMultiGetPath extends VenicePath {
         EXPECTED_PROTOCOL.getSchema());
     return deserializer.deserializeObjects(
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
+  }
+
+  @Override
+  public HttpMethod getHttpMethod() {
+    return HttpMethod.POST;
+  }
+
+  @Override
+  public ByteBuf getRequestBody() {
+    return Unpooled.wrappedBuffer(serializedMultiGetRequest());
+  }
+
+  public String getVeniceApiVersionHeader() {
+    return ROUTER_REQUEST_VERSION;
   }
 }

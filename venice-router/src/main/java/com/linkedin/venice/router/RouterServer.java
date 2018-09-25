@@ -41,9 +41,11 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.cache.RouterCache;
-import com.linkedin.venice.router.httpclient.CachedDnsResolver;
+import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
+import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
-import com.linkedin.venice.router.stats.DnsLookupStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
@@ -60,6 +62,11 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.ChannelPipeline;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultithreadEventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -69,7 +76,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -117,6 +123,11 @@ public class RouterServer extends AbstractVeniceService {
   private Router router;
   private Router secureRouter;
   private Optional<RouterCache> routerCache;
+
+  private MultithreadEventLoopGroup workerEventLoopGroup;
+  private MultithreadEventLoopGroup serverEventLoopGroup;
+
+  private ExecutorService workerExecutor;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
 
@@ -268,10 +279,9 @@ public class RouterServer extends AbstractVeniceService {
     storeConfigRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
     registry = new ResourceRegistry();
-    ExecutorService executor = registry
+    workerExecutor = registry
         .factory(ShutdownableExecutors.class)
-        .newFixedThreadPool(ROUTER_THREAD_POOL_SIZE, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
-    Executor workerExecutor = registry.factory(ShutdownableExecutors.class).newCachedThreadPool();
+        .newFixedThreadPool(config.getNettyClientEventLoopThreads(), new DefaultThreadFactory("RouterThread", true, Thread.MAX_PRIORITY));
     TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry);
     Map<String, Object> serverSocketOptions = null;
 
@@ -290,17 +300,28 @@ public class RouterServer extends AbstractVeniceService {
       // Tracking cache metrics
       new RouterCacheStats(metricsRepository, "router_cache", routerCache.get());
     }
-    Optional<CachedDnsResolver> dnsResolver = Optional.empty();
-    // Whether to enable DNS cache
-    if (config.isDnsCacheEnabled()) {
-      DnsLookupStats dnsLookupStats = new DnsLookupStats(metricsRepository, "dns_lookup");
-      dnsResolver = Optional.of(new CachedDnsResolver(config.getHostPatternForDnsCache(), config.getDnsCacheRefreshIntervalInMs(), dnsLookupStats));
-      logger.info("CachedDnsResolver is enabled, cached host pattern: " + config.getHostPatternForDnsCache() +
-          ", refresh interval: " + config.getDnsCacheRefreshIntervalInMs() + "ms");
+
+    workerEventLoopGroup = new EpollEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
+    serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
+
+    StorageNodeClient storageNodeClient;
+    switch (config.getStorageNodeClientType()) {
+      case NETTY_4_CLIENT:
+        logger.info("Router will use NETTY_4_CLIENT");
+        storageNodeClient = new NettyStorageNodeClient(config, sslFactoryForRequests, statsForSingleGet, statsForMultiGet, workerEventLoopGroup);
+        break;
+      case APACHE_HTTP_ASYNC_CLIENT:
+        logger.info("Router will use Apache_Http_Async_Client");
+        storageNodeClient = new ApacheHttpAsyncStorageNodeClient(config, sslFactoryForRequests, metricsRepository);
+        break;
+      default:
+        throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");
     }
 
-    dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests, metadataRepository, routerCache,
-        statsForSingleGet, statsForMultiGet, dnsResolver, metricsRepository);
+    dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
+        statsForSingleGet, statsForMultiGet, metricsRepository, storageNodeClient);
+
+
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler =
@@ -386,10 +407,9 @@ public class RouterServer extends AbstractVeniceService {
     router = Router.builder(scatterGather)
         .name("VeniceRouterHttp")
         .resourceRegistry(registry)
-        .executor(executor) // Executor provides the
-        .bossPoolSize(ROUTER_BOSS_THREAD_NUM) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM)
-        .workerExecutor(workerExecutor)
+        .serverSocketChannel(EpollServerSocketChannel.class)
+        .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
+        .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
@@ -418,10 +438,9 @@ public class RouterServer extends AbstractVeniceService {
     secureRouter = Router.builder(scatterGather)
         .name("SecureVeniceRouterHttps")
         .resourceRegistry(registry)
-        .executor(executor) // Executor provides the
-        .bossPoolSize(ROUTER_BOSS_THREAD_NUM) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM)
-        .workerExecutor(workerExecutor)
+        .serverSocketChannel(EpollServerSocketChannel.class)
+        .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
+        .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
@@ -474,6 +493,11 @@ public class RouterServer extends AbstractVeniceService {
      * TODO: figure out the root cause why {@link ResourceRegistry.State#performShutdown()} is not executing shutdown logic
      * correctly.
      */
+
+    dispatcher.close();
+    workerEventLoopGroup.shutdownGracefully();
+    serverEventLoopGroup.shutdownGracefully();
+
     router.shutdown();
     secureRouter.shutdown();
     router.waitForShutdown();
@@ -486,7 +510,6 @@ public class RouterServer extends AbstractVeniceService {
 
     routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getPort()));
     routersClusterManager.clear();
-    dispatcher.close();
     routingDataRepository.clear();
     metadataRepository.clear();
     storeConfigRepository.clear();
