@@ -70,7 +70,8 @@ public enum ControllerRoute {
 
   OFFLINE_PUSH_INFO("/offline_push_info", Arrays.asList(NAME, VERSION)),
 
-  UPLOAD_JOB_STATUS("/upload_job_status", Arrays.asList(CLUSTER, NAME, VERSION, JOB_STATUS));
+  UPLOAD_PUSH_JOB_STATUS("/upload_push_job_status", Arrays.asList(CLUSTER, NAME, VERSION, PUSH_JOB_STATUS,
+      PUSH_JOB_DURATION, PUSH_JOB_ID));
 
   private final String path;
   private final List<String> params;

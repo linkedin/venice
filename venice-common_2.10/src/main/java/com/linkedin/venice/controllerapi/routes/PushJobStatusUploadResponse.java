@@ -6,7 +6,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 /**
  * Response for uploading a job status record.
  */
-public class JobStatusUploadResponse extends ControllerResponse {
+public class PushJobStatusUploadResponse extends ControllerResponse {
   /**
    * The version number associated with the job.
    */

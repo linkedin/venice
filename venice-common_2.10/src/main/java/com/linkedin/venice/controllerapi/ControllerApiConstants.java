@@ -53,7 +53,8 @@ public class ControllerApiConstants {
   public static final String ACCESS_CONTROLLED = "access_controlled";
   public static final String STORE_MIGRATION = "store_migration";
 
-  public static final String JOB_STATUS = "job_status";
+  public static final String PUSH_JOB_STATUS = "push_job_status";
+  public static final String PUSH_JOB_DURATION = "push_job_duration";
 
   private ControllerApiConstants(){}
 
@@ -67,9 +68,9 @@ public class ControllerApiConstants {
   }
 
   /**
-   * Possible job status at the end of its lifecycle.
+   * Possible push job status at the end of its lifecycle.
    */
-  public enum JobStatus {
+  public enum PushJobStatus {
     SUCCESS, // The job succeeded
     ERROR, // Some error has occurred during the job
     KILLED // The job was terminated by user

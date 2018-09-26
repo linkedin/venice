@@ -172,7 +172,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.awaitInitialization(); // Wait for server to be initialized
 
-    httpService.post(UPLOAD_JOB_STATUS.getPath(), JobRoutes.uploadJobStatus(admin));
+    httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), JobRoutes.uploadPushJobStatus(admin));
 
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
