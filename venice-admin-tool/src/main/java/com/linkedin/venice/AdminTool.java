@@ -34,6 +34,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -774,8 +775,19 @@ public class AdminTool {
 
   private static boolean isClonedStoreOnline(ControllerClient srcControllerClient, ControllerClient destControllerClient,
       String storeName) {
-    List<Version> srcVersions = srcControllerClient.getStore(storeName).getStore().getVersions();
-    List<Version> destVersions = destControllerClient.getStore(storeName).getStore().getVersions();
+    StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+    if (null == srcStore) {
+      throw new VeniceException("Store " + storeName + " does not exist in the original cluster!");
+    }
+
+    StoreInfo destStore = destControllerClient.getStore(storeName).getStore();
+    if (null == destStore) {
+      System.err.println("WARN: Cloned store has not been created in the destination cluster!");
+      return false;
+    }
+
+    List<Version> srcVersions = srcStore.getVersions();
+    List<Version> destVersions = destStore.getVersions();
 
     int srcLatestOnlineVersion = getLatestOnlineVersionNum(srcVersions);
     int destLatestOnlineVersion = getLatestOnlineVersionNum(destVersions);
