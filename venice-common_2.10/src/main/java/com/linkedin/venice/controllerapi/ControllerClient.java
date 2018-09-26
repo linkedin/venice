@@ -3,7 +3,7 @@ package com.linkedin.venice.controllerapi;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.controllerapi.routes.JobStatusUploadResponse;
+import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -365,17 +365,28 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public JobStatusUploadResponse uploadJobStatus(String storeName, int version, JobStatus status) {
+  /**
+   * Uploads information regarding to a push job
+   * @param storeName Name of the store involved with the push job
+   * @param version Version number of the involved store
+   * @param status The final status of the push job
+   * @param jobDurationInMs Duration of the push job in milliseconds
+   * @param pushJobId Unique id of the push job
+   * @return
+   */
+  public PushJobStatusUploadResponse uploadPushJobStatus(String storeName, int version, PushJobStatus status, long jobDurationInMs, String pushJobId) {
     try {
       QueryParams queryParams = newParams()
           .add(CLUSTER, clusterName)
           .add(NAME, storeName)
           .add(VERSION, version)
-          .add(JOB_STATUS, status.toString());
-      String responseJson = postRequest(ControllerRoute.UPLOAD_JOB_STATUS.getPath(), queryParams);
-      return mapper.readValue(responseJson, JobStatusUploadResponse.class);
+          .add(PUSH_JOB_STATUS, status.toString())
+          .add(PUSH_JOB_DURATION, jobDurationInMs)
+          .add(PUSH_JOB_ID, pushJobId);
+      String responseJson = postRequest(ControllerRoute.UPLOAD_PUSH_JOB_STATUS.getPath(), queryParams);
+      return mapper.readValue(responseJson, PushJobStatusUploadResponse.class);
     } catch (Exception e) {
-      return handleError(new VeniceException("Error uploading job status", e), new JobStatusUploadResponse());
+      return handleError(new VeniceException("Error uploading job status", e), new PushJobStatusUploadResponse());
     }
   }
 

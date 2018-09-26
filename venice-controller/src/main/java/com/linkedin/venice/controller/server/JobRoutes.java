@@ -4,7 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.routes.JobStatusUploadResponse;
+import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -114,11 +114,11 @@ public class JobRoutes {
     };
   }
 
-  public static Route uploadJobStatus(Admin admin) {
+  public static Route uploadPushJobStatus(Admin admin) {
     return  (request, response) -> {
-      JobStatusUploadResponse responseObject = new JobStatusUploadResponse();
+      PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       try {
-        AdminSparkServer.validateParams(request, UPLOAD_JOB_STATUS.getParams(), admin);
+        AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));

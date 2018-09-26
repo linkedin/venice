@@ -22,7 +22,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.controllerapi.routes.JobStatusUploadResponse;
+import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -726,11 +726,11 @@ public class TestAdminSparkServer {
   }
 
   @Test(timeOut = TIME_OUT)
-  public void controllerClientCanUploadJobStatus() {
+  public void controllerClientCanUploadPushJobStatus() {
     String storeName = "controllerClientCanUploadJobStatus";
     int version = 1;
-    JobStatusUploadResponse jobStatusUploadResponse= controllerClient.uploadJobStatus(storeName, version,
-        ControllerApiConstants.JobStatus.SUCCESS);
+    PushJobStatusUploadResponse jobStatusUploadResponse= controllerClient.uploadPushJobStatus(storeName, version,
+        ControllerApiConstants.PushJobStatus.SUCCESS, 1000, "test-push-id");
     Assert.assertEquals(jobStatusUploadResponse.isError(), false);
     Assert.assertEquals(jobStatusUploadResponse.getName(), storeName);
     Assert.assertEquals(jobStatusUploadResponse.getVersion(), version);
