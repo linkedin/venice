@@ -10,6 +10,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Collection;
@@ -464,4 +466,13 @@ public interface Admin {
     boolean isResourceStillAlive(String resourceName);
 
     void updateClusterDiscovery(String storeName, String oldCluster, String newCluster);
+
+  /**
+   * Send the push job status record to the dedicated kafka topic.
+   * @param key the key for the push job status record.
+   * @param value the value for the push job status record.
+   */
+    void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value);
+
+    void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 }

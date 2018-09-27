@@ -11,7 +11,6 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.http.HttpStatus;
@@ -196,7 +195,7 @@ public class CreateVersion {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
 
-        writeEndOfPush(admin, clusterName, storeName, versionNumber, false);
+        admin.writeEndOfPush(clusterName, storeName, versionNumber, false);
 
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
@@ -231,7 +230,7 @@ public class CreateVersion {
         responseObject.setPartitions(partitionNum);
         responseObject.setReplicas(replicationFactor);
 
-        writeEndOfPush(admin, clusterName, storeName, versionNumber, true);
+        admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
 
         /** TODO: Poll {@link com.linkedin.venice.controller.VeniceParentHelixAdmin#getOffLineJobStatus(String, String, Map, TopicManager)} until it is terminal... */
 
@@ -242,32 +241,5 @@ public class CreateVersion {
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
-  }
-
-  protected static void writeEndOfPush(Admin admin, String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
-    //validate store and version exist
-    Store store = admin.getStore(clusterName, storeName);
-
-    if (null == store) {
-      throw new VeniceNoStoreException(storeName);
-    }
-
-    if (store.getCurrentVersion() == versionNumber){
-      throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
-    }
-
-    if (!store.containsVersion(versionNumber)){
-      throw new VeniceHttpException(HttpStatus.SC_NOT_FOUND, "Version " + versionNumber + " was not found for Store " + storeName
-          + ".  Cannot end push for version that does not exist");
-    }
-
-    //write EOP message
-    try (VeniceWriter writer = admin.getVeniceWriterFactory()
-        .getVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber))) {
-      if (alsoWriteStartOfPush) {
-        writer.broadcastStartOfPush(new HashMap<>());
-      }
-      writer.broadcastEndOfPush(new HashMap<>());
-    }
   }
 }

@@ -34,6 +34,7 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
+import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -732,8 +733,9 @@ public class TestAdminSparkServer {
     String storeName = "controllerClientCanUploadJobStatus";
     int version = 1;
     PushJobStatusUploadResponse jobStatusUploadResponse= controllerClient.uploadPushJobStatus(storeName, version,
-        ControllerApiConstants.PushJobStatus.SUCCESS, 1000, "test-push-id");
-    Assert.assertEquals(jobStatusUploadResponse.isError(), false);
+        PushJobStatus.SUCCESS, 1000, "test-push-id", "");
+    // expected to fail because the push job status topic/store is not created (no parent controller in the cluster).
+    Assert.assertEquals(jobStatusUploadResponse.isError(), true);
     Assert.assertEquals(jobStatusUploadResponse.getName(), storeName);
     Assert.assertEquals(jobStatusUploadResponse.getVersion(), version);
   }

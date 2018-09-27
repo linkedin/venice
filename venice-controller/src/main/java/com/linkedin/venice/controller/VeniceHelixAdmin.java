@@ -35,10 +35,15 @@ import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.*;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 
@@ -101,6 +106,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public static final long CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS = 500l;
 
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
+    private static final int GET_PUSH_JOB_STATUS_RTT_MAX_RETRY_COUNT = 5;
+    private static final long GET_PUSH_JOB_STATUS_RTT_RETRY_PERIOD_MS = 1000;
+
     private final HelixAdmin admin;
     private TopicManager topicManager;
     private final ZkClient zkClient;
@@ -118,7 +126,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final int minNumberOfStoreVersionsToPreserve;
     private final StoreGraveyard storeGraveyard;
 
-
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -128,6 +135,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Builder used to build the data path to access Helix internal data of level-1 cluster.
      */
     private PropertyKey.Builder level1KeyBuilder;
+
+    private String pushJobStatusTopicName;
+
+    private VeniceWriter<PushJobStatusRecordKey, PushJobStatusRecordValue> pushJobStatusWriter = null;
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
@@ -453,6 +464,81 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.updateStore(destClusterName, storeName, params);
 
         logger.info("Completed cloning Store: " + storeName);
+    }
+
+    public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
+        if (multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
+            || multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
+            // Push job status upload store is not configured.
+            throw new VeniceException("Unable to upload the push job status because corresponding store is not configured");
+        }
+        if (pushJobStatusTopicName == null) {
+            int attempts = 1;
+            while (attempts <= GET_PUSH_JOB_STATUS_RTT_MAX_RETRY_COUNT) {
+                // Since the push job status store is created asynchronously, it's possible that the store is not ready
+                // yet. Therefore multiple attempts might be needed.
+                try {
+                    configurePushJobStatusTopic();
+                    break;
+                } catch (VeniceException e) {
+                    logger.info("Get push job status rt topic attempts: "
+                        + attempts + "/" + GET_PUSH_JOB_STATUS_RTT_MAX_RETRY_COUNT);
+                }
+                Utils.sleep(GET_PUSH_JOB_STATUS_RTT_RETRY_PERIOD_MS,
+                    "The process of getting the push job status rt topic was interrupted");
+                attempts++;
+            }
+            if (pushJobStatusTopicName == null) {
+              throw new VeniceException("Unable to get the push job status rt topic");
+            }
+        }
+      if (pushJobStatusWriter == null) {
+          configurePushJobStatusWriter(key, value);
+      }
+      pushJobStatusWriter.put(key, value, multiClusterConfigs.getPushJobStatusValueSchemaId(), null);
+    }
+
+    private synchronized void configurePushJobStatusTopic() {
+        if (pushJobStatusTopicName == null) {
+            pushJobStatusTopicName = getRealTimeTopic(multiClusterConfigs.getPushJobStatusStoreClusterName(),
+                multiClusterConfigs.getPushJobStatusStoreName());
+        }
+    }
+
+    private synchronized void configurePushJobStatusWriter(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
+        if (pushJobStatusWriter == null) {
+            VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(key.getSchema().toString());
+            VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(value.getSchema().toString());
+            pushJobStatusWriter = getVeniceWriterFactory()
+                .getVeniceWriter(pushJobStatusTopicName, keySerializer, valueSerializer);
+        }
+    }
+
+    public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
+        //validate store and version exist
+        Store store = getStore(clusterName, storeName);
+
+        if (null == store) {
+            throw new VeniceNoStoreException(storeName);
+        }
+
+        if (store.getCurrentVersion() == versionNumber){
+            throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
+        }
+
+        if (!store.containsVersion(versionNumber)){
+            throw new VeniceHttpException(HttpStatus.SC_NOT_FOUND, "Version " + versionNumber + " was not found for Store " + storeName
+                + ".  Cannot end push for version that does not exist");
+        }
+
+        //write EOP message
+        try (VeniceWriter writer = getVeniceWriterFactory()
+            .getVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber))) {
+            if (alsoWriteStartOfPush) {
+                writer.broadcastStartOfPush(new HashMap<>());
+            }
+            writer.broadcastEndOfPush(new HashMap<>());
+        }
     }
 
     @Override
@@ -1798,6 +1884,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         List<String> partitionNames = new ArrayList<>();
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         admin.enablePartition(false, controllerClusterName, controllerName, clusterName, partitionNames);
+        if (null != pushJobStatusWriter) {
+            IOUtils.closeQuietly(pushJobStatusWriter);
+        }
     }
 
     @Override

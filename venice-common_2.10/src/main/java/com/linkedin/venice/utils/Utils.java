@@ -300,6 +300,20 @@ public class Utils {
     }
   }
 
+  /**
+   * Sleep until number of milliseconds have passed, or the operation is interrupted. This method will catch the
+   * {@link InterruptedException} and throw it as a {@link VeniceException} with the provided {@code message}.
+   * @param millis number of milliseconds to sleep for.
+   * @param message the message for the {@link VeniceException} in the event of an {@link InterruptedException}.
+   */
+  public static void sleep(long millis, String message) {
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      throw new VeniceException(message);
+    }
+  }
+
   public static boolean isNullOrEmpty(String value) {
     return value == null || value.length() == 0;
   }

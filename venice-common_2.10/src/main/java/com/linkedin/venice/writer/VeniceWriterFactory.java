@@ -43,6 +43,11 @@ public class VeniceWriterFactory {
     return getBasicVeniceWriter(topicName, SystemTime.INSTANCE);
   }
 
+  public <K, V> VeniceWriter<K, V> getVeniceWriter(String topicName, VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer) {
+    return getVeniceWriter(topicName, keySerializer, valueSerializer, SystemTime.INSTANCE);
+  }
+
   /**
    * Create a venice writer which is used to communicated with the topic contains real data.
    */

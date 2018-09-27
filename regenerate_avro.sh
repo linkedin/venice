@@ -12,6 +12,8 @@ DEFAULT_AVRO_TOOLS_JAR="avro/$avro_tools"
 
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v6/*"
+  "venice-common/src/main/resources/avro/PushJobStatusRecord/PushJobStatusRecordKey/v1/*"
+  "venice-common/src/main/resources/avro/PushJobStatusRecord/PushJobStatusRecordValue/v1/*"
   "venice-common/src/main/resources/avro/PartitionState/v5/*"
   "venice-common/src/main/resources/avro/StoreVersionState/v3/*"
   "venice-common/src/main/resources/avro/ChunkedValueManifest/v-20/*"
@@ -27,6 +29,8 @@ CODE_GEN_PATH=(
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-common/src/main/java"
+  "venice-common/src/main/java"
+  "venice-common/src/main/java"
   "venice-controller/src/main/java"
   "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
@@ -34,14 +38,16 @@ CODE_GEN_PATH=(
 )
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
-  "${CODE_GEN_PATH[1]}/com/linkedin/venice/kafka/protocol/state/*.java"
-  "${CODE_GEN_PATH[2]}/com/linkedin/venice/kafka/protocol/state/*.java"
-  "${CODE_GEN_PATH[3]}/com/linkedin/venice/storage/protocol/*.java"
-  "${CODE_GEN_PATH[4]}/com/linkedin/venice/storage/protocol/*.java"
-  "${CODE_GEN_PATH[5]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
-  "${CODE_GEN_PATH[6]}/com/linkedin/venice/read/protocol/response/*.java"
-  "${CODE_GEN_PATH[7]}/com/linkedin/venice/read/protocol/request/client/*.java"
-  "${CODE_GEN_PATH[8]}/com/linkedin/venice/read/protocol/request/router/*.java"
+  "${CODE_GEN_PATH[1]}/com/linkedin/venice/status/protocol/*.java"
+  "${CODE_GEN_PATH[2]}/com/linkedin/venice/status/protocol/*.java"
+  "${CODE_GEN_PATH[3]}/com/linkedin/venice/kafka/protocol/state/*.java"
+  "${CODE_GEN_PATH[4]}/com/linkedin/venice/kafka/protocol/state/*.java"
+  "${CODE_GEN_PATH[5]}/com/linkedin/venice/storage/protocol/*.java"
+  "${CODE_GEN_PATH[6]}/com/linkedin/venice/storage/protocol/*.java"
+  "${CODE_GEN_PATH[7]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
+  "${CODE_GEN_PATH[8]}/com/linkedin/venice/read/protocol/response/*.java"
+  "${CODE_GEN_PATH[9]}/com/linkedin/venice/read/protocol/request/client/*.java"
+  "${CODE_GEN_PATH[10]}/com/linkedin/venice/read/protocol/request/router/*.java"
 )
 
 if [[ $# < 1 ]]; then

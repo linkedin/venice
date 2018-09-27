@@ -545,4 +545,19 @@ public class ConfigKeys {
   public static final String ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS = "router.multiget.unhealthy.latency.ms";
 
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
+
+  /**
+   * Store name for the internal store for storing push job status records.
+   */
+  public static final String PUSH_JOB_STATUS_STORE_NAME = "controller.push.job.status.store.name";
+
+  /**
+   * The name of the cluster that the internal store for storing push job status records belongs to.
+   */
+  public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
+
+  /**
+   * Value schema id for the push job status records.
+   */
+  public static final String PUSH_JOB_STATUS_VALUE_SCHEMA_ID = "push.job.status.value.schema.id";
 }
