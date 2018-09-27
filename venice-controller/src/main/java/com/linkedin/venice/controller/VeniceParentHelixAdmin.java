@@ -49,6 +49,8 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -62,6 +64,7 @@ import java.util.HashMap;
 import java.util.Optional;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -87,7 +90,11 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
+  private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 1000;
+  private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 5;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
+  private static final String PUSH_JOB_STATUS_STORE_OWNER = "venice-internal";
+  private static final int PUSH_JOB_STATUS_STORE_PARTITION_NUM = 32;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
   public static final int MAX_PUSH_STATUS_PER_STORE_TO_KEEP = 10;
@@ -106,6 +113,10 @@ public class VeniceParentHelixAdmin implements Admin {
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
 
   private ParentHelixOfflinePushAccessor offlinePushAccessor;
+
+  private String pushJobStatusTopicName = null;
+
+  protected boolean asyncSetupRunning = false;
 
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
@@ -134,7 +145,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private Map<String, Long> clusterToLastOffsetMap;
 
   private final int waitingTimeForConsumptionMs;
-
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.veniceHelixAdmin = veniceHelixAdmin;
@@ -201,6 +211,98 @@ public class VeniceParentHelixAdmin implements Admin {
        */
       return getVeniceWriterFactory().getBasicVeniceWriter(topicName, getTimer());
     });
+
+    if (clusterName.equals(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
+      asyncSetupRunning = true;
+      if (!multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
+          && !multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
+        asyncSetupForPushStatusStore();
+      }
+    }
+  }
+
+  /**
+   * Setup the venice store used internally for hosting push job status records. If the store already exists
+   * and is in the correct state then only verification is performed.
+   */
+  private void asyncSetupForPushStatusStore() {
+    CompletableFuture.runAsync(() -> {
+      String storeName = multiClusterConfigs.getPushJobStatusStoreName();
+      String clusterName = multiClusterConfigs.getPushJobStatusStoreClusterName();
+      int retryCount = 0;
+      boolean pushJobStatusStoreReady = false;
+      while (!pushJobStatusStoreReady && asyncSetupRunning && retryCount < MAX_ASYNC_SETUP_RETRY_COUNT) {
+        try {
+          if (retryCount > 0) {
+            timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
+          }
+          pushJobStatusStoreReady = verifyAndCreatePushStatusStore(clusterName, storeName);
+        } catch (VeniceException e) {
+          logger.info("VeniceException occurred during push job status store setup: " + e);
+        } catch (Exception e) {
+          logger.warn("Exception occurred aborting push job status store setup: " + e);
+          break;
+        } finally {
+          retryCount++;
+          logger.info("Async push job status store setup attempts: " + retryCount + "/" + MAX_ASYNC_SETUP_RETRY_COUNT);
+        }
+      }
+      if (pushJobStatusStoreReady) {
+        logger.info("Push job status store has been successfully created or it already exists");
+      } else {
+        logger.error("Unable to create or find the push job status store");
+      }
+      asyncSetupRunning = false;
+    });
+  }
+
+  /**
+   * Verify the state of the internal store for push job status. The master controller will also create and configure
+   * the store if the desired state is not met.
+   * @param clusterName the name of the cluster that push status store belongs to.
+   * @param storeName the name of the push status store.
+   * @return {@code true} if the push status store is ready, {@code false} otherwise.
+   */
+  private boolean verifyAndCreatePushStatusStore(String clusterName, String storeName) {
+    Store store = getStore(clusterName, storeName);
+    boolean storeReady = false;
+    if (isMasterController(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
+      if (store == null) {
+        addStore(clusterName, storeName, PUSH_JOB_STATUS_STORE_OWNER, PushJobStatusRecordKey.SCHEMA$.toString(),
+            PushJobStatusRecordValue.SCHEMA$.toString());
+        store = getStore(clusterName, storeName);
+        if (store == null) {
+          throw new VeniceException("Unable to create or fetch the push job status store");
+        }
+      }
+      if (!store.isHybrid()) {
+        UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+        updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
+        updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
+        updateStoreQueryParams.setOwner(PUSH_JOB_STATUS_STORE_OWNER);
+        updateStore(clusterName, storeName, updateStoreQueryParams);
+        store = getStore(clusterName, storeName);
+        if (!store.isHybrid()) {
+          throw new VeniceException("Unable to update the push job status store to a hybrid store");
+        }
+      }
+      if (store.getVersions().isEmpty()) {
+        int numberOfPartitions = PUSH_JOB_STATUS_STORE_PARTITION_NUM;
+        int replicationFactor = getReplicationFactor(clusterName, storeName);
+        Version version = incrementVersion(clusterName, storeName, numberOfPartitions, replicationFactor);
+        writeEndOfPush(clusterName, storeName, version.getNumber(), true);
+        store = getStore(clusterName, storeName);
+        if (store.getVersions().isEmpty()) {
+          throw new VeniceException("Unable to initialize a version for the push job status store");
+        }
+      }
+      storeReady = true;
+    } else {
+      if (store != null && store.isHybrid() && !store.getVersions().isEmpty()) {
+        storeReady = true;
+      }
+    }
+    return storeReady;
   }
 
   @Override
@@ -1499,6 +1601,9 @@ public class VeniceParentHelixAdmin implements Admin {
     if (null != veniceWriter) {
       veniceWriter.close();
     }
+    if (clusterName.equals(multiClusterConfigs.getControllerClusterName())) {
+      asyncSetupRunning = false;
+    }
   }
 
   @Override
@@ -1557,6 +1662,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
     veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster);
+  }
+
+  public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
+    veniceHelixAdmin.sendPushJobStatusMessage(key, value);
+  }
+
+  public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
+    veniceHelixAdmin.writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush);
   }
 
   public void migrateStore(String srcClusterName, String destClusterName, String storeName) {

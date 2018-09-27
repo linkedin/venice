@@ -357,6 +357,7 @@ public class TestPushUtils {
     props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
     props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
     props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(KafkaPushJob.PUSH_JOB_STATUS_UPLOAD_ENABLE, "false");
 
     return props;
   }

@@ -144,6 +144,19 @@ public class ServiceFactory {
   }
 
   public static VeniceControllerWrapper getVeniceParentController(
+      String clusterName,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      VeniceControllerWrapper[] childControllers,
+      VeniceProperties properties,
+      boolean sslToKafka) {
+    return getStatefulService(
+        VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, properties, sslToKafka));
+  }
+
+  public static VeniceControllerWrapper getVeniceParentController(
       String[] clusterNames,
       String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper,

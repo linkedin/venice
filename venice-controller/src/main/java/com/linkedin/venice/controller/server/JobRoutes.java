@@ -6,6 +6,9 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
+import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
+import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
@@ -104,6 +107,7 @@ public class JobRoutes {
         responseObject.setCluster(cluster);
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
 
+
         admin.killOfflinePush(cluster, topic);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
@@ -119,9 +123,21 @@ public class JobRoutes {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       try {
         AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
+        PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+        PushJobStatusRecordValue value = new PushJobStatusRecordValue();
+        String storeName = request.queryParams(NAME);
+        int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+        key.storeName = storeName;
+        key.versionNumber = version;
+        value.storeName = storeName;
+        value.versionNumber = version;
+        value.status = PushJobStatus.valueOf(request.queryParams(PUSH_JOB_STATUS));
+        value.pushDuration = Utils.parseLongFromString(request.queryParams(PUSH_JOB_DURATION), PUSH_JOB_DURATION);
+        value.pushId = request.queryParams(PUSH_JOB_ID);
+        value.message = request.queryParams(MESSAGE);
+        admin.sendPushJobStatusMessage(key, value);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

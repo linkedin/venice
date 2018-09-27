@@ -14,9 +14,11 @@ import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -65,7 +67,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
 import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -149,6 +151,12 @@ public class KafkaPushJob extends AbstractJob {
 
   public static final String AZK_JOB_EXEC_URL = "azkaban.link.attempt.url";
 
+  /**
+   * Config to enable the service that uploads push job statuses to the controller using
+   * {@code ControllerClient.uploadPushJobStatus()}, the job status is then packaged and sent to dedicated Kafka channel.
+   */
+  public static final String PUSH_JOB_STATUS_UPLOAD_ENABLE = "push.job.status.upload.enable";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -165,6 +173,11 @@ public class KafkaPushJob extends AbstractJob {
 
   private static final DecimalFormat PERCENT_FORMAT = new DecimalFormat("##.#%");
 
+  /**
+   * Placeholder for version number that is yet to be created.
+   */
+  private static final int UNCREATED_VERSION_NUMBER = -1;
+
   // Immutable state
   private final VeniceProperties props;
   private final String id;
@@ -180,6 +193,7 @@ public class KafkaPushJob extends AbstractJob {
   private final double pbnjSamplingRatio;
   private final boolean isIncrementalPush;
   private final boolean isDuplicateKeyAllowed;
+  private final boolean enablePushJobStatusUpload;
 
   private ControllerClient controllerClient;
 
@@ -212,6 +226,8 @@ public class KafkaPushJob extends AbstractJob {
   private long inputFileDataSize;
   private long storeStorageQuota;
   private double storageEngineOverheadRatio;
+  private long pushStartTime;
+  private String pushId;
 
   private CompressionStrategy compressionStrategy;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
@@ -305,7 +321,7 @@ public class KafkaPushJob extends AbstractJob {
    * @param vanillaProps  Property bag for the job
    * @throws Exception
    */
-  public KafkaPushJob(String jobId, Properties vanillaProps) throws Exception {
+  public KafkaPushJob(String jobId, Properties vanillaProps) {
     super(jobId, logger);
     this.id = jobId;
 
@@ -344,6 +360,7 @@ public class KafkaPushJob extends AbstractJob {
     this.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
     this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
+    this.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
 
     if (enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -429,6 +446,7 @@ public class KafkaPushJob extends AbstractJob {
 
         // Waiting for Venice Backend to complete consumption
         pollStatusUntilComplete(incrementalPushVersion);
+        checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "");
       } else {
         logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
@@ -440,17 +458,37 @@ public class KafkaPushJob extends AbstractJob {
         runningJob = jc.runJob(pbnjJobConf);
       }
     } catch (Exception e) {
+      checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage());
       logger.error("Failed to run job.", e);
       closeVeniceWriter();
       try {
-        cancel();
+        stopAndCleanup();
       } catch (Exception ex) {
-        logger.info("Failed to cancel job", ex);
+        logger.info("Failed to stop and cleanup the job", ex);
       }
       if (! (e instanceof VeniceException)) {
         e = new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
       }
       throw (VeniceException) e;
+    }
+  }
+
+  /**
+   * Check push job status related fields and provide appropriate values if yet to be set due to error situations.
+   * Upload these fields to the controller using the {@link ControllerClient}.
+   * @param status the status of the push job.
+   * @param message the corresponding message to the push job status.
+   */
+  private void checkAndUploadPushJobStatus(PushJobStatus status, String message) {
+    if (enablePushJobStatusUpload) {
+      int version = topic == null ? UNCREATED_VERSION_NUMBER : Version.parseVersionFromKafkaTopicName(topic);
+      long duration = pushStartTime == 0 ? 0 : System.currentTimeMillis() - pushStartTime;
+      String verifiedPushId = pushId == null ? "" : pushId;
+      try {
+        controllerClient.uploadPushJobStatus(storeName, version, status, duration, verifiedPushId, message);
+      } catch (Exception e) {
+        logger.warn("Unable to upload push job status record", e);
+      }
     }
   }
 
@@ -527,7 +565,6 @@ public class KafkaPushJob extends AbstractJob {
     if (storeResponse.isError()) {
       throw new VeniceException("Can't get store info. " + storeResponse.getError());
     }
-
     storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
     if (storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && isMapOnly) {
       throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + storeName);
@@ -551,9 +588,10 @@ public class KafkaPushJob extends AbstractJob {
   private void createNewStoreVersion() {
     ControllerApiConstants.PushType pushType = isIncrementalPush ?
         ControllerApiConstants.PushType.INCREMENTAL : ControllerApiConstants.PushType.BATCH;
+    pushStartTime = System.currentTimeMillis();
+    pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
     VersionCreationResponse versionCreationResponse =
-        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType, System.currentTimeMillis() + "_" +
-            props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url"), false);
+        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType, pushId, false);
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
@@ -663,7 +701,6 @@ public class KafkaPushJob extends AbstractJob {
             throw new RuntimeException("Failed to connect to: " + veniceControllerUrl + " to query job status, after " + retryAttempts + " attempts.");
           } else {
             printJobStatus(response);
-
             ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
             /* Status of ERROR means that the job status was queried, and the job is in an error status */
             if (status.equals(ExecutionStatus.ERROR)){
@@ -917,7 +954,12 @@ public class KafkaPushJob extends AbstractJob {
    * @throws Exception
    */
   @Override
-  public void cancel() throws Exception {
+  public void cancel() {
+    stopAndCleanup();
+    checkAndUploadPushJobStatus(PushJobStatus.KILLED, "");
+  }
+
+  private void stopAndCleanup() {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     try {
       if (null != runningJob && !runningJob.isComplete()) {

@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
@@ -371,22 +372,25 @@ public class ControllerClient implements Closeable {
 
   /**
    * Uploads information regarding to a push job
-   * @param storeName Name of the store involved with the push job
-   * @param version Version number of the involved store
-   * @param status The final status of the push job
-   * @param jobDurationInMs Duration of the push job in milliseconds
-   * @param pushJobId Unique id of the push job
+   * @param storeName name of the store involved with the push job
+   * @param version version number of the involved store
+   * @param status the final status of the push job
+   * @param jobDurationInMs duration of the push job in milliseconds
+   * @param pushJobId unique id of the push job
+   * @param message additional description for the corresponding job status
    * @return
    */
-  public PushJobStatusUploadResponse uploadPushJobStatus(String storeName, int version, PushJobStatus status, long jobDurationInMs, String pushJobId) {
+  public PushJobStatusUploadResponse uploadPushJobStatus(String storeName, int version, PushJobStatus status,
+      long jobDurationInMs, String pushJobId, String message) {
     try {
       QueryParams queryParams = newParams()
           .add(CLUSTER, clusterName)
           .add(NAME, storeName)
           .add(VERSION, version)
-          .add(PUSH_JOB_STATUS, status.toString())
+          .add(PUSH_JOB_STATUS, status.name())
           .add(PUSH_JOB_DURATION, jobDurationInMs)
-          .add(PUSH_JOB_ID, pushJobId);
+          .add(PUSH_JOB_ID, pushJobId)
+          .add(MESSAGE, message);
       String responseJson = postRequest(ControllerRoute.UPLOAD_PUSH_JOB_STATUS.getPath(), queryParams);
       return mapper.readValue(responseJson, PushJobStatusUploadResponse.class);
     } catch (Exception e) {

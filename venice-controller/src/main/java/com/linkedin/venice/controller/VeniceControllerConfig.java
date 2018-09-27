@@ -43,6 +43,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private int minNumberOfUnusedKafkaTopicsToPreserve;
   private int minNumberOfStoreVersionsToPreserve;
   private final int parentControllerMaxErroredTopicNumToKeep;
+  private final String pushJobStatusStoreName;
+  private final String pushJobStatusStoreClusterName;
+  private final int pushJobStatusValueSchemaId;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -91,6 +94,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     // By default, keep 0 errored topics per store in parent controller
     this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 0);
+
+    this.pushJobStatusStoreName = props.getString(PUSH_JOB_STATUS_STORE_NAME, "");
+    this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
+    this.pushJobStatusValueSchemaId = props.getInt(PUSH_JOB_STATUS_VALUE_SCHEMA_ID, 1);
   }
 
   public int getAdminPort() {
@@ -190,6 +197,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public int getParentControllerMaxErroredTopicNumToKeep() {
     return parentControllerMaxErroredTopicNumToKeep;
   }
+
+  public String getPushJobStatusStoreName() { return pushJobStatusStoreName; }
+
+  public String getPushJobStatusStoreClusterName() { return pushJobStatusStoreClusterName; }
+
+  public int getPushJobStatusValueSchemaId() {return pushJobStatusValueSchemaId; }
 
   /**
    * @param clusterPros list of child controller uris

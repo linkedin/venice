@@ -1,0 +1,10 @@
+{
+  "name": "PushJobStatusRecordKey",
+  "namespace": "com.linkedin.venice.status.protocol",
+  "type": "record",
+    "fields": [
+      {"name": "storeName", "type": "string"},
+      {"name": "versionNumber", "type": "int"}
+    ]
+}
+

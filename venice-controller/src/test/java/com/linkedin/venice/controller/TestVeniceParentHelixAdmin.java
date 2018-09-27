@@ -47,11 +47,13 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -75,7 +77,7 @@ import static org.mockito.Matchers.anyString;
 
 
 public class TestVeniceParentHelixAdmin {
-  private static int TIMEOUT_IN_MS = 40 * Time.MS_PER_SECOND;
+  private static final int TIMEOUT_IN_MS = 40 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
@@ -103,25 +105,15 @@ public class TestVeniceParentHelixAdmin {
         .listTopics();
     doReturn(true).when(topicManager).containsTopic(topicName);
     internalAdmin = mock(VeniceHelixAdmin.class);
-    doReturn(topicManager)
-        .when(internalAdmin)
-        .getTopicManager();
+    doReturn(topicManager).when(internalAdmin).getTopicManager();
     zkClient = mock(ZkClient.class);
 
-    doReturn(zkClient)
-        .when(internalAdmin)
-        .getZkClient();
-    doReturn(new HelixAdapterSerializer())
-        .when(internalAdmin)
-        .getAdapterSerializer();
+    doReturn(zkClient).when(internalAdmin).getZkClient();
+    doReturn(new HelixAdapterSerializer()).when(internalAdmin).getAdapterSerializer();
 
     ExecutionIdAccessor executionIdAccessor = Mockito.mock(ExecutionIdAccessor.class);
-    doReturn(executionIdAccessor)
-        .when(internalAdmin)
-        .getExecutionIdAccessor();
-    doReturn(0L)
-        .when(executionIdAccessor)
-        .getLastSucceedExecutionId(any());
+    doReturn(executionIdAccessor).when(internalAdmin).getExecutionIdAccessor();
+    doReturn(0L).when(executionIdAccessor).getLastSucceedExecutionId(any());
 
     config = mockConfig(clusterName);
 
@@ -133,8 +125,7 @@ public class TestVeniceParentHelixAdmin {
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
     doReturn(store).when(storeRepo).getStore(any());
     // Please override this default mock implementation if you need special store repo logic for your test
-    doReturn(storeRepo).when(resources)
-        .getMetadataRepository();
+    doReturn(storeRepo).when(resources).getMetadataRepository();
 
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     parentAdmin.setOfflinePushAccessor(accessor);
@@ -147,24 +138,19 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
   }
 
-  private VeniceControllerConfig mockConfig(String clusterName){
+  private VeniceControllerConfig mockConfig(String clusterName) {
     VeniceControllerConfig config = mock(VeniceControllerConfig.class);
     doReturn(clusterName).when(config).getClusterName();
-    doReturn(KAFKA_REPLICA_FACTOR).when(config)
-        .getKafkaReplicaFactor();
-    doReturn(10000).when(config)
-        .getParentControllerWaitingTimeForConsumptionMs();
-    doReturn("fake_kafka_bootstrap_servers").when(config)
-        .getKafkaBootstrapServers();
+    doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicaFactor();
+    doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
+    doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
     return config;
   }
 
-  private VeniceHelixResources mockResources(VeniceControllerConfig config, String clusterName){
+  private VeniceHelixResources mockResources(VeniceControllerConfig config, String clusterName) {
     VeniceHelixResources resources = mock(VeniceHelixResources.class);
-    doReturn(config).when(resources)
-        .getConfig();
-    doReturn(resources).when(internalAdmin)
-        .getVeniceHelixResource(any());
+    doReturn(config).when(resources).getConfig();
+    doReturn(resources).when(internalAdmin).getVeniceHelixResource(any());
     return resources;
   }
 
@@ -172,22 +158,101 @@ public class TestVeniceParentHelixAdmin {
   public void testStartWithTopicExists() {
     parentAdmin.start(clusterName);
 
-    verify(internalAdmin)
-        .getTopicManager();
-    verify(topicManager, never())
-        .createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
+    verify(internalAdmin).getTopicManager();
+    verify(topicManager, never()).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
+        KAFKA_REPLICA_FACTOR);
   }
 
   @Test
   public void testStartWhenTopicNotExists() {
-    doReturn(false)
-        .when(topicManager)
-        .containsTopic(topicName);
+    doReturn(false).when(topicManager).containsTopic(topicName);
     parentAdmin.start(clusterName);
-    verify(internalAdmin)
-        .getTopicManager();
-    verify(topicManager)
-        .createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
+    verify(internalAdmin).getTopicManager();
+    verify(topicManager).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
+  }
+
+  private class AsyncSetupMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
+    private Store store;
+    private String pushJobStatusStoreName;
+
+    public AsyncSetupMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config,
+        Store store, String pushJobStatusStoreName) {
+      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+      this.store = store;
+      this.pushJobStatusStoreName = pushJobStatusStoreName;
+    }
+
+    public boolean isAsyncSetupRunning() {
+      return asyncSetupRunning;
+    }
+
+    @Override
+    public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+      doReturn(store).when(internalAdmin).getStore(clusterName, pushJobStatusStoreName);
+    }
+
+    @Override
+    public void updateStore(String clusterName,
+        String storeName,
+        Optional<String> owner,
+        Optional<Boolean> readability,
+        Optional<Boolean> writeability,
+        Optional<Integer> partitionCount,
+        Optional<Long> storageQuotaInByte,
+        Optional<Long> readQuotaInCU,
+        Optional<Integer> currentVersion,
+        Optional<Integer> largestUsedVersionNumber,
+        Optional<Long> hybridRewindSeconds,
+        Optional<Long> hybridOffsetLagThreshold,
+        Optional<Boolean> accessControlled,
+        Optional<CompressionStrategy> compressionStrategy,
+        Optional<Boolean> chunkingEnabled,
+        Optional<Boolean> singleGetRouterCacheEnabled,
+        Optional<Boolean> batchGetRouterCacheEnabled,
+        Optional<Integer> batchGetLimit,
+        Optional<Integer> numVersionsToPreserve,
+        Optional<Boolean> incrementalPushEnabled,
+        Optional<Boolean> storeMigration){
+      doReturn(true).when(store).isHybrid();
+    }
+
+    @Override
+    public Version incrementVersion(String clusterName,
+        String storeName,
+        int numberOfPartition,
+        int replicationFactor) {
+      List versions = new ArrayList();
+      versions.add(new Version("push-job-status-store", 1, "test-id"));
+      doReturn(versions).when(store).getVersions();
+      return new Version("push-job-status-store", 1, "test-id");
+    }
+
+  }
+
+  @Test (timeOut = TIMEOUT_IN_MS)
+  public void testAsyncSetupForPushStatusStore() {
+    String pushJobStatusStoreName = "push-job-status-store";
+    Store store = mock(Store.class);
+    doReturn(false).when(store).isHybrid();
+    doReturn(Collections.emptyList()).when(store).getVersions();
+    doReturn(true).when(internalAdmin).isMasterController(clusterName);
+    doReturn(clusterName).when(config).getPushJobStatusStoreClusterName();
+    doReturn(pushJobStatusStoreName).when(config).getPushJobStatusStoreName();
+    AsyncSetupMockVeniceParentHelixAdmin mockVeniceParentHelixAdmin =
+        new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, config, store, pushJobStatusStoreName);
+    mockVeniceParentHelixAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+    mockVeniceParentHelixAdmin.setTimer(new MockTime());
+    try {
+      mockVeniceParentHelixAdmin.start(clusterName);
+      TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> !store.getVersions().isEmpty());
+      verify(internalAdmin, times(4)).getStore(clusterName, pushJobStatusStoreName);
+      verify(store, times(2)).isHybrid();
+      verify(store, atLeast(2)).getVersions();
+    } finally {
+      mockVeniceParentHelixAdmin.stop(clusterName);
+    }
+    Assert.assertEquals(mockVeniceParentHelixAdmin.isAsyncSetupRunning(), false,
+        "Async setup should be stopped");
   }
 
   @Test
