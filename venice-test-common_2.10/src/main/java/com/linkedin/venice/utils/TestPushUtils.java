@@ -82,7 +82,18 @@ public class TestPushUtils {
    * @throws IOException
    */
   public static Schema writeSimpleAvroFileWithUserSchema(File parentDir) throws IOException {
-    return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING,
+    return writeSimpleAvroFileWithUserSchema(parentDir, true);
+  }
+
+  public static Schema writeSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
+      throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_user.avro";
+    } else {
+      fileName = "simple_user";
+    }
+    return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING,
         (recordSchema, writer) -> {
           String name = "test_name_";
           for (int i = 1; i <= 100; ++i) {

@@ -128,7 +128,7 @@ public abstract class TestBatch {
   @Test(timeOut =  TEST_TIMEOUT)
   public void testCompressingRecord() throws Exception {
     testBatchStore(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(),
                         recordSchema.getField("name").schema());
     }, properties -> {}, (avroClient, vsonClient) -> {

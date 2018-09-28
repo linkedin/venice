@@ -842,6 +842,12 @@ public class KafkaPushJob extends AbstractJob {
       conf.set(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
     }
 
+    /**
+     * Include all the files in the input directory no matter whether the file is with '.avro' suffix or not
+     * to keep the logic consistent with {@link #checkAvroSchemaConsistency(FileStatus[])}.
+     */
+    conf.set(AvroInputFormat.IGNORE_FILES_WITHOUT_EXTENSION_KEY, "false");
+
     return conf;
   }
 
