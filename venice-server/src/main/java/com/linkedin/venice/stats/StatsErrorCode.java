@@ -102,7 +102,14 @@ public enum StatsErrorCode {
    * the similar edge cases as {@link DIVStatsReporter} has. Check {@link #NULL_DIV_STATS}
    * for more details.
    */
-  NULL_BDB_STATS(-17);
+  NULL_BDB_STATS(-17),
+
+  /**
+   * Check {@link AggVersionedStorageEngineStats} to find more details.
+   */
+  NULL_STORAGE_ENGINE_STATS(-18),
+
+  NOT_SUPPORTED(-19);
 
   public final int code;
 

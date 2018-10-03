@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
+import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
@@ -133,8 +134,10 @@ public class VeniceServer {
     this.kafkaStoreIngestionService =
         new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo,schemaRepo, metricsRepository);
 
-    AggVersionedBdbStorageEngineStats storageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
-    storageService.setAggBdbStorageEngineStats(storageEngineStats);
+    AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
+    storageService.setAggBdbStorageEngineStats(bdbStorageEngineStats);
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
+    storageService.setAggVersionedStorageEngineStats(storageEngineStats);
 
     //HelixParticipationService below creates a Helix manager and connects asynchronously below.  The listener service
     //needs a routing data repository that relies on a connected helix manager.  So we pass the listener service a future

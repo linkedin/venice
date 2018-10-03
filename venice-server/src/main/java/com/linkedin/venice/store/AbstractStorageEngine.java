@@ -297,4 +297,6 @@ public abstract class AbstractStorageEngine implements Store {
     }
     return this.partitionIdToPartitionMap.get(partitionId);
   }
+
+  public abstract long getStoreSizeInBytes();
 }

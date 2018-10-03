@@ -32,6 +32,14 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
 public class VeniceServerWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceServer";
 
+  /**
+   *  Possible config options which are not included in {@link com.linkedin.venice.ConfigKeys}.
+    */
+  public static final String SERVER_ENABLE_SERVER_WHITE_LIST = "server_enable_white_list";
+  public static final String SERVER_IS_AUTO_JOIN = "server_is_auto_join";
+  public static final String SERVER_ENABLE_SSL = "server_enable_ssl";
+  public static final String SERVER_SSL_TO_KAFKA = "server_ssl_to_kafka";
+
   private VeniceServer veniceServer;
   private final VeniceProperties serverProps;
   private final VeniceConfigLoader config;
@@ -45,12 +53,14 @@ public class VeniceServerWrapper extends ProcessWrapper {
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName,
       KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean enableServerWhitelist,
-      boolean isAutoJoin,
-      boolean ssl,
-      boolean sslToKafka,
-      Properties properties) {
+      Properties featureProperties,
+      Properties configProperties) {
     return (serviceName, port, dataDirectory) -> {
+      boolean enableServerWhitelist = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_WHITE_LIST, "false"));
+      boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
+      boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
+      boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
+
       /** Create config directory under {@link dataDirectory} */
       File configDirectory = new File(dataDirectory.getAbsolutePath(), "config");
       FileUtils.forceMkdir(configDirectory);
@@ -73,7 +83,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
           .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(PERSISTENCE_TYPE, BDB)
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
-          .put(properties);
+          .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());

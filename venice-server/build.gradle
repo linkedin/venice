@@ -30,6 +30,7 @@ dependencies {
   compile libraries.netty
   compile libraries.asyncHttpClient
   compile libraries.tehuti
+  compile libraries.commonsIo
   compile (libraries.netty4Lnkd){
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'

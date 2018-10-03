@@ -21,6 +21,8 @@ import org.apache.log4j.Logger;
 
 import java.util.Optional;
 
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
+
 
 /**
  * A factory for generating Venice services and external service instances
@@ -169,27 +171,40 @@ public class ServiceFactory {
     });
   }
 
-        /**
-   * Deprecated, use the replacement method that accepts a boolean for whether to use ssl or not
-   * @param clusterName
-   * @param kafkaBrokerWrapper
-   * @param enableServerWhitelist
-   * @param autoJoinWhitelist
-   * @return
+  /**
+   * Use {@link #getVeniceServer(String, KafkaBrokerWrapper, Properties, Properties)} instead.
    */
   @Deprecated
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean enableServerWhitelist, boolean autoJoinWhitelist) {
+    Properties featureProperties = new Properties();
+    featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableServerWhitelist));
+    featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(autoJoinWhitelist));
+    featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(DEFAULT_SSL_TO_STORAGE_NODES));
+    featureProperties.setProperty(SERVER_SSL_TO_KAFKA, "false");
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist,
-            DEFAULT_SSL_TO_STORAGE_NODES, false, new Properties()));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, new Properties()));
   }
 
+  /**
+   * Use {@link #getVeniceServer(String, KafkaBrokerWrapper, Properties, Properties)} instead.
+   */
+  @Deprecated
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean enableServerWhitelist, boolean autoJoinWhitelist, boolean ssl, boolean sslToKafka, Properties properties) {
+    Properties featureProperties = new Properties();
+    featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableServerWhitelist));
+    featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(autoJoinWhitelist));
+    featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(ssl));
+    featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist,
-            ssl, sslToKafka, properties));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, properties));
+  }
+
+  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, Properties featureProperties,
+      Properties configProperties) {
+    return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties));
   }
 
   /**

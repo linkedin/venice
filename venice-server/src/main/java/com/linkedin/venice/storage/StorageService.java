@@ -9,6 +9,7 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
+import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
@@ -17,6 +18,7 @@ import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.store.rocksdb.RocksDBStorageEngineFactory;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.log4j.Logger;
 
@@ -41,6 +43,8 @@ public class StorageService extends AbstractVeniceService {
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
   private final Consumer<String> storeVersionStateDeleter;
+
+  private Optional<AggVersionedStorageEngineStats> aggVersionedStorageEngineStats = Optional.empty();
 
   public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter) {
     this.serverConfig = configLoader.getVeniceServerConfig();
@@ -145,6 +149,10 @@ public class StorageService extends AbstractVeniceService {
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     engine = factory.getStore(storeConfig);
     storeRepository.addLocalStorageEngine(engine);
+
+    if (aggVersionedStorageEngineStats.isPresent()) {
+      aggVersionedStorageEngineStats.get().setStorageEngine(storeName, engine);
+    }
     return engine;
   }
 
@@ -205,6 +213,9 @@ public class StorageService extends AbstractVeniceService {
     storeRepository.setAggBdbStorageEngineStats(stats);
   }
 
+  public void setAggVersionedStorageEngineStats(AggVersionedStorageEngineStats stats) {
+    aggVersionedStorageEngineStats = Optional.of(stats);
+  }
   @Override
   public boolean startInner() throws Exception {
     // After Storage Node starts, Helix controller initiates the state transition for the Stores that

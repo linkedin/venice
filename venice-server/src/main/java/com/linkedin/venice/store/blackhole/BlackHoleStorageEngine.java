@@ -27,4 +27,9 @@ public class BlackHoleStorageEngine extends AbstractStorageEngine {
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new BlackHoleStorageEnginePartition(storagePartitionConfig.getPartitionId());
   }
+
+  @Override
+  public long getStoreSizeInBytes() {
+    return 0;
+  }
 }
