@@ -146,4 +146,9 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine {
   public AbstractStoragePartition getStoragePartition(int partitionId) {
     return this.delegate.getStoragePartition(partitionId);
   }
+
+  @Override
+  public long getStoreSizeInBytes() {
+    return this.delegate.getStoreSizeInBytes();
+  }
 }

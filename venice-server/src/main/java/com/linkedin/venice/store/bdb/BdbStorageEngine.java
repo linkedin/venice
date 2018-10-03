@@ -3,6 +3,7 @@ package com.linkedin.venice.store.bdb;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -80,6 +81,16 @@ public class BdbStorageEngine extends AbstractStorageEngine {
       for (AbstractStoragePartition partition : partitionIdToPartitionMap.values()) {
         partition.close();
       }
+    }
+  }
+
+  @Override
+  public long getStoreSizeInBytes() {
+    if (environment.isValid()) {
+      return new BdbSpaceUtilizationSummary(environment).getTotalSpaceUsed();
+    } else {
+      // Environment could be closed/discarded
+      return StatsErrorCode.NULL_BDB_ENVIRONMENT.code;
     }
   }
 }

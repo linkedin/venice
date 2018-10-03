@@ -3,6 +3,7 @@ package com.linkedin.venice.store.memory;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -37,5 +38,11 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return  new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
+  }
+
+  @Override
+  public long getStoreSizeInBytes() {
+    // Not supported
+    return StatsErrorCode.NOT_SUPPORTED.code;
   }
 }

@@ -48,6 +48,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.meta.PersistenceType.*;
+
 
 //TODO: merge TestRead and TestRouterCache.
 @Test(singleThreaded = true)
@@ -79,7 +81,7 @@ public class TestRead {
     System.setProperty("io.netty.leakDetection.level", "paranoid");
 
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 0, 2, 100, true, false);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 2);
@@ -87,6 +89,13 @@ public class TestRead {
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:2");
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
+
+    // By default, the storage engine is BDB, and we would like test ROCKS_DB here as well.
+    Properties serverProperties = new Properties();
+    serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, ROCKS_DB);
+    Properties serverFeatureProperties = new Properties();
+    serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
+    veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);
 
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
@@ -271,6 +280,11 @@ public class TestRead {
       if (metrics.containsKey(".total--multiget_request_part_count.Max")) {
         maxMultiGetRequestPartCount = Math.max(maxMultiGetRequestPartCount, metrics.get(".total--multiget_request_part_count.Max").value());
       }
+      metrics.forEach( (mName, metric) -> {
+        if (mName.contains("_current--disk_usage_in_bytes")) {
+          Assert.assertTrue(metric.value() > 0, "Disk usage for current version should be postive");
+        }
+      });
     }
     Assert.assertEquals(maxMultiGetRequestPartCount, 1.0);
 

@@ -11,6 +11,7 @@ import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.rocksdb.Options;
 
@@ -89,6 +90,19 @@ class RocksDBStorageEngine extends AbstractStorageEngine {
       for (AbstractStoragePartition partition : partitionIdToPartitionMap.values()) {
         partition.close();
       }
+    }
+  }
+
+  @Override
+  public long getStoreSizeInBytes() {
+    File storeDbDir = new File(storeDbPath);
+    if (storeDbDir.exists()) {
+      /**
+       * {@link FileUtils#sizeOf(File)} will throw {@link IllegalArgumentException} if the file/dir doesn't exist.
+       */
+      return FileUtils.sizeOf(storeDbDir);
+    } else {
+      return 0;
     }
   }
 }
