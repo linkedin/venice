@@ -79,7 +79,7 @@ public class VeniceRouterConfig {
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); //10s
-    heartbeatTimeoutMs = props.getInt(HEARTBEAT_TIMEOUT, 1000); //1s
+    heartbeatTimeoutMs = props.getInt(HEARTBEAT_TIMEOUT, 10000); //10s
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by default.
     maxReadCapacityCu = props.getLong(MAX_READ_CAPCITY, 100000); //100000 CU
     longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms

@@ -311,7 +311,7 @@ public class RouterServer extends AbstractVeniceService {
         config.isStickyRoutingEnabledForSingleGet(),
         config.isStickyRoutingEnabledForMultiGet(),
         statsForSingleGet, statsForMultiGet,
-        liveInstanceMonitor);
+        healthMonitor);
 
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         metadataRepository,
