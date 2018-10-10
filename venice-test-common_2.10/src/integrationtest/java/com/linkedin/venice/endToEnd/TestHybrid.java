@@ -3,7 +3,9 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -23,8 +25,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.lang.reflect.Field;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -35,8 +40,10 @@ import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -144,7 +151,7 @@ public class TestHybrid {
     }
 
     //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice, storeName);
+    SystemProducer veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
     for (int i=1; i<=10; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);
     }
@@ -171,7 +178,7 @@ public class TestHybrid {
 
     // Write more streaming records
     if (multiDivStream) {
-      veniceProducer = getSamzaProducer(venice, storeName); // new producer, new DIV segment.
+      veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM); // new producer, new DIV segment.
     }
     for (int i=10; i<=20; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);
@@ -251,6 +258,72 @@ public class TestHybrid {
     });
     veniceProducer.stop();
     venice.close();
+  }
+
+  @Test
+  public void testSamzaBatchLoad() throws Exception {
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);
+    Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
+    String clusterName = veniceClusterWrapper.getClusterName();
+    String storeName = "test-store";
+    long streamingRewindSeconds = 25L;
+    long streamingMessageLag = 2L;
+
+    // Create empty store
+    admin.addStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
+    admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(streamingRewindSeconds)
+        .setHybridOffsetLagThreshold(streamingMessageLag));
+    Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
+    Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+
+
+    // Batch load from Samza
+    SystemProducer veniceBatchProducer = getSamzaProducer(veniceClusterWrapper, storeName, ControllerApiConstants.PushType.BATCH);
+    for (int i=1; i<=10; i++) {
+      sendStreamingRecord(veniceBatchProducer, storeName, i);
+    }
+    Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
+    Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+
+    // Write END_OF_PUSH message
+    // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, veniceClusterWrapper.getKafka().getAddress());
+    VeniceWriter<byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(storeName + "_v1");
+    writer.broadcastEndOfPush(new HashMap<>());
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
+      Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
+    });
+
+    // Verify data, note only 1-10 have been pushed so far
+    AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()));
+    for (int i = 1; i < 10; i++){
+      String key = Integer.toString(i);
+      Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
+    }
+    Assert.assertTrue(client.get(Integer.toString(11)).get() == null, "This record should not be found");
+
+    // Switch to stream mode and push more data
+    SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, ControllerApiConstants.PushType.STREAM);
+    for (int i=11; i<=20; i++) {
+      sendStreamingRecord(veniceStreamProducer, storeName, i);
+    }
+    Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
+    Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(2));
+    Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
+
+    // Verify both batch and stream data
+    Utils.sleep(3000);
+    for (int i = 1; i < 20; i++){
+      String key = Integer.toString(i);
+      Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
+    }
+    Assert.assertTrue(client.get(Integer.toString(21)).get() == null, "This record should not be found");
+
+    veniceClusterWrapper.close();
   }
 
   /**

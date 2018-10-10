@@ -24,7 +24,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -554,7 +553,7 @@ public class KafkaPushJob extends AbstractJob {
         ControllerApiConstants.PushType.INCREMENTAL : ControllerApiConstants.PushType.BATCH;
     VersionCreationResponse versionCreationResponse =
         controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType, System.currentTimeMillis() + "_" +
-            props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url"));
+            props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url"), false);
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());

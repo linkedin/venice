@@ -573,7 +573,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     mayThrottleTopicCreation(timer);
     Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
-        numberOfPartition, replicationFactor, false);
+        numberOfPartition, replicationFactor, false, false);
     cleanupHistoricalVersions(clusterName, storeName);
     createOfflinePushStatus(clusterName, storeName, newVersion.getNumber(), numberOfPartition, replicationFactor);
     return newVersion;
@@ -630,16 +630,18 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
-      int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
+      int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
+      boolean sendStartOfPush) {
+
     Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
     if (currentPush.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPush.get());
       Optional<Version> version = getStore(clusterName, storeName).getVersion(currentPushVersion);
-      if (! version.isPresent()) {
+      if (!version.isPresent()) {
         throw new VeniceException("There should be a corresponding version with the ongoing push: " + currentPush);
       }
       String existingPushId = version.get().getPushJobId();
-      if (! existingPushId.equals(pushJobId)) {
+      if (!existingPushId.equals(pushJobId)) {
         throw new VeniceException(
             "Topic " + currentPush + " already exists for store " + storeName + " and does not match pushJobId "
                 + pushJobId + ".  This topic represents a different ongoing push initiated from " + existingPushId
@@ -648,7 +650,9 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
-    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, false, isIncrementalPush);
+    Version newVersion =
+        veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions,
+            replicationFactor, false, isIncrementalPush, sendStartOfPush);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }

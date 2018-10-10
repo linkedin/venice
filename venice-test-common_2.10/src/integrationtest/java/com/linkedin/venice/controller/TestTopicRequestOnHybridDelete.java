@@ -59,7 +59,7 @@ public class TestTopicRequestOnHybridDelete {
       controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
       //write streaming records
-      veniceProducer = getSamzaProducer(venice, storeName);
+      veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
       for (int i=1; i<=10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
@@ -117,7 +117,7 @@ public class TestTopicRequestOnHybridDelete {
 
 
       //write more streaming records
-      veniceProducer = getSamzaProducer(venice, storeName);
+      veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
       for (int i=11; i<=20; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
@@ -166,7 +166,9 @@ public class TestTopicRequestOnHybridDelete {
     makeStoreHybrid(venice, storeName, 100L, 5L);
 
     //new version, but don't write records
-    VersionCreationResponse startedVersion = controllerClient.requestTopicForWrites(storeName, 1L, ControllerApiConstants.PushType.BATCH, TestUtils.getUniqueString("pushId"));
+    VersionCreationResponse startedVersion =
+        controllerClient.requestTopicForWrites(storeName, 1L, ControllerApiConstants.PushType.BATCH,
+            TestUtils.getUniqueString("pushId"), false);
     Assert.assertEquals(controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertTrue(topicManager.containsTopic(startedVersion.getKafkaTopic()));
 

@@ -591,13 +591,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public synchronized Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition, int replicationFactor) {
-        return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition, replicationFactor, true);
+        return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition, replicationFactor, true, false);
     }
 
     /**
      * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for
      */
-    protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush) {
+    protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
+        int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush, boolean sendStartOfPush) {
+
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
@@ -641,6 +643,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
                 createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount,
                     clusterConfig.getKafkaReplicaFactor(), true);
+
+                if (sendStartOfPush) {
+                    // Note this will use default values for "sorted", "chunked" and "compressionStrategy" properties.
+                    // TODO: add more flexibility and consider refactoring this entire logictus
+                    veniceWriterFactory.getVeniceWriter(version.kafkaTopicName()).broadcastStartOfPush(new HashMap<>());
+                }
+
                 if (whetherStartOfflinePush) {
                     // TODO: there could be some problem here since topic creation is an async op, which means the new topic
                     // may not exist, When storage node is trying to consume the new created topic.
@@ -692,17 +701,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * TODO: refactor so that this method and the counterpart in {@link VeniceParentHelixAdmin} should have same behavior
      */
     @Override
-    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush) {
+    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
+        int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
+        boolean sendStartOfPush) {
+
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
-            if(store == null) {
+            if (store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
             Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
-            if (existingVersionToUse.isPresent()){
+            if (existingVersionToUse.isPresent()) {
                 return existingVersionToUse.get();
             }
         } finally {
@@ -710,7 +722,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         return isIncrementalPush ? getIncrementalPushVersion(clusterName, storeName)
-            : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, offlinePush);
+            : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
+                offlinePush, sendStartOfPush);
     }
 
     /**

@@ -214,7 +214,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   protected static void validateParams(Request request, List<String> requiredParams, Admin admin) {
     String clusterName = request.queryParams(CLUSTER);
-    if (Utils.isNullOrEmpty(clusterName)) {
+    if (Utils.isNullOrEmpty(clusterName) && !request.pathInfo().equals(CLUSTER_DISCOVERY.getPath())) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter");
     }
     if (!request.pathInfo().equals(MASTER_CONTROLLER.getPath())

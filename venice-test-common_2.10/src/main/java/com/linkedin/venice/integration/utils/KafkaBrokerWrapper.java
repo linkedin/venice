@@ -1,13 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
-import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.MockTime;
-import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestUtils;
 import java.util.Properties;
 import kafka.metrics.KafkaMetricsReporter;
 import kafka.server.KafkaConfig;
@@ -128,6 +123,10 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
 
   public int getSslPort() {
     return sslPort;
+  }
+
+  public String getAddress() {
+    return getHost() + ":" + getPort();
   }
 
   public String getSSLAddress(){
