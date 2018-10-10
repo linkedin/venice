@@ -557,6 +557,17 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public ChildAwareResponse listChildControllers(String clusterName) {
+    try {
+      QueryParams params = newParams().add(CLUSTER, clusterName);
+      String responseJson = getRequest(ControllerRoute.LIST_CHILD_CLUSTERS.getPath(), params);
+      return mapper.readValue(responseJson, ChildAwareResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error listing child controllers for cluster: " + clusterName, e), new ChildAwareResponse());
+    }
+  }
+
+
   /* SCHEMA */
   public SchemaResponse getKeySchema(String storeName) {
     try {
@@ -931,7 +942,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  protected String getClusterName() {
+  public String getClusterName() {
     return this.clusterName;
   }
 

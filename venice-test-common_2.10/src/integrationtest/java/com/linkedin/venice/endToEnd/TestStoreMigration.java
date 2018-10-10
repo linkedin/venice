@@ -7,7 +7,6 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -513,6 +512,49 @@ public class TestStoreMigration {
     response = destControllerClient.updateStore(store0, new UpdateStoreQueryParams().setAccessControlled(false));
     Assert.assertTrue(response.isError(), "This should not be allowed");
 
+    // Push again
+    // This would reveal a problem during store deletion in child cluster,
+    // caused by "largest used version" mismatch between original store in parent and the rest of the world
+    populateStoreForMultiCluster(parentControllerUrl, srcClusterName, store0, 2);
+
+    // Both original and cloned stores should have the new version
+    //
+    // Parent
+    Assert.assertTrue(srcParentAdmin.hasStore(srcClusterName, store0));
+    Assert.assertTrue(destParentAdmin.hasStore(destClusterName, store0));
+
+    Store originalParentStore = srcParentAdmin.getStore(srcClusterName, store0);
+    Assert.assertFalse(originalParentStore.containsVersion(2));   // Note this is false
+    Assert.assertEquals(originalParentStore.getLargestUsedVersionNumber(), 1);  // Original store in parent will not be updated after a new push job! This is OK because AdminConsumptionTask will ignore this mismatch during store deletion
+    Assert.assertTrue(originalParentStore.isMigrating());
+
+    Store clonedParentStore = destParentAdmin.getStore(destClusterName, store0);
+    Assert.assertTrue(clonedParentStore.containsVersion(2));
+    Assert.assertEquals(clonedParentStore.getLargestUsedVersionNumber(), 2);
+    Assert.assertTrue(clonedParentStore.isMigrating());
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Child
+      for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
+        Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
+        Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+
+        Assert.assertTrue(srcChildAdmin.hasStore(srcClusterName, store0));
+        Assert.assertTrue(destChildAdmin.hasStore(destClusterName, store0));
+
+        Store originalChildStore = srcChildAdmin.getStore(srcClusterName, store0);
+        Assert.assertTrue(originalChildStore.containsVersion(2));
+        Assert.assertEquals(originalChildStore.getCurrentVersion(), 2);
+        Assert.assertTrue(originalChildStore.isMigrating());
+
+        Store clonedChildStore = destChildAdmin.getStore(destClusterName, store0);
+        Assert.assertTrue(clonedChildStore.containsVersion(2));
+        Assert.assertEquals(clonedChildStore.getCurrentVersion(), 2);
+        Assert.assertTrue(clonedChildStore.isMigrating());
+
+        verifyStoreData(store0, multiCluster.getClusters().get(destClusterName).getRandomRouterURL());
+      }
+    });
 
     // Perform "end-migration"
     // 1. Delete original store
@@ -524,40 +566,41 @@ public class TestStoreMigration {
     ControllerResponse controllerResponse =
         destControllerClient.updateStore(store0, new UpdateStoreQueryParams().setStoreMigration(false));
     Assert.assertFalse(controllerResponse.isError());
-    Utils.sleep(1000);
 
     // Original store should be deleted in both parent and child
     // Cloned store migration flag should be reset, and can still serve traffic
-    //
-    // Parent
-    Assert.assertFalse(srcParentAdmin.hasStore(srcClusterName, store0));
-    Assert.assertTrue(destParentAdmin.hasStore(destClusterName, store0));
 
-    // Child
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Parent
+      Assert.assertFalse(srcParentAdmin.hasStore(srcClusterName, store0));
+      Assert.assertTrue(destParentAdmin.hasStore(destClusterName, store0));
+
+      // Child
+      for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
+        Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
+        Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+
+        Assert.assertFalse(srcChildAdmin.hasStore(srcClusterName, store0));
+        Assert.assertTrue(destChildAdmin.hasStore(destClusterName, store0));
+
+        Store clonedStore = destChildAdmin.getStore(destClusterName, store0);
+        Assert.assertTrue(clonedStore.containsVersion(2));
+        Assert.assertEquals(clonedStore.getCurrentVersion(), 2);
+        Assert.assertFalse(clonedStore.isMigrating());
+
+        verifyStoreData(store0, multiCluster.getClusters().get(destClusterName).getRandomRouterURL());
+      }
+    });
+
+
+    // Push version 3 to store0
+    populateStoreForMultiCluster(parentControllerUrl, destClusterName, store0, 3);
     for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-      Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
       Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
 
-      Assert.assertFalse(srcChildAdmin.hasStore(srcClusterName, store0));
-      Assert.assertTrue(destChildAdmin.hasStore(destClusterName, store0));
-
       Store clonedStore = destChildAdmin.getStore(destClusterName, store0);
-      Assert.assertTrue(clonedStore.containsVersion(1));
-      Assert.assertEquals(clonedStore.getCurrentVersion(), 1);
-      Assert.assertFalse(clonedStore.isMigrating());
-
-      verifyStoreData(store0, multiCluster.getClusters().get(destClusterName).getRandomRouterURL());
-    }
-
-
-    // Push version 2 to store0
-    populateStoreForMultiCluster(parentControllerUrl, destClusterName, store0, 2);
-    for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-      Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
-
-      Store clonedStore = destChildAdmin.getStore(destClusterName, store0);
-      Assert.assertTrue(clonedStore.containsVersion(2));
-      Assert.assertEquals(clonedStore.getCurrentVersion(), 2);
+      Assert.assertTrue(clonedStore.containsVersion(3));
+      Assert.assertEquals(clonedStore.getCurrentVersion(), 3);
 
       verifyStoreData(store0, multiCluster.getClusters().get(destClusterName).getRandomRouterURL());
     }
@@ -575,8 +618,8 @@ public class TestStoreMigration {
       Assert.assertTrue(srcChildAdmin.hasStore(srcClusterName, store1));
       Assert.assertFalse(destChildAdmin.hasStore(destClusterName, store0));
       Assert.assertFalse(destChildAdmin.hasStore(destClusterName, store1));
-      Assert.assertTrue(srcChildAdmin.getStore(srcClusterName  , store0).containsVersion(2));
-      Assert.assertEquals(srcChildAdmin.getStore(srcClusterName, store0).getCurrentVersion(), 2);
+      Assert.assertTrue(srcChildAdmin.getStore(srcClusterName  , store0).containsVersion(3));
+      Assert.assertEquals(srcChildAdmin.getStore(srcClusterName, store0).getCurrentVersion(), 3);
       verifyStoreData(store0, multiCluster.getClusters().get(srcClusterName).getRandomRouterURL());
     }
 
