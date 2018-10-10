@@ -313,6 +313,9 @@ public class AdminTool {
         case MIGRATE_STORE:
           migrateStore(cmd);
           break;
+        case MIGRATION_STATUS:
+          checkMigrationStatus(cmd);
+          break;
         case END_MIGRATION:
           endMigration(cmd);
           break;
@@ -773,6 +776,58 @@ public class AdminTool {
     }
   }
 
+  private static void printMigrationStatus(ControllerClient controller, String storeName) {
+    StoreInfo store = controller.getStore(storeName).getStore();
+
+    System.err.println("\n" + controller.getClusterName() + "\t" + controller.getMasterControllerUrl());
+
+    if (null == store) {
+      System.err.println(storeName + " DOES NOT EXIST in this cluster " + controller.getClusterName());
+    } else {
+      System.err.println(storeName + " exists in this cluster " + controller.getClusterName());
+      System.err.println("\t" + storeName + ".isMigrating = " + store.isMigrating());
+      System.err.println("\t" + storeName + ".currentVersion = " + store.getCurrentVersion());
+      System.err.println("\t" + storeName + ".versions = ");
+      store.getVersions().stream().forEach(version -> System.err.println("\t\t" + version.toString()));
+    }
+
+    System.err.println("\t" + storeName + " belongs to cluster " + controller.discoverCluster(storeName).getCluster() + " according to cluster discovery");
+  }
+
+  private static void checkMigrationStatus(CommandLine cmd) {
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+    }
+
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+
+    List<String> childControllerUrls = srcControllerClient.listChildControllers(srcClusterName).getChildControllerUrls();
+    if (childControllerUrls == null) {
+      // This is a controller in single datacenter setup
+      printMigrationStatus(srcControllerClient, storeName);
+      printMigrationStatus(destControllerClient, storeName);
+    } else {
+      // This is a parent controller
+      System.err.println("\n=================== Parent Controllers ====================");
+      printMigrationStatus(srcControllerClient, storeName);
+      printMigrationStatus(destControllerClient, storeName);
+
+      ControllerClient[] srcChildControllerClients = createControllerClients(srcClusterName, childControllerUrls);
+      ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
+
+      for (int i = 0; i < childControllerUrls.size(); i++) {
+        System.err.println("\n\n=================== Child Datacenter " + i + " ====================");
+        printMigrationStatus(srcChildControllerClients[i], storeName);
+        printMigrationStatus(destChildControllerClients[i], storeName);
+      }
+    }
+  }
+
   private static boolean isClonedStoreOnline(ControllerClient srcControllerClient, ControllerClient destControllerClient,
       String storeName) {
     StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
@@ -834,24 +889,27 @@ public class AdminTool {
     }
   }
 
+  private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {
+    int numChildDatacenters = controllerUrls.size();
+    ControllerClient[] controllerClients = new ControllerClient[numChildDatacenters];
+    for (int i = 0; i < numChildDatacenters; i++) {
+      String controllerUrl = controllerUrls.get(i);
+      controllerClients[i] = new ControllerClient(clusterName, controllerUrl);
+    }
+    return controllerClients;
+  }
+
   private static void monitorMultiClusterAfterMigration(ControllerClient destControllerClient,
       StoreMigrationResponse storeMigrationResponse) {
 
     String srcClusterName = storeMigrationResponse.getSrcClusterName();
     String destClusterName = storeMigrationResponse.getCluster();
     String storeName = storeMigrationResponse.getName();
-    int numChildClusters = storeMigrationResponse.getChildControllerUrls().size();
+    List<String> childControllerUrls = storeMigrationResponse.getChildControllerUrls();
+    int numChildDatacenters = childControllerUrls.size();
 
-    ControllerClient[] srcChildControllerClients = new ControllerClient[numChildClusters];
-    ControllerClient[] destChildControllerClients = new ControllerClient[numChildClusters];
-
-    for (int i = 0; i < numChildClusters; i++) {
-      String controllerUrl = storeMigrationResponse.getChildControllerUrls().get(i);
-      ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, controllerUrl);
-      ControllerClient destChildControllerClient = new ControllerClient(destClusterName, controllerUrl);
-      srcChildControllerClients[i] = srcChildControllerClient;
-      destChildControllerClients[i] = destChildControllerClient;
-    }
+    ControllerClient[] srcChildControllerClients = createControllerClients(srcClusterName, childControllerUrls);
+    ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
 
     boolean isOnline = false;
     while (!isOnline) {
@@ -861,7 +919,7 @@ public class AdminTool {
 
       int onlineChildCount = 0;
 
-      for (int i = 0; i < numChildClusters; i++) {
+      for (int i = 0; i < numChildDatacenters; i++) {
         ControllerClient srcChildController = srcChildControllerClients[i];
         ControllerClient destChildController = destChildControllerClients[i];
 
@@ -870,7 +928,7 @@ public class AdminTool {
         }
       }
 
-      if (onlineChildCount == numChildClusters) {
+      if (onlineChildCount == numChildDatacenters) {
         isOnline = true;
       }
     }
@@ -890,7 +948,7 @@ public class AdminTool {
 
       System.err.println("\nExpected cluster discovery result: " + destClusterName);
       System.err.println("Actual cluster discovery result in parent: " + clusterDiscovered);
-      for (int i = 0; i < numChildClusters; i++) {
+      for (int i = 0; i < numChildDatacenters; i++) {
         ControllerClient destChildController = destChildControllerClients[i];
         String childControllerUrl = destChildController.getMasterControllerUrl();
         String clusterDiscoveredInChild = destChildController.discoverCluster(storeName).getCluster();

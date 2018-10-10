@@ -35,6 +35,7 @@ import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -612,7 +613,22 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int largestUsedVersionNumber = message.largestUsedVersionNumber;
-    admin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
+    if (admin.hasStore(clusterName, storeName) && admin.getStore(clusterName, storeName).isMigrating()) {
+      /** Ignore largest used version in original store in parent.
+       * This is necessary if client pushes a new version during store migration, in which case the original store "largest used version"
+       * in parent controller will not increase, but cloned store in parent and both original and cloned stores in child ontrollers will.
+       * Without this change the "delete store" message will not be processed in child controller due to version mismatch.
+       *
+       * It will also allow Venice admin to issue delete store command to parent controller,
+       * in case something goes wrong during store migration
+       *
+       * TODO: revise this logic when remove {@link com.linkedin.venice.controller.VeniceHelixAdmin#addVersion}
+       *       side effect in {@link com.linkedin.venice.controller.kafka.TopicMonitor}
+       */
+      admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+    } else {
+      admin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
+    }
 
     logger.info("Deleted store: " + storeName + " in cluster: " + clusterName);
   }

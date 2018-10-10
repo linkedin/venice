@@ -132,6 +132,8 @@ public enum Command {
       new Arg[] {KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_CONFIG_FILE, KAFKA_TOPIC_NAME, KAFKA_TOPIC_PARTITION, STARTING_OFFSET, MESSAGE_COUNT}),
   MIGRATE_STORE("migrate-store", "Migrate store from one cluster to another within the same fabric",
       new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
+  MIGRATION_STATUS("migration-status", "Get store migration status",
+      new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
   END_MIGRATION("end-migration", "Send this command to complete store migration",
       new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST});
 
