@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
@@ -96,10 +95,11 @@ public interface Admin {
      * with the same Version object.
      */
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush) {
-        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartions, replicationFactor, offlinePush, false);
+        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartions, replicationFactor, offlinePush, false, false);
     }
 
-    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush);
+    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions,
+        int replicationFactor, boolean offlinePush, boolean isIncrementalPush, boolean sendStartOfPush);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

@@ -1,11 +1,9 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -46,6 +44,7 @@ import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.testng.Assert;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;
@@ -462,10 +461,10 @@ public class TestPushUtils {
     }
   }
 
-  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName){
+  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName, PushType type){
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.STREAM.toString());
+    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, type.toString());
     samzaConfig.put(configPrefix + VENICE_STORE, storeName);
     samzaConfig.put(D2_ZK_HOSTS_PROPERTY, venice.getZk().getAddress());
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");

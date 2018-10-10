@@ -144,7 +144,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * Use {@link #requestTopicForWrites(String, long, PushType, String)} instead
+   * Use {@link #requestTopicForWrites(String, long, PushType, String, boolean)} instead
    * @param storeName
    * @param storeSize
    * @return
@@ -170,15 +170,19 @@ public class ControllerClient implements Closeable {
    * @param storeName Name of the store being written to.
    * @param storeSize Estimated size of push in bytes, used to determine partitioning
    * @param pushJobId Unique Id for this job
+   * @param sendStartOfPush Whether controller should send START_OF_PUSH message to the newly created topic,
+   *                        while adding a new version. This is currently used in Samza batch load, a.k.a. grandfather
    * @return VersionCreationResponse includes topic and partitioning
    */
-  public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType, String pushJobId) {
+  public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType,
+      String pushJobId, boolean sendStartOfPush) {
     try {
       QueryParams params = newParams()
           .add(NAME, storeName)
           .add(STORE_SIZE, Long.toString(storeSize))
           .add(PUSH_JOB_ID, pushJobId)
-          .add(PUSH_TYPE, pushType.toString());
+          .add(PUSH_TYPE, pushType.toString())
+          .add(SEND_START_OF_PUSH, sendStartOfPush);
       String responseJson = postRequest(ControllerRoute.REQUEST_TOPIC.getPath(), params);
       return mapper.readValue(responseJson, VersionCreationResponse.class);
     } catch (Exception e){

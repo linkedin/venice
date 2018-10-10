@@ -107,6 +107,12 @@ public class CreateVersion {
               + storeName + " which is not configured to be a hybrid store");
         }
 
+        boolean sendStartOfPush = false;
+        // Make this optional so that it is compatible with old version controller clien
+        if (request.queryParams().contains(SEND_START_OF_PUSH)) {
+          sendStartOfPush = Utils.parseBooleanFromString(request.queryParams(SEND_START_OF_PUSH), SEND_START_OF_PUSH);
+        }
+
         long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
         int partitionCount = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
@@ -121,7 +127,9 @@ public class CreateVersion {
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
-            Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor, true, (pushType == PushType.INCREMENTAL));
+            Version version =
+                admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
+                    true, (pushType == PushType.INCREMENTAL), sendStartOfPush);
 
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(version.kafkaTopicName());

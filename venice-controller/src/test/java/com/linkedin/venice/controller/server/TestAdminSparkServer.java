@@ -665,12 +665,14 @@ public class TestAdminSparkServer {
     String pushId = TestUtils.getUniqueString("no-store-push");
 
     VersionCreationResponse vcr =
-        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.BATCH, pushId);
+        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.BATCH, pushId,
+            false);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));
 
-    vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId);
+    vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId,
+        false);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));

@@ -44,6 +44,7 @@ public class ControllerApiConstants {
 
   public static final String PUSH_TYPE = "push_type";
   public static final String PUSH_JOB_ID = "push_job_id";
+  public static final String SEND_START_OF_PUSH = "start_of_push";
 
   public static final String EXPECTED_ROUTER_COUNT = "expected_router_count";
 
