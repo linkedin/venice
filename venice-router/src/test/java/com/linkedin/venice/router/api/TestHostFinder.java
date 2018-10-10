@@ -1,13 +1,27 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
+import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.utils.TestUtils;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
@@ -109,5 +123,52 @@ public class TestHostFinder {
     });
     verify(mockSingleGetStats, times(partitionHostMapping.size())).recordFindUnhealthyHostRequest("store");
     verify(mockMultiGetStats, never()).recordFindUnhealthyHostRequest("store");
+  }
+
+  @Test
+  public void testFindNothingWhenHeartBeatFailed() {
+    // create one instance
+    MockHttpServerWrapper server = ServiceFactory.getMockHttpServer("storage-node");
+    int port = server.getPort();
+    String nodeId = "localhost_" + port;
+    Instance dummyInstance = Instance.fromNodeId(nodeId);
+    Set<Instance> instanceSet = new HashSet<>();
+    instanceSet.add(dummyInstance);
+
+    // mock LiveInstanceMonitor
+    LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
+    doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
+    doReturn(instanceSet).when(mockLiveInstanceMonitor).getAllLiveInstances();
+
+    // mock VeniceHostHealth
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor);
+
+    // mock VeniceHostFinder
+    RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
+    List<Instance> instanceList = new ArrayList<>();
+    instanceList.add(dummyInstance);
+    doReturn(instanceList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false,
+        mock(AggRouterHttpRequestStats.class), mock(AggRouterHttpRequestStats.class), healthMon);
+
+    // mock HeartBeat
+    FullHttpResponse goodHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+    server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), goodHealthResponse);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, 100, TimeUnit.MILLISECONDS, 500, Optional
+        .empty());
+    heartbeat.start();
+
+    // the HostFinder should find host now
+    TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.SECONDS,
+        () -> Assert.assertEquals(1, finder.findHosts("get", "store_v0", "store_v0_3", healthMon, null).size()));
+
+    // server response unhealthy for the heartbeat check
+    FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    server.clearResponseMapping();
+    server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), badHealthResponse);
+
+    // the HostFinder should find nothing now because heartbeat marks host as unhealthy in the VeniceHostHealth
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS,
+        () -> Assert.assertEquals(0, finder.findHosts("get", "store_v0", "store_v0_3", healthMon, null).size()));
   }
 }

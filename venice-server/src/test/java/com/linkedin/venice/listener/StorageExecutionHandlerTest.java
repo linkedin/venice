@@ -64,7 +64,7 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository,
-        mockMetadataRetriever);
+        mockMetadataRetriever, null);
     testHandler.channelRead(mockCtx, testRequest);
 
     //Wait for async stuff to finish

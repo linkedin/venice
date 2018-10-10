@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
@@ -72,7 +73,8 @@ public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpR
           break;
         case HEALTH:
           statsHandler.setHealthCheck(true);
-          ctx.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
+          HealthCheckRequest healthCheckRequest = new HealthCheckRequest();
+          ctx.fireChannelRead(healthCheckRequest);
           break;
         default:
           throw new VeniceException("Unrecognized query action");

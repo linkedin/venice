@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -28,12 +29,15 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import javax.validation.constraints.NotNull;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.IOFileFilter;
 
 
 /***
@@ -43,6 +47,7 @@ import javax.validation.constraints.NotNull;
  */
 @ChannelHandler.Sharable
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
+  private final String databasePath;
   private final ExecutorService executor;
   private final StoreRepository storeRepository;
   private final MetadataRetriever metadataRetriever;
@@ -50,10 +55,11 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(false);
 
   public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull StoreRepository storeRepository,
-      @NotNull MetadataRetriever metadataRetriever) {
+      @NotNull MetadataRetriever metadataRetriever, @NotNull String databasePath) {
     this.executor = executor;
     this.storeRepository = storeRepository;
     this.metadataRetriever = metadataRetriever;
+    this.databasePath = databasePath;
   }
 
   @Override
@@ -102,12 +108,43 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       }));
+    } else if (message instanceof HealthCheckRequest) {
+      executor.submit(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            File databaseDir = new File(databasePath);
+            if (!databaseDir.exists() || !databaseDir.isDirectory()) {
+              context.writeAndFlush(new HttpShortcutResponse("Database dir does not existed or is corrupted!",
+                  HttpResponseStatus.INTERNAL_SERVER_ERROR));
+            }
+            // list everything in the database directory to actually check the health status of the disk
+            FileUtils.listFiles(databaseDir, listEverything, listEverything);
+            context.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
+          } catch (Exception e) {
+            context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+          }
+        }
+      });
+
     } else {
       context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
           HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
 
   }
+
+  private static IOFileFilter listEverything = new IOFileFilter() {
+    @Override
+    public boolean accept(File file) {
+      return true;
+    }
+
+    @Override
+    public boolean accept(File dir, String name) {
+      return true;
+    }
+  };
 
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     int partition = request.getPartition();

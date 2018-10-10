@@ -63,7 +63,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
 
-    storageExecutionHandler = new StorageExecutionHandler(executor, storeRepository, metadataRetriever);
+    storageExecutionHandler = new StorageExecutionHandler(executor, storeRepository, metadataRetriever, serverConfig.getDataBasePath());
 
     this.sslFactory = sslFactory;
     this.aclHandler = accessController.isPresent()

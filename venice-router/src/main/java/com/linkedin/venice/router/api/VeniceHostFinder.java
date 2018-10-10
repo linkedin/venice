@@ -29,16 +29,6 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   private final AggRouterHttpRequestStats statsForMultiGet;
   private final HostHealthMonitor<Instance> instanceHealthMonitor;
 
-  public VeniceHostFinder(RoutingDataRepository dataRepository,
-      boolean isStickyRoutingEnabledForSingleGet,
-      boolean isStickyRoutingEnabledForMultiGet,
-      AggRouterHttpRequestStats statsForSingleGet,
-      AggRouterHttpRequestStats statsForMultiGet,
-      LiveInstanceMonitor liveInstanceMonitor) {
-    this(dataRepository, isStickyRoutingEnabledForSingleGet, isStickyRoutingEnabledForMultiGet,
-        statsForSingleGet, statsForMultiGet, new VeniceHostHealth(liveInstanceMonitor));
-  }
-
   /**
    * For test purpose.
    *
