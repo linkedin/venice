@@ -645,9 +645,9 @@ public class TestVeniceParentHelixAdmin {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
     doReturn(new Version(storeName, 1)).when(internalAdmin)
-        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false);
     parentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
-    verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false);
     verify(accessor).createOfflinePushStatus(eq(clusterName), any());
     verify(accessor).getAllPushNames(eq(clusterName));
   }
@@ -706,9 +706,9 @@ public class TestVeniceParentHelixAdmin {
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.COMPLETED);
     doReturn(new Version(storeName, 1)).when(internalAdmin)
-        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false);
     partialMockParentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
-    verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false);
   }
 
   /**
@@ -728,8 +728,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
   }
 
   /**
@@ -751,8 +751,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
   }
 
   /**
@@ -1558,7 +1558,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
     doReturn(new Version(storeName, 1)).when(internalAdmin)
-        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false);
     List<String> names = new ArrayList<>();
     int count = VeniceParentHelixAdmin.MAX_PUSH_STATUS_PER_STORE_TO_KEEP+1;
     for(int i=0;i<count;i++){
