@@ -9,11 +9,11 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
-
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.RetriableException;
 import org.apache.log4j.Logger;
 
 
@@ -23,7 +23,10 @@ import org.apache.log4j.Logger;
 @NotThreadsafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   private static final Logger logger = Logger.getLogger(ApacheKafkaConsumer.class);
+  private static final int MAX_RETRY_COUNT = 3;
+
   private final Consumer kafkaConsumer;
+
   public ApacheKafkaConsumer(Properties props) {
     this.kafkaConsumer = new KafkaConsumer(props);
   }
@@ -86,7 +89,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
 
-    if (! topicPartitionSet.contains(topicPartition)) {
+    if (!topicPartitionSet.contains(topicPartition)) {
       throw new UnsubscribedTopicPartitionException(topic, partition);
     }
     kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
@@ -94,9 +97,27 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public ConsumerRecords poll(long timeout) {
-    // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION,
+    // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION and when the
+    // fetcher.retrieveOffsetsByTimes call inside kafkaConsumer times out,
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
-    return kafkaConsumer.poll(timeout);
+    int attemptCount = 1;
+    ConsumerRecords records = ConsumerRecords.empty();
+    while (attemptCount <= MAX_RETRY_COUNT) {
+      try {
+        records = kafkaConsumer.poll(timeout);
+        break;
+      } catch (RetriableException e) {
+        logger.warn(
+            "Retriable exception thrown when attempting to consume records from kafka, attempt " + attemptCount + "/"
+                + MAX_RETRY_COUNT, e);
+        if (attemptCount == MAX_RETRY_COUNT) {
+          throw e;
+        }
+      } finally {
+        attemptCount++;
+      }
+    }
+    return records;
   }
 
   @Override
@@ -110,5 +131,4 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       kafkaConsumer.close();
     }
   }
-
 }
