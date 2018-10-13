@@ -954,4 +954,18 @@ public class ControllerClient implements Closeable {
     refreshControllerUrl();
     return masterControllerUrl;
   }
+
+  public ControllerResponse sendEndOfPush(String storeName, String version) {
+    try {
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, version)
+          .add(CLUSTER, this.clusterName);
+      String responseJson = postRequest(ControllerRoute.END_OF_PUSH.getPath(), params);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Failed to send END_OF_PUSH message to " + storeName + "_v" + version , e),
+          new ControllerResponse());
+    }
+  }
 }
