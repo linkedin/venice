@@ -135,7 +135,9 @@ public enum Command {
   MIGRATION_STATUS("migration-status", "Get store migration status",
       new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
   END_MIGRATION("end-migration", "Send this command to complete store migration",
-      new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST});
+      new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
+  SEND_END_OF_PUSH("send-end-of-push", "Send this message after Samza grandfathering job to close offline batch push",
+      new Arg[] {URL, CLUSTER, STORE, VERSION});
 
   private final String commandName;
   private final String description;

@@ -85,7 +85,8 @@ public enum ControllerRoute {
   }
 
   private static List<String> getCommonParams(){
-    return Arrays.asList(HOSTNAME, CLUSTER);
+    // This will work together with AdminSparkServer#validateParams
+    return Arrays.asList(HOSTNAME);
   }
 
   public String getPath(){

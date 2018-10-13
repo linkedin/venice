@@ -319,6 +319,9 @@ public class AdminTool {
         case END_MIGRATION:
           endMigration(cmd);
           break;
+        case SEND_END_OF_PUSH:
+          sendEndOfPush(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -786,6 +789,7 @@ public class AdminTool {
     } else {
       System.err.println(storeName + " exists in this cluster " + controller.getClusterName());
       System.err.println("\t" + storeName + ".isMigrating = " + store.isMigrating());
+      System.err.println("\t" + storeName + ".largestUsedVersion = " + store.getLargestUsedVersionNumber());
       System.err.println("\t" + storeName + ".currentVersion = " + store.getCurrentVersion());
       System.err.println("\t" + storeName + ".versions = ");
       store.getVersions().stream().forEach(version -> System.err.println("\t\t" + version.toString()));
@@ -1010,6 +1014,22 @@ public class AdminTool {
     ControllerResponse controllerResponse =
         destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(false));
     printObject(controllerResponse);
+  }
+
+  private static void sendEndOfPush(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String version = getRequiredArgument(cmd, Arg.VERSION);
+
+    // Check if version is a valid integer
+    try {
+      Integer.parseInt(version);
+    } catch (Exception e) {
+      System.err.println("ERROR: " + version + " is not a valid integer");
+      return;
+    }
+
+    ControllerResponse response = controllerClient.sendEndOfPush(storeName, version);
+    printObject(response);
   }
 
 
