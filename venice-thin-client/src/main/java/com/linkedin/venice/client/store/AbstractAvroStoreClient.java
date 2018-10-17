@@ -18,6 +18,8 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import org.apache.avro.Schema;
+import org.apache.avro.io.AvroVersion;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.commons.io.IOUtils;
 
 import javax.validation.constraints.NotNull;
@@ -27,9 +29,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.apache.log4j.Logger;
 
 
 public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
+  private static Logger logger = Logger.getLogger(AbstractAvroStoreClient.class);
   public static final String TYPE_STORAGE = "storage";
   public static final String B64_FORMAT = "?f=b64";
 
@@ -44,6 +48,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
     MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+
+    AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
+    logger.info("Detected: " + version.toString() + " on the classpath.");
   }
 
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
