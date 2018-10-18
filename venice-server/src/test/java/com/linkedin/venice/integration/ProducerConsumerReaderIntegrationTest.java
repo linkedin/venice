@@ -1,36 +1,43 @@
 package com.linkedin.venice.integration;
 
-import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
-import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
+import com.linkedin.venice.writer.ApacheKafkaProducer;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
+
 
 /**
  * This class spins up ZK and Kafka, and a complete Venice cluster, and tests that
@@ -41,42 +48,29 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 public class ProducerConsumerReaderIntegrationTest {
 
   private VeniceClusterWrapper veniceCluster;
-  private String storeVersionName;
-  private int valueSchemaId;
+  private String topicName;
   private String storeName;
+  private int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
   // TODO: Make serializers parameterized so we test them all.
   private VeniceWriter<Object, Object> veniceWriter;
   private AvroGenericStoreClient<String, Object> storeClient;
 
+  @DataProvider(name = "PersistenceType")
+  public static Object[] persistenceType() {
+    return new Object[]{PersistenceType.BDB, PersistenceType.ROCKS_DB};
+  }
+
   @BeforeMethod
   public void setUp() throws VeniceClientException {
-    boolean sslEnabled = true;
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(sslEnabled);
-
-    // Create test store
-    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
-    storeVersionName = creationResponse.getKafkaTopic();
-    storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-    valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    String routerUrl = veniceCluster.getRandomRouterSslURL();
-
-
-    // TODO: Make serializers parameterized so we test them all.
-    String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
-
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
-    storeClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)
-                                                    .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
   }
 
   @AfterMethod
   public void cleanUp() {
-    storeClient.close();
+    if (storeClient != null) {
+      storeClient.close();
+    }
     if (veniceCluster != null) {
       veniceCluster.close();
     }
@@ -84,8 +78,23 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @Test//(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testEndToEndProductionAndReading() throws Exception {
+    boolean sslEnabled = true;
+    veniceCluster = ServiceFactory.getVeniceCluster(sslEnabled);
+    // Create test store
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
+    topicName = creationResponse.getKafkaTopic();
+    storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    String routerUrl = veniceCluster.getRandomRouterSslURL();
+    // TODO: Make serializers parameterized so we test them all.
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(topicName, keySerializer, valueSerializer);
+    storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+        .setVeniceURL(routerUrl)
+        .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
 
     String key = TestUtils.getUniqueString("key");
     String value = TestUtils.getUniqueString("value");
@@ -94,7 +103,7 @@ public class ProducerConsumerReaderIntegrationTest {
       storeClient.get(key).get();
       Assert.fail("Not online instances exist in cluster, should throw exception for this read operation.");
     } catch (ExecutionException e) {
-      if (!(e.getCause() instanceof VeniceClientHttpException)){
+      if (!(e.getCause() instanceof VeniceClientHttpException)) {
         throw e;
       }
       // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
@@ -104,27 +113,110 @@ public class ProducerConsumerReaderIntegrationTest {
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value, valueSchemaId).get();
     // Write end of push message to make node become ONLINE from BOOTSTRAP
-    veniceWriter.broadcastEndOfPush(new HashMap<String,String>());
+    veniceWriter.broadcastEndOfPush(new HashMap<String, String>());
 
     // Wait for storage node to finish consuming, and new version to be activated
+    final int pushVersion = Version.parseVersionFromKafkaTopicName(topicName);
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName)
+          .getStore()
+          .getCurrentVersion();
       return currentVersion == pushVersion;
     });
 
     // Read (but make sure Router is up-to-date with new version)
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, ()->{
-      try {
-        storeClient.get(key).get();
-      } catch (Exception e){
-        return false;
-      }
-      return true;
-    });
+    waitForRouterReady(key);
 
     Object newValue = storeClient.get(key).get();
     Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
   }
-  // TODO: Add tests with more complex scenarios (multiple records, record overwrites, multiple partitions, multiple storage nodes, etc.)
+
+  @Test(dataProvider = "PersistenceType")
+  public void testMultipleWriterWritingDuplicateData(PersistenceType persistenceType) throws Exception {
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 0, 1);
+    Properties serverProperties = new Properties();
+    serverProperties.put(PERSISTENCE_TYPE, persistenceType);
+    veniceCluster.addVeniceServer(new Properties(), serverProperties);
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
+    topicName = creationResponse.getKafkaTopic();
+    storeName = Version.parseStoreFromKafkaTopicName(topicName);
+    storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+        .setVeniceURL(veniceCluster.getRandomRouterSslURL())
+        .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
+
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    Properties veniceWriterProperties = new Properties();
+    Properties defaultProps = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, creationResponse.getKafkaBootstrapServers());
+    defaultProps.put(KAFKA_BOOTSTRAP_SERVERS, creationResponse.getKafkaBootstrapServers());
+    VeniceWriterFactory writerFactory = new VeniceWriterFactory(defaultProps);
+    int partitionCount =
+        new ApacheKafkaProducer(new VeniceProperties(veniceWriterProperties)).getNumberOfPartitions(topicName);
+    DefaultVenicePartitioner partitioner = new DefaultVenicePartitioner();
+    veniceWriterProperties.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION,
+        GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+    veniceWriterProperties.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JT_ID, 0L);
+    veniceWriterProperties.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, 0L);
+    TestUtils.VeniceTestWriterFactory veniceTestWriterFactory =
+        new TestUtils.VeniceTestWriterFactory(veniceWriterProperties);
+    ArrayList<Pair<String, String>> data = new ArrayList<>();
+    // Generate a set of records that belongs to the same partition
+    int k = 0;
+    while (data.size() < 10) {
+      String key = Integer.toString(k);
+      if (partitioner.getPartitionId(keySerializer.serialize(topicName, key), partitionCount) == 0) {
+        data.add(new Pair<>(key, TestUtils.getUniqueString("key" + key)));
+      }
+      k++;
+    }
+    VeniceWriter<byte[], byte[]> basicVeniceWriter = writerFactory.getBasicVeniceWriter(topicName);
+    VeniceWriter<String, String> veniceWriter1 =
+        veniceTestWriterFactory.getVeniceWriter(topicName, keySerializer, valueSerializer);
+    VeniceWriter<String, String> veniceWriter2 =
+        veniceTestWriterFactory.getVeniceWriter(topicName, keySerializer, valueSerializer);
+    basicVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.
+    // In the end the second writer will have produced only half of the records produced by the first writer.
+    int j = 0;
+    for (int i = 0; i < data.size(); i++) {
+      veniceWriter1.put(data.get(i).getFirst(), data.get(i).getSecond(), valueSchemaId);
+      if (i % 2 == 0) {
+        veniceWriter2.put(data.get(j).getFirst(), data.get(j).getSecond(), valueSchemaId);
+        j++;
+      }
+    }
+    veniceWriter1.close();
+    basicVeniceWriter.broadcastEndOfPush(new HashMap<>());
+    basicVeniceWriter.close();
+
+    // Wait for ingestion to complete.
+    ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
+    final int pushVersion = Version.parseVersionFromKafkaTopicName(topicName);
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+      return currentVersion == pushVersion;
+    });
+
+    waitForRouterReady(data.get(0).getFirst());
+    // Read and verify the ingested data.
+    for (Pair<String, String> keyValue : data) {
+      Object value = storeClient.get(keyValue.getFirst()).get();
+      Assert.assertEquals(value.toString(), keyValue.getSecond(), "Unexpected key value pair!");
+    }
+  }
+
+  private void waitForRouterReady(final String key) {
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
+      try {
+        storeClient.get(key).get();
+      } catch (Exception e) {
+        return false;
+      }
+      return true;
+    });
+  }
 }

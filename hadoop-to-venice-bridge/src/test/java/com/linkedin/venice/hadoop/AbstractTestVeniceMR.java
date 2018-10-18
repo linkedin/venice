@@ -41,6 +41,7 @@ public class AbstractTestVeniceMR {
     config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName().toString());
     config.set(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity");
     config.set(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore");
+    config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
 
     return new JobConf(config);
   }
