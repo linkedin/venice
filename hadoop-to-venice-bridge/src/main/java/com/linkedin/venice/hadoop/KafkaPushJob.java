@@ -157,6 +157,8 @@ public class KafkaPushJob extends AbstractJob {
    */
   public static final String PUSH_JOB_STATUS_UPLOAD_ENABLE = "push.job.status.upload.enable";
 
+  public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -194,6 +196,7 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean isIncrementalPush;
   private final boolean isDuplicateKeyAllowed;
   private final boolean enablePushJobStatusUpload;
+  private final boolean enableReducerSpeculativeExecution;
 
   private ControllerClient controllerClient;
 
@@ -361,6 +364,7 @@ public class KafkaPushJob extends AbstractJob {
     this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
     this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     this.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
+    this.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
 
     if (enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -919,8 +923,7 @@ public class KafkaPushJob extends AbstractJob {
       jobConf.setMapOutputKeyClass(BytesWritable.class);
       jobConf.setMapOutputValueClass(BytesWritable.class);
       jobConf.setReducerClass(VeniceReducer.class);
-      // TODO: Consider turning speculative execution on later.
-      jobConf.setReduceSpeculativeExecution(false);
+      jobConf.setReduceSpeculativeExecution(enableReducerSpeculativeExecution);
       jobConf.setNumReduceTasks(partitionCount);
     }
 

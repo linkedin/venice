@@ -1,10 +1,12 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
@@ -19,7 +21,6 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.JsonEncoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
@@ -56,14 +57,17 @@ import static com.linkedin.venice.hadoop.MapReduceConstants.*;
  *
  */
 public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, NullWritable, NullWritable> {
+  public static final String MAP_REDUCE_JOB_ID_PROP = "mapred.job.id";
   private static final Logger LOGGER = Logger.getLogger(VeniceReducer.class);
-
   private static final int COUNTER_STATEMENT_COUNT = 100000;
 
   private long lastTimeChecked = System.currentTimeMillis();
 
   private AbstractVeniceWriter<byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
+
+  private VeniceProperties props;
+  private JobID mapReduceJobId;
 
   /**
    * Having dup key checking does not make sense in Mapper only mode
@@ -117,7 +121,21 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, Reporter reporter) {
     maybePropagateCallbackException();
     if (null == veniceWriter) {
-      throw new VeniceException("VeniceWriter hasn't been initialized yet!");
+      Properties writerProps = props.toProperties();
+      writerProps.put(GuidUtils.GUID_GENERATOR_IMPLEMENTATION,
+          GuidUtils.DETERMINISTIC_GUID_GENERATOR_IMPLEMENTATION);
+      // The JobId (e.g. "job_200707121733_0003") consists of two parts. The job tracker identifier (job_200707121733)
+      // and the id (0003) for the job in that specific job tracker. The job tracker identifier is converted into a long
+      // by removing all the non-digit characters.
+      String jobTrackerId = mapReduceJobId.getJtIdentifier().replaceAll("\\D+", "");
+      try {
+        writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JT_ID, Long.parseLong(jobTrackerId));
+      } catch (NumberFormatException e) {
+        LOGGER.warn("Unable to parse job tracker id, using default value for guid generation", e);
+      }
+      writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
+      VeniceWriterFactory factory = new VeniceWriterFactory(writerProps);
+      veniceWriter = factory.getBasicVeniceWriter(props.getString(TOPIC_PROP));
     }
     if (null == previousReporter || !previousReporter.equals(reporter)) {
       callback = new KafkaMessageCallback(reporter);
@@ -167,22 +185,15 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
      * Venice controller. It stops and throws exception if the quota is exceeded.
      */
     SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
-    VeniceProperties props;
     try {
       Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
       props = new VeniceProperties(javaProps);
     } catch (IOException e) {
       throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
     }
-
+    mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
-
-
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
-    if (null == this.veniceWriter) {
-      VeniceWriterFactory factory = new VeniceWriterFactory(props.toProperties());
-      this.veniceWriter = factory.getBasicVeniceWriter(props.getString(TOPIC_PROP));
-    }
 
     if (checkDupKey) {
       this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
@@ -203,7 +214,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     try {
       hadoopJobClient = new JobClient(job);
       Counters quotaCounters =
-          hadoopJobClient.getJob(JobID.forName(job.get("mapred.job.id"))).getCounters();
+          hadoopJobClient.getJob(JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP))).getCounters();
       long incomingDataSize =
           estimatedVeniceDiskUsage(quotaCounters.findCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE).getValue() +
               quotaCounters.findCounter(COUNTER_GROUP_QUOTA,COUNTER_TOTAL_VALUE_SIZE).getValue(), storageEngineOverheadRatio);
