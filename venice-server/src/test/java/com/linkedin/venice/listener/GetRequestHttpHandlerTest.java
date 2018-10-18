@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
 import io.netty.channel.ChannelHandlerContext;
@@ -39,13 +40,12 @@ public class GetRequestHttpHandlerTest {
   public void respondsToHealthCheck() throws Exception {
     GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
-    ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
+    ArgumentCaptor<HealthCheckRequest> argumentCaptor = ArgumentCaptor.forClass(HealthCheckRequest.class);
     HttpRequest healthMsg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/health");
     testHander.channelRead(mockContext, healthMsg);
-    verify(mockContext).writeAndFlush(argumentCaptor.capture());
-    HttpShortcutResponse responseObject = argumentCaptor.getValue();
-    Assert.assertEquals(responseObject.getStatus(), HttpResponseStatus.OK);
-    Assert.assertEquals(responseObject.getMessage(), "OK");
+    verify(mockContext).fireChannelRead(argumentCaptor.capture());
+    HealthCheckRequest requestObject = argumentCaptor.getValue();
+    Assert.assertNotNull(requestObject);
   }
 
   public void testRequestParsing(String path, String expectedStore, int expectedPartition, byte[] expectedKey)

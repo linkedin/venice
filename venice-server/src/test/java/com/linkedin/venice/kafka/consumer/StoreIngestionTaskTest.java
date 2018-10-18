@@ -1064,9 +1064,13 @@ public class StoreIngestionTaskTest {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.broadcastEndOfPush(new HashMap<>());
       veniceWriter.broadcastStartOfBufferReplay(offsets, "t", topic, new HashMap<>());
-      // Should persist twice. One for end of push and another one for start of buffer replay
+      /**
+       * Persist for every control message:
+       * START_OF_SEGMENT, START_OF_PUSH, END_OF_PUSH, END_OF_SEGMENT, START_OF_SEGMENT, START_OF_BUFFER_REPLAY
+
+       */
       runHybridTest(getSet(PARTITION_FOO), () -> {
-        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(2)).put(eq(topic), eq(PARTITION_FOO), any());
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(6)).put(eq(topic), eq(PARTITION_FOO), any());
       });
     }finally {
       databaseSyncBytesIntervalForTransactionalMode = 1;
@@ -1096,8 +1100,9 @@ public class StoreIngestionTaskTest {
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset() + 1, true);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
-      // Deferred write is not going to commit offset for every message
-      verify(mockStorageMetadataService, never())
+      // Deferred write is not going to commit offset for every message, but will commit offset for every control message
+      // The following verification is for START_OF_PUSH control message
+      verify(mockStorageMetadataService, times(1))
           .put(topic, PARTITION_FOO, getOffsetRecord(putMetadata.offset() - 1));
       // Check database mode switches from deferred-write to transactional after EOP control message
       StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);

@@ -573,10 +573,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+              producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
               ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
-              if (null == producerTracker) {
-                producerTracker = producerTrackerCreator.apply(producerGuid);
-              }
               producerTracker.setPartitionState(partition, entry.getValue());
               producerTrackerMap.put(producerGuid, producerTracker);
             }
@@ -1112,14 +1110,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        ControlMessageType messageType =
-            processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
-        if (messageType == ControlMessageType.END_OF_PUSH ||
-            messageType == ControlMessageType.START_OF_BUFFER_REPLAY ||
-            messageType == ControlMessageType.START_OF_INCREMENTAL_PUSH ||
-            messageType == ControlMessageType.END_OF_INCREMENTAL_PUSH) {
-          syncOffset = true;
-        }
+        processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
+        /**
+         * Here, we want to sync offset/producer guid info whenever receiving any control message:
+         * 1. We want to keep the critical milestones.
+         * 2. We want to keep all the historical producer guid info since they could be used after. New producer guid
+         * is already coming with Control Message.
+         *
+         * If we don't sync offset this way, it is very possible to encounter
+         * {@link com.linkedin.venice.kafka.validation.ProducerTracker.DataFaultType.UNREGISTERED_PRODUCER} since
+         * {@link syncOffset} is not being called for every message, we might miss some historical producer guids.
+         */
+        syncOffset = true;
       } else if (null == kafkaValue) {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
