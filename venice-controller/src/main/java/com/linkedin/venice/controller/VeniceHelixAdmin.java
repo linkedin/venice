@@ -335,6 +335,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    /**
+     * This method will delete store data, metadata, version and rt topics
+     * One exception is for stores with isMigrating flag set. In that case, the corresponding kafka topics and storeConfig
+     * will not be deleted so that they are still avaiable for the cloned store.
+     */
     public synchronized void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
         checkControllerMastership(clusterName);
         logger.info("Start deleting store: " + storeName);
@@ -344,6 +349,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             storeRepository.lock();
             Store store = null;
+            StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
             try {
                 store = storeRepository.getStore(storeName);
                 checkPreConditionForDeletion(clusterName, storeName, store);
@@ -359,23 +365,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 }
 
-                String currentlyDiscoveredClusterName = storeConfigAccessor.getStoreConfig(storeName).getCluster(); // This is for store migration
-                if (currentlyDiscoveredClusterName.equals(clusterName)) {
+                String currentlyDiscoveredClusterName = storeConfig.getCluster(); // This is for store migration
+                // TODO: and ismigration flag is false, only then delete storeConfig
+                if (!currentlyDiscoveredClusterName.equals(clusterName)) {
+                    // This is most likely the deletion after a store migration operation.
+                    // In this case the storeConfig should not be deleted,
+                    // because it is still being used to discover the cloned store
+                    logger.warn("storeConfig for this store " + storeName + " in cluster " + clusterName
+                        + " will not be deleted because it is currently pointing to another cluster: "
+                        + currentlyDiscoveredClusterName);
+                } else if (store.isMigrating()) {
+                    // Cluster discovery is correct but store migration flag has not been reset.
+                    // This is most likely a direct deletion command from admin-tool sent to the wrong cluster.
+                    // i.e. instead of using the proper --end-migration command, a --delete-store command was issued AND sent to the wrong cluster
+                    String errMsg = "Abort storeConfig deletion for store " + storeName + " in cluster " + clusterName
+                        + " because this is either the cloned store after a successful migration"
+                        + " or the original store after a failed migration.";
+                    logger.warn(errMsg);
+                } else {
                     // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
                     // could be deleted later after controller is recovered.
                     // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
                     // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
                     // delete this legacy store if isDeleting is true for this store.
-                    StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
                     storeConfig.setDeleting(true);
                     storeConfigAccessor.updateConfig(storeConfig);
-                } else {
-                    // This is most likely the deletion after a store migration operation.
-                    // In this case the storeConfig should not be deleted,
-                    // because it is still being used to discover the cloned store
-                    logger.warn("storeConfig for this store " + storeName
-                        + " will not be deleted because it is currently pointing to another cluster: "
-                        + currentlyDiscoveredClusterName);
                 }
                 storeRepository.updateStore(store);
             } finally {
@@ -384,7 +398,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Delete All versions
             deleteAllVersionsInStore(clusterName, storeName);
             // Clean up topics
-            truncateKafkaTopic(Version.composeRealTimeTopic(storeName));
+            if (!store.isMigrating()) {
+                truncateKafkaTopic(Version.composeRealTimeTopic(storeName));
+            }
             if (store != null) {
                 truncateOldKafkaTopics(store, true);
             } else {
@@ -399,7 +415,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             resources.getMetadataRepository().deleteStore(storeName);
 
             // Delete the config for this store after deleting the store.
-            if (storeConfigAccessor.getStoreConfig(storeName).isDeleting()) {
+            if (storeConfig.isDeleting()) {
                 storeConfigAccessor.deleteConfig(storeName);
             }
             logger.info("Store " + storeName + " in cluster " + clusterName + " has been deleted.");

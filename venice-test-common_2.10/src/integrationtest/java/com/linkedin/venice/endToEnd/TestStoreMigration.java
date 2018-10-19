@@ -426,6 +426,9 @@ public class TestStoreMigration {
       Assert.assertEquals(destAdmin.getStore(destClusterName, store0).getCurrentVersion(), 6);
       verifyStoreData(store0, destRouterUrl);
 
+      // TODO: add brooklin to test frame work and test the following
+      // Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_rt"), "RT topic should always be present");
+
       multiClusterWrapper.close();
     }
   }
@@ -560,12 +563,12 @@ public class TestStoreMigration {
     // 1. Delete original store
     srcControllerClient.updateStore(store0, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
     TrackableControllerResponse deleteResponse = srcControllerClient.deleteStore(store0);
-    Assert.assertFalse(deleteResponse.isError());
+    Assert.assertFalse(deleteResponse.isError(), deleteResponse.getError());
 
     // 2. Reset migration flag
     ControllerResponse controllerResponse =
         destControllerClient.updateStore(store0, new UpdateStoreQueryParams().setStoreMigration(false));
-    Assert.assertFalse(controllerResponse.isError());
+    Assert.assertFalse(controllerResponse.isError(), controllerResponse.getError());
 
     // Original store should be deleted in both parent and child
     // Cloned store migration flag should be reset, and can still serve traffic
@@ -660,14 +663,14 @@ public class TestStoreMigration {
 
     ControllerResponse updateStoreResponse1 = srcControllerClient.updateStore(storeName,
         new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
-    Assert.assertFalse(updateStoreResponse1.isError());
+    Assert.assertFalse(updateStoreResponse1.isError(), updateStoreResponse1.getError());
 
     TrackableControllerResponse deleteStoreResponse = srcControllerClient.deleteStore(storeName);
-    Assert.assertFalse(deleteStoreResponse.isError());
+    Assert.assertFalse(deleteStoreResponse.isError(), deleteStoreResponse.getError());
 
     ControllerResponse updateStoreResponse2 =
         destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStoreMigration(false));
-    Assert.assertFalse(updateStoreResponse2.isError());
+    Assert.assertFalse(updateStoreResponse2.isError(), updateStoreResponse2.getError());
   }
 
   public static void printStoresInClusters(VeniceMultiClusterWrapper multiClusterWrapper) {
