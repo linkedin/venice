@@ -10,13 +10,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
-import org.apache.zookeeper.data.Stat;
 
 
 public class HelixStoreGraveyard implements StoreGraveyard {
@@ -44,7 +42,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
 
   @Override
   public int getLargestUsedVersionNumber(String storeName) {
-    List<Store> stores = getStore(storeName);
+    List<Store> stores = getStoreFromAllClusters(storeName);
     if (stores.isEmpty()) {
       logger.info(
           "Store: " + storeName + " does NOT exist in the store graveyard. Will initialize the new store at version: "
@@ -68,7 +66,36 @@ public class HelixStoreGraveyard implements StoreGraveyard {
   @Override
   public void putStoreIntoGraveyard(String clusterName, Store store) {
     int largestUsedVersionNumber = getLargestUsedVersionNumber(store.getName());
-    if (store.getLargestUsedVersionNumber() < largestUsedVersionNumber) {
+
+    if (store.isMigrating()) {
+      /**
+       * Suppose I have two datacenters Parent and Child, each has two clusters C1 and C2
+       * Before migration, I have a store with largest version 3:
+       * P: C1:v3*, C2:null
+       * C: C1:v3*, C2:null
+       *
+       * After migration, both clusters shoud have the same store with same largest version and cluster discovery points to C2
+       * P: C1:v3, C2:v3*
+       * C: C1:v3, C2:v3*
+       *
+       * Then before I send --end-migration command, another push job started
+       * P: C1:v3, C2:v4*
+       * C: C1:v4, C2:v4*
+       *
+       * Suppose I accidentally delete the store in the wrong cluster C2 using the wrong command --delete-store
+       * P: C1:v3, C2:null*
+       * C: C1:v4, C2:null*
+       *
+       * Then I realized the error and want to delete the other store as well, but now I can't delete it because the largest
+       * version number (3) doesn't match with the one retrived from graveyard (4).
+       * This check will address to this situation, and keep the largest version number in both graveyards the same.
+       */
+      if (largestUsedVersionNumber > store.getLargestUsedVersionNumber()) {
+        logger.info("Increased largestUsedVersionNumber for migrating store " + store.getName() + " from "
+            + store.getLargestUsedVersionNumber() + " to " + largestUsedVersionNumber);
+        store.setLargestUsedVersionNumber(largestUsedVersionNumber);
+      }
+    } else if (store.getLargestUsedVersionNumber() < largestUsedVersionNumber) {
       // largestUsedVersion number in re-created store is smaller than the deleted store. It's should be a issue.
       String errorMsg = "Invalid largestUsedVersionNumber: " + store.getLargestUsedVersionNumber() +
           " in Store: " + store.getName() + ", it's smaller than one found in graveyard: " + largestUsedVersionNumber;
@@ -79,10 +106,16 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     // Store does not exist in graveyard OR store already exists but the re-created store is deleted again so we need to
     // update the ZNode.
     HelixUtils.update(dataAccessor, getClusterDeletedStorePath(clusterName, store.getName()), store);
-    logger.info("Put store: " + store.getName() + " into graveyard.");
+    logger.info("Put store: " + store.getName() + " into graveyard with largestUsedVersionNumber " + largestUsedVersionNumber);
   }
 
-  private List<Store> getStore(String storeName) {
+  /**
+   * Search for matching store in graveyard in all clusters
+   * @param storeName Store of interest
+   * @return  Matching store from each venice. Normally contains one element.
+   * If the store existed in some other cluster before, there will be more than one element in the return value.
+   */
+  private List<Store> getStoreFromAllClusters(String storeName) {
     List<Store> stores = new ArrayList<>();
     for (String clusterName : clusterNames) {
       Store store = dataAccessor.get(getClusterDeletedStorePath(clusterName, storeName), null, AccessOption.PERSISTENT);
