@@ -118,7 +118,7 @@ public class StoreIngestionTaskTest {
     StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
-    StoreIngestionTask.OFFSET_THROTTLE_INTERVAL = 1;
+    StoreIngestionTask.OFFSET_REPORTING_INTERVAL = 1;
     TEST_TIMEOUT = 500 * READ_CYCLE_DELAY_MS;
   }
 
@@ -131,7 +131,7 @@ public class StoreIngestionTaskTest {
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
   private AbstractStorageEngine mockAbstractStorageEngine;
-  private EventThrottler mockBandWidthThrottler;
+  private EventThrottler mockBandwidthThrottler;
   private EventThrottler mockRecordsThrottler;
   private ReadOnlySchemaRepository mockSchemaRepo;
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
@@ -216,7 +216,7 @@ public class StoreIngestionTaskTest {
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
 
-    mockBandWidthThrottler = mock(EventThrottler.class);
+    mockBandwidthThrottler = mock(EventThrottler.class);
     mockRecordsThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
@@ -323,7 +323,7 @@ public class StoreIngestionTaskTest {
     }
     storeIngestionTaskUnderTest =
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
-            mockBandWidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
+            mockBandwidthThrottler, mockRecordsThrottler, topic, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, incrementalPushEnabled,0,
             READ_CYCLE_DELAY_MS, EMPTY_POLL_SLEEP_MS, databaseSyncBytesIntervalForTransactionalMode, databaseSyncBytesIntervalForDeferredWriteMode,
                 diskUsage, false);
@@ -635,9 +635,9 @@ public class StoreIngestionTaskTest {
     veniceWriter.delete(deleteKeyFoo);
 
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
-      verify(mockBandWidthThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(putKeyFoo.length + putValue.length);
-      verify(mockBandWidthThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(deleteKeyFoo.length);
-      verify(mockRecordsThrottler, timeout(TEST_TIMEOUT).atLeast(2)).maybeThrottle(1);
+      // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
+      verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(anyDouble());
+      verify(mockRecordsThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(1);
     });
   }
 

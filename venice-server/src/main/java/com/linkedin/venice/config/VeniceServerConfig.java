@@ -112,6 +112,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long nodeCapacityInRcu;
 
+  private final int kafkaMaxPollRecords;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -122,8 +124,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
     maxStateTransitionThreadNumber = serverProperties.getInt(MAX_STATE_TRANSITION_THREAD_NUMBER, 100);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
-    storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 125 * 1024 * 1024); // 125MB
-    storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 10 * 1024 * 1024); // 10MB
+    storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 25 * 1024 * 1024); // 25MB
+    storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 5 * 1024 * 1024); // 5MB
     restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 16);
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
     maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
@@ -151,6 +153,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
     //June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys per second
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 50000);
+    kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
   }
 
   public int getListenerPort() {
@@ -256,5 +259,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getNodeCapacityInRcu(){
     return nodeCapacityInRcu;
+  }
+
+  public int getKafkaMaxPollRecords() {
+    return kafkaMaxPollRecords;
   }
 }

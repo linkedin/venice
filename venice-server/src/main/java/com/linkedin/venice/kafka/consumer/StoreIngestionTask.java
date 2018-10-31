@@ -81,9 +81,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
   private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
   public static long POLLING_SCHEMA_DELAY_MS = TimeUnit.SECONDS.toMillis(5);
-//  public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
-  /** After processing the following number of messages, Venice SN will invoke throttling. */
-  public static int OFFSET_THROTTLE_INTERVAL = 1000;
+  /** After processing the following number of messages, Venice SN will report progress metrics. */
+  public static int OFFSET_REPORTING_INTERVAL = 1000;
   private static final int MAX_CONTROL_MESSAGE_RETRIES = 3;
   private static final int MAX_IDLE_COUNTER  = 100;
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
@@ -107,7 +106,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final StorageMetadataService storageMetadataService;
   private final TopicManager topicManager;
   private final CachedLatestOffsetGetter cachedLatestOffsetGetter;
-  private final EventThrottler bandWidthThrottler;
+  private final EventThrottler bandwidthThrottler;
   private final EventThrottler recordsThrottler;
   /** Per-partition consumption state map */
   private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
@@ -155,7 +154,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull StoreRepository storeRepository,
                             @NotNull StorageMetadataService storageMetadataService,
                             @NotNull Queue<VeniceNotifier> notifiers,
-                            @NotNull EventThrottler bandWidthThrottler,
+                            @NotNull EventThrottler bandwidthThrottler,
                             @NotNull EventThrottler recordsThrottler,
                             @NotNull String topic,
                             @NotNull ReadOnlySchemaRepository schemaRepo,
@@ -181,7 +180,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
-    this.bandWidthThrottler = bandWidthThrottler;
+    this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
     this.topic = topic;
     this.schemaRepo = schemaRepo;
@@ -446,9 +445,38 @@ public class StoreIngestionTask implements Runnable, Closeable {
       } else {
         recordsPolled = true;
       }
+      long totalRecordSize = 0;
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
         // blocking call
         storeBufferService.putConsumerRecord(record, this);
+        totalRecordSize += record.serializedKeySize() + record.serializedValueSize();
+      }
+      if (recordsPolled) {
+        /**
+         * We would like to throttle the ingestion by batch ({@link ConsumerRecords} return by each poll.
+         * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(ConsumerRecord, StoreIngestionTask)}
+         * could be blocked when the buffer is full, and the throttling could be inaccurate.
+         * So every record returned from {@link KafkaConsumerWrapper#poll(long)} should be processed
+         * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
+         * during GC.
+         *
+         * Here are more details:
+         * 1. Previously, the throttling was happening in StoreIngestionTask#processConsumerRecord,
+         *    which would be invoked by StoreBufferService;
+         * 2. When the ingestion got throttled, the database operations would halt, but the deserialized
+         *    records would be kept pushing to the intermediate buffer pool until the pool is full;
+         * 3. When Young GC happens, all the objects in the buffer pool could be potentially copied to Survivor
+         *    space since they are being actively referenced;
+         * 4. The object copy time is the slowest phase in Young GC;
+         *
+         * By moving the throttling logic after putting deserialized records to buffer, the records in the buffer
+         * will be processed as long as there is enough capacity.
+         * With this way, the actively referenced object will be reduced greatly during throttling and Young GC
+         * won't need to copy many objects from Young regions to Survivor regions, which reduces the overall
+         * GC pause time.
+         */
+        bandwidthThrottler.maybeThrottle(totalRecordSize);
+        recordsThrottler.maybeThrottle(records.count());
       }
       long afterPutTimestamp = System.currentTimeMillis();
       if (emitMetrics.get()) {
@@ -853,11 +881,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
 
     int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();
-    if (processedRecordNum >= OFFSET_THROTTLE_INTERVAL ||
+    if (processedRecordNum >= OFFSET_REPORTING_INTERVAL ||
         partitionConsumptionState.isEndOfPushReceived()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
-      bandWidthThrottler.maybeThrottle(processedRecordSize);
-      recordsThrottler.maybeThrottle(processedRecordNum);
       // Report metrics
       if (emitMetrics.get()) {
         storeIngestionStats.recordBytesConsumed(storeNameWithoutVersionInfo, processedRecordSize);
