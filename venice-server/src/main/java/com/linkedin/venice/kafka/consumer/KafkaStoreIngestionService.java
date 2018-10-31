@@ -368,6 +368,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         String.valueOf(storeConfig.getKafkaFetchMinSizePerSecond()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
         String.valueOf(storeConfig.getKafkaFetchMaxSizePerSecond()));
+    /**
+     * The following setting is used to control the maximum number of records to returned in one poll request.
+     */
+    kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(storeConfig.getKafkaMaxPollRecords()));
     kafkaConsumerProperties
         .setProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(storeConfig.getKafkaFetchMaxTimeMS()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG,

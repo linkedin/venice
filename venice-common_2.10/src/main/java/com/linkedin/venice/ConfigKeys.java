@@ -195,6 +195,15 @@ public class ConfigKeys {
    */
   public static final String SERVER_NODE_CAPACITY_RCU = "server.node.capacity.rcu.per.second";
 
+  /**
+   * This config is used to control the maximum records returned by every poll request.
+   * So far, Store Ingestion is throttling per poll, so if the configured value is too big,
+   * the throttling could be inaccurate and it may impact GC as well.
+   *
+   * We should try to avoid too many long-lasting objects in JVM to minimize GC overhead.
+   */
+  public static final String SERVER_KAFKA_MAX_POLL_RECORDS = "server.kafka.max.poll.records";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
