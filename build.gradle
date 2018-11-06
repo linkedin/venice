@@ -26,6 +26,7 @@ def internalKafkaVersion = "0.11.1.3"
 // OSS Kafka release (currently not used)
 def ossKafkaGroup = "org.apache.kafka"
 def ossKafkaVersion = "0.10.1.1"
+def ddsStorageCoreVersion = "5.1.10"
 
 ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.7.7',
@@ -55,11 +56,11 @@ ext.libraries = [ // Groovy map literal
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.2.15',
                   d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.2.15',
-                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:5.0.67',
-                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:5.0.67',
-                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:5.0.67',
-                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:5.0.67',
-                  netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:5.0.67',
+                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:' + ddsStorageCoreVersion,
+                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:' + ddsStorageCoreVersion,
+                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:' + ddsStorageCoreVersion,
+                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:' + ddsStorageCoreVersion,
+                  netty4Lnkd: 'com.linkedin.dds-storage-core:dds-storage-netty4-lnkd:' + ddsStorageCoreVersion,
                   oss: 'org.sonatype.oss:oss-parent:7',
                   asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
