@@ -13,12 +13,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
-import edu.emory.mathcs.backport.java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.testng.Assert;
@@ -142,8 +141,6 @@ public class StorageQuotaEnforcementHandlerListenerTest {
         "After deleting a store, the throttler should still be subscribed to unrelated topics");
     assertTrue(quotaEnforcer.listTopics().contains(Version.composeKafkaTopic(store1.getName(), 1)),
         "After deleting a store, the throttler should still have buckets for unrelated topics");
-
-
   }
 
   private Store getDummyStore(String storeName, List<Integer> versions, long rcuQuota){

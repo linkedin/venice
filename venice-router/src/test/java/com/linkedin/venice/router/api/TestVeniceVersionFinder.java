@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -10,13 +9,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
-import edu.emory.mathcs.backport.java.util.Arrays;
-import edu.emory.mathcs.backport.java.util.Collections;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Supplier;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
