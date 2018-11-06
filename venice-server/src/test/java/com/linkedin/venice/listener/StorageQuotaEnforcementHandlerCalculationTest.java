@@ -1,30 +1,15 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.RoutingStrategy;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.throttle.TokenBucket;
 import com.linkedin.venice.utils.TestUtils;
-import edu.emory.mathcs.backport.java.util.Arrays;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
-import java.util.Set;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 
 public class StorageQuotaEnforcementHandlerCalculationTest {
