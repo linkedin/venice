@@ -23,7 +23,7 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
   }
 
   /**
-   * By default, this function will pre-append the request type to the sensor name.
+   * By default, this function will prepend the request type to the sensor name.
    * @param sensorName
    * @param stats
    * @return
@@ -31,5 +31,17 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
   @Override
   protected Sensor registerSensor(String sensorName, MeasurableStat... stats) {
     return registerSensor(getFullMetricName(sensorName), null, stats);
+  }
+
+  /**
+   * By default, this function will prepend the request type to the sensor name, and register percentiles with the same name.
+   */
+  protected Sensor registerSensorWithDetailedPercentiles(String sensorName, MeasurableStat... stats) {
+    MeasurableStat[] newStats = new MeasurableStat[stats.length + 1];
+    for (int i = 0; i < stats.length; i++) {
+      newStats[i] = stats[i];
+    }
+    newStats[stats.length] = TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName(sensorName));
+    return registerSensor(getFullMetricName(sensorName), stats);
   }
 }

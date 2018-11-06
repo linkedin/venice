@@ -2,14 +2,43 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
+import com.linkedin.venice.client.stats.ClientStats;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiFunction;
 
+/**
+ * This class includes some necessary functions to deal with certain metric-handling activities that only
+ * the client implementation can be aware of. These metrics cannot be tracked from a purely-external
+ * perspective (i.e.: from the {@link com.linkedin.venice.client.store.StatTrackingStoreClient}'s point of view).
+ *
+ * It is intentional for these functions to not be part of {@link AvroGenericStoreClient}, so that the
+ * end-user does not see these extra functions on the instances they get back from the
+ * {@link com.linkedin.venice.client.store.ClientFactory}.
+ */
 public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V> {
 
-  public abstract CompletableFuture<byte[]> getRaw(String requestPath);
+  public CompletableFuture<byte[]> getRaw(String requestPath) {
+    return getRaw(requestPath, Optional.empty(), 0);
+  }
+
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return get(key, Optional.empty(), 0);
+  }
+
+  public CompletableFuture<Map<K, V>> batchGet(final Set<K> keys) throws VeniceClientException {
+    return batchGet(keys, Optional.empty(), 0);
+  }
+
+  public abstract CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException;
+
+  public abstract CompletableFuture<Map<K, V>> batchGet(final Set<K> keys, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException;
+
+  public abstract CompletableFuture<byte[]> getRaw(final String requestPath, final Optional<ClientStats> stats, final long preRequestTimeInNS);
 
   public static void handleStoreExceptionInternally(Throwable throwable) {
     if (null == throwable) {

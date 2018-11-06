@@ -2,7 +2,9 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
+import com.linkedin.venice.client.stats.ClientStats;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.apache.avro.Schema;
@@ -21,13 +23,28 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
+  public CompletableFuture<V> get(K key, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
+    return innerStoreClient.get(key, stats, preRequestTimeInNS);
+  }
+
+  @Override
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     return innerStoreClient.getRaw(requestPath);
   }
 
   @Override
+  public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, long preRequestTimeInNS) {
+    return innerStoreClient.getRaw(requestPath, stats, preRequestTimeInNS);
+  }
+
+  @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     return innerStoreClient.batchGet(keys);
+  }
+
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
+    return innerStoreClient.batchGet(keys, stats, preRequestTimeInNS);
   }
 
   @Override

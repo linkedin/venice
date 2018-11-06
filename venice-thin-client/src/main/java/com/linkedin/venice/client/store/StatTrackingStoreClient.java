@@ -10,6 +10,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
@@ -45,20 +46,36 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   @Override
   public CompletableFuture<V> get(K key) {
     long startTimeInNS = System.nanoTime();
-    CompletableFuture<V> innerFuture = super.get(key);
+    CompletableFuture<V> innerFuture = super.get(key, Optional.of(singleGetStats), startTimeInNS);
     singleGetStats.recordRequestKeyCount(1);
     CompletableFuture<V> statFuture = innerFuture.handle(
-        (BiFunction<? super V, Throwable, ? extends V>) getStatCallback(
-            singleGetStats, startTimeInNS
-        )
-    );
+        (BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS));
+    return statFuture;
+  }
 
+  @Override
+  public CompletableFuture<byte[]> getRaw(String requestPath) {
+    long startTimeInNS = System.nanoTime();
+    CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath, Optional.of(schemaReaderStats), startTimeInNS);
+    schemaReaderStats.recordRequestKeyCount(1);
+    CompletableFuture<byte[]> statFuture = innerFuture.handle(
+        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(schemaReaderStats, startTimeInNS));
+    return statFuture;
+  }
+
+  @Override
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    long startTimeInNS = System.nanoTime();
+    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(keys, Optional.of(multiGetStats), startTimeInNS);
+    multiGetStats.recordRequestKeyCount(keys.size());
+    CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
+        (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(multiGetStats, startTimeInNS));
     return statFuture;
   }
 
   private <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
       ClientStats clientStats, long startTimeInNS) {
-    return (value, throwable) -> {
+    return (T value, Throwable throwable) -> {
       double latency = LatencyUtils.getLatencyInMS(startTimeInNS);
       if (null != throwable) {
         clientStats.recordUnhealthyRequest();
@@ -87,33 +104,4 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       return value;
     };
   }
-
-  @Override
-  public CompletableFuture<byte[]> getRaw(String requestPath) {
-    long startTimeInNS = System.nanoTime();
-    CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath);
-    schemaReaderStats.recordRequestKeyCount(1);
-    CompletableFuture<byte[]> statFuture = innerFuture.handle(
-        (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(
-            schemaReaderStats, startTimeInNS
-        )
-    );
-
-    return statFuture;
-  }
-
-  @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException
-  {
-    long startTimeInNS = System.nanoTime();
-    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(keys);
-    multiGetStats.recordRequestKeyCount(keys.size());
-    CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
-        (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(
-            multiGetStats, startTimeInNS
-        )
-    );
-    return statFuture;
-  }
-
 }

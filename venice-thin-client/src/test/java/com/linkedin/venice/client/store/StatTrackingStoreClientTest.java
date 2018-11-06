@@ -47,12 +47,12 @@ public class StatTrackingStoreClientTest {
 
     });
 
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any());
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
     MetricsRepository repository = new MetricsRepository();
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient, repository);
-    statTrackingStoreClient.get(any()).get();
+    statTrackingStoreClient.get("key").get();
 
     Map<String, ? extends Metric> metrics = repository.metrics();
     Metric requestMetric = metrics.get(metricPrefix + "--request.OccurrenceRate");
@@ -86,7 +86,7 @@ public class StatTrackingStoreClientTest {
       return value;
 
     });
-    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any());
+    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any(), any(), anyLong());
 
     MetricsRepository repository = new MetricsRepository();
 
@@ -123,13 +123,13 @@ public class StatTrackingStoreClientTest {
       return value;
 
     });
-    doReturn(mockInnerFuture).when(mockStoreClient).get(any());
+    doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
     MetricsRepository repository = new MetricsRepository();
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient, repository);
     try {
-      statTrackingStoreClient.get(any()).get();
+      statTrackingStoreClient.get("key").get();
       Assert.fail("ExecutionException should be thrown");
     } catch (ExecutionException e) {
       System.out.println(e);
