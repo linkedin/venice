@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
@@ -14,9 +15,13 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
@@ -188,14 +193,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public CompletableFuture<V> get(K key) throws VeniceClientException {
+  public CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
     byte[] serializedKey = getKeySerializer().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
 
-    CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath, GET_HEADER_MAP);
-
-    // Deserialization
-    CompletableFuture<V> valueFuture = transportFuture.handleAsync(
+    return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
+        () -> transportClient.get(requestPath, GET_HEADER_MAP),
         (clientResponse, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
@@ -209,22 +212,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
           RecordDeserializer<V> deserializer = getDataRecordDeserializer(clientResponse.getSchemaId());
           return deserializer.deserialize(clientResponse.getBody());
-        },
-        deserializationExecutor
+        }
     );
-
-    return valueFuture;
   }
 
   @Override
-  public CompletableFuture<byte[]> getRaw(String requestPath) {
-    CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath);
-    /**
-     * We shouldn't use this thread pool: {@link #deserializationExecutor} here.
-     * Otherwise, it could cause the deadlock issue.
-     */
-
-    CompletableFuture<byte[]> valueFuture = transportFuture.handle(
+  public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, final long preRequestTimeInNS) {
+    return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, false,
+        () -> transportClient.get(requestPath),
         (clientResponse, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
@@ -236,24 +231,21 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           return clientResponse.getBody();
         }
     );
-    return valueFuture;
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException
-  {
+  public CompletableFuture<Map<K, V>> batchGet(final Set<K> keys, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
     if (keys.isEmpty()) {
       return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET;
     }
     List<K> keyList = new ArrayList<>(keys);
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    keyList.stream().forEach( key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))) );
+    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
     byte[] multiGetBody = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     String requestPath = getStorageRequestPath();
 
-    CompletableFuture<TransportClientResponse> transportFuture = transportClient.post(requestPath, MULTI_GET_HEADER_MAP,
-        multiGetBody);
-    CompletableFuture<Map<K, V>> valueFuture = transportFuture.handleAsync(
+    return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
+        () -> transportClient.post(requestPath, MULTI_GET_HEADER_MAP, multiGetBody),
         (clientResponse, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
@@ -282,12 +274,56 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
 
           return resultMap;
-        },
-        deserializationExecutor
+        }
     );
+  }
 
+  /**
+   * This function takes care of logging three metrics:
+   *
+   * - pre-request to pre-submission time (i.e.: request serialization)
+   * - pre-submission to pre-handling time (i.e.: network round-trip)
+   * - pre-handling to end time (i.e.: response deserialization)
+   *
+   * @param stats The {@link ClientStats} object to record into. Should be the one passed by the {@link StatTrackingStoreClient}.
+   * @param preRequestTimeInNS The request start time. Should be the one passed by the {@link StatTrackingStoreClient}.
+   * @param handleResponseOnDeserializationExecutor if true, will execute the {@param responseHandler} on the {@link #deserializationExecutor}
+   *                                                if false, will execute the {@param responseHandler} on the same thread.
+   * @param requestSubmitter A closure which ONLY submits the request to the backend. Should not include any pre-submission work (i.e.: serialization).
+   * @param responseHandler A closure which interprets the response from the backend (i.e.: deserialization).
+   * @param <R> The return type of the {@param responseHandler}.
+   * @return a {@link CompletableFuture<R>} wrapping the return of the {@param responseHandler}.
+   * @throws VeniceClientException
+   */
+  private <R> CompletableFuture<R> requestSubmissionWithStatsHandling(
+      final Optional<ClientStats> stats,
+      final long preRequestTimeInNS,
+      final boolean handleResponseOnDeserializationExecutor,
+      final Supplier<CompletableFuture<TransportClientResponse>> requestSubmitter,
+      final BiFunction<TransportClientResponse, Throwable, R> responseHandler) throws VeniceClientException {
+    final long preSubmitTimeInNS = System.nanoTime();
+    CompletableFuture<TransportClientResponse> transportFuture = requestSubmitter.get();
 
-    return valueFuture;
+    BiFunction<TransportClientResponse, Throwable, R> responseHandlerWithStats = (clientResponse, throwable) -> {
+      // N.B.: All stats handling is async
+      long preHandlingTimeNS = System.nanoTime();
+      stats.ifPresent(clientStats -> clientStats.recordRequestSerializationTime(
+          LatencyUtils.convertLatencyFromNSToMS(preSubmitTimeInNS - preRequestTimeInNS)));
+      stats.ifPresent(clientStats -> clientStats.recordRequestSubmissionToResponseHandlingTime(
+          LatencyUtils.convertLatencyFromNSToMS(preHandlingTimeNS - preSubmitTimeInNS)));
+
+      try {
+        return responseHandler.apply(clientResponse, throwable);
+      } finally {
+        stats.ifPresent(clientStats -> clientStats.recordResponseDeserializationTime(LatencyUtils.getLatencyInMS(preHandlingTimeNS)));
+      }
+    };
+
+    if (handleResponseOnDeserializationExecutor) {
+      return transportFuture.handleAsync(responseHandlerWithStats, deserializationExecutor);
+    } else {
+      return transportFuture.handle(responseHandlerWithStats);
+    }
   }
 
   @Override

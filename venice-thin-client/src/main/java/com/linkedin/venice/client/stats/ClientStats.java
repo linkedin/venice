@@ -3,18 +3,13 @@ package com.linkedin.venice.client.stats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
-import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
-import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
 import io.tehuti.metrics.stats.Rate;
-import io.tehuti.metrics.stats.SampledCount;
-import io.tehuti.metrics.stats.SampledTotal;
-import io.tehuti.metrics.stats.Total;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -30,6 +25,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Sensor successRequestRatioSensor;
+  private final Sensor requestSerializationTime;
+  private final Sensor requestSubmissionToResponseHandlingTime;
+  private final Sensor responseDeserializationTime;
 
   public ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
@@ -44,10 +42,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
     requestSensor = registerSensor("request", request);
     healthySensor = registerSensor("healthy_request", healthyRequest);
     unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
-    healthyRequestLatencySensor = registerSensor("healthy_request_latency",
-        TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("healthy_request_latency")));
-    unhealthyRequestLatencySensor = registerSensor("unhealthy_request_latency",
-        TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("unhealthy_request_latency")));
+    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency");
+    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency");
 
     successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.SimpleRatioStat(healthyRequest, request));
@@ -59,6 +55,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
         new Avg(), new Max());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
+    requestSerializationTime = registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
+    requestSubmissionToResponseHandlingTime = registerSensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
+    responseDeserializationTime = registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
   }
 
   public void recordRequest() {
@@ -95,5 +94,17 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordSuccessRequestKeyCount(int successKeyCount) {
     successRequestKeyCountSensor.record(successKeyCount);
+  }
+
+  public void recordRequestSerializationTime(double latency) {
+    requestSerializationTime.record(latency);
+  }
+
+  public void recordRequestSubmissionToResponseHandlingTime(double latency) {
+    requestSubmissionToResponseHandlingTime.record(latency);
+  }
+
+  public void recordResponseDeserializationTime(double latency) {
+    responseDeserializationTime.record(latency);
   }
 }
