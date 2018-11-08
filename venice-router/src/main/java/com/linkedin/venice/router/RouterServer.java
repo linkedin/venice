@@ -61,11 +61,17 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.netty.channel.AbstractChannel;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.MultithreadEventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
+import io.netty.channel.epoll.EpollSocketChannel;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
@@ -301,14 +307,27 @@ public class RouterServer extends AbstractVeniceService {
       new RouterCacheStats(metricsRepository, "router_cache", routerCache.get());
     }
 
-    workerEventLoopGroup = new EpollEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
-    serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
+    Class<? extends Channel> channelClass;
+    Class<? extends AbstractChannel> serverSocketChannelClass;
+    try {
+      workerEventLoopGroup = new EpollEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
+      channelClass = EpollSocketChannel.class;
+      serverEventLoopGroup = new EpollEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
+      serverSocketChannelClass = EpollServerSocketChannel.class;
+    } catch (LinkageError error) {
+      logger.info("Epoll is only supported on Linux; switching to NIO", error);
+      workerEventLoopGroup = new NioEventLoopGroup(config.getNettyClientEventLoopThreads(), workerExecutor);
+      channelClass = NioSocketChannel.class;
+      serverEventLoopGroup = new NioEventLoopGroup(ROUTER_BOSS_THREAD_NUM);
+      serverSocketChannelClass = NioServerSocketChannel.class;
+    }
 
     StorageNodeClient storageNodeClient;
     switch (config.getStorageNodeClientType()) {
       case NETTY_4_CLIENT:
         logger.info("Router will use NETTY_4_CLIENT");
-        storageNodeClient = new NettyStorageNodeClient(config, sslFactoryForRequests, statsForSingleGet, statsForMultiGet, workerEventLoopGroup);
+        storageNodeClient = new NettyStorageNodeClient(config, sslFactoryForRequests,
+            statsForSingleGet, statsForMultiGet, workerEventLoopGroup, channelClass);
         break;
       case APACHE_HTTP_ASYNC_CLIENT:
         logger.info("Router will use Apache_Http_Async_Client");
@@ -407,7 +426,7 @@ public class RouterServer extends AbstractVeniceService {
     router = Router.builder(scatterGather)
         .name("VeniceRouterHttp")
         .resourceRegistry(registry)
-        .serverSocketChannel(EpollServerSocketChannel.class)
+        .serverSocketChannel(serverSocketChannelClass)
         .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())
@@ -438,7 +457,7 @@ public class RouterServer extends AbstractVeniceService {
     secureRouter = Router.builder(scatterGather)
         .name("SecureVeniceRouterHttps")
         .resourceRegistry(registry)
-        .serverSocketChannel(EpollServerSocketChannel.class)
+        .serverSocketChannel(serverSocketChannelClass)
         .bossPoolBuilder(EventLoopGroup.class, ignored -> serverEventLoopGroup)
         .ioWorkerPoolBuilder(EventLoopGroup.class, ignored -> workerEventLoopGroup)
         .connectionLimit(config.getConnectionLimit())

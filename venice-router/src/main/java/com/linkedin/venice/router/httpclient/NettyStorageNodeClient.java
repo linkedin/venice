@@ -101,14 +101,15 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
   private MultithreadEventLoopGroup eventLoopGroup;
 
   public NettyStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactoryForRequests,
-      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet, MultithreadEventLoopGroup workerEventLoopGroup) {
+      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet, MultithreadEventLoopGroup workerEventLoopGroup,
+      Class<? extends Channel> channelClass) {
     this.scheme = config.isSslToStorageNodes() ? HTTPS_PREFIX : HTTP_PREFIX;
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
     this.eventLoopGroup = workerEventLoopGroup;
 
     Bootstrap bootstrap =
-        new ResolveAllBootstrap(NullCallTracker.INSTANCE, NullCallTracker.INSTANCE).channel(EpollSocketChannel.class).handler(new ChannelInitializer<Channel>() {
+        new ResolveAllBootstrap(NullCallTracker.INSTANCE, NullCallTracker.INSTANCE).channel(channelClass).handler(new ChannelInitializer<Channel>() {
           @Override
           protected void initChannel(Channel ch) throws Exception {
             ChannelPipeline pipeline = ch.pipeline();
