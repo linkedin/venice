@@ -21,8 +21,12 @@ import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.Channel;
 import io.netty.channel.MultithreadEventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollSocketChannel;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpMethod;
@@ -113,8 +117,20 @@ public class TestVeniceDispatcher {
 
     StorageNodeClient storageNodeClient;
     if (useNettyClient) {
+      MultithreadEventLoopGroup workerEventLoopGroup;
+      Class<? extends Channel> channelClass;
+      try {
+        workerEventLoopGroup = new EpollEventLoopGroup(1);
+        channelClass = EpollSocketChannel.class;
+      } catch (NoClassDefFoundError e) {
+        workerEventLoopGroup = new NioEventLoopGroup(1);
+        channelClass = NioSocketChannel.class;
+      } catch (UnsatisfiedLinkError ee) {
+        workerEventLoopGroup = new NioEventLoopGroup(1);
+        channelClass = NioSocketChannel.class;
+      }
       storageNodeClient = new NettyStorageNodeClient(routerConfig, Optional.empty(),
-          mockStatsForSingleGet, mockStatsForMultiGet, new EpollEventLoopGroup(1));
+          mockStatsForSingleGet, mockStatsForMultiGet, workerEventLoopGroup, channelClass);
     } else {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo);
     }
