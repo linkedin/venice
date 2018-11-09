@@ -10,6 +10,7 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
@@ -183,7 +184,7 @@ public abstract class TestRestartServerDuringIngestion {
     restartPointSetForUnsortedInput.add(678);
     restartPointSetForUnsortedInput.add(831);
     cur = 0;
-    Map.Entry<byte[], byte[]> lastEntry = null;
+
     VeniceWriter<byte[], byte[]> streamingWriter = veniceWriterFactory.getBasicVeniceWriter(
         Version.composeRealTimeTopic(storeName));
     for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
@@ -199,20 +200,20 @@ public abstract class TestRestartServerDuringIngestion {
         cluster.restartVeniceServer(serverWrapper.getPort());
       }
       streamingWriter.put(entry.getKey(), entry.getValue(), 1, null);
-      lastEntry = entry;
     }
 
-    // Waiting for last key/value to be available in storage node
-    String lastKey = deserializer.deserialize(lastEntry.getKey()).toString();
-    CharSequence expectedLastValue = (CharSequence)deserializer.deserialize(lastEntry.getValue());
+    // Wait until all partitions have ready-to-serve instances
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      try {
-        CharSequence actualLastValue = storeClient.get(lastKey).get();
-        return expectedLastValue.equals(actualLastValue);
-      } catch (Exception e) {
-        e.printStackTrace();
-        return false;
+      PartitionAssignment partitionAssignment =
+          cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topic);
+      boolean allPartitionsReady = true;
+      for (Partition partition : partitionAssignment.getAllPartitions()) {
+        if (partition.getReadyToServeInstances().size() == 0) {
+          allPartitionsReady = false;
+          break;
+        }
       }
+      return allPartitionsReady;
     });
     // Verify all the key/value pairs
     for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
@@ -222,6 +223,5 @@ public abstract class TestRestartServerDuringIngestion {
       Assert.assertEquals(returnedValue, expectedValue);
     }
   }
-
 
 }
