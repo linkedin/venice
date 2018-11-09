@@ -11,10 +11,13 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -52,6 +55,7 @@ public class AvroGenericStoreClientImplTest {
   private D2Client d2Client;
 
   private Map<String, AvroGenericStoreClient<String, Object>> storeClients = new HashMap<>();
+  private Map<AvroGenericStoreClient, MetricsRepository> storeClientMetricsRepositories = new HashMap<>();
   private AbstractAvroStoreClient<String, Object> someStoreClient;
 
   @BeforeTest
@@ -78,15 +82,25 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri(clusterDiscoveryPath, StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
+    MetricsRepository httpClientMetricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, Object> httpStoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl));
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig
+            .defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerUrl)
+            .setMetricsRepository(httpClientMetricsRepository));
     storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
+    storeClientMetricsRepositories.put(httpStoreClient, httpClientMetricsRepository);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
+    MetricsRepository d2ClientMetricsRepository = new MetricsRepository();
     AvroGenericStoreClient<String, Object> d2StoreClient =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig
+            .defaultGenericClientConfig(storeName)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2Client(d2Client)
+            .setMetricsRepository(d2ClientMetricsRepository));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
+    storeClientMetricsRepositories.put(d2StoreClient, d2ClientMetricsRepository);
     DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
     someStoreClient = (AbstractAvroStoreClient<String, Object>)delegatingStoreClient.getInnerStoreClient();
   }
@@ -192,6 +206,8 @@ public class AvroGenericStoreClientImplTest {
       GenericData.Record recordValue = (GenericData.Record) value;
       Assert.assertEquals(recordValue.get("a"), 100l);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
+
+      testMetric(entry.getValue(), RequestType.SINGLE_GET);
     }
   }
 
@@ -429,7 +445,35 @@ public class AvroGenericStoreClientImplTest {
       Assert.assertFalse(result.containsKey("key4"));
       Assert.assertEquals(result.get("key1").toString(), "value1");
       Assert.assertEquals(result.get("key3").toString(), "value3");
+
+      testMetric(entry.getValue(), RequestType.MULTI_GET);
     }
+  }
+
+  private void testMetric(AvroGenericStoreClient client, RequestType requestType) {
+    MetricsRepository repository = storeClientMetricsRepositories.get(client);
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    String metricPrefix = "." + storeName + "--" + requestType.getMetricPrefix();
+    Metric requestMetric = metrics.get(metricPrefix + "request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "unhealthy_request.OccurrenceRate");
+    Metric requestSerializationTimeMetric = metrics.get(metricPrefix + "request_serialization_time.Avg");
+    Metric requestSubmissionToResponseHandlingTimeMetric = metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
+    Metric responseDeserializationTimeMetric = metrics.get(metricPrefix + "response_deserialization_time.Avg");
+    Metric requestSerializationTimeMetric99 = metrics.get(metricPrefix + "request_serialization_time.99thPercentile");
+    Metric requestSubmissionToResponseHandlingTimeMetric99 = metrics.get(metricPrefix + "request_submission_to_response_handling_time.99thPercentile");
+    Metric responseDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_deserialization_time.99thPercentile");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
+    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+    Assert.assertTrue(requestSerializationTimeMetric.value() > 0.0);
+    Assert.assertTrue(requestSubmissionToResponseHandlingTimeMetric.value() > 0.0);
+    Assert.assertTrue(responseDeserializationTimeMetric.value() > 0.0);
+    Assert.assertTrue(requestSerializationTimeMetric99.value() > 0.0);
+    Assert.assertTrue(requestSubmissionToResponseHandlingTimeMetric99.value() > 0.0);
+    Assert.assertTrue(responseDeserializationTimeMetric99.value() > 0.0);
+
   }
 
   @Test
