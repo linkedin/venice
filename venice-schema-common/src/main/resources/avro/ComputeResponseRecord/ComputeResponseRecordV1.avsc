@@ -1,0 +1,18 @@
+{
+  "name": "ComputeResponseRecordV1",
+  "type": "record",
+  "namespace": "com.linkedin.venice.compute.protocol.response",
+  "doc": "This record used to store the response per key",
+  "fields": [
+    {
+      "name": "keyIndex",
+      "type": "int",
+      "doc": "This index will be used to retrieve the original key from the mapping maintained by Client/Router"
+    },
+    {
+      "name": "value",
+      "type": "bytes",
+      "doc": "The serialized result can be de-serialized by the result schema passed in the compute request"
+    }
+  ]
+}

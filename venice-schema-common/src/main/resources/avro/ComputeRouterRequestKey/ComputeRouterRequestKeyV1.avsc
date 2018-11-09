@@ -1,0 +1,23 @@
+{
+  "name": "ComputeRouterRequestKeyV1",
+  "namespace": "com.linkedin.venice.compute.protocol.request.router",
+  "doc": "This field will store all the related info for one key",
+  "type": "record",
+  "fields": [
+    {
+      "name": "keyIndex",
+      "doc": "Unique index for each key inside current multi-get request",
+      "type": "int"
+    },
+    {
+      "name": "keyBytes",
+      "doc": "Avro serialized key",
+      "type": "bytes"
+    },
+    {
+      "name": "partitionId",
+      "doc": "Partition that current key belongs to",
+      "type": "int"
+    }
+  ]
+}
