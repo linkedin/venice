@@ -6,6 +6,7 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
@@ -77,7 +78,13 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     if (serverConfig.isQuotaEnforcementDisabled()) {
       this.quotaEnforcer.disableEnforcement();
     }
+
+    //Token Bucket Stats for a store must be initialized when that store is created
     this.quotaTokenBucketStats = new AggServerQuotaTokenBucketStats(metricsRepository, quotaEnforcer);
+    storeMetadataRepository.registerStoreDataChangedListener(this.quotaTokenBucketStats);
+    for (Store store : storeMetadataRepository.getAllStores()){
+      this.quotaTokenBucketStats.initializeStatsForStore(store.getName());
+    }
   }
 
   @Override
