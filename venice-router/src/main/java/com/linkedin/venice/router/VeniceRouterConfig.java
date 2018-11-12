@@ -94,7 +94,14 @@ public class VeniceRouterConfig {
     longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
     longTailRetryForBatchGetThresholdMs = parseRetryThresholdForBatchGet(
         props.getString(ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-5:15,6-20:30,21-150:50,151-500:100,501-:500"));
-    smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
+    //smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
+    /**
+     * Disable smart long-tail retry for now since the required dds router lib: 5.0.76 or the latest: 5.1.10 has
+     * latency issue when running in prod.
+     *
+     * TODO: work with DDS router lib owner to figure out the root cause
+     */
+    smartLongTailRetryEnabled = false;
     smartLongTailRetryAbortThresholdMs = props.getInt(ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, 100);
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
