@@ -89,6 +89,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
 
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
+  private final AggRouterHttpRequestStats statsForCompute;
 
   private final ChannelHealthChecker healthChecker = ch -> {
     if (ch.isActive()) {
@@ -101,11 +102,12 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
   private MultithreadEventLoopGroup eventLoopGroup;
 
   public NettyStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactoryForRequests,
-      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet, MultithreadEventLoopGroup workerEventLoopGroup,
-      Class<? extends Channel> channelClass) {
+      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet, AggRouterHttpRequestStats statsForCompute,
+      MultithreadEventLoopGroup workerEventLoopGroup, Class<? extends Channel> channelClass) {
     this.scheme = config.isSslToStorageNodes() ? HTTPS_PREFIX : HTTP_PREFIX;
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
+    this.statsForCompute = statsForCompute;
     this.eventLoopGroup = workerEventLoopGroup;
 
     Bootstrap bootstrap =
@@ -173,12 +175,28 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
     QOS qos = Optional.ofNullable(request.headers().get(X_QOS)).map(QOS::valueOf).orElse(QOS.NORMAL);
     Promise<FullHttpResponse> responsePromise = ImmediateEventExecutor.INSTANCE.newPromise();
 
-    Future<Channel> future = manager.acquire(hostAndPort, queueName, qos);
-    if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
-      statsForSingleGet.recordNettyClientAcquireChannelLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
-    } else {
-      statsForMultiGet.recordNettyClientAcquireChannelLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
+    AggRouterHttpRequestStats stats;
+    switch (path.getRequestType()) {
+      case SINGLE_GET:
+        stats = statsForSingleGet;
+        break;
+      case MULTI_GET:
+        stats = statsForMultiGet;
+        break;
+      case COMPUTE:
+        stats = statsForCompute;
+        break;
+      default:
+        String errMsg = "Request type " + path.getRequestType() + " is not supported!";
+        logger.error(errMsg);
+        VeniceException e = new VeniceException(errMsg);
+        failedCallBack.accept(e);
+        responsePromise.setFailure(e);
+        return;
     }
+
+    Future<Channel> future = manager.acquire(hostAndPort, queueName, qos);
+    stats.recordNettyClientAcquireChannelLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
 
     future.addListener((Future<Channel> channelFuture) -> {
       if (channelFuture.isSuccess()) {
@@ -199,11 +217,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
               return;
             }
             if (o instanceof HttpResponse) {
-              if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
-                statsForSingleGet.recordNettyClientFirstResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
-              } else {
-                statsForMultiGet.recordNettyClientFirstResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
-              }
+              stats.recordNettyClientFirstResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
               HttpResponse response = (HttpResponse) o;
               _response = new BasicHttpResponse(request, response.status(), response.headers());
             }
@@ -217,11 +231,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
               }
             }
             if (o instanceof LastHttpContent) {
-              if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
-                statsForSingleGet.recordNettyClientLastResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
-              } else {
-                statsForMultiGet.recordNettyClientLastResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
-              }
+              stats.recordNettyClientLastResponseLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));
               LastHttpContent last = (LastHttpContent) o;
               FullHttpResponse fullHttpResponse =
                   new BasicFullHttpResponse(_response, _response.headers(), last.trailingHeaders(), _content);

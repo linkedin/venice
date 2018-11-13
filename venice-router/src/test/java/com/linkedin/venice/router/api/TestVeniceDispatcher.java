@@ -112,6 +112,7 @@ public class TestVeniceDispatcher {
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
+    AggRouterHttpRequestStats mockStatsForCompute = mock(AggRouterHttpRequestStats.class);
     MetricsRepository mockMetricsRepo = new MetricsRepository();
     VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
 
@@ -130,12 +131,12 @@ public class TestVeniceDispatcher {
         channelClass = NioSocketChannel.class;
       }
       storageNodeClient = new NettyStorageNodeClient(routerConfig, Optional.empty(),
-          mockStatsForSingleGet, mockStatsForMultiGet, workerEventLoopGroup, channelClass);
+          mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute, workerEventLoopGroup, channelClass);
     } else {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo);
     }
-    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo,
-        Optional.empty(), mockStatsForSingleGet, mockStatsForMultiGet, mockMetricsRepo, storageNodeClient);
+    VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo, Optional.empty(),
+        mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute, mockMetricsRepo, storageNodeClient);
     dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;
   }

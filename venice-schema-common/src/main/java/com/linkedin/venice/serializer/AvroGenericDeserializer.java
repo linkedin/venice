@@ -27,6 +27,11 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   public V deserialize(byte[] bytes) throws VeniceException {
     // This param is to re-use a decoder instance. TODO: explore GC tuning later.
     BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
+    return deserialize(decoder);
+  }
+
+  @Override
+  public V deserialize(BinaryDecoder decoder) throws VeniceException {
     try {
       return datumReader.read(null, decoder);
     } catch (Exception e) {

@@ -27,6 +27,7 @@ public class RouterExceptionAndTrackingUtils {
 
   private static AggRouterHttpRequestStats STATS_FOR_SINGLE_GET;
   private static AggRouterHttpRequestStats STATS_FOR_MULTI_GET;
+  private static AggRouterHttpRequestStats STATS_FOR_COMPUTE;
 
   private static Logger logger = Logger.getLogger(RouterExceptionAndTrackingUtils.class);
 
@@ -40,6 +41,11 @@ public class RouterExceptionAndTrackingUtils {
   @Deprecated
   public static void setStatsForMultiGet(AggRouterHttpRequestStats stats) {
     STATS_FOR_MULTI_GET = stats;
+  }
+
+  @Deprecated
+  public static void setStatsForCompute(AggRouterHttpRequestStats stats) {
+    STATS_FOR_COMPUTE = stats;
   }
 
   public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
@@ -79,8 +85,15 @@ public class RouterExceptionAndTrackingUtils {
   private static void metricTracking(Optional<String> storeName, Optional<RequestType> requestType,
       HttpResponseStatus responseStatus, FailureType failureType) {
     AggRouterHttpRequestStats stats = STATS_FOR_SINGLE_GET;
-    if (requestType.isPresent() && requestType.get().equals(RequestType.MULTI_GET)) {
-      stats= STATS_FOR_MULTI_GET;
+    if (requestType.isPresent()) {
+      switch (requestType.get()) {
+        case MULTI_GET:
+          stats = STATS_FOR_MULTI_GET;
+          break;
+        case COMPUTE:
+          stats = STATS_FOR_COMPUTE;
+          break;
+      }
     }
     if (null == stats) {
       return;

@@ -291,7 +291,7 @@ public abstract class TestRead {
       }
       metrics.forEach( (mName, metric) -> {
         if (mName.contains("_current--disk_usage_in_bytes")) {
-          Assert.assertTrue(metric.value() > 0, "Disk usage for current version should be postive");
+          Assert.assertTrue(metric.value() > 0.0, "Disk usage for current version should be postive");
         }
       });
     }

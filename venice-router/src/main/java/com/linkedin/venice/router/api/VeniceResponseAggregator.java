@@ -52,15 +52,22 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
 
   // Headers expected in each storage node multi-get response
   private static final Map<CharSequence, String> MULTI_GET_VALID_HEADER_MAP = new HashMap<>();
+  private static final Map<CharSequence, String> COMPUTE_VALID_HEADER_MAP = new HashMap<>();
   static {
     MULTI_GET_VALID_HEADER_MAP.put(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
     //TODO: If the response version for multi-get changes in the future, we need to update the following protocol version mapping.
     MULTI_GET_VALID_HEADER_MAP.put(HttpConstants.VENICE_SCHEMA_ID,
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_RESPONSE_V1.getProtocolVersion()));
+
+    COMPUTE_VALID_HEADER_MAP.put(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+    // If the response version for read compute changes in the future, we need to update the following protocol version mapping
+    COMPUTE_VALID_HEADER_MAP.put(HttpConstants.VENICE_SCHEMA_ID,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
   }
 
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
+  private final AggRouterHttpRequestStats statsForCompute;
 
   private final RecordSerializer<MultiGetResponseRecordV1> recordSerializer;
   private final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer;
@@ -70,9 +77,10 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private long multiGetTimeoutThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
 
   public VeniceResponseAggregator(AggRouterHttpRequestStats statsForSingleGet,
-                                  AggRouterHttpRequestStats statsForMultiGet) {
+      AggRouterHttpRequestStats statsForMultiGet, AggRouterHttpRequestStats statsForCompute) {
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
+    this.statsForCompute = statsForCompute;
 
     this.recordSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     this.recordDeserializer = SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
@@ -120,7 +128,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         break;
       case MULTI_GET:
         stats = statsForMultiGet;
-        finalResponse = buildMultiGetResponse(storeName, version, gatheredResponses, stats);
+        finalResponse = buildMultiKeyResponse(storeName, version, gatheredResponses, stats, MULTI_GET_VALID_HEADER_MAP, requestType);
+        break;
+      case COMPUTE:
+        stats = statsForCompute;
+        finalResponse = buildMultiKeyResponse(storeName, version, gatheredResponses, stats, COMPUTE_VALID_HEADER_MAP, requestType);
         break;
       default:
         throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
@@ -212,7 +224,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
    *
    * This could be mitigated if client-side decompression is supported later.
    */
-  private FullHttpResponse buildMultiGetResponse(String storeName, int version, List<FullHttpResponse> responses, AggRouterHttpRequestStats stats) {
+  private FullHttpResponse buildMultiKeyResponse(String storeName, int version, List<FullHttpResponse> responses,
+      AggRouterHttpRequestStats stats, Map<CharSequence, String> headerMap, RequestType requestType) {
     /**
      * Here we will check the consistency of the following headers among all the responses:
      * 1. {@link HttpHeaderNames.CONTENT_TYPE}
@@ -226,14 +239,14 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         // Return error response directly for now.
         return response;
       }
-      MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
+      headerMap.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
         if (null == currentValue) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
               BAD_GATEWAY, "Header: " + headerName + " is expected in multi-get sub-response");
         }
         if (!headerValue.equals(currentValue)) {
-          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
               BAD_GATEWAY, "Incompatible header received for " + headerName + ", values: " + headerValue + ", " +  currentValue);
         }
       });
@@ -261,14 +274,14 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       result.addComponent(true, i, Unpooled.wrappedBuffer(content));
     }
 
-    FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, result);
-    MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
-      multiGetResponse.headers().add(headerName, headerValue);
+    FullHttpResponse multiKeyResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, result);
+    headerMap.forEach((headerName, headerValue) -> {
+      multiKeyResponse.headers().add(headerName, headerValue);
     });
-    multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, result.readableBytes());
-    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
+    multiKeyResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, result.readableBytes());
+    multiKeyResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
 
-    return multiGetResponse;
+    return multiKeyResponse;
   }
 
   private ByteBuffer decompressRecord(String storeName, int version, CompressionStrategy compressionStrategy, ByteBuffer compressedData, AggRouterHttpRequestStats stats) {

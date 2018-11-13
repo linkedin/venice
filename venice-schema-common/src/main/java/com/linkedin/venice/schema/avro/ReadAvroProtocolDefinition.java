@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema.avro;
 
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
@@ -32,6 +33,7 @@ public enum ReadAvroProtocolDefinition {
    * Router request key for multi-get v1.
    */
   MULTI_GET_ROUTER_REQUEST_V1(1, Optional.of(MultiGetRouterRequestKeyV1.class), Optional.of(MultiGetRouterRequestKeyV1.SCHEMA$)),
+
   /**
    * Response record for multi-get v1.
    */
@@ -41,14 +43,24 @@ public enum ReadAvroProtocolDefinition {
    * Compute request client key v1.
    */
   COMPUTE_REQUEST_CLIENT_KEY_V1(1, Optional.empty(), Optional.of(Schema.create(Schema.Type.BYTES))),
+
   /**
    * Compute request v1.
+   *
+   * Compute requests sent from client to router contain 2 parts; the first part contains information like an array of
+   * operations and the result schema, represented by the following schema; the second part contains raw bytes of all
+   * the keys that will be computed on, represented by COMPUTE_REQUEST_CLIENT_KEY_V1.
    */
   COMPUTE_REQUEST_V1(1, Optional.of(ComputeRequestV1.class), Optional.of(ComputeRequestV1.SCHEMA$)),
   /**
    * Response record for compute v1
    */
-  COMPUTE_RESPONSE_V1(1, Optional.of(ComputeResponseRecordV1.class), Optional.of(ComputeResponseRecordV1.SCHEMA$));
+  COMPUTE_RESPONSE_V1(1, Optional.of(ComputeResponseRecordV1.class), Optional.of(ComputeResponseRecordV1.SCHEMA$)),
+
+  /**
+   * Router request key for read compute v1.
+   */
+  COMPUTE_ROUTER_REQUEST_V1(1, Optional.of(ComputeRouterRequestKeyV1.class), Optional.of(ComputeRouterRequestKeyV1.SCHEMA$));
 
   /**
    * Current version being used.
