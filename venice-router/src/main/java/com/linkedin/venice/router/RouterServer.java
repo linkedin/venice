@@ -101,6 +101,7 @@ public class RouterServer extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
+  private final AggRouterHttpRequestStats statsForCompute;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -240,6 +241,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metricsRepository = metricsRepository;
     this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
+    this.statsForCompute = new AggRouterHttpRequestStats(metricsRepository, RequestType.COMPUTE);
 
     this.d2ServerList = d2ServerList;
     this.accessController= accessController;
@@ -327,7 +329,7 @@ public class RouterServer extends AbstractVeniceService {
       case NETTY_4_CLIENT:
         logger.info("Router will use NETTY_4_CLIENT");
         storageNodeClient = new NettyStorageNodeClient(config, sslFactoryForRequests,
-            statsForSingleGet, statsForMultiGet, workerEventLoopGroup, channelClass);
+            statsForSingleGet, statsForMultiGet, statsForCompute, workerEventLoopGroup, channelClass);
         break;
       case APACHE_HTTP_ASYNC_CLIENT:
         logger.info("Router will use Apache_Http_Async_Client");
@@ -338,7 +340,7 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
-        statsForSingleGet, statsForMultiGet, metricsRepository, storageNodeClient);
+        statsForSingleGet, statsForMultiGet, statsForCompute, metricsRepository, storageNodeClient);
 
 
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
@@ -347,6 +349,13 @@ public class RouterServer extends AbstractVeniceService {
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
             config.getClusterToD2Map());
 
+    /**
+     * TODO: find a way to add read compute stats in host finder;
+     *
+     * Host finder uses http method to distinguish single-get from multi-get and it doesn't have any other information,
+     * so there is no way to distinguish compute request from multi-get; all read compute metrics in host finder will
+     * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
+     */
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
         config.isStickyRoutingEnabledForSingleGet(),
         config.isStickyRoutingEnabledForMultiGet(),
@@ -358,12 +367,13 @@ public class RouterServer extends AbstractVeniceService {
         Optional.of(routingDataRepository),
         new StaleVersionStats(metricsRepository, "stale_version"));
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
-        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository,
-        config.isSmartLongTailRetryEnabled(), config.getSmartLongTailRetryAbortThresholdMs());
+        statsForSingleGet, statsForMultiGet, statsForCompute, config.getMaxKeyCountInMultiGetReq(),
+        metadataRepository, config.isSmartLongTailRetryEnabled(), config.getSmartLongTailRetryAbortThresholdMs());
 
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
     RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
+    RouterExceptionAndTrackingUtils.setStatsForCompute(statsForCompute);
 
 
 
@@ -411,7 +421,7 @@ public class RouterServer extends AbstractVeniceService {
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(
-            new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet)
+            new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet, statsForCompute)
             .withSingleGetTimeoutThreshold(config.getSingleGetUnhealthyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withMultiGetTimeoutThreshold(config.getMultiGetUnhealthyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
         )

@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api.path;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -14,36 +13,21 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.HttpMethod;
 import java.nio.ByteBuffer;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.entity.BasicHttpEntity;
-import org.apache.http.entity.ByteArrayEntity;
-import org.apache.log4j.Logger;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 
-public class VeniceMultiGetPath extends VenicePath {
-  private static final Logger LOGGER = Logger.getLogger(VeniceMultiGetPath.class);
+public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequestKeyV1> {
   private static final String ROUTER_REQUEST_VERSION = Integer.toString(
       ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion());
 
-  public static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
-
-  private int keyNum;
-  private final Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap;
-  private final Map<Integer, RouterKey> keyIdxToRouterKey;
+  protected static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
 
   public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
       int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs)
@@ -57,68 +41,17 @@ public class VeniceMultiGetPath extends VenicePath {
           BAD_REQUEST, "Expected api version: " + EXPECTED_PROTOCOL.getProtocolVersion() + ", but received: " + apiVersion);
     }
 
-    // HashMap's performance is better than TreeMap
-    this.routerKeyMap = new HashMap<>();
-    this.keyIdxToRouterKey = new HashMap<>();
     Iterable<ByteBuffer> keys = null;
     byte[] content = new byte[request.content().readableBytes()];
     request.content().readBytes(content);
     keys = deserialize(content);
 
-    keyNum = 0;
-    int keyIdx = 0;
-    int partitionNum = partitionFinder.getNumPartitions(resourceName);
-    for (ByteBuffer key : keys) {
-      RouterKey routerKey = new RouterKey(key);
-
-      keyNum++;
-      this.keyIdxToRouterKey.put(keyIdx, routerKey);
-
-      // partition lookup
-      int partitionId;
-      try {
-        partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum);
-        routerKey.setPartitionId(partitionId);
-      } catch (VeniceNoHelixResourceException e){
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
-            Optional.of(getStoreName()),
-            Optional.of(RequestType.MULTI_GET),
-            e.getHttpResponseStatus(),
-            e.getMessage());
-      }
-      MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
-      routerRequestKey.keyBytes = key;
-      routerRequestKey.keyIndex = keyIdx;
-      routerRequestKey.partitionId = partitionId;
-      this.routerKeyMap.put(routerKey, routerRequestKey);
-      ++keyIdx;
-    }
-    setPartitionKeys(this.routerKeyMap.keySet());
-
-    int keyCount = getPartitionKeys().size();
-    if (keyCount > maxKeyCount) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_REQUEST, "Key count in multi-get request exceeds the threshold: " + maxKeyCount);
-    }
-    if (0 == keyCount) {
-      /**
-       * TODO: Right now, there is no good way to return empty response if the key set is empty.
-       * The logic to handle empty key here is different from client side, since the client will return empty map
-       * instead of throwing an exception.
-       *
-       * If application is using Venice client to send batch-get request, this piece of logic shouldn't be triggered.
-       */
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_REQUEST, "Key count in multi-get request should not be zero");
-    }
+    initialize(resourceName, keys, partitionFinder, maxKeyCount);
   }
 
   private VeniceMultiGetPath(String resourceName, Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey, int keyNum, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
-    this.routerKeyMap = routerKeyMap;
-    this.keyIdxToRouterKey = keyIdxToRouterKey;
-    this.keyNum = keyNum;
+      Map<Integer, RouterKey> keyIdxToRouterKey, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey);
     setPartitionKeys(routerKeyMap.keySet());
   }
 
@@ -149,9 +82,9 @@ public class VeniceMultiGetPath extends VenicePath {
   @Nonnull
   @Override
   public String getLocation() {
-    String sep = VenicePathParser.SEP;
     StringBuilder sb = new StringBuilder();
-    sb.append(VenicePathParser.TYPE_STORAGE).append(sep)
+    sb.append(VenicePathParser.TYPE_STORAGE)
+        .append(VenicePathParser.SEP)
         .append(getResourceName());
     return sb.toString();
   }
@@ -164,98 +97,35 @@ public class VeniceMultiGetPath extends VenicePath {
   /**
    * If the parent request is a retry request, the sub-request generated by scattering-gathering logic
    * should be retry request as well.
-   * @param subPath
+   *
+   * @param routerKeyMap
+   * @param keyIdxToRouterKey
    * @return
    */
-  private VeniceMultiGetPath fixRetryRequestForSubPath(VeniceMultiGetPath subPath) {
+  protected VeniceMultiGetPath fixRetryRequestForSubPath(Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
+      Map<Integer, RouterKey> keyIdxToRouterKey) {
+    VeniceMultiGetPath subPath = new VeniceMultiGetPath(getResourceName(), routerKeyMap, keyIdxToRouterKey,
+        isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs());
     subPath.setupRetryRelatedInfo(this);
     return subPath;
   }
 
-  /**
-   * The following function is used to generate a {@link VeniceMultiGetPath} for the given key, and the {@link VeniceMultiGetPath}
-   * generated will be used to compose router request and forward to storage node;
-   *
-   * This function will be triggered by DDS router framework.
-   *
-   * @param s
-   * @return
-   */
   @Override
-  public VenicePath substitutePartitionKey(RouterKey s) {
-    MultiGetRouterRequestKeyV1 routerRequestKey = routerKeyMap.get(s);
-    if (null == routerRequestKey) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_GATEWAY, "RouterKey: " + s + " should exist in the original path");
-    }
-    Map<RouterKey, MultiGetRouterRequestKeyV1> newRouterKeyMap = new HashMap<>();
-    Map<Integer, RouterKey> newKeyIdxToRouterKey = new HashMap<>();
-
-    newRouterKeyMap.put(s, routerRequestKey);
-    newKeyIdxToRouterKey.put(routerRequestKey.keyIndex, s);
-
-    return fixRetryRequestForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey,
-        1, isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs()));
-  }
-
-  /**
-   * The following function is used to generate a {@link VeniceMultiGetPath} for the given key subset, and the {@link VeniceMultiGetPath}
-   * generated will be used to compose router request and forward to storage node;
-   *
-   * This function will be triggered by DDS router framework.
-   *
-   * @param s
-   * @return
-   */
-  @Override
-  public VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s) {
-    Map<RouterKey, MultiGetRouterRequestKeyV1> newRouterKeyMap = new HashMap<>();
-    Map<Integer, RouterKey> newKeyIdxToRouterKey = new HashMap<>();
-    for (RouterKey key : s) {
-      /**
-       * Using {@link Map#get(Object)} and checking whether it is null is faster than the following statements:
-       * if (!routerKeyMap.containsKey(key)) {
-       *   ... ...
-       * }
-       * newRouterKeyMap.put(key, routerKeyMap.get(key));
-       * newKeyIdxToRouterKey.put(routerKeyMap.get(key).keyIndex, key);
-       *
-       * Since this way will save two unnecessary Map lookups.
-       * This could make a big difference considering large batch-get user cases.
-       */
-      MultiGetRouterRequestKeyV1 routerRequestKey = routerKeyMap.get(key);
-      if (null == routerRequestKey) {
-        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-            BAD_GATEWAY, "RouterKey: " + key + " should exist in the original path");
-      }
-
-      newRouterKeyMap.put(key, routerRequestKey);
-      newKeyIdxToRouterKey.put(routerRequestKey.keyIndex, key);
-    }
-
-    return fixRetryRequestForSubPath(new VeniceMultiGetPath(getResourceName(), newRouterKeyMap, newKeyIdxToRouterKey,
-        s.size(), isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs()));
+  protected MultiGetRouterRequestKeyV1 createRouterRequestKey(ByteBuffer key, int keyIdx, int partitionId) {
+    MultiGetRouterRequestKeyV1 routerRequestKey = new MultiGetRouterRequestKeyV1();
+    routerRequestKey.keyBytes = key;
+    routerRequestKey.keyIndex = keyIdx;
+    routerRequestKey.partitionId = partitionId;
+    return routerRequestKey;
   }
 
   @Override
-  public HttpUriRequest composeRouterRequest(String storageNodeUri) {
-    HttpPost routerRequest = new HttpPost(storageNodeUri + getLocation());
-    /**
-     * Use {@link ByteArrayEntity} here instead of {@link BasicHttpEntity} to explicitly disable
-     * streaming (chunked transfer-encoding) since the streaming might cause some inefficiency
-     * in the storage node.
-     */
-    ByteArrayEntity entity = new ByteArrayEntity(serializedMultiGetRequest());
-    routerRequest.setEntity(entity);
-
-    // Setup API version header
-    routerRequest.setHeader(HttpConstants.VENICE_API_VERSION,
-        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
-
-    return routerRequest;
+  protected int getKeyIndex(MultiGetRouterRequestKeyV1 routerRequestKey) {
+    return routerRequestKey.keyIndex;
   }
 
-  private byte[] serializedMultiGetRequest() {
+  @Override
+  protected byte[] serializeRouterRequest() {
     RecordSerializer<MultiGetRouterRequestKeyV1> serializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
 
@@ -270,15 +140,6 @@ public class VeniceMultiGetPath extends VenicePath {
   }
 
   @Override
-  public HttpMethod getHttpMethod() {
-    return HttpMethod.POST;
-  }
-
-  @Override
-  public ByteBuf getRequestBody() {
-    return Unpooled.wrappedBuffer(serializedMultiGetRequest());
-  }
-
   public String getVeniceApiVersionHeader() {
     return ROUTER_REQUEST_VERSION;
   }

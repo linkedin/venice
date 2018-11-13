@@ -47,7 +47,7 @@ public class TestVenicePathParser {
     String uri = "storage/store/key";
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
     doReturn(3).when(partitionFinder).findPartitionNumber(Mockito.anyString(), Mockito.anyObject());
-    VenicePathParser parser = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
+    VenicePathParser parser = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(), getMockedStats(),
         TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class), false, -1);
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);
     VenicePath path = parser.parseResourceUri(uri, request);
@@ -69,7 +69,7 @@ public class TestVenicePathParser {
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
 
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, myUri, 0, 0);
-    VenicePath path = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
+    VenicePath path = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(), getMockedStats(),
         TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class), false, -1)
         .parseResourceUri(myUri, request);
     ByteBuffer partitionKey = path.getPartitionKey().getKeyBuffer();
@@ -80,7 +80,7 @@ public class TestVenicePathParser {
   @Test(expectedExceptions = RouterException.class)
   public void failsToParseOtherActions() throws RouterException {
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
-    new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(),
+    new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(), getMockedStats(), getMockedStats(),
         TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ, mock(ReadOnlyStoreRepository.class), false, -1)
         .parseResourceUri("/badaction/storename/key");
   }

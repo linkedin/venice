@@ -6,6 +6,7 @@ import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.router.api.path.VeniceComputePath;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -43,6 +44,8 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String SEP = "/";
 
   public static final String TYPE_STORAGE = "storage";
+  public static final String TYPE_COMPUTE = "compute";
+
   // Right now, we hardcoded url path for getting master controller to be same as the one
   // being used in Venice Controller, so that ControllerClient can use the same API to get
   // master controller without knowing whether the host is Router or Controller.
@@ -56,6 +59,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final VenicePartitionFinder partitionFinder;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
+  private final AggRouterHttpRequestStats statsForCompute;
   private final int maxKeyCountInMultiGetReq;
   private final ReadOnlyStoreRepository storeRepository;
   private final boolean smartLongTailRetryEnabled;
@@ -63,12 +67,13 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
   public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
       AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet,
-      int maxKeyCountInMultiGetReq, ReadOnlyStoreRepository storeRepository, boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs){
+      AggRouterHttpRequestStats statsForCompute, int maxKeyCountInMultiGetReq, ReadOnlyStoreRepository storeRepository,
+      boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs){
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
+    this.statsForCompute = statsForCompute;
     this.maxKeyCountInMultiGetReq = maxKeyCountInMultiGetReq;
     this.storeRepository = storeRepository;
     this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
@@ -84,7 +89,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest)request;
     VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
     String resourceType = pathHelper.getResourceType();
-    if (! resourceType.equals(TYPE_STORAGE)) {
+    if (!resourceType.equals(TYPE_STORAGE) && !resourceType.equals(TYPE_COMPUTE)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
           BAD_REQUEST, "Requested resource type: " + resourceType + " is not a valid type");
     }
@@ -107,10 +112,18 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
         stats = statsForSingleGet;
       } else if (VeniceRouterUtils.isHttpPost(method)) {
-        // multi-get request
-        path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-            smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
-        stats = statsForMultiGet;
+        if (resourceType.equals(TYPE_STORAGE)) {
+          // multi-get request
+          path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
+              smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
+          stats = statsForMultiGet;
+        } else if (resourceType.equals(TYPE_COMPUTE)) {
+          // read compute request
+          path = new VeniceComputePath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
+              smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
+          stats = statsForCompute;
+        }
+
         /**
          * Here we only track key num for batch-get request, since single-get request will be always 1.
          */
