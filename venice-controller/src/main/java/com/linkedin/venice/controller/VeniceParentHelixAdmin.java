@@ -1252,19 +1252,20 @@ public class VeniceParentHelixAdmin implements Admin {
     int failCount = 0;
     for (String cluster : childClusters){
       ControllerClient controllerClient = controllerClients.get(cluster);
+      String masterControllerUrl = controllerClient.getMasterControllerUrl();
       JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(kafkaTopic, 2, incrementalPushVersion); // TODO: Make retry count configurable
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
         extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
-        extraDetails.put(cluster, response.getError());
+        extraDetails.put(cluster, masterControllerUrl + " " + response.getError());
       } else {
         ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
         statuses.add(status);
         extraInfo.put(cluster, response.getStatus());
         Optional<String> statusDetails = response.getOptionalStatusDetails();
         if (statusDetails.isPresent()) {
-          extraDetails.put(cluster, statusDetails.get());
+          extraDetails.put(cluster, masterControllerUrl + " " + statusDetails.get());
         }
       }
     }
