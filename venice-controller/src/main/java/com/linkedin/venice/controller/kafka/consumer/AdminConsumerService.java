@@ -67,11 +67,11 @@ public class AdminConsumerService extends AbstractVeniceService {
         admin,
         offsetManager,
         admin.getExecutionIdAccessor(),
-        TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent(),
         new AdminConsumptionStats(metricsRepository, clusterName + "-admin_consumption_task"),
-        config.getAdminConsumptionRetryDelayMs(),
-        config.getAdminTopicReplicationFactor());
+        config.getAdminTopicReplicationFactor(),
+        config.getAdminConsumptionCycleTimeoutMs(),
+        config.getAdminConsumptionMaxWorkerThreadPoolSize());
   }
 
   public void setOffsetToSkip(String clusterName, long offset){
@@ -85,7 +85,7 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   public long getLastSucceedExecutionId(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
-      return consumerTask.getLastSucceedExecutionId();
+      return consumerTask.getLastSucceededExecutionId();
     } else {
       throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
           + ".  Cannot get the last succeed execution Id for cluster " + clusterName);
