@@ -10,14 +10,14 @@ import io.tehuti.metrics.stats.Count;
 public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminConsumeFailCountSensor;
   final private Sensor adminTopicDIVErrorReportCountSensor;
-  private long adminConsumeFailOffsetValue;
+  private long adminConsumptionFailedOffset;
 
   public AdminConsumptionStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
     adminConsumeFailCountSensor = registerSensor("failed_admin_messages", new Count());
     adminTopicDIVErrorReportCountSensor = registerSensor("admin_message_div_error_report_count", new Count());
-    registerSensor("failed_admin_message_offset", new Gauge(() -> adminConsumeFailOffsetValue));
+    registerSensor("failed_admin_message_offset", new Gauge(() -> adminConsumptionFailedOffset));
   }
 
   /**
@@ -37,7 +37,7 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
     adminTopicDIVErrorReportCountSensor.record();
   }
 
-  public void setAdminConsumeFailOffsetValue(long adminConsumeFailOffsetValue) {
-    this.adminConsumeFailOffsetValue = adminConsumeFailOffsetValue;
+  public void setAdminConsumptionFailedOffset(long adminConsumptionFailedOffset) {
+    this.adminConsumptionFailedOffset = adminConsumptionFailedOffset;
   }
 }

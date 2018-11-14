@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.google.common.collect.Sets;
+import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -64,10 +65,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
-import javax.swing.text.html.Option;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -89,7 +88,7 @@ public class TestAdminConsumptionTask {
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   private final String storeName = TestUtils.getUniqueString("test_store");
-  private final String storeTopicName = storeName + "v1";
+  private final String storeTopicName = storeName + "_v1";
   private final String owner = "test_owner";
   private final String keySchema = "\"string\"";
   private final String valueSchema = "\"string\"";
@@ -111,7 +110,7 @@ public class TestAdminConsumptionTask {
     inMemoryKafkaBroker = new InMemoryKafkaBroker();
     inMemoryKafkaBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
-    executionIdAccessor = Mockito.mock(ExecutionIdAccessor.class);
+    executionIdAccessor = new InMemoryExecutionIdAccessor();
 
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
 
@@ -146,24 +145,24 @@ public class TestAdminConsumptionTask {
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent) {
-    return getAdminConsumptionTask(pollStrategy, TimeUnit.HOURS.toMinutes(1), isParent);
+    return getAdminConsumptionTask(pollStrategy, isParent, 10000);
   }
 
-  private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, long failureRetryTimeout, boolean isParent) {
+  private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent,
+      long adminConsumptionCycleTimeoutMs) {
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
 
-    return getAdminConsumptionTask(pollStrategy, failureRetryTimeout, isParent, stats);
+    return getAdminConsumptionTask(pollStrategy, isParent, stats, adminConsumptionCycleTimeoutMs);
   }
 
-  private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy,
-                                                       long failureRetryTimeout,
-                                                       boolean isParent,
-                                                       AdminConsumptionStats stats) {
-    MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
+  private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, boolean isParent,
+      AdminConsumptionStats stats, long adminConsumptionCycleTimeoutMs) {
+    MockInMemoryConsumer inMemoryKafkaConsumer =
+        new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
     return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, deepCopyOffsetManager,
-        executionIdAccessor, failureRetryTimeout, isParent, stats, 1000, 1);
+        executionIdAccessor, isParent, stats, 1, adminConsumptionCycleTimeoutMs, 1);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -282,9 +281,9 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
-    });
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            TestUtils.getOffsetRecord(1)));
 
     task.close();
     executor.shutdown();
@@ -300,7 +299,7 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
-  public void testConsumeFailOffsetStats() throws IOException, InterruptedException {
+  public void testConsumeFailExecutionIdStats() throws IOException, InterruptedException {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
@@ -313,42 +312,19 @@ public class TestAdminConsumptionTask {
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
     AdminConsumptionStats mockStats = mock(AdminConsumptionStats.class);
-    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), 1, false, mockStats);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, mockStats, 10000);
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+      Assert.assertEquals(task.getFailingOffset(), 1L);
     });
 
-    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumeFailOffsetValue(1);
-    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumeFailOffsetValue(-1);
+    verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedOffset(1);
 
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-  }
-
-  @Test (timeOut = TIMEOUT)
-  public void testSkipMessageAfterTimeout () throws IOException, InterruptedException {
-    veniceWriter.put(emptyKeyBytes,
-        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
-        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-    // The store doesn't exist
-    doReturn(false).when(admin).hasStore(clusterName, storeName);
-    doThrow(new VeniceException("Mock store creation exception"))
-        .when(admin)
-        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
-    long timeoutMinutes = 0L;
-    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(),  timeoutMinutes, false);
-    executor.submit(task);
-    // admin throws errors, so record offset means we skipped the message
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
-    });
-
-    task.close();
-    executor.shutdown();
-    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+    Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(-1L));
   }
 
   @Test (timeOut = TIMEOUT)
@@ -362,8 +338,7 @@ public class TestAdminConsumptionTask {
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
-    long timeoutMs = TimeUnit.MINUTES.toMillis(10); // dont timeout
-    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), timeoutMs, false);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->{
       try {
@@ -392,23 +367,25 @@ public class TestAdminConsumptionTask {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-    topicManager.createTopic(adminTopic, 1, 1);
+    topicManager.createTopic(adminTopic, 1, 1, true);
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
+    String storeName = "test-store";
 
     VeniceWriter<byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).getBasicVeniceWriter(adminTopic);
 
-    byte[] message = getStoreCreationMessage(clusterName, "store-that-fails", owner, "invalid_key_schema", valueSchema, 1); // This name is special
-    long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
+    byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This name is special
+    long badOffset =
+        writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
 
-    byte[] goodMessage = getStoreCreationMessage(clusterName, "good-store", owner, keySchema, valueSchema, 2);
+    byte[] goodMessage = getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2);
     writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     Thread.sleep(5000); // Non deterministic, but whatever.  This should never fail.
-    Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, "good-store"));
+    Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, storeName));
 
     new ControllerClient(clusterName, controller.getControllerUrl()).skipAdminMessage(Long.toString(badOffset));
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, "good-store"));
+      Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, storeName));
     });
   }
 
@@ -457,6 +434,7 @@ public class TestAdminConsumptionTask {
     partitionState.offset = offset;
     partitionState.lastUpdate = System.currentTimeMillis();
     partitionState.producerStates = new HashMap<>();
+    partitionState.databaseInfo = new HashMap<>();
 
     ProducerPartitionState ppState = new ProducerPartitionState();
     ppState.segmentNumber = 0;
@@ -499,9 +477,9 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
 
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
-    });
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            TestUtils.getOffsetRecord(2)));
 
     task.close();
     executor.shutdown();
@@ -551,23 +529,27 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
 
-    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, 1, false, stats);
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy,false, stats, 10000);
     executor.submit(task);
-    verify(stats, timeout(TIMEOUT).atLeastOnce())
-        .recordAdminTopicDIVErrorReportCount();
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            TestUtils.getOffsetRecord(1)));
+    Assert.assertEquals(task.getFailingOffset(), 3L);
+    task.skipMessageWithOffset(3L);
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            TestUtils.getOffsetRecord(3)));
     task.close();
     executor.shutdownNow();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-
-    verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .isMasterController(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
-    verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
+    verify(admin, atLeastOnce()).isMasterController(clusterName);
+    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, times(1)).unSubscribe(any(), anyInt());
+    verify(admin, times(1)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
     verify(admin, never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
     verify(admin, never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
+    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 1L);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -679,7 +661,7 @@ public class TestAdminConsumptionTask {
           () -> offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID)
               .equals(TestUtils.getOffsetRecord(offset)));
 
-      Assert.assertEquals(task.getLastSucceedExecutionId(), executionId,
+      Assert.assertEquals(task.getLastSucceededExecutionId(), executionId,
           "After consumption succeed, the last succeed execution id should be updated.");
     }
 
@@ -746,6 +728,68 @@ public class TestAdminConsumptionTask {
         any(), any(), any(), any(), any(), eq(Optional.of(123L)), eq(Optional.of(1000L)),
         eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)),
         eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)));
+  }
+
+  @Test (timeOut = TIMEOUT)
+  public void testStoreIsolation() throws Exception {
+    String storeName1 = "test_store1";
+    String storeName2 = "test_store2";
+    String storeTopicName1 = storeName1 + "_v1";
+    String storeTopicName2 = storeName2 + "_v1";
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName1, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema, 2),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName1, 3),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName2, 4),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    // The store doesn't exist
+    when(admin.hasStore(clusterName, storeName1)).thenReturn(false);
+    when(admin.hasStore(clusterName, storeName2)).thenReturn(false);
+
+    doThrow(new VeniceException("Mock store creation exception"))
+        .when(admin).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
+    executor.submit(task);
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(task.getFailingOffset(), 1L));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> Assert.assertEquals(
+        executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName2, -1L).longValue(), 4L));
+    Assert.assertEquals(
+        executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName2, -1L).longValue(), 4L);
+    Assert.assertEquals(
+        executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(), -1L);
+    Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+        TestUtils.getOffsetRecord(-1L));
+    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), -1L);
+
+    // skip the blocking message
+    task.skipMessageWithOffset(1);
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            TestUtils.getOffsetRecord(4)));
+
+    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 4L);
+    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(), 3L);
+    Assert.assertEquals(task.getFailingOffset(), -1L);
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
+        .isMasterController(clusterName);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    verify(admin, times(1)).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema, long executionId) {

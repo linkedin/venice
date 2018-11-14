@@ -112,7 +112,7 @@ public class TestVeniceParentHelixAdmin {
 
     ExecutionIdAccessor executionIdAccessor = Mockito.mock(ExecutionIdAccessor.class);
     doReturn(executionIdAccessor).when(internalAdmin).getExecutionIdAccessor();
-    doReturn(0L).when(executionIdAccessor).getLastSucceedExecutionId(any());
+    doReturn(0L).when(executionIdAccessor).getLastSucceededExecutionId(any());
 
     config = mockConfig(clusterName);
 

@@ -35,32 +35,42 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.Iterator;
-
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
+
 
 /**
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
   private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " [Topic: %s] ";
+  private static final long UNASSIGNED_VALUE = -1L;
   public static int READ_CYCLE_DELAY_MS = 1000;
   public static int IGNORED_CURRENT_VERSION = -1;
 
@@ -75,23 +85,36 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final AtomicBoolean isRunning;
   private final AdminOperationSerializer deserializer;
   private final AdminConsumptionStats stats;
-  private final long failureRetryTimeoutMs;
-  private final int readRetryDelayMs;
   private final int adminTopicReplicationFactor;
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
   private OffsetRecord lastOffset;
-  private volatile long offsetToSkip = -1L;
-  private volatile long lastFailedOffset = -1L;
+  private volatile long offsetToSkip = UNASSIGNED_VALUE;
+  /**
+   * The smallest or first failing offset.
+   */
+  private volatile long failingOffset = UNASSIGNED_VALUE;
   private boolean topicExists;
+  /**
+   * A {@link Map} of stores to admin operations belonging to each store. The corresponding kafka offset of each admin
+   * operation is also attached as the first element of the {@link Pair}.
+   */
+  private Map<String, Queue<Pair<Long, AdminOperation>>> storeAdminOperationsMapWithOffset;
+  private Map<String, Long> problematicStores;
+  private Queue<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> undelegatedRecords;
+
 
   private final ExecutionIdAccessor executionIdAccessor;
+  private final ExecutorService executorService;
+  private final long processingCycleTimeoutInMs;
   /**
    * Once an admin command is processed, the id would be updated accordingly. It represents a kind of comparable
    * progress of admin topic consumption among all controllers.
    */
-  private volatile long lastSucceedExecutionId = -1L;
+  private volatile long lastSucceededExecutionId = UNASSIGNED_VALUE;
+  private long largestSucceededExecutionId = UNASSIGNED_VALUE;
+  private Map<String, Long> lastSucceededExecutionIdMap;
   // Used to store state info to offset record
   private Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
 
@@ -101,38 +124,38 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final Map<GUID, ProducerTracker> producerTrackerMap;
 
   public AdminConsumptionTask(String clusterName,
-                              KafkaConsumerWrapper consumer,
-                              Admin admin,
-                              OffsetManager offsetManager,
-                              ExecutionIdAccessor executionIdAccessor,
-                              long failureRetryTimeoutMs,
-                              boolean isParentController,
-                              AdminConsumptionStats stats,
-                              int readRetryDelayMs,
-                              int adminTopicReplicationFactor) {
+      KafkaConsumerWrapper consumer,
+      Admin admin,
+      OffsetManager offsetManager,
+      ExecutionIdAccessor executionIdAccessor,
+      boolean isParentController,
+      AdminConsumptionStats stats,
+      int adminTopicReplicationFactor,
+      long processingCycleTimeoutInMs,
+      int maxWorkerThreadPoolSize) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
     this.logger = Logger.getLogger(consumerTaskId);
     this.admin = admin;
     this.isParentController = isParentController;
-    this.failureRetryTimeoutMs = failureRetryTimeoutMs;
-
     this.deserializer = new AdminOperationSerializer();
-
     this.isRunning = new AtomicBoolean(true);
     this.isSubscribed = false;
     this.lastOffset = new OffsetRecord();
     this.topicExists = false;
     this.stats = stats;
-    this.readRetryDelayMs = readRetryDelayMs;
     this.adminTopicReplicationFactor = adminTopicReplicationFactor;
-
     this.consumer = consumer;
     this.offsetManager = offsetManager;
     this.executionIdAccessor = executionIdAccessor;
-    this.lastSucceedExecutionId = executionIdAccessor.getLastSucceedExecutionId(clusterName);
+    this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
+
     this.producerTrackerMap = new HashMap<>();
+    this.storeAdminOperationsMapWithOffset = new HashMap<>();
+    this.problematicStores = new HashMap<>();
+    this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    this.undelegatedRecords = new LinkedList<>();
   }
 
   @Override
@@ -141,107 +164,221 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   @Override
-  public void run() { //TODO: clean up this method.  We've got nested loops checking the same conditions
+  public void run() {
     logger.info("Running " + this.getClass().getSimpleName());
     long lastLogTime = 0;
     while (isRunning.get()) {
       try {
         Utils.sleep(READ_CYCLE_DELAY_MS);
-        // check whether current controller is the master controller for the given cluster
-        if (admin.isMasterController(clusterName)) {
-          if (!isSubscribed) {
-            // check whether the admin topic exists or not
-            if (!whetherTopicExists(topic)) {
-              String logMesssage = "Admin topic: " + topic + " hasn't been created yet. ";
-              if (isParentController) {
-                logger.info(logMesssage + "Since this is the parent controller, it will be created it now.");
-                admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true, false, Optional.of(adminTopicReplicationFactor - 1));
-              } else {
-                // Child controllers should wait for MM to replicate the admin topic's existence.
-                if (System.currentTimeMillis() - lastLogTime > 60 * Time.MS_PER_SECOND) { // To reduce log bloat, only log once per minute
-                  logger.info(logMesssage + "Since this is a child controller, it will not be created by this process.");
-                  lastLogTime = System.currentTimeMillis();
-                }
-                continue;
+        if (!admin.isMasterController(clusterName)) {
+          unSubscribe();
+          continue;
+        }
+        if (!isSubscribed) {
+          if (whetherTopicExists(topic)) {
+            // Topic was not created by this process, so we make sure it has the right retention.
+            makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
+          } else {
+            String logMessage = "Admin topic: " + topic + " hasn't been created yet. ";
+            if (!isParentController) {
+              // To reduce log bloat, only log once per minute
+              if (System.currentTimeMillis() - lastLogTime > 60 * Time.MS_PER_SECOND) {
+                logger.info(logMessage + "Since this is a child controller, it will not be created by this process.");
+                lastLogTime = System.currentTimeMillis();
               }
-            } else {
-              // Topic not created by this process, so we ensure it has the right retention.
-              makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
+              continue;
             }
-            lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-            // First let's try to restore the state retrieved from the OffsetManager
-            lastOffset.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
-                  GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-                  ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
-                  if (null == producerTracker) {
-                    producerTracker = new ProducerTracker(producerGuid, topic);
-                  }
-                  producerTracker.setPartitionState(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, entry.getValue());
-                  producerTrackerMap.put(producerGuid, producerTracker);
-                }
-            );
-            // Subscribe the admin topic
-            consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
-            isSubscribed = true;
-            logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
+            logger.info(logMessage + "Since this is the parent controller, it will be created it now.");
+            admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true,
+                false, Optional.of(adminTopicReplicationFactor - 1));
           }
+          subscribe();
+        }
+        Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator;
+        // Only poll the kafka channel if there are no more undelegated records due to exceptions.
+        if (undelegatedRecords.isEmpty()) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
-          if (null == records) {
-            logger.info("Received null records");
-            continue;
-          }
-          logger.debug("Received record num: " + records.count());
-          Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
-          while (isRunning.get() && admin.isMasterController(clusterName) && recordsIterator.hasNext()) {
-            ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
-            boolean isRetry = false;
-            long retryStartTime = System.currentTimeMillis();
-            while (isRunning.get() && admin.isMasterController(clusterName)) {
-              try {
-                if (record.offset() > lastFailedOffset) {
-                  stats.setAdminConsumeFailOffsetValue(-1);
-                }
-                processMessage(record, isRetry);
-                break;
-              } catch (Exception e) {
-                // Retry should happen in message level, not in batch
-                isRetry = true;
-                // report number of retries if we have a failure
-                stats.recordFailedAdminConsumption();
-                lastFailedOffset = record.offset();
-                stats.setAdminConsumeFailOffsetValue(lastFailedOffset);
-                logger.error("Error when processing admin message with offset "+record.offset()+", will retry", e);
-                admin.setLastException(clusterName, e);
-                if (System.currentTimeMillis() - retryStartTime >= failureRetryTimeoutMs) {
-                  logger.error("Failure processing admin message for more than " + TimeUnit.MILLISECONDS.toMinutes(failureRetryTimeoutMs) + " minutes", e);
-                  skipMessage(record);
-                  break;
-                }
-                Utils.sleep(readRetryDelayMs);
-              }
+          if (null == records || records.isEmpty()) {
+            logger.info("Received null or no records");
+          } else {
+            logger.debug("Received record num: " + records.count());
+            recordsIterator = records.iterator();
+            while (recordsIterator.hasNext()) {
+              undelegatedRecords.add(recordsIterator.next());
             }
           }
         } else {
-          // Current controller is not the master controller for the given cluster
-          if (isSubscribed) {
-            consumer.unSubscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-            isSubscribed = false;
-            logger.info("Unsubscribe from topic name: " + topic);
-          }
+          logger.debug("Consuming from undelegated records first before polling from the admin topic");
         }
+
+        while (!undelegatedRecords.isEmpty()) {
+          try {
+            delegateMessage(undelegatedRecords.peek());
+          } catch (DataValidationException e) {
+            // Very unlikely but exceptions like DataValidationException could be thrown here.
+            logger.error("Admin consumption task is blocked due to DataValidationException", e);
+            failingOffset = undelegatedRecords.peek().offset();
+            break;
+          }
+          updateLastOffset(undelegatedRecords.poll().offset());
+        }
+        executeMessagesAndCollectResults();
+        stats.setAdminConsumptionFailedOffset(failingOffset);
       } catch (Exception e) {
-        logger.error("Got exception while running admin consumption task", e);
+        logger.error("Exception thrown while running admin consumption task", e);
+        // Unsubscribe and resubscribe in the next cycle to start over and avoid missing messages from poll.
+        unSubscribe();
       }
     }
     // Release resources
     internalClose();
   }
 
-  private void internalClose() {
+  private void subscribe() {
+    lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    // First let's try to restore the state retrieved from the OffsetManager
+    lastOffset.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
+      GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+      ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
+      if (null == producerTracker) {
+        producerTracker = new ProducerTracker(producerGuid, topic);
+      }
+      producerTracker.setPartitionState(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, entry.getValue());
+      producerTrackerMap.put(producerGuid, producerTracker);
+    });
+    // Subscribe the admin topic
+    consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+    isSubscribed = true;
+    logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
+  }
+
+  private void unSubscribe() {
     if (isSubscribed) {
       consumer.unSubscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      storeAdminOperationsMapWithOffset.clear();
+      problematicStores.clear();
+      undelegatedRecords.clear();
+      failingOffset = UNASSIGNED_VALUE;
+      offsetToSkip = UNASSIGNED_VALUE;
+      largestSucceededExecutionId = UNASSIGNED_VALUE;
       isSubscribed = false;
       logger.info("Unsubscribe from topic name: " + topic);
+    }
+  }
+
+  /**
+   * Delegate work from the {@code storeAdminOperationsMapWithOffset} to the worker threads. Wait for the worker threads
+   * to complete or when timeout {@code processingCycleTimeoutInMs} is reached. Collect the result of each thread.
+   * The result can either be success: all given {@link AdminOperation}s were processed successfully or made progress
+   * but couldn't finish processing all of it within the time limit for each cycle. Failure is when either an exception
+   * was thrown or the thread got stuck while processing the problematic {@link AdminOperation}. Based on the results we
+   * set appropriate values for the cluster wide {@code lastSucceededExecutionId} and {@code lastOffset}.
+   * @throws InterruptedException
+   */
+  private void executeMessagesAndCollectResults() throws InterruptedException {
+    lastSucceededExecutionId = executionIdAccessor.getLastSucceededExecutionId(clusterName);
+    lastSucceededExecutionIdMap = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
+    List<Callable<Void>> tasks = new ArrayList<>();
+    List<String> stores = new ArrayList<>();
+    // Create a task for each store that has admin messages pending to be processed.
+    for (Map.Entry<String, Queue<Pair<Long, AdminOperation>>> entry : storeAdminOperationsMapWithOffset.entrySet()) {
+      if (!entry.getValue().isEmpty()) {
+        if (checkOffsetToSkip(entry.getValue().peek().getFirst())) {
+          entry.getValue().poll();
+        }
+        tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(),
+            lastSucceededExecutionIdMap.getOrDefault(entry.getKey(), lastSucceededExecutionId), entry.getValue(), admin,
+            executionIdAccessor, isParentController));
+        stores.add(entry.getKey());
+      }
+    }
+    if (isRunning.get()) {
+      if (!tasks.isEmpty()) {
+        // Wait for the worker threads to finish processing the internal admin topics.
+        List<Future<Void>> results = executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
+        Map<String, Long> newLastSucceededExecutionIdMap = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
+        for (int i = 0; i < results.size(); i++) {
+          String storeName = stores.get(i);
+          Future<Void> result = results.get(i);
+          long newlySucceededExecutionId =
+              newLastSucceededExecutionIdMap.getOrDefault(storeName, lastSucceededExecutionId);
+          if (newlySucceededExecutionId > largestSucceededExecutionId) {
+            largestSucceededExecutionId = newlySucceededExecutionId;
+          }
+          if (result.isCancelled()) {
+            if (lastSucceededExecutionIdMap.get(storeName).equals(newLastSucceededExecutionIdMap.get(storeName))) {
+              // only mark the store problematic if it didn't make any progress.
+              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getFirst());
+              logger.warn("Could not finish processing admin operations for store " + storeName + " in time");
+            }
+          } else {
+            try {
+              result.get();
+              if (problematicStores.containsKey(storeName)) {
+                problematicStores.remove(storeName);
+              }
+            } catch (ExecutionException e) {
+              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getFirst());
+            }
+          }
+        }
+        if (problematicStores.isEmpty()) {
+          // All admin operations were successfully executed or skipped.
+          // 1. Persist the latest offset (cluster wide) to ZK.
+          // 2. Set the cluster wide lastSucceededExecutionId to the largest (latest) execution id.
+          // 3. Clear the failing offset.
+          persistLastOffset();
+          if (largestSucceededExecutionId > lastSucceededExecutionId) {
+            lastSucceededExecutionId = largestSucceededExecutionId;
+          }
+          // Ensure failingOffset from the delegateMessage is not overwritten.
+          if (failingOffset <= lastOffset.getOffset()) {
+            failingOffset = UNASSIGNED_VALUE;
+          }
+        } else {
+          // One or more stores encountered problems while executing their admin operations.
+          // 1. Do not persist the latest offset (cluster wide) to ZK.
+          // 2. Set the cluster wide lastSucceededExecutionId to the smallest succeeded execution id amongst the
+          //    problematic stores.
+          // 3. Find and set the smallest failing offset amongst the problematic stores.
+          long lowestSucceededExecutionId = largestSucceededExecutionId;
+          long smallestOffset = UNASSIGNED_VALUE;
+
+          for (Map.Entry<String, Long> problematicStore : problematicStores.entrySet()) {
+            long succeededExecutionId =
+                newLastSucceededExecutionIdMap.getOrDefault(problematicStore.getKey(), lastSucceededExecutionId);
+            if (succeededExecutionId < lowestSucceededExecutionId) {
+              lowestSucceededExecutionId = succeededExecutionId;
+            }
+            if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue() < smallestOffset) {
+              smallestOffset = problematicStore.getValue();
+            }
+            stats.recordFailedAdminConsumption();
+          }
+          lastSucceededExecutionId = lowestSucceededExecutionId;
+          // Ensure failingOffset from the delegateMessage is not overwritten.
+          if (failingOffset <= lastOffset.getOffset()) {
+            failingOffset = smallestOffset;
+          }
+        }
+        executionIdAccessor.updateLastSucceededExecutionId(clusterName, lastSucceededExecutionId);
+      } else {
+        // in situations when we skipped a blocking message (while delegating) and no other messages are queued up.
+        persistLastOffset();
+      }
+    }
+  }
+
+  private void internalClose() {
+    unSubscribe();
+    executorService.shutdownNow();
+    try {
+      if (!executorService.awaitTermination(processingCycleTimeoutInMs, TimeUnit.MILLISECONDS)) {
+        logger.warn(
+            "Unable to shutdown worker executor thread pool in admin consumption task in time " + consumerTaskId);
+      }
+    } catch (InterruptedException e) {
+      logger.warn("Interrupted while waiting for worker executor thread pool to shutdown " + consumerTaskId);
     }
     logger.info("Closed consumer for admin topic: " + topic);
     consumer.close();
@@ -266,15 +403,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * If some significant DIV issue happens, this function will throw exception.
    *
    * @param record
-   * @param isRetry whether current record is a normal record, or a retry record because of exception during
-   *                handling current record.
    * @return
    *  false : we can safely skip current message.
    *  true : normal admin message, which should be processed.
    */
-  private boolean checkAndValidateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, boolean isRetry) {
-    if (!shouldProcessRecord(record)){
-      persistRecordOffset(record); // We don't process the data validation control messages for example
+  private boolean checkAndValidateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+    if (checkOffsetToSkip(record.offset()) || !shouldProcessRecord(record)) {
       return false;
     }
 
@@ -287,17 +421,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         producerTracker = new ProducerTracker(producerGUID, topic);
         producerTrackerMap.put(producerGUID, producerTracker);
       }
-      offsetRecordTransformer = Optional.of(producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue, false));
+      offsetRecordTransformer = Optional.of(
+          producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue, false));
     } catch (DuplicateDataException e) {
-      if (isRetry) {
-        // When retrying, it is valid to receive DuplicateDataException,
-        // and we should proceed to handle this message instead of skipping it.
-        return true;
-      } else {
-        logger.info("Skipping a duplicate record in topic: " + topic + "', offset: " + record.offset());
-        persistRecordOffset(record);
-        return false;
-      }
+      logger.info("Skipping a duplicate record in topic: " + topic + "', offset: " + record.offset());
+      // Not persisting the cluster wide offset because there might be a failing messages with a lower offset.
+      return false;
     } catch (DataValidationException dve) {
       logger.error("Received data validation error", dve);
       stats.recordAdminTopicDIVErrorReportCount();
@@ -307,16 +436,19 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return true;
   }
 
-  private void processMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, boolean isRetry) {
-    if (! checkAndValidateMessage(record, isRetry)) {
+  /**
+   * This method groups {@link AdminOperation}s by their corresponding store.
+   * @param record The {@link ConsumerRecord} containing the {@link AdminOperation}.
+   */
+  private void delegateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+    if (!checkAndValidateMessage(record)) {
       return;
     }
     KafkaKey kafkaKey = record.key();
     KafkaMessageEnvelope kafkaValue = record.value();
 
     if (kafkaKey.isControlMessage()) {
-      logger.info("Receive control message: " + kafkaValue);
-      persistRecordOffset(record);
+      logger.info("Received control message: " + kafkaValue);
       return;
     }
     // check message type
@@ -325,338 +457,98 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       throw new VeniceException("Received unknown message type: " + messageType);
     }
     Put put = (Put) kafkaValue.payloadUnion;
-    AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
-    logger.info("Received message: " + adminMessage);
-    long executionId = adminMessage.executionId;
-    if (executionId <= lastSucceedExecutionId) {
-      /**
-       * Since {@link com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager} will only keep the latest several
-       * producer guids, which could not filter very old messages.
-       * {@link #lastSucceedExecutionId} is monotonically increasing, and being persisted to Zookeeper after processing
-       * each message, so it is safe to filter out all the processed messages.
-       */
-      logger.warn("Execution id of message: " + adminMessage + " is not larger than last succeed execution id: " +
-          lastSucceedExecutionId + ", so will skip it");
-      persistRecordOffset(record);
-      return;
-    }
-    switch (AdminMessageType.valueOf(adminMessage)) {
-      case STORE_CREATION:
-        handleStoreCreation((StoreCreation) adminMessage.payloadUnion);
-        break;
-      case VALUE_SCHEMA_CREATION:
-        handleValueSchemaCreation((ValueSchemaCreation) adminMessage.payloadUnion);
-        break;
-      case DISABLE_STORE_WRITE:
-        handleDisableStoreWrite((PauseStore) adminMessage.payloadUnion);
-        break;
-      case ENABLE_STORE_WRITE:
-        handleEnableStoreWrite((ResumeStore) adminMessage.payloadUnion);
-        break;
+    AdminOperation adminOperation = deserializer.deserialize(put.putValue.array(), put.schemaId);
+    logger.info("Received admin message: " + adminOperation);
+    String storeName = extractStoreName(adminOperation);
+    storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
+    storeAdminOperationsMapWithOffset.get(storeName).add(new Pair<>(record.offset(), adminOperation));
+  }
+
+  /**
+   * This method extracts the corresponding store name from the {@link AdminOperation} based on the
+   * {@link AdminMessageType}.
+   * @param adminOperation the {@link AdminOperation} to have its store name extracted.
+   * @return the corresponding store name.
+   */
+  private String extractStoreName(AdminOperation adminOperation) {
+    switch (AdminMessageType.valueOf(adminOperation)) {
       case KILL_OFFLINE_PUSH_JOB:
-        handleKillOfflinePushJob((KillOfflinePushJob) adminMessage.payloadUnion);
-        break;
-      case DISABLE_STORE_READ:
-        handleDisableStoreRead((DisableStoreRead) adminMessage.payloadUnion);
-        break;
-      case ENABLE_STORE_READ:
-        handleEnableStoreRead((EnableStoreRead) adminMessage.payloadUnion);
-        break;
-      case DELETE_ALL_VERSIONS:
-        handleDeleteAllVersions((DeleteAllVersions) adminMessage.payloadUnion);
-        break;
-      case SET_STORE_CURRENT_VERSION:
-        handleSetStoreCurrentVersion((SetStoreCurrentVersion) adminMessage.payloadUnion);
-        break;
-      case SET_STORE_OWNER:
-        handleSetStoreOwner((SetStoreOwner) adminMessage.payloadUnion);
-        break;
-      case SET_STORE_PARTITION:
-        handleSetStorePartitionCount((SetStorePartitionCount) adminMessage.payloadUnion);
-        break;
-      case UPDATE_STORE:
-        handleSetStore((UpdateStore) adminMessage.payloadUnion);
-        break;
-      case DELETE_STORE:
-        handleDeleteStore((DeleteStore) adminMessage.payloadUnion);
-        break;
-      case DELETE_OLD_VERSION:
-        handleDeleteOldVersion((DeleteOldVersion) adminMessage.payloadUnion);
-        break;
-      case MIGRATE_STORE:
-        handleStoreMigration((MigrateStore)adminMessage.payloadUnion);
-        break;
-      case ABORT_MIGRATION:
-        handleAbortMigration((AbortMigration)adminMessage.payloadUnion);
-        break;
+        KillOfflinePushJob message = (KillOfflinePushJob) adminOperation.payloadUnion;
+        return Version.parseStoreFromKafkaTopicName(message.kafkaTopic.toString());
       default:
-        throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
-    }
-    lastSucceedExecutionId = executionId;
-    executionIdAccessor.updateLastSucceedExecutionId(clusterName, lastSucceedExecutionId);
-    persistRecordOffset(record);
-  }
-
-  private void skipMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    try {
-      Put put = (Put) record.value().payloadUnion;
-      AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
-      logger.warn("Skipping consumption of message: " + adminMessage);
-    } catch (Exception e){
-      logger.warn("Skipping consumption of message: " + record.toString());
-    }
-    persistRecordOffset(record);
-  }
-
-  private void persistRecordOffset(ConsumerRecord record){
-    long recordOffset = record.offset();
-    if (recordOffset > lastOffset.getOffset()) {
-      lastOffset.setOffset(recordOffset);
-      if (offsetRecordTransformer.isPresent()) {
-        lastOffset = offsetRecordTransformer.get().transform(lastOffset);
-      }
-      offsetManager.put(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+        try {
+          GenericRecord payload = (GenericRecord) adminOperation.payloadUnion;
+          return payload.get("storeName").toString();
+        } catch (Exception e) {
+          throw new VeniceException("Failed to handle operation type: " + adminOperation.operationType
+              + " because it does not contain a storeName field");
+        }
     }
   }
 
-  public void skipMessageWithOffset(long offset){
-    if (offset == lastFailedOffset) {
-      if (offset > lastOffset.getOffset()) {
-        offsetToSkip = offset;
-      } else {
-        throw new VeniceException("Cannot skip an offset that has already been consumed.  Last consumed offset is: " + lastOffset.getOffset());
-      }
+  private void updateLastOffset(long offset) {
+    if (offset > lastOffset.getOffset()) {
+      lastOffset.setOffset(offset);
+    }
+  }
+
+  private void persistLastOffset() {
+    if (offsetRecordTransformer.isPresent()) {
+      lastOffset = offsetRecordTransformer.get().transform(lastOffset);
+    }
+    offsetManager.put(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+  }
+
+  public void skipMessageWithOffset(long offset) {
+    if (offset == failingOffset) {
+      offsetToSkip = offset;
     } else {
-      throw new VeniceException("Cannot skip an offset that isn't failing.  Last failed offset is: " + lastFailedOffset);
+      throw new VeniceException(
+          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: " + offset);
     }
   }
 
-  public long getLastSucceedExecutionId() {
-    return lastSucceedExecutionId;
+  private boolean checkOffsetToSkip(long offset) {
+    boolean skip = false;
+    if (offset == offsetToSkip) {
+      logger.warn("Skipping admin message with offset " + offset + " as instructed");
+      offsetToSkip = UNASSIGNED_VALUE;
+      skip = true;
+    }
+    return skip;
+  }
+
+  public long getLastSucceededExecutionId() {
+    return lastSucceededExecutionId;
+  }
+
+  public long getFailingOffset() {
+    return failingOffset;
   }
 
   private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // check topic
     String recordTopic = record.topic();
     if (!topic.equals(recordTopic)) {
-      throw new VeniceException(consumerTaskId + " received message from different topic: " + recordTopic + ", expected: " + topic);
+      throw new VeniceException(
+          consumerTaskId + " received message from different topic: " + recordTopic + ", expected: " + topic);
     }
     // check partition
     int recordPartition = record.partition();
     if (AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID != recordPartition) {
-      throw new VeniceException(consumerTaskId + " received message from different partition: " + recordPartition + ", expected: " + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      throw new VeniceException(
+          consumerTaskId + " received message from different partition: " + recordPartition + ", expected: "
+              + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     }
     long recordOffset = record.offset();
-    // should skip?  Note, at this point we are guaranteed to be on the correct topic and partition
-    if (recordOffset == offsetToSkip){
-      logger.warn("Skipping admin message with offset: " + recordOffset + " per instruction to skip.");
-      return false;
-    }
     // check offset
     if (lastOffset.getOffset() >= recordOffset) {
-      logger.error("Current record has been processed, last known offset: " + lastOffset.getOffset() +
-          ", current offset: " + recordOffset);
+      logger.error(
+          "Current record has been processed, last known offset: " + lastOffset.getOffset() +
+              ", current offset: " + recordOffset);
       return false;
     }
 
     return true;
-  }
-
-  private void handleStoreCreation(StoreCreation message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    String owner = message.owner.toString();
-    String keySchema = message.keySchema.definition.toString();
-    String valueSchema = message.valueSchema.definition.toString();
-    /* // failure path for testing.  Enable this code path to run the disabled test in TestAdminConsumptionTask
-    if (storeName.equals("store-that-fails")){
-      throw new VeniceException("Tried to create failure store named store-that-fails");
-    } */
-
-    // Check whether the store exists or not, the duplicate message could be
-    // introduced by Kafka retry
-    if (admin.hasStore(clusterName, storeName)) {
-      logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
-    } else {
-      // Adding store
-      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
-      logger.info("Added store: " + storeName + " to cluster: " + clusterName);
-    }
-  }
-
-  private void handleValueSchemaCreation(ValueSchemaCreation message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    String schemaStr = message.schema.definition.toString();
-    int schemaId = message.schemaId;
-
-    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
-    logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
-  }
-
-  private void handleDisableStoreWrite(PauseStore message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    admin.setStoreWriteability(clusterName, storeName, false);
-
-    logger.info("Disabled store to write: " + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleEnableStoreWrite(ResumeStore message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    admin.setStoreWriteability(clusterName, storeName, true);
-
-    logger.info("Enabled store to write: " + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleDisableStoreRead(DisableStoreRead message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    admin.setStoreReadability(clusterName, storeName, false);
-
-    logger.info("Disabled store to read: " + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleEnableStoreRead(EnableStoreRead message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    admin.setStoreReadability(clusterName, storeName, true);
-    logger.info("Enabled store to read: " + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleKillOfflinePushJob(KillOfflinePushJob message) {
-    if (isParentController) {
-      // Do nothing for Parent Controller
-      return;
-    }
-    String clusterName = message.clusterName.toString();
-    String kafkaTopic = message.kafkaTopic.toString();
-    admin.killOfflinePush(clusterName, kafkaTopic);
-
-    logger.info("Killed job with topic: " + kafkaTopic + " in cluster: " + clusterName);
-  }
-
-  private void handleDeleteAllVersions(DeleteAllVersions message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    admin.deleteAllVersionsInStore(clusterName, storeName);
-    logger.info("Deleted all of version in store:" + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleDeleteOldVersion(DeleteOldVersion message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    int versionNum = message.versionNum;
-    admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
-    logger.info("Deleted version: " + versionNum + " in store:" + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleSetStoreCurrentVersion(SetStoreCurrentVersion message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    int version = message.currentVersion;
-    admin.setStoreCurrentVersion(clusterName, storeName, version);
-
-    logger.info("Set store: " + storeName + " version to"  + version + " in cluster: " + clusterName);
-  }
-
-  private void handleSetStoreOwner(SetStoreOwner message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    String owner = message.owner.toString();
-    admin.setStoreOwner(clusterName, storeName, owner);
-
-    logger.info("Set store: " + storeName + " owner to " + owner + " in cluster: " + clusterName);
-  }
-
-  private void handleSetStorePartitionCount(SetStorePartitionCount message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    int partitionNum = message.partitionNum;
-    admin.setStorePartitionCount(clusterName, storeName, partitionNum);
-
-    logger.info("Set store: " + storeName + " partition number to " + partitionNum + " in cluster: " + clusterName);
-  }
-
-  private void handleSetStore(UpdateStore message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    admin.updateStore(clusterName, storeName,
-                      Optional.of(message.owner.toString()),
-                      Optional.of(message.enableReads),
-                      Optional.of(message.enableWrites),
-                      Optional.of(message.partitionNum),
-                      Optional.of(message.storageQuotaInByte),
-                      Optional.of(message.readQuotaInCU),
-                      message.currentVersion == IGNORED_CURRENT_VERSION
-                          ? Optional.empty()
-                          : Optional.of(message.currentVersion),
-                      Optional.empty(), // We explicitly forbid setting the largestUsedVersionNumber globally, so it is not included in the admin protocol
-                      message.hybridStoreConfig == null
-                          ? Optional.empty()
-                          : Optional.of(message.hybridStoreConfig.rewindTimeInSeconds),
-                      message.hybridStoreConfig == null
-                          ? Optional.empty()
-                          : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline),
-                      Optional.of(message.accessControlled),
-                      CompressionStrategy.optionalValueOf(message.compressionStrategy),
-                      Optional.of(message.chunkingEnabled),
-                      Optional.of(message.singleGetRouterCacheEnabled),
-                      Optional.of(message.batchGetRouterCacheEnabled),
-                      Optional.of(message.batchGetLimit),
-                      Optional.of(message.numVersionsToPreserve),
-                      Optional.of(message.incrementalPushEnabled),
-                      Optional.of(message.isMigrating),
-                      Optional.of(message.writeComputationEnabled),
-                      Optional.of(message.readComputationEnabled)
-        );
-
-    logger.info("Set store: " + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleDeleteStore(DeleteStore message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    int largestUsedVersionNumber = message.largestUsedVersionNumber;
-    if (admin.hasStore(clusterName, storeName) && admin.getStore(clusterName, storeName).isMigrating()) {
-      /** Ignore largest used version in original store in parent.
-       * This is necessary if client pushes a new version during store migration, in which case the original store "largest used version"
-       * in parent controller will not increase, but cloned store in parent and both original and cloned stores in child ontrollers will.
-       * Without this change the "delete store" message will not be processed in child controller due to version mismatch.
-       *
-       * It will also allow Venice admin to issue delete store command to parent controller,
-       * in case something goes wrong during store migration
-       *
-       * TODO: revise this logic when remove {@link com.linkedin.venice.controller.VeniceHelixAdmin#addVersion}
-       *       side effect in {@link com.linkedin.venice.controller.kafka.TopicMonitor}
-       */
-      admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
-    } else {
-      admin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
-    }
-
-    logger.info("Deleted store: " + storeName + " in cluster: " + clusterName);
-  }
-
-  private void handleStoreMigration(MigrateStore message) {
-    if (this.isParentController) {
-      // Parent controller should not process this message again
-      return;
-    }
-
-    String srcClusterName = message.srcClusterName.toString();
-    String destClusterName = message.destClusterName.toString();
-    String storeName = message.storeName.toString();
-
-    admin.migrateStore(srcClusterName, destClusterName, storeName);
-  }
-
-  private void handleAbortMigration(AbortMigration message) {
-    String srcClusterName = message.srcClusterName.toString();
-    String destClusterName = message.destClusterName.toString();
-    String storeName = message.storeName.toString();
-
-    admin.abortMigration(srcClusterName, destClusterName, storeName);
   }
 }

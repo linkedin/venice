@@ -114,7 +114,6 @@ public class ConfigKeys {
   public static final String DEFAULT_READ_QUOTA = "default.read.quota";
   public static final String CLUSTER_TO_D2 = "cluster.to.d2";
   public static final String HELIX_SEND_MESSAGE_TIMEOUT_MS = "helix.send.message.timeout.ms";
-  public static final String ADMIN_CONSUMPTION_RETRY_DELAY_MS = "admin.consumption.retry.delay.ms";
   public static final String REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = "refresh.attempts.for.zk.reconnect";
   public static final String REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS = "refresh.interval.for.zk.reconnect.ms";
   public static final String KAFKA_READ_CYCLE_DELAY_MS = "kafka.read.cycle.delay.ms";
@@ -592,7 +591,21 @@ public class ConfigKeys {
    * If there is a failure in consuming from the admin topic, skip the message after retrying for this many minutes
    * Default 5 days
    */
-  public static final String ADMIN_CONSUMPTION_TIMEOUT_MINUTES = "admin.consumption.timeout.minutes";
+  public static final String ADMIN_CONSUMPTION_TIMEOUT_MINUTES = "admin.consumption.timeout.minute";
+
+  /**
+   * The maximum time allowed for worker threads to execute admin messages in one cycle. A cycle is the processing of
+   * delegated admin messages by some number of worker thread(s) defined by {@code ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE}.
+   * Each worker thread will try to empty the queue for a store before moving on to process admin messages for another
+   * store. The cycle is completed either by finishing all delegated admin messages or timing out with this config.
+   * TODO: Note that the timeout is for all stores in the cycle and not individual stores. Meaning that some stores may starve.
+   */
+  public static final String ADMIN_CONSUMPTION_CYCLE_TIMEOUT_MS = "admin.consumption.cycle.timeout.ms";
+
+  /**
+   * The maximum number of threads allowed in the pool for executing admin messages.
+   */
+  public static final String ADMIN_CONSUMPTION_MAX_WORKER_THREAD_POOL_SIZE = "admin.consumption.max.worker.thread.pool.size";
 
   /**
    * This factor is used to estimate potential push size. H2V reducer multiplies it

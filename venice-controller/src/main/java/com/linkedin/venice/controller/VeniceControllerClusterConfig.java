@@ -42,7 +42,6 @@ public class VeniceControllerClusterConfig {
   private Map<String, String> clusterToD2Map;
   private boolean sslToKafka;
   private int helixSendMessageTimeoutMilliseconds;
-  private int adminConsumptionRetryDelayMs;
   private int adminTopicReplicationFactor;
 
   private String kafkaSecurityProtocol;
@@ -154,7 +153,6 @@ public class VeniceControllerClusterConfig {
       sslKafkaBootStrapServers = props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
     helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
-    adminConsumptionRetryDelayMs = props.getInt(ADMIN_CONSUMPTION_RETRY_DELAY_MS, 15000);
 
     kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
     if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
@@ -265,10 +263,6 @@ public class VeniceControllerClusterConfig {
 
   public int getHelixSendMessageTimeoutMs() {
     return helixSendMessageTimeoutMilliseconds;
-  }
-
-  public int getAdminConsumptionRetryDelayMs() {
-    return adminConsumptionRetryDelayMs;
   }
 
   public String getKafkaSecurityProtocol() {
