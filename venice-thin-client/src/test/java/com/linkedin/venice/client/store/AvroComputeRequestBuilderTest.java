@@ -1,0 +1,185 @@
+package com.linkedin.venice.client.store;
+
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.request.DotProduct;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import org.apache.avro.Schema;
+import org.mockito.ArgumentCaptor;
+import org.testng.Assert;
+import org.testng.annotations.Test;
+
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.client.store.ComputeOperationType.*;
+import static org.mockito.Mockito.*;
+
+
+public class AvroComputeRequestBuilderTest {
+  private static final Schema VALID_RECORD_SCHEMA = Schema.parse("{\n" + "\t\"type\": \"record\",\n"
+      + "\t\"name\": \"record_schema\",\n" + "\t\"fields\": [\n"
+      + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
+      + "\t\t{\"name\": \"float_field\", \"type\": \"float\", \"doc\": \"doc for float_field\"},\n" + "\t\t{\n"
+      + "\t\t\t\"name\": \"record_field\",\n" + "\t\t\t\"namespace\": \"com.linkedin.test\",\n" + "\t\t\t\"type\": {\n"
+      + "\t\t\t\t\"name\": \"Record1\",\n" + "\t\t\t\t\"type\": \"record\",\n" + "\t\t\t\t\"fields\": [\n"
+      + "\t\t\t\t\t{\"name\": \"nested_field1\", \"type\": \"double\", \"doc\": \"doc for nested field\"}\n"
+      + "\t\t\t\t]\n" + "\t\t\t}\n" + "\t\t},\n"
+      + "\t\t{\"name\": \"float_array_field1\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
+      + "\t\t{\"name\": \"float_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"float\"}},\n"
+      + "\t\t{\"name\": \"int_array_field2\", \"type\": {\"type\": \"array\", \"items\": \"int\"}}\n" + "\t]\n" + "}");
+
+  private static final Schema ARRAY_SCHEMA = Schema.parse("{\"type\": \"array\", \"items\": \"float\"}");
+
+  private static final Set<String> keys = new HashSet<>();
+  private static final Float[] dotProductParam = new Float[]{1.0f, 2.0f};
+
+  @Test
+  public void testComputeRequestBuilder() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    doReturn("testStore").when(mockClient).getStoreName();
+    ArgumentCaptor<ComputeRequestV1> computeRequestCaptor = ArgumentCaptor.forClass(ComputeRequestV1.class);
+    ArgumentCaptor<Set> keysCaptor = ArgumentCaptor.forClass(Set.class);
+    ArgumentCaptor<Schema> resultSchemaCaptor = ArgumentCaptor.forClass(Schema.class);
+    ArgumentCaptor<Optional> statsCaptor = ArgumentCaptor.forClass(Optional.class);
+    ArgumentCaptor<Long> preRequestTimeCaptor = ArgumentCaptor.forClass(Long.class);
+
+    long preRequestTimeInNS = 1234;
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), preRequestTimeInNS);
+    computeRequestBuilder.project("float_field", "record_field")
+        .project("int_field")
+        .dotProduct("float_array_field1", dotProductParam, "float_array_field1_dot_product_result")
+        .dotProduct("float_array_field2", dotProductParam, "float_array_field2_dot_product_result")
+        .dotProduct("float_array_field2", dotProductParam, "float_array_field2_another_dot_product_result")
+        .execute(keys);
+
+    verify(mockClient).compute(computeRequestCaptor.capture(), keysCaptor.capture(), resultSchemaCaptor.capture(),
+        statsCaptor.capture(), preRequestTimeCaptor.capture());
+    String expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"float_field\",\"type\":\"float\",\"doc\":\"\"},{\"name\":\"record_field\",\"type\":{\"type\":\"record\",\"name\":\"Record1\",\"fields\":[{\"name\":\"nested_field1\",\"type\":\"double\",\"doc\":\"doc for nested field\"}]},\"doc\":\"\"},{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_another_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\",\"default\":{}}]}";
+    Assert.assertEquals(resultSchemaCaptor.getValue().toString(), expectedSchema);
+    Assert.assertEquals(keysCaptor.getValue(), keys);
+    Assert.assertFalse(statsCaptor.getValue().isPresent());
+    Assert.assertEquals(preRequestTimeCaptor.getValue().longValue(), preRequestTimeInNS);
+    ComputeRequestV1 capturedComputeRequest = computeRequestCaptor.getValue();
+    Assert.assertNotNull(capturedComputeRequest);
+    Assert.assertEquals(capturedComputeRequest.resultSchemaStr.toString(), expectedSchema);
+    Assert.assertEquals(capturedComputeRequest.operations.size(), 3);
+
+    List<Float> expectedDotProductParam = new ArrayList<>();
+    for (Float f : dotProductParam) {
+      expectedDotProductParam.add(f);
+    }
+    ComputeOperation computeOperation1 = (ComputeOperation)capturedComputeRequest.operations.get(0);
+    Assert.assertNotNull(computeOperation1);
+    Assert.assertEquals(computeOperation1.operationType, DOT_PRODUCT.getValue());
+    DotProduct dotProduct1 = (DotProduct)computeOperation1.operation;
+    Assert.assertNotNull(dotProduct1);
+    Assert.assertEquals(dotProduct1.field.toString(), "float_array_field1");
+    Assert.assertEquals(dotProduct1.resultFieldName.toString(), "float_array_field1_dot_product_result");
+    Assert.assertEquals(dotProduct1.dotProductParam, expectedDotProductParam);
+
+    ComputeOperation computeOperation2 = (ComputeOperation)capturedComputeRequest.operations.get(1);
+    Assert.assertNotNull(computeOperation2);
+    Assert.assertEquals(computeOperation2.operationType, DOT_PRODUCT.getValue());
+    DotProduct dotProduct2 = (DotProduct)computeOperation2.operation;
+    Assert.assertNotNull(dotProduct2);
+    Assert.assertEquals(dotProduct2.field.toString(), "float_array_field2");
+    Assert.assertEquals(dotProduct2.resultFieldName.toString(), "float_array_field2_dot_product_result");
+    Assert.assertEquals(dotProduct2.dotProductParam, expectedDotProductParam);
+
+    ComputeOperation computeOperation3 = (ComputeOperation)capturedComputeRequest.operations.get(2);
+    Assert.assertNotNull(computeOperation3);
+    Assert.assertEquals(computeOperation3.operationType, DOT_PRODUCT.getValue());
+    DotProduct dotProduct3 = (DotProduct)computeOperation3.operation;
+    Assert.assertNotNull(dotProduct3);
+    Assert.assertEquals(dotProduct3.field.toString(), "float_array_field2");
+    Assert.assertEquals(dotProduct3.resultFieldName.toString(), "float_array_field2_another_dot_product_result");
+    Assert.assertEquals(dotProduct3.dotProductParam, expectedDotProductParam);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Only value schema with 'RECORD' type is supported")
+  public void testComputeAgainstNonRecordSchema() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(ARRAY_SCHEMA,
+        mockClient, Optional.empty(), 0);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Unknown project field.*")
+  public void testProjectUnknownField() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.project("some_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Unknown dotProduct field.*")
+  public void testDotProductAgainstUnknownField() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("some_unknown_field", dotProductParam, "new_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't with 'ARRAY' type")
+  public void testDotProductAgainstNonFloatArrayField1() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("int_field", dotProductParam, "new_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'")
+  public void testDotProductAgainstNonFloatArrayField2() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("int_array_field2", dotProductParam, "new_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*__veniceComputationError__ is reserved.*")
+  public void testInvalidSchemaWithReservedFieldName() {
+    String invalidSchemaStr = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"invalid_value_schema\",\n"
+        + "\t\"fields\": [\n" + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0},\n"
+        + "\t\t{\"name\": \""+ VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + "\", \"type\": \"string\"}\n" + "\t]\n" + "}";
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+     new AvroComputeRequestBuilder(Schema.parse(invalidSchemaStr),
+        mockClient, Optional.empty(), 0);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".* __veniceComputationError__ is reserved.*")
+  public void testDotProductWhileResultFieldUsingReservedFieldName() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("float_array_field1", dotProductParam, VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DotProduct result field: int_field collides with the fields defined in value schema")
+  public void testDotProductWhileResultFieldUsingExistingFieldName() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("float_array_field1", dotProductParam, "int_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DotProduct result field: same_field_name has been specified more than once")
+  public void testDotProductWhileResultFieldUsingSameFieldNameMultipleTimes() {
+    AbstractAvroStoreClient mockClient = mock(AbstractAvroStoreClient.class);
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("float_array_field1", dotProductParam, "same_field_name");
+    computeRequestBuilder.dotProduct("float_array_field2", dotProductParam, "same_field_name");
+    computeRequestBuilder.execute(keys);
+  }
+
+}

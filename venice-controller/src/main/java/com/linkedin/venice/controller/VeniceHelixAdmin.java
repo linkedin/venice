@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -1829,8 +1830,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (!repository.hasStore(storeName)) {
             throw new VeniceNoStoreException(storeName);
         }
-        // Check compatibility
         SchemaEntry newValueSchemaWithInvalidId = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
+        // Make sure the value schema doesn't contain the reserved field name in the top level.
+        if (null != newValueSchemaWithInvalidId.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
+            throw new VeniceException("Field name: " + VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + " is reserved,"
+                + " please don't use it in the value schema");
+        }
+        // Check compatibility
         Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
         int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
         for (SchemaEntry entry : valueSchemas) {

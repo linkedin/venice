@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
 import java.io.Closeable;
@@ -38,6 +39,13 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @throws VeniceClientException
    */
   CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException;
+
+  /**
+   * This experimental feature is subject to backwards-incompatible changes and may even be removed in the future.
+   * @return
+   */
+  @Experimental
+  ComputeRequestBuilder<K> compute();
 
   void start() throws VeniceClientException;
 

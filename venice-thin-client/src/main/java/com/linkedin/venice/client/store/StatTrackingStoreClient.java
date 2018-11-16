@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -14,6 +15,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.BiFunction;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+
 
 /**
  * This class is used to handle all the metric related logic.
@@ -30,6 +34,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private final ClientStats singleGetStats;
   private final ClientStats multiGetStats;
   private final ClientStats schemaReaderStats;
+  private final ClientStats computeStats;
 
   public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient) {
     this(innerStoreClient, TehutiUtils.getMetricsRepository(STAT_VENICE_CLIENT_NAME));
@@ -41,6 +46,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     this.multiGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET);
     this.schemaReaderStats =
         new ClientStats(metricsRepository, getStoreName() + "_" + STAT_SCHEMA_READER, RequestType.SINGLE_GET);
+    this.computeStats = new ClientStats(metricsRepository, getStoreName(), RequestType.COMPUTE);
   }
 
   @Override
@@ -70,6 +76,29 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     multiGetStats.recordRequestKeyCount(keys.size());
     CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
         (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(multiGetStats, startTimeInNS));
+    return statFuture;
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute() throws VeniceClientException {
+    long startTimeInNS = System.nanoTime();
+
+    /**
+     * Here, we have to use {@link #compute(Optional, InternalAvroStoreClient, long)}
+     * to pass {@link StatTrackingStoreClient}, so that {@link #compute(ComputeRequestV1, Set, Schema, Optional, long)}
+     * will be invoked when serving 'compute' request.
+     */
+    return super.compute(Optional.of(computeStats), this, startTimeInNS);
+  }
+
+  @Override
+  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
+      Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
+    CompletableFuture<Map<K, GenericRecord>> innerFuture = super.compute(computeRequest, keys, resultSchema,
+        stats, preRequestTimeInNS);
+    computeStats.recordRequestKeyCount(keys.size());
+    CompletableFuture<Map<K, GenericRecord>> statFuture = innerFuture.handle(
+        (BiFunction<? super Map<K, GenericRecord>, Throwable, ? extends Map<K, GenericRecord>>) getStatCallback(computeStats, preRequestTimeInNS));
     return statFuture;
   }
 
