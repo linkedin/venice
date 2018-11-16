@@ -2,6 +2,10 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.client.store.deserialization.BatchGetDeserializer;
+import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
+import com.linkedin.venice.client.store.deserialization.BlockingDeserializer;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
@@ -27,12 +31,17 @@ public class ClientConfig<T extends SpecificRecord> {
   private D2Client d2Client = null;
   private MetricsRepository metricsRepository = null;
   private Executor deserializationExecutor = null;
+  private boolean isVsonClient = false;
+  private BatchGetDeserializerType batchGetDeserializerType = BatchGetDeserializerType.BLOCKING;
+  private AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
+  private int onDemandDeserializerNumberOfRecordsPerThread = 250;
+  private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
+  private int alwaysOnDeserializerQueueCapacity = 10000;
 
   //https specific settings
   private boolean isHttps = false;
   private SSLEngineComponentFactory sslEngineComponentFactory = null;
 
-  private boolean isVsonClient = false;
 
   public static ClientConfig defaultGenericClientConfig(String storeName) {
     return new ClientConfig(storeName);
@@ -61,7 +70,12 @@ public class ClientConfig<T extends SpecificRecord> {
              .setHttps(config.isHttps)
              .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
              .setMetricsRepository(config.getMetricsRepository())
-             .setVsonClient(config.isVsonClient);
+             .setVsonClient(config.isVsonClient)
+             .setBatchGetDeserializerType(config.batchGetDeserializerType)
+             .setMultiGetEnvelopeIterableImpl(config.multiGetEnvelopeIterableImpl)
+             .setOnDemandDeserializerNumberOfRecordsPerThread(config.onDemandDeserializerNumberOfRecordsPerThread)
+             .setAlwaysOnDeserializerNumberOfThreads(config.alwaysOnDeserializerNumberOfThreads)
+             .setAlwaysOnDeserializerQueueCapacity(config.alwaysOnDeserializerQueueCapacity);
 
     return newConfig;
   }
@@ -214,6 +228,55 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setVsonClient(boolean isVonClient) {
     this.isVsonClient = isVonClient;
+    return this;
+  }
+
+  public BatchGetDeserializerType getBatchGetDeserializerType() {
+    return batchGetDeserializerType;
+  }
+
+  public BatchGetDeserializer getBatchGetDeserializer(Executor executor) {
+    return batchGetDeserializerType.get(executor, this);
+  }
+
+  public ClientConfig<T> setBatchGetDeserializerType(BatchGetDeserializerType batchGetDeserializerType) {
+    this.batchGetDeserializerType = batchGetDeserializerType;
+    return this;
+  }
+
+  public AvroGenericDeserializer.IterableImpl getMultiGetEnvelopeIterableImpl() {
+    return multiGetEnvelopeIterableImpl;
+  }
+
+  public ClientConfig<T> setMultiGetEnvelopeIterableImpl(AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
+    this.multiGetEnvelopeIterableImpl = multiGetEnvelopeIterableImpl;
+    return this;
+  }
+
+  public int getOnDemandDeserializerNumberOfRecordsPerThread() {
+    return onDemandDeserializerNumberOfRecordsPerThread;
+  }
+
+  public ClientConfig<T> setOnDemandDeserializerNumberOfRecordsPerThread(int onDemandDeserializerNumberOfRecordsPerThread) {
+    this.onDemandDeserializerNumberOfRecordsPerThread = onDemandDeserializerNumberOfRecordsPerThread;
+    return this;
+  }
+
+  public int getAlwaysOnDeserializerNumberOfThreads() {
+    return alwaysOnDeserializerNumberOfThreads;
+  }
+
+  public ClientConfig<T> setAlwaysOnDeserializerNumberOfThreads(int alwaysOnDeserializerNumberOfThreads) {
+    this.alwaysOnDeserializerNumberOfThreads = alwaysOnDeserializerNumberOfThreads;
+    return this;
+  }
+
+  public int getAlwaysOnDeserializerQueueCapacity() {
+    return alwaysOnDeserializerQueueCapacity;
+  }
+
+  public ClientConfig<T> setAlwaysOnDeserializerQueueCapacity(int alwaysOnDeserializerQueueCapacity) {
+    this.alwaysOnDeserializerQueueCapacity = alwaysOnDeserializerQueueCapacity;
     return this;
   }
 }

@@ -36,7 +36,7 @@ public abstract class AbstractVeniceHttpStats extends AbstractVeniceStats {
   /**
    * By default, this function will prepend the request type to the sensor name, and register percentiles with the same name.
    *
-   * TODO: Make all uses of percentiles do this, instead of calling directly : 
+   * TODO: Make all uses of percentiles do this, instead of calling directly :
    * {@link TehutiUtils#getPercentileStatForNetworkLatency(String, String)}
    */
   protected Sensor registerSensorWithDetailedPercentiles(String sensorName, MeasurableStat... stats) {

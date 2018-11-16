@@ -12,7 +12,7 @@ public class TestVsonGenericStoreClientImpl {
   public void testInit() {
     String storeName = "testInit";
     D2TransportClient transportClient = Mockito.mock(D2TransportClient.class);
-    VsonGenericStoreClientImpl client = new VsonGenericStoreClientImpl(transportClient, storeName);
+    VsonGenericStoreClientImpl client = new VsonGenericStoreClientImpl(transportClient, ClientConfig.defaultVsonGenericClientConfig(storeName));
 
     // Mock the case that service discovery find the real d2 service, so create a new d2 transport client.
     D2ServiceDiscovery d2ServiceDiscovery = Mockito.mock(D2ServiceDiscovery.class);

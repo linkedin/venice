@@ -152,7 +152,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
 
         if (responseMap.containsKey(uriStr)) {
           logger.trace("Found matched response");
-          ctx.writeAndFlush(responseMap.get(uriStr).copy()).addListener(ChannelFutureListener.CLOSE);
+          ctx.writeAndFlush(responseMap.get(uriStr).copy()); //.addListener(ChannelFutureListener.CLOSE);
         } else {
           for (Map.Entry<String, FullHttpResponse> entry : uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();

@@ -36,12 +36,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   private final ClientStats schemaReaderStats;
   private final ClientStats computeStats;
 
-  public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient) {
-    this(innerStoreClient, TehutiUtils.getMetricsRepository(STAT_VENICE_CLIENT_NAME));
-  }
-
-  public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, MetricsRepository metricsRepository) {
+  public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
     super(innerStoreClient);
+    MetricsRepository metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
+        .orElse(TehutiUtils.getMetricsRepository(STAT_VENICE_CLIENT_NAME));
     this.singleGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.SINGLE_GET);
     this.multiGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET);
     this.schemaReaderStats =

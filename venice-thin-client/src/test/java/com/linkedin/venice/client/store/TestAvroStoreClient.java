@@ -52,7 +52,7 @@ public class TestAvroStoreClient {
 
     doReturn(mockValueFuture).when(mockFuture).handle(any());
 
-    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, STORE_NAME); //, new MetricsRepository());
+    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, ClientConfig.defaultGenericClientConfig(STORE_NAME));
   }
 
   @BeforeMethod
@@ -120,8 +120,8 @@ public class TestAvroStoreClient {
     doReturn(schemaResponseInBytes).when(mockValueFuture).get();
     doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
 
-    AvroSpecificStoreClientImpl specificStoreClient =
-        new AvroSpecificStoreClientImpl(mockTransportClient, STORE_NAME, TestValueRecord.class); //, new MetricsRepository());
+    AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
+        ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecord.class));
 
     specificStoreClient.start();
     RecordDeserializer specificRecordDeserializer = specificStoreClient.getDataRecordDeserializer(1);

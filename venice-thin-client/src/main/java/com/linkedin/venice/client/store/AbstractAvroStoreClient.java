@@ -4,39 +4,41 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.stats.ClientStats;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.client.stats.Reporter;
+import com.linkedin.venice.client.store.deserialization.BatchGetDeserializer;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
+import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.commons.io.IOUtils;
-
-import javax.validation.constraints.NotNull;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import org.apache.log4j.Logger;
 
 
@@ -82,7 +84,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private TransportClient transportClient;
   private String storeName;
   private D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
-  private Executor deserializationExecutor;
+  private final Executor deserializationExecutor;
+  private final BatchGetDeserializer batchGetDeserializer;
+  private final AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl;
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
    * 1. A bunch of regular get requests are sent to Venice backend at the same time;
@@ -105,11 +109,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   public static synchronized Executor getDefaultDeserializationExecutor() {
     if (DESERIALIZATION_EXECUTOR == null) {
-      // Half of process number of threads should be good enough
-      int threadNum = Runtime.getRuntime().availableProcessors() / 2;
-      if (threadNum <= 0) {
-        threadNum = 1;
-      }
+      // Half of process number of threads should be good enough, minimum 2
+      int threadNum = Math.max(Runtime.getRuntime().availableProcessors() / 2, 2);
 
       DESERIALIZATION_EXECUTOR = Executors.newFixedThreadPool(threadNum,
           new DaemonThreadFactory("Venice-Store-Deserialization"));
@@ -118,14 +119,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return DESERIALIZATION_EXECUTOR;
   }
 
-  public AbstractAvroStoreClient(TransportClient transportClient,
-                                String storeName,
-                                boolean needSchemaReader,
-                                Executor deserializationExecutor) {
+  protected AbstractAvroStoreClient(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
     this.transportClient = transportClient;
-    this.storeName = storeName;
+    this.storeName = clientConfig.getStoreName();
     this.needSchemaReader = needSchemaReader;
-    this.deserializationExecutor = deserializationExecutor;
+    this.deserializationExecutor = Optional.ofNullable(clientConfig.getDeserializationExecutor())
+        .orElse(getDefaultDeserializationExecutor());
+    this.batchGetDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
+    this.multiGetEnvelopeIterableImpl = clientConfig.getMultiGetEnvelopeIterableImpl();
   }
 
   @Override
@@ -265,38 +266,46 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] multiGetBody = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     String requestPath = getStorageRequestPath();
 
-    return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
+    CompletableFuture<Map<K, V>> valueFuture = new CompletableFuture();
+
+    requestSubmissionWithStatsHandling(
+        stats,
+        preRequestTimeInNS,
+        true,
         () -> transportClient.post(requestPath, MULTI_GET_HEADER_MAP, multiGetBody),
-        (clientResponse, throwable) -> {
+        (clientResponse, throwable, responseDeserializationComplete) -> {
           if (null != throwable) {
-            handleStoreExceptionInternally(throwable);
+            valueFuture.completeExceptionally(throwable);
           }
           if (null == clientResponse) {
             // Even all the keys don't exist in Venice, multi-get should receive empty result instead of 'null'
-            throw new VeniceClientException("TransportClient should not return null for multi-get request");
+            valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for multi-get request"));
           }
           if (!clientResponse.isSchemaIdValid()) {
-            throw new VeniceClientException("No valid schema id received for multi-get request!");
+            valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for multi-get request!"));
           }
           int responseSchemaId = clientResponse.getSchemaId();
+          long preResponseEnvelopeDeserialization = System.nanoTime();
           RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(responseSchemaId);
           Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(clientResponse.getBody());
-          Map<K, V> resultMap = new HashMap<>();
-          for (MultiGetResponseRecordV1 record : records) {
-            int keyIdx = record.keyIndex;
-            if (keyIdx >= keyList.size() || keyIdx < 0) {
-              throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
-            }
-            int recordSchemaId = record.schemaId;
-            byte[] serializedData = record.value.array();
-            RecordDeserializer<V> dataDeserializer = getDataRecordDeserializer(recordSchemaId);
-            V value = dataDeserializer.deserialize(serializedData);
-            resultMap.put(keyList.get(keyIdx), value);
-          }
 
-          return resultMap;
-        }
-    );
+          try {
+            batchGetDeserializer.deserialize(
+                valueFuture,
+                records,
+                keyList,
+                recordSchemaId -> getDataRecordDeserializer((Integer) recordSchemaId),
+                responseDeserializationComplete,
+                stats,
+                preResponseEnvelopeDeserialization
+            );
+          } catch (Exception e) {
+            valueFuture.completeExceptionally(e);
+          }
+          return null;
+        });
+
+    return valueFuture;
   }
 
   /**
@@ -321,7 +330,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       final long preRequestTimeInNS,
       final boolean handleResponseOnDeserializationExecutor,
       final Supplier<CompletableFuture<TransportClientResponse>> requestSubmitter,
-      final BiFunction<TransportClientResponse, Throwable, R> responseHandler) throws VeniceClientException {
+      final ResponseHandler<R> responseHandler) throws VeniceClientException {
     final long preSubmitTimeInNS = System.nanoTime();
     CompletableFuture<TransportClientResponse> transportFuture = requestSubmitter.get();
 
@@ -333,11 +342,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       stats.ifPresent(clientStats -> clientStats.recordRequestSubmissionToResponseHandlingTime(
           LatencyUtils.convertLatencyFromNSToMS(preHandlingTimeNS - preSubmitTimeInNS)));
 
-      try {
-        return responseHandler.apply(clientResponse, throwable);
-      } finally {
-        stats.ifPresent(clientStats -> clientStats.recordResponseDeserializationTime(LatencyUtils.getLatencyInMS(preHandlingTimeNS)));
-      }
+      return responseHandler.handle(clientResponse, throwable, () ->
+          stats.ifPresent(clientStats ->
+              clientStats.recordResponseDeserializationTime(LatencyUtils.getLatencyInMS(preHandlingTimeNS))));
     };
 
     if (handleResponseOnDeserializationExecutor) {
@@ -345,6 +352,37 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     } else {
       return transportFuture.handle(responseHandlerWithStats);
     }
+  }
+
+  /**
+   * Calls the overloaded function of the same, but executes the deserialization time reporting after the
+   * {@param responseHandler} has returned.
+   *
+   * @see {@link #requestSubmissionWithStatsHandling(Optional, long, boolean, Supplier, ResponseHandler)}
+   */
+  private <R> CompletableFuture<R> requestSubmissionWithStatsHandling(
+      final Optional<ClientStats> stats,
+      final long preRequestTimeInNS,
+      final boolean handleResponseOnDeserializationExecutor,
+      final Supplier<CompletableFuture<TransportClientResponse>> requestSubmitter,
+      final BiFunction<TransportClientResponse, Throwable, R> responseHandler) throws VeniceClientException {
+    return requestSubmissionWithStatsHandling(
+        stats,
+        preRequestTimeInNS,
+        handleResponseOnDeserializationExecutor,
+        requestSubmitter,
+        (clientResponse, throwable, responseDeserializationComplete) -> {
+          try {
+            return responseHandler.apply(clientResponse, throwable);
+          } finally {
+            responseDeserializationComplete.report();
+          }
+        }
+    );
+  }
+
+  private interface ResponseHandler<R> {
+    R handle(TransportClientResponse clientResponse, Throwable throwable, Reporter responseDeserializationComplete);
   }
 
   @Override
@@ -382,7 +420,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedFullComputeRequest = computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
     CompletableFuture valueFuture = requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
         () -> transportClient.post(getComputeRequestPath(), COMPUTE_HEADER_MAP, serializedFullComputeRequest),
-        (clientResponse, throwable) -> {
+        (clientResponse, throwable, responseDeserializationComplete) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
           }
@@ -398,6 +436,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
           Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(clientResponse.getBody());
           RecordDeserializer<GenericRecord> dataDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(resultSchema);
+          /** TODO: Integrate with {@link BatchGetDeserializer}. Might need to make it generic to deal with both envelopes. */
           Map<K, GenericRecord> resultMap = new HashMap<>();
           for (ComputeResponseRecordV1 record : records) {
             int keyIdx = record.keyIndex;
@@ -452,7 +491,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (protocolVersion != schemaId) {
       throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
     }
-    return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+    return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class, multiGetEnvelopeIterableImpl);
   }
 
   private RecordDeserializer<ComputeResponseRecordV1> getComputeResponseRecordDeserializer(int schemaId) {

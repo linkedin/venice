@@ -61,6 +61,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
           // To speed up test
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
+          .put(MAX_READ_CAPCITY, 1000000000)
           .put(properties);
       RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);

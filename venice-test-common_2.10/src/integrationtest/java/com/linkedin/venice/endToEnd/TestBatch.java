@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -10,10 +11,13 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.io.IOException;
 import java.text.DecimalFormat;
@@ -64,7 +68,7 @@ public abstract class TestBatch {
     }
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void storeWithNoVersionThrows400() {
 
     //Create store
@@ -122,16 +126,16 @@ public abstract class TestBatch {
             props.setProperty(ALLOW_DUPLICATE_KEY, "true");
           }
         },
-        (avroClient, vsonClient) -> {});
+        (avroClient, vsonClient, metricsRepository) -> {});
   }
 
-  @Test(timeOut =  TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testCompressingRecord() throws Exception {
     testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(),
                         recordSchema.getField("name").schema());
-    }, properties -> {}, (avroClient, vsonClient) -> {
+    }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
       //test single get
       for (int i = 1; i <= 100; i ++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
@@ -160,7 +164,7 @@ public abstract class TestBatch {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
     }, properties -> {
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 1; i <= 100; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
@@ -171,7 +175,7 @@ public abstract class TestBatch {
       return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
     }, properties -> {
       properties.setProperty(INCREMENTAL_PUSH, "true");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 51; i <= 150; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
       }
@@ -204,12 +208,17 @@ public abstract class TestBatch {
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
     job.run();
 
-    AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-        .setVeniceURL(veniceCluster.getRandomRouterURL()));
-    AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultVsonGenericClientConfig(storeName)
-        .setVeniceURL(veniceCluster.getRandomRouterURL()));
+    MetricsRepository metricsRepository = new MetricsRepository();
 
-    dataValidator.validate(avroClient, vsonClient);
+    AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+        .setVeniceURL(veniceCluster.getRandomRouterURL())
+        .setMetricsRepository(metricsRepository) // metrics only available for Avro client...
+    );
+    AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultVsonGenericClientConfig(storeName)
+        .setVeniceURL(veniceCluster.getRandomRouterURL())
+    );
+
+    dataValidator.validate(avroClient, vsonClient, metricsRepository);
 
     return storeName;
   }
@@ -219,7 +228,7 @@ public abstract class TestBatch {
   }
 
   interface H2VValidator {
-    void validate(AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient) throws Exception;
+    void validate(AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient, MetricsRepository metricsRepository) throws Exception;
   }
 
   @Test //(timeOut = TEST_TIMEOUT)
@@ -242,7 +251,7 @@ public abstract class TestBatch {
           return new Pair<>(recordSchema.getField("id").schema(),
                             recordSchema.getField("name").schema());
         }, props -> {},
-        (avroClient, vsonClient) -> {
+        (avroClient, vsonClient, metricsRepository) -> {
           Set<String> keys = new HashSet(10);
 
           // Single gets
@@ -311,7 +320,7 @@ public abstract class TestBatch {
           props.setProperty(KEY_FIELD_PROP, "key");
           props.setProperty(VALUE_FIELD_PROP, "value");
         },
-        (avroClient, vsonClient) -> {
+        (avroClient, vsonClient, metricsRepository) -> {
           String schemaWithoutSymbolDocStr = loadFileAsString("SchemaWithoutSymbolDoc.avsc");
           Schema schemaWithoutSymbolDoc = Schema.parse(schemaWithoutSymbolDocStr);
           GenericRecord keyRecord = new GenericData.Record(schemaWithoutSymbolDoc.getField("key").schema());
@@ -366,20 +375,22 @@ public abstract class TestBatch {
 
   @Test(enabled = false) // disabled because performance testing is not very amenable to the unit test environment
   public void stressTestLargeMultiGet() throws Exception {
-    int valueSize = 40; // 40 bytes
-    int numberOfRecords = 1000000; // 1 million records
+    int valueSize = 800;
+    int numberOfRecords = 100000;
     testBatchStore(inputDir -> {
-          Schema recordSchema = writeSimpleAvroFileWithCustomSize(inputDir, numberOfRecords, valueSize, valueSize);
+          Schema recordSchema = writeAvroFileWithManyFloatsAndCustomTotalSize(inputDir, numberOfRecords, valueSize, valueSize);
           return new Pair<>(recordSchema.getField("id").schema(),
               recordSchema.getField("name").schema());
         }, props -> {},
-        (avroClient, vsonClient) -> {
+        (avroClient, vsonClient, metricsRepository) -> {
           // Batch-get
 
-          int numberOfBatchesOfConcurrentCalls = 20;
-          int numberOfConcurrentCallsPerBatch = 100;
+          String storeName = avroClient.getStoreName();
+
+          int numberOfBatchesOfConcurrentCalls = 200;
+          int numberOfConcurrentCallsPerBatch = 10;
           int numberOfCalls = numberOfConcurrentCallsPerBatch * numberOfBatchesOfConcurrentCalls;
-          int keysPerCall = 2000;
+          int keysPerCall = 1000;
           final StatCounter minQueryTimeMs = new MinLong();
           final StatCounter maxQueryTimeMs = new MaxLong();
           final StatCounter totalQueryTimeMs = new TotalLong();
@@ -429,10 +440,69 @@ public abstract class TestBatch {
                 + numberOfBatchesOfConcurrentCalls + " batches of "
                 + numberOfConcurrentCallsPerBatch + " calls each.");
             DecimalFormat decimalFormat = new DecimalFormat("0.0");
-            LOGGER.info("Throughput: " + decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)) + " queries / sec");
-            LOGGER.info("Global min query time: " + globalMinQueryTimeMs + " ms.");
-            LOGGER.info("Global max query time: " + globalMaxQueryTimeMs + " ms.");
-            LOGGER.info("Global average query time: " + (globalTotalQueryTimeMs.get() / numberOfCalls) + " ms.");
+            LOGGER.info("Throughput (per test metrics): " + decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)) + " queries / sec");
+            LOGGER.info("Global min query time (per test metrics): " + globalMinQueryTimeMs + " ms.");
+            LOGGER.info("Global max query time (per test metrics): " + globalMaxQueryTimeMs + " ms.");
+            LOGGER.info("Global average query time (per test metrics): " + (globalTotalQueryTimeMs.get() / numberOfCalls) + " ms.");
+
+            Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+            String metricPrefix = "." + storeName + "--" + RequestType.MULTI_GET.getMetricPrefix();
+
+            Metric requestSerializationTimeMetric = metrics.get(metricPrefix + "request_serialization_time.Avg");
+            Metric requestSubmissionToResponseHandlingTimeMetric = metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
+            Metric responseDeserializationTimeMetric = metrics.get(metricPrefix + "response_deserialization_time.Avg");
+            Metric responseEnvelopeDeserializationTimeMetric = metrics.get(metricPrefix + "response_envelope_deserialization_time.Avg");
+            Metric responseRecordsDeserializationTimeMetric = metrics.get(metricPrefix + "response_records_deserialization_time.Avg");
+            Metric responseRecordsDeserializationSubmissionToStartTime = metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.Avg");
+
+            Metric requestSerializationTimeMetric50 = metrics.get(metricPrefix + "request_serialization_time.50thPercentile");
+            Metric requestSubmissionToResponseHandlingTimeMetric50 = metrics.get(metricPrefix + "request_submission_to_response_handling_time.50thPercentile");
+            Metric responseDeserializationTimeMetric50 = metrics.get(metricPrefix + "response_deserialization_time.50thPercentile");
+            Metric responseEnvelopeDeserializationTimeMetric50 = metrics.get(metricPrefix + "response_envelope_deserialization_time.50thPercentile");
+            Metric responseRecordsDeserializationTimeMetric50 = metrics.get(metricPrefix + "response_records_deserialization_time.50thPercentile");
+            Metric responseRecordsDeserializationSubmissionToStartTime50 = metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.50thPercentile");
+
+            Metric requestSerializationTimeMetric99 = metrics.get(metricPrefix + "request_serialization_time.99thPercentile");
+            Metric requestSubmissionToResponseHandlingTimeMetric99 = metrics.get(metricPrefix + "request_submission_to_response_handling_time.99thPercentile");
+            Metric responseDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_deserialization_time.99thPercentile");
+            Metric responseEnvelopeDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_envelope_deserialization_time.99thPercentile");
+            Metric responseRecordsDeserializationTimeMetric99 = metrics.get(metricPrefix + "response_records_deserialization_time.99thPercentile");
+            Metric responseRecordsDeserializationSubmissionToStartTime99 = metrics.get(metricPrefix + "response_records_deserialization_submission_to_start_time.99thPercentile");
+
+            Metric latencyMetric50 = metrics.get(metricPrefix + "healthy_request_latency.50thPercentile");
+            Metric latencyMetric90 = metrics.get(metricPrefix + "healthy_request_latency.90thPercentile");
+            Metric latencyMetric99 = metrics.get(metricPrefix + "healthy_request_latency.99thPercentile");
+
+
+            LOGGER.info("Request serialization time                       (Avg, p50, p99) : "
+                + Utils.round(requestSerializationTimeMetric.value(), 1) + " ms, \t"
+                + Utils.round(requestSerializationTimeMetric50.value(), 1) + " ms, \t"
+                + Utils.round(requestSerializationTimeMetric99.value(), 1) + " ms.");
+            LOGGER.info("Request submission to response time              (Avg, p50, p99) : "
+                + Utils.round(requestSubmissionToResponseHandlingTimeMetric.value(), 1) + " ms, \t"
+                + Utils.round(requestSubmissionToResponseHandlingTimeMetric50.value(), 1) + " ms, \t"
+                + Utils.round(requestSubmissionToResponseHandlingTimeMetric99.value(), 1) + " ms.");
+            LOGGER.info("Response deserialization time                    (Avg, p50, p99) : "
+                + Utils.round(responseDeserializationTimeMetric.value(), 1) + " ms, \t"
+                + Utils.round(responseDeserializationTimeMetric50.value(), 1) + " ms, \t"
+                + Utils.round(responseDeserializationTimeMetric99.value(), 1) + " ms.");
+            LOGGER.info("Response envelope deserialization time           (Avg, p50, p99) : "
+                + Utils.round(responseEnvelopeDeserializationTimeMetric.value(), 1) + " ms, \t"
+                + Utils.round(responseEnvelopeDeserializationTimeMetric50.value(), 1) + " ms, \t"
+                + Utils.round(responseEnvelopeDeserializationTimeMetric99.value(), 1) + " ms.");
+            LOGGER.info("Response records deserialization time            (Avg, p50, p99) : "
+                + Utils.round(responseRecordsDeserializationTimeMetric.value(), 9) + " ms, \t"
+                + Utils.round(responseRecordsDeserializationTimeMetric50.value(), 9) + " ms, \t"
+                + Utils.round(responseRecordsDeserializationTimeMetric99.value(), 9) + " ms.");
+            LOGGER.info("Response records deserialization submission time (Avg, p50, p99) : "
+                + Utils.round(responseRecordsDeserializationSubmissionToStartTime.value(), 9) + " ms, \t"
+                + Utils.round(responseRecordsDeserializationSubmissionToStartTime50.value(), 9) + " ms, \t"
+                + Utils.round(responseRecordsDeserializationSubmissionToStartTime99.value(), 9) + " ms.");
+            LOGGER.info("Latency                                          (p50, p90, p99) : "
+                + Utils.round(latencyMetric50.value(), 1) + " ms, \t"
+                + Utils.round(latencyMetric90.value(), 1) + " ms, \t"
+                + Utils.round(latencyMetric99.value(), 1) + " ms.");
+
           }).get();
         },
         false,
