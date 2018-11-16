@@ -66,30 +66,23 @@ public class SerializerDeserializerFactory {
       new ConcurrentHashMap<>();
 
   public static <K> RecordSerializer<K> getAvroGenericSerializer(Schema schema) {
-    avroGenericSerializerMap.computeIfAbsent(schema,
-        key -> {
-          return new AvroGenericSerializer(key);
-        });
-    return avroGenericSerializerMap.get(schema);
+    return avroGenericSerializerMap.computeIfAbsent(schema, key -> new AvroGenericSerializer(key));
   }
 
   public static <K> RecordSerializer<K> getVsonSerializer(Schema schema) {
-     return vsonGenericSerializerMap.computeIfAbsent(schema,
-        key -> new VsonAvroGenericSerializer<> (key));
+     return vsonGenericSerializerMap.computeIfAbsent(schema, key -> new VsonAvroGenericSerializer<> (key));
   }
 
   public static <K> RecordDeserializer<K> getVsonDeserializer(Schema writer, Schema reader) {
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, null);
-    return vsonGenericDeserializerMap.
-        computeIfAbsent(container, key -> new VsonAvroGenericDeserializer<> (key.writer, key.reader));
+    return vsonGenericDeserializerMap.computeIfAbsent(
+        container, key -> new VsonAvroGenericDeserializer<> (key.writer, key.reader));
   }
 
   public static <V> RecordDeserializer<V> getAvroGenericDeserializer(Schema writer, Schema reader) {
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, Object.class);
-    avroGenericDeserializerMap.computeIfAbsent(container, key -> {
-      return new AvroGenericDeserializer<Object>(key.writer, key.reader);
-    });
-    return (AvroGenericDeserializer<V>) avroGenericDeserializerMap.get(container);
+    return (AvroGenericDeserializer<V>) avroGenericDeserializerMap.computeIfAbsent(
+        container, key -> new AvroGenericDeserializer<>(key.writer, key.reader));
   }
 
   /**
@@ -103,13 +96,18 @@ public class SerializerDeserializerFactory {
   }
 
   public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c) {
-    Schema reader = SpecificData.get().getSchema(c);
-    SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, c);
-    avroSpecificDeserializerMap.computeIfAbsent(container, key -> {
-      return new AvroSpecificDeserializer<V>(key.writer, key.c);
-    });
+    return getAvroSpecificDeserializer(writer, c, null);
+  }
 
-    return (AvroSpecificDeserializer<V>) avroSpecificDeserializerMap.get(container);
+  /**
+   * This function is assuming that both writer and reader are using the same schema defined in {@param c}.
+   * @param c
+   * @param <V>
+   * @return
+   */
+  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Class<V> c, AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
+    Schema writer = SpecificData.get().getSchema(c);
+    return getAvroSpecificDeserializer(writer, c, multiGetEnvelopeIterableImpl);
   }
 
   /**
@@ -119,7 +117,13 @@ public class SerializerDeserializerFactory {
    * @return
    */
   public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Class<V> c) {
-    Schema schema = SpecificData.get().getSchema(c);
-    return getAvroSpecificDeserializer(schema, c);
+    return getAvroSpecificDeserializer(c, null);
+  }
+
+  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c, AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
+    Schema reader = SpecificData.get().getSchema(c);
+    SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, c);
+    return (AvroSpecificDeserializer<V>) avroSpecificDeserializerMap.computeIfAbsent(
+        container, key -> new AvroSpecificDeserializer<V>(key.writer, key.c, multiGetEnvelopeIterableImpl));
   }
 }

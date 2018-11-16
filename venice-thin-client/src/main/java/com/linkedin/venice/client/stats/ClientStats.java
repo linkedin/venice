@@ -28,6 +28,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
+  private final Sensor responseEnvelopeDeserializationTime;
+  private final Sensor responseRecordsDeserializationTime;
+  private final Sensor responseRecordsDeserializationSubmissionToStartTime;
 
   public ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
@@ -42,8 +45,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
     requestSensor = registerSensor("request", request);
     healthySensor = registerSensor("healthy_request", healthyRequest);
     unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
-    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency");
-    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency");
+    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
+    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
 
     successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.SimpleRatioStat(healthyRequest, request));
@@ -55,9 +58,43 @@ public class ClientStats extends AbstractVeniceHttpStats {
         new Avg(), new Max());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
+
+    /**
+     * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
+     * on the caller's thread.
+     */
     requestSerializationTime = registerSensorWithDetailedPercentiles("request_serialization_time", new Avg(), new Max());
+
+    /**
+     * The time it took between sending the request to the router and beginning to process the response.
+     */
     requestSubmissionToResponseHandlingTime = registerSensorWithDetailedPercentiles("request_submission_to_response_handling_time", new Avg(), new Max());
+
+    /**
+     * The total time it took to process the response.
+     *
+     * For {@link com.linkedin.venice.client.store.deserialization.BatchGetDeserializer} implementations
+     * other than {@link com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType.BLOCKING},
+     * this metric is also further broken down into sub-steps (see below).
+     */
     responseDeserializationTime = registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());
+
+    /**
+     * The time it took to iterate over the {@link com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1}
+     * envelopes of the raw response.
+     */
+    responseEnvelopeDeserializationTime = registerSensorWithDetailedPercentiles("response_envelope_deserialization_time", new Avg(), new Max());
+
+    /**
+     * The time it took to deserialize the user's records contained inside the raw envelopes. This is measured
+     * starting from just before deserializing the first record, until finishing to deserialize the last one.
+     */
+    responseRecordsDeserializationTime = registerSensorWithDetailedPercentiles("response_records_deserialization_time", new Avg(), new Max());
+
+    /**
+     * The time it took between beginning to fork off asynchronous tasks and starting to deserialize a record.
+     */
+    responseRecordsDeserializationSubmissionToStartTime = registerSensorWithDetailedPercentiles("response_records_deserialization_submission_to_start_time", new Avg(), new Max());
   }
 
   public void recordRequest() {
@@ -106,5 +143,17 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordResponseDeserializationTime(double latency) {
     responseDeserializationTime.record(latency);
+  }
+
+  public void recordResponseEnvelopeDeserializationTime(double latency) {
+    responseEnvelopeDeserializationTime.record(latency);
+  }
+
+  public void recordResponseRecordsDeserializationTime(double latency) {
+    responseRecordsDeserializationTime.record(latency);
+  }
+
+  public void recordResponseRecordsDeserializationSubmissionToStartTime(double latency) {
+    responseRecordsDeserializationSubmissionToStartTime.record(latency);
   }
 }

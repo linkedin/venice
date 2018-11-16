@@ -13,6 +13,7 @@ import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,7 +61,7 @@ public class TestVsonStoreBatch {
     testBatchStore(inputDir -> writeSimpleVsonFile(inputDir), props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i++) {
         //we need to explicitly call toString() because avro actually returns Utf8
         Assert.assertEquals(avroClient.get(i).get().toString(), String.valueOf(i + 100));
@@ -74,7 +75,7 @@ public class TestVsonStoreBatch {
     testBatchStore(inputDir -> writeComplexVsonFile(inputDir), props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i ++) {
         GenericData.Record avroObject = (GenericData.Record) avroClient.get(i).get();
         Map vsonObject = (Map) vsonClient.get(i).get();
@@ -98,7 +99,7 @@ public class TestVsonStoreBatch {
     testBatchStore(inputDir -> writeVsonByteAndShort(inputDir), props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i ++) {
         Assert.assertEquals(vsonClient.get((byte) i).get(), (short) (i - 50));
       }
@@ -114,7 +115,7 @@ public class TestVsonStoreBatch {
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i++) {
         GenericRecord record1 = (GenericRecord) ((GenericRecord) (avroClient.get(i).get())).get("level1");
         GenericRecord record21 = (GenericRecord) record1.get("level21");
@@ -138,7 +139,7 @@ public class TestVsonStoreBatch {
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "score");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i ++) {
         Assert.assertEquals(avroClient.get(i).get(), i % 10 != 0 ? (float) i : null);
         Assert.assertEquals(vsonClient.get(i).get(), i % 10 != 0 ? (float) i : null);
@@ -156,7 +157,7 @@ public class TestVsonStoreBatch {
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "recs");
-    }, (avroClient, vsonClient) -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
       for (int i = 0; i < 100; i ++) {
         GenericRecord valueInnerRecord = (GenericRecord) ((List) avroClient.get(i).get()).get(0);
         Assert.assertEquals(valueInnerRecord.get("member_id"), i);
@@ -186,12 +187,18 @@ public class TestVsonStoreBatch {
 
       KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
       job.run();
+      MetricsRepository metricsRepository = new MetricsRepository();
       avroClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
+          ClientConfig.defaultGenericClientConfig(storeName)
+              .setVeniceURL(veniceCluster.getRandomRouterURL())
+              .setMetricsRepository(metricsRepository) // metrics only available for Avro client...
+      );
       vsonClient = ClientFactory.getAndStartGenericAvroClient(
-          ClientConfig.defaultVsonGenericClientConfig(storeName).setVeniceURL(veniceCluster.getRandomRouterURL()));
+          ClientConfig.defaultVsonGenericClientConfig(storeName)
+              .setVeniceURL(veniceCluster.getRandomRouterURL())
+      );
 
-      dataValidator.validate(avroClient, vsonClient);
+      dataValidator.validate(avroClient, vsonClient, metricsRepository);
     } finally {
       IOUtils.closeQuietly(avroClient);
       IOUtils.closeQuietly(vsonClient);

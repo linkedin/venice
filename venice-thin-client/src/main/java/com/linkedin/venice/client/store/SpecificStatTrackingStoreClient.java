@@ -9,11 +9,7 @@ import org.apache.avro.specific.SpecificRecord;
  */
 public class SpecificStatTrackingStoreClient<K, V extends SpecificRecord>
     extends StatTrackingStoreClient<K, V> implements AvroSpecificStoreClient<K, V> {
-  public SpecificStatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient) {
-    super(innerStoreClient);
-  }
-
-  public SpecificStatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, MetricsRepository metricsRepository) {
-    super(innerStoreClient, metricsRepository);
+  public SpecificStatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, ClientConfig clientConfig) {
+    super(innerStoreClient, clientConfig);
   }
 }

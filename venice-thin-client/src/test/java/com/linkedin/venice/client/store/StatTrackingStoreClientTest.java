@@ -68,7 +68,8 @@ public class StatTrackingStoreClientTest {
 
     MetricsRepository repository = new MetricsRepository();
 
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient, repository);
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
     statTrackingStoreClient.get("key").get();
 
     Map<String, ? extends Metric> metrics = repository.metrics();
@@ -107,7 +108,8 @@ public class StatTrackingStoreClientTest {
 
     MetricsRepository repository = new MetricsRepository();
 
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient, repository);
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
     statTrackingStoreClient.batchGet(keySet).get();
 
     Map<String, ? extends Metric> metrics = repository.metrics();
@@ -144,7 +146,8 @@ public class StatTrackingStoreClientTest {
 
     MetricsRepository repository = new MetricsRepository();
 
-    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient, repository);
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
     try {
       statTrackingStoreClient.get("key").get();
       Assert.fail("ExecutionException should be thrown");
@@ -170,7 +173,7 @@ public class StatTrackingStoreClientTest {
 
     public SimpleStoreClient(TransportClient transportClient, String storeName, boolean needSchemaReader,
         Executor deserializationExecutor) {
-      super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+      super(transportClient, needSchemaReader, ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
     }
 
     @Override
@@ -275,7 +278,8 @@ public class StatTrackingStoreClientTest {
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
 
     MetricsRepository repository = new MetricsRepository();
-    StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(storeClient, repository);
+    StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        storeClient, ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
 
     CompletableFuture<Map<String, GenericRecord>> computeFuture = statTrackingStoreClient.compute()
         .project("int_field")

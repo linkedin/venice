@@ -3,11 +3,13 @@ package com.linkedin.venice.client.store;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -15,12 +17,22 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.TestPushUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.text.DecimalFormat;
 import java.util.HashSet;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -43,7 +55,8 @@ import java.util.concurrent.ExecutionException;
 
 @Test(singleThreaded = true)
 public class AvroGenericStoreClientImplTest {
-  private Logger logger = Logger.getLogger(AvroGenericStoreClientImplTest.class);
+  private static final Logger LOGGER = Logger.getLogger(AvroGenericStoreClientImplTest.class);
+  private static final BatchGetDeserializerType BATCH_GET_DESERIALIZER_TYPE = BatchGetDeserializerType.ONE_FUTURE_PER_RECORD;
   private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;
@@ -98,7 +111,8 @@ public class AvroGenericStoreClientImplTest {
             .defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
-            .setMetricsRepository(d2ClientMetricsRepository));
+            .setMetricsRepository(d2ClientMetricsRepository)
+            .setBatchGetDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     storeClientMetricsRepositories.put(d2StoreClient, d2ClientMetricsRepository);
     DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
@@ -136,7 +150,7 @@ public class AvroGenericStoreClientImplTest {
     String multiValueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       Assert.assertEquals(entry.getValue().getKeySchema(), Schema.parse(defaultKeySchemaStr));
       Assert.assertEquals(entry.getValue().getLatestValueSchema(), Schema.parse(valueSchemaStr));
     }
@@ -146,7 +160,7 @@ public class AvroGenericStoreClientImplTest {
   public void getByRequestPathTest() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String keySchemaPath = SchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       byte[] byteResponse = ((InternalAvroStoreClient<String, Object>)entry.getValue()).getRaw(keySchemaPath).get();
       SchemaResponse ret = mapper.readValue(byteResponse, SchemaResponse.class);
       Assert.assertEquals(ret.getName(), storeName);
@@ -159,7 +173,7 @@ public class AvroGenericStoreClientImplTest {
   public void getByRequestPathTestWithNonExistingPath() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String nonExistingPath = "sdfwirwoer";
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       byte[] byteResponse = ((InternalAvroStoreClient<String, Object>)entry.getValue()).getRaw(nonExistingPath).get();
       Assert.assertNull(byteResponse);
     }
@@ -200,7 +214,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
@@ -215,7 +229,7 @@ public class AvroGenericStoreClientImplTest {
   public void getByStoreKeyTestWithNonExistingKey() throws Throwable {
     String key = "test_key";
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertNull(value);
     }
@@ -243,7 +257,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
@@ -279,9 +293,9 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (int i = 0; i < TEST_ITERATIONS; i++) {
-      logger.info("Iteration: " + i);
+      LOGGER.info("Iteration: " + i);
       for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-        logger.trace("Execute test for transport client: " + entry.getKey());
+        LOGGER.trace("Execute test for transport client: " + entry.getKey());
         try {
           entry.getValue().get(keyStr).get();
         } catch (ExecutionException e) {
@@ -289,13 +303,13 @@ public class AvroGenericStoreClientImplTest {
           boolean causeOfCorrectType = cause instanceof VeniceClientException;
           boolean correctMessage = cause.getMessage().contains("Failed to get latest value schema for store: test_store");
           if (!causeOfCorrectType || !correctMessage) {
-            logger.error("Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: " + entry.getKey(), e);
+            LOGGER.error("Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: " + entry.getKey(), e);
           }
           Assert.assertTrue(causeOfCorrectType, "Expected to get a VeniceClientException but instead got a " + cause.getClass().getSimpleName());
           Assert.assertTrue(correctMessage,"Expected to get an exception message containing '[...] latest value schema [...]', but instead got the following message:" + cause.getMessage());
           continue;
         } catch (Throwable t) {
-          logger.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
+          LOGGER.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
           Assert.fail("Received a Throwable other than an ExecutionException! Type: " + t.getClass().getSimpleName());
         }
         Assert.fail("There should have been a VeniceClientException by now, but did not receive any from " + entry.getKey());
@@ -317,7 +331,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
@@ -378,7 +392,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
@@ -438,7 +452,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       Map<String, Object> result = entry.getValue().batchGet(keys).get();
       Assert.assertFalse(result.containsKey("key0"));
       Assert.assertFalse(result.containsKey("key2"));
@@ -501,12 +515,14 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       try {
-        Map<String, Object> result = entry.getValue().batchGet(keys).get();
+        Map<String, Object> result = entry.getValue().batchGet(keys).get(10, TimeUnit.SECONDS);
         Assert.fail("Should receive exception here because of non-existing data schema id");
       } catch (ExecutionException e) {
         // expected
+      } catch (TimeoutException e) {
+        throw new VeniceException(e);
       }
     }
   }
@@ -534,7 +550,7 @@ public class AvroGenericStoreClientImplTest {
     routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
+      LOGGER.info("Execute test for transport client: " + entry.getKey());
       Map<String, Object> result = entry.getValue().batchGet(keys).get();
       // Batch get request with empty key set shouldn't be sent to server side
       Assert.assertTrue(result.isEmpty());

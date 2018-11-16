@@ -27,6 +27,13 @@ public class RandomGenUtils {
   }
 
   /**
+   * @return a random float
+   */
+  public static float getRandomFloat() {
+    return SEEDED_RANDOM.nextFloat();
+  }
+
+  /**
    * Return a random integer between 0 and max
    *
    * @param max The upper bound for the range of numbers

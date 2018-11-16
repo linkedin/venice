@@ -14,6 +14,7 @@ import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Properties;
@@ -25,7 +26,7 @@ import static org.testng.Assert.*;
 
 
 public class TestPushJobStatusUpload {
-  @Test
+  @Test(timeOut = 2 * Time.MS_PER_MINUTE)
   public void testPushJobStatusUpload() throws ExecutionException, InterruptedException {
     String pushJobStatusStoreName = "test-push-job-status-store";
     Properties properties = new Properties();

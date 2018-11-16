@@ -5,27 +5,22 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 
 
 public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl<K, V> {
-  public VsonGenericStoreClientImpl(TransportClient transportClient, String storeName) {
-    this(transportClient, storeName, true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+  public VsonGenericStoreClientImpl(TransportClient transportClient, ClientConfig clientConfig) {
+    this(transportClient, true, clientConfig);
   }
 
-  public VsonGenericStoreClientImpl(TransportClient transportClient, String storeName, Executor deserializationExecutor) {
-    this(transportClient, storeName, true, deserializationExecutor);
-  }
-
-  private VsonGenericStoreClientImpl(TransportClient transportClient, String storeName, boolean needSchemaReader, Executor deserializationExecutor) {
-    super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+  private VsonGenericStoreClientImpl(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
+    super(transportClient, needSchemaReader, clientConfig);
   }
 
   @Override
   protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
     return new VsonGenericStoreClientImpl<K, V> (getTransportClient().getCopyIfNotUsableInCallback(),
-        getStoreName(), false, getDeserializationExecutor());
+        false, ClientConfig.defaultVsonGenericClientConfig(getStoreName()));
   }
 
   @Override
@@ -45,5 +40,4 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
   public ComputeRequestBuilder<K> compute() {
     throw new VeniceClientException("'compute' is not supported in JSON store");
   }
-
 }

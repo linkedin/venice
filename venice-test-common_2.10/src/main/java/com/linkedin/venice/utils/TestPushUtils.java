@@ -62,6 +62,17 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
+  public static final String USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"ManyFloats\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\" },  " +
+      "       { \"name\": \"name\", \"type\": {\"type\": \"array\", \"items\": \"float\"} },  " +
+      "       { \"name\": \"age\", \"type\": \"int\" }" +
+      "  ] " +
+      " } ";
+
   public static final String STRING_SCHEMA = "\"string\"";
 
   public static File getTempDataDirectory() {
@@ -154,6 +165,31 @@ public class TestPushUtils {
             avroFileWriter.append(user);
           }
         });
+  }
+
+
+  public static Schema writeAvroFileWithManyFloatsAndCustomTotalSize(File parentDir, int numberOfRecords, int minValueSize, int maxValueSize) throws IOException {
+    return writeAvroFile(parentDir, "many_floats.avro", USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING,
+        (recordSchema, avroFileWriter) -> {
+          int sizeRange = maxValueSize - minValueSize;
+          for (int i = 0; i < numberOfRecords; i++) {
+            int sizeForThisRecord = minValueSize + sizeRange / numberOfRecords * (i + 1);
+            avroFileWriter.append(getRecordWithFloatArray(recordSchema, i, sizeForThisRecord));
+          }
+        });
+  }
+
+  public static GenericRecord getRecordWithFloatArray(Schema recordSchema, int index, int size) {
+    GenericRecord user = new GenericData.Record(recordSchema);
+    user.put("id", Integer.toString(index)); //"id" is the key
+    int numberOfFloats = size / 4;
+    List<Float> floatsArray = new ArrayList<>();
+    for (int j = 0; j < numberOfFloats; j++) {
+      floatsArray.add(RandomGenUtils.getRandomFloat());
+    }
+    user.put("name", floatsArray);
+    user.put("age", index);
+    return user;
   }
 
   private static Schema writeAvroFile(File parentDir, String fileName,

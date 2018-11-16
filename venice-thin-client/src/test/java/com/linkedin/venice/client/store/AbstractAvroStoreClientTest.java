@@ -39,7 +39,7 @@ public class AbstractAvroStoreClientTest {
 
     public SimpleStoreClient(TransportClient transportClient, String storeName, boolean needSchemaReader,
         Executor deserializationExecutor) {
-      super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+      super(transportClient, needSchemaReader, ClientConfig.defaultGenericClientConfig(storeName).setDeserializationExecutor(deserializationExecutor));
     }
 
     @Override
