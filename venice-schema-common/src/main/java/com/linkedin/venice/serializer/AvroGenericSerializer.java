@@ -1,6 +1,7 @@
 package com.linkedin.venice.serializer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.AvroVersion;
@@ -53,7 +54,10 @@ public class AvroGenericSerializer<K> implements RecordSerializer<K> {
 
   @Override
   public byte[] serializeObjects(Iterable<K> objects) throws VeniceException {
-    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    return serializeObjects(objects, new ByteArrayOutputStream());
+  }
+
+  private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output) throws VeniceException {
     Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
     try {
       objects.forEach(object -> {
@@ -76,5 +80,24 @@ public class AvroGenericSerializer<K> implements RecordSerializer<K> {
       }
     }
     return output.toByteArray();
+  }
+
+  /**
+   * Serialize a list of objects and put the prefix before the serialized objects.
+   * This function could avoid unnecessary byte array copy when you want to serialize
+   * two different kinds of objects together.
+   * Essentially, the {@param prefix} will be the serialized byte array of the first
+   * kind of objects.
+   *
+   * @param objects
+   * @param prefix
+   * @return
+   * @throws VeniceException
+   */
+  @Override
+  public byte[] serializeObjects(Iterable<K> objects, ByteBuffer prefix) throws VeniceException {
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    output.write(prefix.array(), prefix.position(), prefix.remaining());
+    return serializeObjects(objects, output);
   }
 }

@@ -2,7 +2,8 @@ package com.linkedin.venice.read;
 
 public enum RequestType {
   SINGLE_GET(""),
-  MULTI_GET("multiget_");
+  MULTI_GET("multiget_"),
+  COMPUTE("compute_");
 
   private String metricPrefix;
 

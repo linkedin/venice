@@ -8,6 +8,8 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -23,6 +25,7 @@ import java.util.concurrent.Executors;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.commons.io.IOUtils;
@@ -40,10 +43,12 @@ import org.apache.log4j.Logger;
 public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   private static Logger logger = Logger.getLogger(AbstractAvroStoreClient.class);
   public static final String TYPE_STORAGE = "storage";
+  public static final String TYPE_COMPUTE = "compute";
   public static final String B64_FORMAT = "?f=b64";
 
   private static final Map<String, String> GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
+  private static final Map<String, String> COMPUTE_HEADER_MAP = new HashMap<>();
   static {
     /**
      * Hard-code API version of single-get and multi-get to be '1'.
@@ -53,12 +58,15 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
     MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+    COMPUTE_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getProtocolVersion()));
 
     AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
   }
 
   private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
+  private final CompletableFuture<Map<K, GenericRecord>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE = CompletableFuture.completedFuture(new HashMap<>());
 
   private final Boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
@@ -67,6 +75,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected RecordSerializer<K> keySerializer = null;
   // Multi-get request serializer
   protected RecordSerializer<ByteBuffer> multiGetRequestSerializer;
+  // Compute request serializer
+  protected RecordSerializer<ComputeRequestV1> computeRequestSerializer;
+  protected RecordSerializer<ByteBuffer> computeRequestClientKeySerializer;
 
   private TransportClient transportClient;
   private String storeName;
@@ -145,7 +156,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return TYPE_STORAGE + "/" + storeName;
   }
 
-  private RecordSerializer<K> getKeySerializer() {
+  private String getComputeRequestPath() {
+    return TYPE_COMPUTE + "/" + storeName;
+  }
+
+  protected RecordSerializer<K> getKeySerializer() {
     if (null != keySerializer) {
       return keySerializer;
     }
@@ -180,10 +195,16 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected void initSerializer() {
     // init key serializer
     this.keySerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
+        SerializerDeserializerFactory.getAvroGenericSerializer(getSchemaReader().getKeySchema());
     // init multi-get request serializer
     this.multiGetRequestSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
         ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
+    // init compute request serializer
+    this.computeRequestClientKeySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
+    this.computeRequestSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema());
+
   }
 
   // For testing
@@ -327,6 +348,78 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
+  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, final long preRequestTimeInNS) {
+    return compute(stats, this, preRequestTimeInNS);
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final InternalAvroStoreClient computeStoreClient,
+      final long preRequestTimeInNS)  {
+    return new AvroComputeRequestBuilder<>(getLatestValueSchema(), computeStoreClient, stats, preRequestTimeInNS);
+  }
+
+
+  /**
+   * This function is only being used by {@link AvroComputeRequestBuilder#execute(Set)}.
+   *
+   * @param computeRequest
+   * @param keys
+   * @param resultSchema
+   * @param stats
+   * @param preRequestTimeInNS
+   * @return
+   */
+  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
+      Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) {
+    if (keys.isEmpty()) {
+      return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE;
+    }
+    List<K> keyList = new ArrayList<>(keys);
+    List<ByteBuffer> serializedKeyList = new ArrayList<>();
+    keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
+    // Serialize the compute request
+    byte[] serializedComputeRequest = computeRequestSerializer.serialize(computeRequest);
+    byte[] serializedFullComputeRequest = computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
+    CompletableFuture valueFuture = requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
+        () -> transportClient.post(getComputeRequestPath(), COMPUTE_HEADER_MAP, serializedFullComputeRequest),
+        (clientResponse, throwable) -> {
+          if (null != throwable) {
+            handleStoreExceptionInternally(throwable);
+          }
+          if (null == clientResponse) {
+            // Even all the keys don't exist in Venice, compute should receive empty result instead of 'null'
+            throw new VeniceClientException("TransportClient should not return null for compute request");
+          }
+
+          if (!clientResponse.isSchemaIdValid()) {
+            throw new VeniceClientException("No valid schema id received for compute request!");
+          }
+          int responseSchemaId = clientResponse.getSchemaId();
+          RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
+          Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(clientResponse.getBody());
+          RecordDeserializer<GenericRecord> dataDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(resultSchema);
+          Map<K, GenericRecord> resultMap = new HashMap<>();
+          for (ComputeResponseRecordV1 record : records) {
+            int keyIdx = record.keyIndex;
+            if (keyIdx >= keyList.size() || keyIdx < 0) {
+              throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
+            }
+            byte[] serializedData = record.value.array();
+            GenericRecord value = dataDeserializer.deserialize(serializedData);
+            /**
+             * Wrap up the returned {@link GenericRecord} to throw exception when retrieving some failed
+             * computation.
+             */
+            resultMap.put(keyList.get(keyIdx), ComputeGenericRecord.wrap(value));
+          }
+
+          return resultMap;
+        });
+
+    return valueFuture;
+  }
+
+  @Override
   public void start() throws VeniceClientException {
     if (needSchemaReader) {
       //TODO: remove the 'instanceof' statement once HttpClient got refactored.
@@ -360,6 +453,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
     }
     return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+  }
+
+  private RecordDeserializer<ComputeResponseRecordV1> getComputeResponseRecordDeserializer(int schemaId) {
+    int protocolVersion = ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion();
+    if (protocolVersion != schemaId) {
+      throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
+    }
+    return SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
   }
 
   public String toString() {

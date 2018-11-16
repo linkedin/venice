@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -38,6 +39,11 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
         SerializerDeserializerFactory.getVsonSerializer(getSchemaReader().getKeySchema());
     this.multiGetRequestSerializer =
         SerializerDeserializerFactory.getVsonSerializer(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> compute() {
+    throw new VeniceClientException("'compute' is not supported in JSON store");
   }
 
 }

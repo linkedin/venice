@@ -1,5 +1,7 @@
 package com.linkedin.venice.schema.avro;
 
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -33,7 +35,20 @@ public enum ReadAvroProtocolDefinition {
   /**
    * Response record for multi-get v1.
    */
-  MULTI_GET_RESPONSE_V1(1, Optional.of(MultiGetResponseRecordV1.class), Optional.of(MultiGetResponseRecordV1.SCHEMA$));
+  MULTI_GET_RESPONSE_V1(1, Optional.of(MultiGetResponseRecordV1.class), Optional.of(MultiGetResponseRecordV1.SCHEMA$)),
+
+  /**
+   * Compute request client key v1.
+   */
+  COMPUTE_REQUEST_CLIENT_KEY_V1(1, Optional.empty(), Optional.of(Schema.create(Schema.Type.BYTES))),
+  /**
+   * Compute request v1.
+   */
+  COMPUTE_REQUEST_V1(1, Optional.of(ComputeRequestV1.class), Optional.of(ComputeRequestV1.SCHEMA$)),
+  /**
+   * Response record for compute v1
+   */
+  COMPUTE_RESPONSE_V1(1, Optional.of(ComputeResponseRecordV1.class), Optional.of(ComputeResponseRecordV1.SCHEMA$));
 
   /**
    * Current version being used.
