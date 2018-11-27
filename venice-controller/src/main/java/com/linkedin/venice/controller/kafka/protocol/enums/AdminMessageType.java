@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol.enums;
 
+import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -36,7 +37,8 @@ public enum AdminMessageType {
   UPDATE_STORE(11),
   DELETE_STORE(12),
   DELETE_OLD_VERSION(13),
-  MIGRATE_STORE(14);
+  MIGRATE_STORE(14),
+  ABORT_MIGRATION(15);
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -62,6 +64,7 @@ public enum AdminMessageType {
       case DELETE_STORE: return new DeleteStore();
       case DELETE_OLD_VERSION: return new DeleteOldVersion();
       case MIGRATE_STORE: return new MigrateStore();
+      case ABORT_MIGRATION: return new AbortMigration();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

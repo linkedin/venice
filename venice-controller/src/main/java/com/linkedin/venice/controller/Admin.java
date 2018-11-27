@@ -72,7 +72,9 @@ public interface Admin {
 
     void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
 
-    void migrateStore(String srcClusterName, String destClusterName, String srcStore);
+    void migrateStore(String srcClusterName, String destClusterName, String storeName);
+
+    void abortMigration(String srcClusterName, String destClusterName, String storeName);
 
     /**
     * Delete the entire store includeing both metadata and real user's data. Before deleting a store, we should disable

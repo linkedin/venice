@@ -126,6 +126,38 @@ public class StoresRoutes {
     };
   }
 
+  public static Route abortMigration(Admin admin) {
+    return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
+        try {
+          AdminSparkServer.validateParams(request, ABORT_MIGRATION.getParams(), admin);
+          String srcClusterName = request.queryParams(CLUSTER);
+          String destClusterName = request.queryParams(CLUSTER_DEST);
+          String storeName = request.queryParams(NAME);
+
+          veniceResponse.setName(storeName);
+
+          // return child controller(s) url to admin-tool monitor if this is parent controller
+          if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
+            List<String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildControllerUrls(destClusterName);
+            veniceResponse.setChildControllerUrls(childControllerUrls);
+          }
+
+          String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          veniceResponse.setSrcClusterName(clusterDiscovered);
+
+          admin.abortMigration(srcClusterName, destClusterName, storeName);
+
+          clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+          veniceResponse.setCluster(clusterDiscovered);
+        } catch (Throwable e) {
+          veniceResponse.setError(e.getMessage());
+        }
+      }
+    };
+  }
+
   public static Route deleteStore(Admin admin) {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override

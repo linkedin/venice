@@ -5,6 +5,7 @@ public class ControllerApiConstants {
   public static final String HOSTNAME = "hostname";
   public static final String CLUSTER = "cluster_name";
   public static final String CLUSTER_SRC = "cluster_name_src";
+  public static final String CLUSTER_DEST = "cluster_name_dest";
 
   public static final String NAME = "store_name";
   public static final String OWNER = "owner";
@@ -71,7 +72,7 @@ public class ControllerApiConstants {
 
   /**
    * Possible push job status at the end of its lifecycle.
-   
+
   public enum PushJobStatus {
     SUCCESS, // The job succeeded
     ERROR, // Some error has occurred during the job

@@ -128,4 +128,5 @@ dependencies {
     exclude group: 'org.apache.avro'
     exclude group: 'javax.servlet'
   }
+  testCompile project(':venice-admin-tool')
 }

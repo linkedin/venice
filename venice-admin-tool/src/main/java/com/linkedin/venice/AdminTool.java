@@ -316,6 +316,9 @@ public class AdminTool {
         case MIGRATION_STATUS:
           checkMigrationStatus(cmd);
           break;
+        case ABORT_MIGRATION:
+          abortMigration(cmd);
+          break;
         case END_MIGRATION:
           endMigration(cmd);
           break;
@@ -939,25 +942,30 @@ public class AdminTool {
 
     // All child clusters are online, the parent cluster should also have update cluster discovery info
     System.err.println("\nCloned store is ready in dest cluster " + destClusterName + ". Checking cluster discovery info ...");
-    Utils.sleep(15000);
-    String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
-    if (clusterDiscovered.equals(destClusterName)) {
-      System.err.println(
-          "\nStore migration complete.\n" + "Please make sure read activity to the original cluster is zero, "
-              + "and then delete the original store using admin-tool command --end-migration");
-    } else {
-      System.err.println("\nWARN: Store migration complete in child clusters but not in parent yet. "
-          + "Make sure cluster discovery in parent controller gets updated, "
-          + "then confirm the original store has zero read activity and delete it using --end-migration command");
+    String clusterDiscovered = null;
+    for (int i = 0; i < 60; i++) {
+      Utils.sleep(3000);  // Polls every 3 seconds for the next 3 minutes
+      clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
 
-      System.err.println("\nExpected cluster discovery result: " + destClusterName);
-      System.err.println("Actual cluster discovery result in parent: " + clusterDiscovered);
-      for (int i = 0; i < numChildDatacenters; i++) {
-        ControllerClient destChildController = destChildControllerClients[i];
-        String childControllerUrl = destChildController.getMasterControllerUrl();
-        String clusterDiscoveredInChild = destChildController.discoverCluster(storeName).getCluster();
-        System.err.println("Actual cluster discovery result in " + childControllerUrl + " : " + clusterDiscoveredInChild);
+      if (clusterDiscovered.equals(destClusterName)) {
+        System.err.println(
+            "\nStore migration complete.\n" + "Please make sure read activity to the original cluster is zero, "
+                + "and then delete the original store using admin-tool command --end-migration");
+        return;
       }
+    }
+
+    System.err.println("\nWARN: Store migration complete in child clusters but not in parent yet. "
+        + "Make sure cluster discovery in parent controller gets updated, "
+        + "then confirm the original store has zero read activity and delete it using --end-migration command");
+
+    System.err.println("\nExpected cluster discovery result: " + destClusterName);
+    System.err.println("Actual cluster discovery result in parent: " + clusterDiscovered);
+    for (int i = 0; i < numChildDatacenters; i++) {
+      ControllerClient destChildController = destChildControllerClients[i];
+      String childControllerUrl = destChildController.getMasterControllerUrl();
+      String clusterDiscoveredInChild = destChildController.discoverCluster(storeName).getCluster();
+      System.err.println("Actual cluster discovery result in " + childControllerUrl + " : " + clusterDiscoveredInChild);
     }
   }
 
@@ -976,6 +984,87 @@ public class AdminTool {
         .collect(Collectors.toList())
         .get(0)
         .getNumber();
+  }
+
+  private static void abortMigration(CommandLine cmd) {
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    boolean force = cmd.hasOption(Arg.FORCE.toString());
+
+    abortMigration(veniceUrl, storeName, srcClusterName, destClusterName, force);
+  }
+
+  public static void abortMigration(String veniceUrl, String storeName, String srcClusterName, String destClusterName,
+      boolean force) {
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+    }
+
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+
+    // Check arguments
+    ControllerResponse discoveryResponse = srcControllerClient.discoverCluster(storeName);
+    if (!discoveryResponse.getCluster().equals(srcClusterName)) {
+      if (!force) {
+        System.err.println("WARN: Either store migration has complete, or the internal states are messed up.\n"
+            + "You can force execute this command with --" + Arg.FORCE.toString() + " / -" + Arg.FORCE.first()
+            + ", but make sure your src and dest cluster names are correct.");
+        return;
+      }
+    }
+
+    // Reset original store, storeConfig, and cluster discovery
+    StoreMigrationResponse abortMigrationResponse = srcControllerClient.abortMigration(storeName, destClusterName);
+    if (abortMigrationResponse.isError()) {
+      throw new VeniceException(abortMigrationResponse.getError());
+    } else {
+      printObject(abortMigrationResponse);
+    }
+
+    // Delete cloned store
+    if (destControllerClient.getStore(storeName).getStore() == null) {
+      // Cloned store has not been created
+      // Directly delete cloned stores in children datacenters if two layer setup, otherwise skip
+      List<String> childControllerUrls = abortMigrationResponse.getChildControllerUrls();
+      if (childControllerUrls != null) {
+        int numChildDatacenters = childControllerUrls.size();
+        int deletedStoreCount = 0;
+        ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
+
+        // The abort migration logic could not handle abort migration test 1 (aka abort immediately)
+        // in TestStoreMigration#testAbortMigrationMultiDatacenter very well due to race conditon
+        // The following wait logic is introduced as a workaround for this edge case.
+        // Wait until cloned store being created in dest cluster, then delete.
+        while (deletedStoreCount < numChildDatacenters) {
+          for (int i = 0; i < numChildDatacenters; i++) {
+            ControllerClient destChildController = destChildControllerClients[i];
+            if (destChildController.getStore(storeName).getStore() != null) {
+              destChildController.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+              TrackableControllerResponse deleteResponse = destChildController.deleteStore(storeName);
+              printObject(deleteResponse);
+              deletedStoreCount++;
+            }
+          }
+          System.err.println("Deleted cloned store in " + deletedStoreCount + "/" + numChildDatacenters + " clusters.");
+          Utils.sleep(3000);
+        }
+      }
+    } else {
+      // Delete cloned store in parent dest controller
+      destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
+      TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
+      printObject(deleteResponse);
+    }
+
+
+    // Cluster discovery should point to original cluster
+    discoveryResponse = srcControllerClient.discoverCluster(storeName);
+    if (!discoveryResponse.getCluster().equals(srcClusterName)) {
+      System.err.println("ERROR: Incorrect cluster discovery result");
+    }
   }
 
   private static void endMigration(CommandLine cmd) {

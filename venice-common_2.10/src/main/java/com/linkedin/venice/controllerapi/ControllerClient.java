@@ -267,8 +267,26 @@ public class ControllerClient implements Closeable {
       String responseJson = postRequest(ControllerRoute.MIGRATE_STORE.getPath(), params);
       return mapper.readValue(responseJson, StoreMigrationResponse.class);
     } catch (Exception e){
-      return handleError(new VeniceException( "Error migrating store: " + storeName
+      return handleError(new VeniceException("Error migrating store: " + storeName
                   + " from: " + srcClusterName + " to: " + this.clusterName, e),
+          new StoreMigrationResponse());
+    }
+  }
+
+  /**
+   * This commmand should be sent to src controller, not dest controler
+   */
+  public StoreMigrationResponse abortMigration(String storeName, String destClusterName) {
+    try {
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(CLUSTER, this.clusterName)
+          .add(CLUSTER_DEST, destClusterName);
+      String responseJson = postRequest(ControllerRoute.ABORT_MIGRATION.getPath(), params);
+      return mapper.readValue(responseJson, StoreMigrationResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error aborting store migration: " + storeName
+              + " from: " + this.clusterName + " to: " + destClusterName, e),
           new StoreMigrationResponse());
     }
   }

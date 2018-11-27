@@ -16,6 +16,7 @@ public enum ControllerRoute {
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
   NEW_STORE("/new_store", Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER),
   MIGRATE_STORE("/migrate_store", Arrays.asList(NAME, CLUSTER, CLUSTER_SRC)),
+  ABORT_MIGRATION("/abort_migration", Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   DELETE_STORE("/delete_store", Arrays.asList(NAME)),
   // Beside store name, others are all optional parameters for flexibility and compatibility.
   UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT,
