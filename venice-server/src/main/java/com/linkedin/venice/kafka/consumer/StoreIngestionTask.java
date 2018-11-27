@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.google.common.collect.Lists;
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -142,12 +143,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
 
+  /** Passed time interval before persisting offset in offset db for transactional mode database. */
+  private final long databaseSyncTimeIntervalForTransactionalMode;
+  /** Passed time interval before persisting offset in offset db for deferred-write database. */
+  private final long databaseSyncTimeIntervalForDeferredWriteMode;
+
   /** A quick check point to see if incremental push is supported.
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
   private final boolean isIncrementalPushEnabled;
 
   private final boolean readOnlyForBatchOnlyStoreEnabled;
-
 
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
@@ -156,7 +161,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull Queue<VeniceNotifier> notifiers,
                             @NotNull EventThrottler bandwidthThrottler,
                             @NotNull EventThrottler recordsThrottler,
-                            @NotNull String topic,
                             @NotNull ReadOnlySchemaRepository schemaRepo,
                             @NotNull TopicManager topicManager,
                             @NotNull AggStoreIngestionStats storeIngestionStats,
@@ -165,24 +169,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull BooleanSupplier isCurrentVersion,
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
                             @NotNull boolean isIncrementalPushEnabled,
-                            int topicOffsetCheckIntervalMs,
-                            long readCycleDelayMs,
-                            long emptyPollSleepMs,
-                            long databaseSyncBytesIntervalForTransactionalMode,
-                            long databaseSyncBytesIntervalForDeferredWriteMode,
-                            DiskUsage diskUsage,
-                            boolean readOnlyForBatchOnlyStoreEnabled) {
-    this.readCycleDelayMs = readCycleDelayMs;
-    this.emptyPollSleepMs = emptyPollSleepMs;
-    this.databaseSyncBytesIntervalForTransactionalMode = databaseSyncBytesIntervalForTransactionalMode;
-    this.databaseSyncBytesIntervalForDeferredWriteMode = databaseSyncBytesIntervalForDeferredWriteMode;
+                            @NotNull VeniceStoreConfig storeConfig,
+                            DiskUsage diskUsage) {
+    this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
+    this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
+    this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
+    this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
+    this.databaseSyncTimeIntervalForTransactionalMode = storeConfig.getDatabaseSyncTimeIntervalForTransactionalMode();
+    this.databaseSyncTimeIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncTimeIntervalForDeferredWriteMode();
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
-    this.topic = topic;
+    this.topic = storeConfig.getStoreName();
     this.schemaRepo = schemaRepo;
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
     this.storeVersion = Version.parseVersionFromKafkaTopicName(topic);
@@ -197,7 +198,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.producerTrackerMap = new ConcurrentHashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
-    this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, topicOffsetCheckIntervalMs);
+    this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
@@ -216,7 +217,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = diskUsage;
 
-    this.readOnlyForBatchOnlyStoreEnabled = readOnlyForBatchOnlyStoreEnabled;
+    this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
   }
 
   private void validateState() {
@@ -898,9 +899,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
 
+    long syncTimeInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncTimeIntervalForDeferredWriteMode
+        : databaseSyncTimeIntervalForTransactionalMode;
+
     // If the following condition is true, then we want to sync to disk.
-    boolean recordsProcessedAboveSyncIntervalThreshold = partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval;
-    if (recordsProcessedAboveSyncIntervalThreshold) {
+    boolean recordsProcessedAboveSyncIntervalThreshold = false;
+    if ((syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval)) ||
+        (syncTimeInterval > 0 && (System.currentTimeMillis() - partitionConsumptionState.getTimestampOfLastSync() >= syncTimeInterval))) {
+      recordsProcessedAboveSyncIntervalThreshold = true;
       syncOffset(topic, partitionConsumptionState);
     }
 
@@ -931,6 +937,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.topic, partition, offsetRecord);
     ps.resetProcessedRecordSizeSinceLastSync();
+    ps.resetTimestampOfLastSync();
   }
 
   public void setLastDrainerException(Exception e) {
