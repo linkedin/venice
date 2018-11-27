@@ -7,11 +7,12 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +23,8 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.Metric;
+import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.log4j.Logger;
 
@@ -177,6 +180,15 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       LOGGER.info("Flushed all the messages in producer before closing");
       producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
     }
+  }
+
+  @Override
+  public Map<String, String> getProducerMetrics() {
+    Map<String, String> extractedMetrics = new HashMap<>();
+    for (Map.Entry<MetricName, ? extends Metric> entry : producer.metrics().entrySet()) {
+      extractedMetrics.put(entry.getKey().name(), Double.toString(entry.getValue().value()));
+    }
+    return extractedMetrics;
   }
 
   /**

@@ -42,7 +42,7 @@ public class AbstractTestVeniceMR {
     config.set(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity");
     config.set(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore");
     config.set(VeniceReducer.MAP_REDUCE_JOB_ID_PROP, "job_200707121733_0003");
-
+    config.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, "180000");
     return new JobConf(config);
   }
 

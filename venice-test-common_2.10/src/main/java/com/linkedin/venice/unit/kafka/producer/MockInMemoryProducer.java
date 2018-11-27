@@ -5,6 +5,8 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -72,5 +74,10 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   @Override
   public void close(int closeTimeOutMs) {
     // no-op
+  }
+
+  @Override
+  public Map<String, String> getProducerMetrics() {
+    return Collections.emptyMap();
   }
 }

@@ -35,6 +35,7 @@ import java.util.Arrays;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Optional;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -159,6 +160,12 @@ public class KafkaPushJob extends AbstractJob {
 
   public static final String REDUCER_SPECULATIVE_EXECUTION_ENABLE = "reducer.speculative.execution.enable";
 
+  /**
+   * Config that controls the minimum logging interval for the reducers to log their status such as internal states,
+   * metrics and progress.
+   */
+  public static final String REDUCER_MINIMUM_LOGGING_INTERVAL_MS = "reducer.minimum.logging.interval.ms";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -197,6 +204,7 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean isDuplicateKeyAllowed;
   private final boolean enablePushJobStatusUpload;
   private final boolean enableReducerSpeculativeExecution;
+  private final long minimumReducerLoggingIntervalInMs;
 
   private ControllerClient controllerClient;
 
@@ -365,6 +373,7 @@ public class KafkaPushJob extends AbstractJob {
     this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
     this.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     this.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
+    this.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
 
     if (enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -803,6 +812,7 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(TOPIC_PROP, topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     conf.set(COMPRESSION_STRATEGY, compressionStrategy.toString());
+    conf.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, Long.toString(minimumReducerLoggingIntervalInMs));
     if( sslToKafka ){
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {

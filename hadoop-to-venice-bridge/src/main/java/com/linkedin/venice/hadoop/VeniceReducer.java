@@ -16,7 +16,11 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -68,6 +72,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
   private VeniceProperties props;
   private JobID mapReduceJobId;
+  private long nextLoggingTime = 0;
+  private long minimumLoggingIntervalInMs;
 
   /**
    * Having dup key checking does not make sense in Mapper only mode
@@ -159,6 +165,11 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       lastTimeChecked = System.currentTimeMillis();
     }
 
+    if (nextLoggingTime < System.currentTimeMillis()) {
+      LOGGER.info("Internal producer metrics: " + getProducerMetricsPrettyPrint());
+      nextLoggingTime = System.currentTimeMillis() + minimumLoggingIntervalInMs;
+    }
+
     reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS, 1);
   }
 
@@ -194,6 +205,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
+    this.minimumLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
 
     if (checkDupKey) {
       this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
@@ -240,9 +252,29 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     return (long) (inputFileSize / storageEngineOverheadRatio);
   }
 
+  private String getProducerMetricsPrettyPrint() {
+    StringWriter prettyPrintWriter = new StringWriter();
+    PrintWriter writer = new PrintWriter(prettyPrintWriter, true);
+    if (this.veniceWriter != null) {
+      try {
+        writer.println();
+        for (Map.Entry<String, String> entry : veniceWriter.getProducerMetrics().entrySet()) {
+          writer.println(entry.getKey() + ": " + entry.getValue());
+        }
+      } catch (Exception e) {
+        LOGGER.info("Failed to get internal producer metrics because of unexpected exception", e);
+      }
+    } else {
+      LOGGER.info("Unable to get internal producer metrics because writer is uninitialized");
+    }
+    return prettyPrintWriter.toString();
+  }
+
   private void maybePropagateCallbackException() {
     if (null != sendException) {
-      throw new VeniceException("KafkaPushJob failed with exception", sendException);
+      throw new VeniceException(
+          "KafkaPushJob failed with exception. Internal producer metrics: " + getProducerMetricsPrettyPrint(),
+          sendException);
     }
   }
 
@@ -269,6 +301,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (null != e) {
         messageErrored.incrementAndGet();
+        LOGGER.error("Exception thrown in send message callback. ", e);
+        LOGGER.info("Internal producer metrics when exception is encountered: " + getProducerMetricsPrettyPrint());
         sendException = e;
       } else {
         messageCompleted.incrementAndGet();
