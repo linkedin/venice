@@ -16,7 +16,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common_2.10/src/main/resources/avro/PushJobStatusRecord/PushJobStatusRecordValue/v1/*"
   "venice-common_2.10/src/main/resources/avro/PartitionState/v5/*"
   "venice-common_2.10/src/main/resources/avro/StoreVersionState/v3/*"
-  "venice-common_2.10/src/main/resources/avro/ChunkedValueManifest/v-20/*"
+  "venice-common_2.10/src/main/resources/avro/ChunkedValueManifest/v-21/*"
   "venice-common_2.10/src/main/resources/avro/ChunkedKeySuffix/*"
   "venice-controller/src/main/resources/avro/AdminOperation/v20/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"

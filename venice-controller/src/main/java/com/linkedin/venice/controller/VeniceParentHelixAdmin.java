@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
+import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -1697,6 +1698,24 @@ public class VeniceParentHelixAdmin implements Admin {
     message.operationType = AdminMessageType.MIGRATE_STORE.getValue();
     message.payloadUnion = migrateStore;
     sendAdminMessageAndWaitForConsumed(destClusterName, message);
+  }
+
+  @Override
+  public void abortMigration(String srcClusterName, String destClusterName, String storeName) {
+    if (srcClusterName.equals(destClusterName)) {
+      throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+    }
+
+    AbortMigration abortMigration = (AbortMigration) AdminMessageType.ABORT_MIGRATION.getNewInstance();
+    abortMigration.srcClusterName = srcClusterName;
+    abortMigration.destClusterName = destClusterName;
+    abortMigration.storeName = storeName;
+
+    // Trigger store migration operation
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.ABORT_MIGRATION.getValue();
+    message.payloadUnion = abortMigration;
+    sendAdminMessageAndWaitForConsumed(srcClusterName, message);
   }
 
   public List<String> getChildControllerUrls(String clusterName) {

@@ -585,6 +585,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public void abortMigration(String srcClusterName, String destClusterName, String storeName) {
+        if (srcClusterName.equals(destClusterName)) {
+            throw new VeniceException("Source cluster and destination cluster cannot be the same!");
+        }
+
+        // Reset migration flag
+        // Assume this is the source controller
+        // As a result, this store will be removed from the migration watchlist in VeniceHelixAdmin
+        this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(false));
+
+        // Reset storeConfig
+        // Change destination to the source cluster name so that they are the same.
+        // This indicates an aborted migration
+        // As a result, this store will be removed from the migration watchlist in VeniceParentHelixAdmin
+        this.setStoreConfigForMigration(storeName, srcClusterName, srcClusterName);
+
+        // Force update cluster discovery so that it will always point to the source cluster
+        // Whichever cluster it currently belongs to does not matter
+        String clusterDiscovered = this.discoverCluster(storeName).getFirst();
+        this.updateClusterDiscovery(storeName, clusterDiscovered, srcClusterName);
+    }
+
+    @Override
     public synchronized void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
         StoreConfig storeConfig = this.storeConfigAccessor.getStoreConfig(storeName);
         if (storeConfig == null) {

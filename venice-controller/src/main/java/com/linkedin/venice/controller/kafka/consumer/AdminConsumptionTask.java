@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -385,6 +386,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case MIGRATE_STORE:
         handleStoreMigration((MigrateStore)adminMessage.payloadUnion);
         break;
+      case ABORT_MIGRATION:
+        handleAbortMigration((AbortMigration)adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -644,5 +648,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String storeName = message.storeName.toString();
 
     admin.migrateStore(srcClusterName, destClusterName, storeName);
+  }
+
+  private void handleAbortMigration(AbortMigration message) {
+    String srcClusterName = message.srcClusterName.toString();
+    String destClusterName = message.destClusterName.toString();
+    String storeName = message.storeName.toString();
+
+    admin.abortMigration(srcClusterName, destClusterName, storeName);
   }
 }
