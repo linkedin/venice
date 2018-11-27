@@ -159,12 +159,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
         storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
-        veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
-        isStoreVersionCurrent, hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStore.getTopicOffsetCheckIntervalMs(),
-        veniceStore.getKafkaReadCycleDelayMs(), veniceStore.getKafkaEmptyPollSleepMs(),
-        veniceStore.getDatabaseSyncBytesIntervalForTransactionalMode(),
-        veniceStore.getDatabaseSyncBytesIntervalForDeferredWriteMode(), diskUsage,
-        veniceStore.isReadOnlyForBatchOnlyStoreEnabled());
+        schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
+        isStoreVersionCurrent, hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStore, diskUsage);
   }
 
   /**

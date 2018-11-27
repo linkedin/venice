@@ -150,6 +150,8 @@ public class ConfigKeys {
    * For BDB-JE transactional mode, it won't matter since BDB-JE will persist every update in the database right away;
    * For RocksDB transactional mode, it will impact the flush frequency of memtable to SST file, and normally we would
    * like to have this config to be comparable to the memtable size;
+   *
+   * Negative value will disable this threshold.
    */
   public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE = "server.database.sync.bytes.interval.for.transactional.mode";
   /**
@@ -158,8 +160,28 @@ public class ConfigKeys {
    * For BDB-JE deferred-write mode, it will impact the sync frequency, but BDB-JE will do auto-flush if the memory is full;
    * For RocksDB deferred-write mode, it will decide the file size of each SST file since every sync invocation will
    * generate a new SST file;
+   *
+   * Negative value will disable this threshold.
    */
   public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.bytes.interval.for.deferred.write.mode";
+
+  /**
+   * Passed time since last sync is another parameter that decides whether the offset record is flushed to disk;
+   * whichever (bytes consumed or number of records consumed or passed time) meets the threshold first,
+   * the offset record will be flushed.
+   *
+   * Negative value will disable this threshold.
+   */
+  public static final String SERVER_DATABASE_SYNC_TIME_INTERNAL_FOR_TRANSACTIONAL_MODE = "server.database.sync.time.interval.for.transactional.mode";
+
+  /**
+   * Passed time since last sync is another parameter that decides whether the offset record is flushed to disk;
+   * whichever (bytes consumed or number of records consumed or passed time) meets the threshold first,
+   * the offset record will be flushed.
+   *
+   * Negative value will disable this threshold.
+   */
+  public static final String SERVER_DATABASE_SYNC_TIME_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.time.interval.for.deferred.write.mode";
 
   /**
    * When load balance happens, a replica could be moved to another storage node.
