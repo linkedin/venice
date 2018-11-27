@@ -1,6 +1,8 @@
 package com.linkedin.venice.writer;
 
 import java.io.Closeable;
+import java.util.Collections;
+import java.util.Map;
 import java.util.concurrent.Future;
 
 import org.apache.kafka.clients.producer.Callback;
@@ -27,6 +29,8 @@ public abstract class AbstractVeniceWriter <K, V> implements Closeable {
   public Future<RecordMetadata> put(K key, V value, int valueSchemaId) {
     return put(key, value, valueSchemaId, null);
   }
+
+  public Map<String, String > getProducerMetrics() { return Collections.emptyMap(); }
 
   public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback);
 }

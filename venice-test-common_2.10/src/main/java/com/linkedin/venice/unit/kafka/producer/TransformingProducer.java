@@ -3,6 +3,7 @@ package com.linkedin.venice.unit.kafka.producer;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
+import java.util.Map;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
@@ -43,6 +44,11 @@ public class TransformingProducer implements KafkaProducerWrapper {
   @Override
   public void close(int closeTimeOutMs) {
     baseProducer.close(closeTimeOutMs);
+  }
+
+  @Override
+  public Map<String, String> getProducerMetrics() {
+    return baseProducer.getProducerMetrics();
   }
 
   public static class SendMessageParameters {

@@ -236,6 +236,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     return sendMessage(kafkaKey, kafkaValue, partition, callback);
   }
 
+  @Override
+  public Map<String, String> getProducerMetrics() {
+    return producer.getProducerMetrics();
+  }
+
   /**
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */

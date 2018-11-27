@@ -3,6 +3,7 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
+import java.util.Collections;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
@@ -133,7 +134,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     Assert.assertEquals(callbackCaptor.getValue().getProgressable(), newMockReporter);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "KafkaPushJob failed with exception")
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "KafkaPushJob failed with exception.*")
   public void testReduceWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
