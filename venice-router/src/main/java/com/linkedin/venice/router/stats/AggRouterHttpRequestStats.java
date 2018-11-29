@@ -49,8 +49,14 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordUnhealthyRequest();
     getStoreStats(storeName).recordUnhealthyRequest();
   }
+
   public void recordUnhealthyRequest() {
     totalStats.recordUnhealthyRequest();
+  }
+
+  public void recordTardyRequest(String storeName) {
+    totalStats.recordTardyRequest();
+    getStoreStats(storeName).recordTardyRequest();
   }
 
   public void recordThrottledRequest(String storeName){

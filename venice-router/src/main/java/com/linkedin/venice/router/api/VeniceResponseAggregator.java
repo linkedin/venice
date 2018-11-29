@@ -153,6 +153,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       stats.recordLatency(storeName, latency);
       if (isFastRequest(latency, requestType) && HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordHealthyRequest(storeName);
+      } else if (HEALTHY_STATUSES.contains(responseStatus)) {
+        stats.recordTardyRequest(storeName);
       } else {
         LOGGER.debug("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
         stats.recordUnhealthyRequest(storeName);
