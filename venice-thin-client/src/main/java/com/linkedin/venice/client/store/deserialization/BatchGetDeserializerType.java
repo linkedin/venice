@@ -11,7 +11,8 @@ public enum BatchGetDeserializerType {
   BLOCKING((executor, clientConfig) -> new BlockingDeserializer(executor, clientConfig)),
   ONE_FUTURE_PER_RECORD((executor, clientConfig) -> new OneFuturePerRecordDeserializer(executor, clientConfig)),
   ON_DEMAND_MULTI_THREADED_PIPELINE((executor, clientConfig) -> new OnDemandMultiThreadedDeserializerPipeline(executor, clientConfig)),
-  ALWAYS_ON_MULTI_THREADED_PIPELINE((executor, clientConfig) -> new AlwaysOnMultiThreadedDeserializerPipeline(executor, clientConfig));
+  ALWAYS_ON_MULTI_THREADED_PIPELINE((executor, clientConfig) -> new AlwaysOnMultiThreadedDeserializerPipeline(executor, clientConfig)),
+  BLACK_HOLE((executor, clientConfig) -> new BlackHoleDeserializer(executor, clientConfig));
 
   private final BiFunction<Executor, ClientConfig, BatchGetDeserializer> generator;
 
