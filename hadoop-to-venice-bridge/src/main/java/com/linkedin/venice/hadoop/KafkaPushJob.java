@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
@@ -498,9 +499,13 @@ public class KafkaPushJob extends AbstractJob {
       long duration = pushStartTime == 0 ? 0 : System.currentTimeMillis() - pushStartTime;
       String verifiedPushId = pushId == null ? "" : pushId;
       try {
-        controllerClient.uploadPushJobStatus(storeName, version, status, duration, verifiedPushId, message);
+        PushJobStatusUploadResponse response =
+            controllerClient.uploadPushJobStatus(storeName, version, status, duration, verifiedPushId, message);
+        if (response.isError()) {
+          logger.warn("Failed to upload push job status with error: " + response.getError());
+        }
       } catch (Exception e) {
-        logger.warn("Unable to upload push job status record", e);
+        logger.warn("Exception thrown while uploading push job status", e);
       }
     }
   }
