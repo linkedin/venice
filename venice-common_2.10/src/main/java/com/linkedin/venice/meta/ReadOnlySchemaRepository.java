@@ -48,4 +48,5 @@ public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChang
    */
   Collection<SchemaEntry> getValueSchemas(String storeName);
 
+  SchemaEntry getLatestValueSchema(String storeName);
 }

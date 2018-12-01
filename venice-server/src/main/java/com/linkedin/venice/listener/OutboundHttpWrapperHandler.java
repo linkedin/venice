@@ -47,6 +47,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         statsHandler.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
         statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
         statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+        statsHandler.setComputeLatency(obj.getComputeLatency());
+        statsHandler.setDeserializeLatency(obj.getDeserializeLatency());
+        statsHandler.setSerializeLatency(obj.getSerializeLatency());
         compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();
@@ -86,7 +89,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
 
     /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
-     *  of connection, and {@link GetRequestHttpHandler} will close the connection if necessary.
+     *  of connection, and {@link RouterRequestHttpHandler} will close the connection if necessary.
      *
      *  writeAndFlush may have some performance issue since it will call the actual send every time.
      */

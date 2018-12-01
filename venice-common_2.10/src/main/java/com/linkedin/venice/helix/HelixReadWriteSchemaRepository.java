@@ -161,6 +161,20 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return dataAccessor.getChildren(valueSchemaParentPath, null, AccessOption.PERSISTENT);
   }
 
+  @Override
+  public SchemaEntry getLatestValueSchema(String storeName) {
+    Collection<SchemaEntry>  valueSchemas = getValueSchemas(storeName);
+    int maxValueSchemaId = -1;
+    SchemaEntry latestSchema = null;
+    for (SchemaEntry schema : valueSchemas) {
+      if (schema.getId() > maxValueSchemaId) {
+        maxValueSchemaId = schema.getId();
+        latestSchema = schema;
+      }
+    }
+    return latestSchema;
+  }
+
   /**
    * Set up key schema for the given store.
    *

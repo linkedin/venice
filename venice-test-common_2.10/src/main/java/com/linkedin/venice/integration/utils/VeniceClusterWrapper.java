@@ -2,7 +2,9 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 
@@ -440,11 +442,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @return
    */
   public VersionCreationResponse getNewStoreVersion() {
+    return getNewStoreVersion("\"string\"", "\"string\"");
+  }
+
+  public VersionCreationResponse getNewStoreVersion(String keySchema, String valueSchema) {
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
     long storeSize =  1024;
-    String keySchema = "\"string\"";
-    String valueSchema = "\"string\"";
+
     // Create new store
     ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
 
@@ -456,6 +461,16 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
     storeCount.getAndIncrement();
     return newVersion;
+  }
+
+  public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
+    // Create new store
+    ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
+    ControllerResponse response = controllerClient.updateStore(storeName, params);
+    if (response.isError()) {
+      throw new VeniceException(response.getError());
+    }
+    return response;
   }
 
   /**

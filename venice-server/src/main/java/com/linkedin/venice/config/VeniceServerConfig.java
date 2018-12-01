@@ -4,6 +4,9 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.queues.FairBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -118,6 +121,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int kafkaMaxPollRecords;
 
+  /**
+   * The number of threads being used to serve compute request.
+   */
+  private final int serverComputeThreadNum;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -131,6 +139,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 25 * 1024 * 1024); // 25MB
     storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 5 * 1024 * 1024); // 5MB
     restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 16);
+    serverComputeThreadNum = serverProperties.getInt(SERVER_COMPUTE_THREAD_NUM, 16);
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
     maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
     topicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
@@ -212,6 +221,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return restServiceStorageThreadNum;
   }
 
+  public int getServerComputeThreadNum() {
+    return serverComputeThreadNum;
+  }
+
   public int getNettyIdleTimeInSeconds() {
     return nettyIdleTimeInSeconds;
   }
@@ -277,5 +290,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getKafkaMaxPollRecords() {
     return kafkaMaxPollRecords;
+  }
+
+  public BlockingQueue<Runnable> getExecutionQueue() {
+    if (isFairStorageExecutionQueue()) {
+      return new FairBlockingQueue<>();
+    } else {
+      return new LinkedBlockingQueue<>();
+    }
   }
 }

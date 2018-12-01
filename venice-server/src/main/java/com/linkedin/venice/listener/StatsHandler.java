@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -18,14 +19,18 @@ import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 public class StatsHandler extends ChannelDuplexHandler {
   private long startTimeInNS;
   private HttpResponseStatus responseStatus;
-  private String storeName;
+  private String storeName = null;
   private boolean isHealthCheck;
   private double bdbQueryLatency = -1;
   private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
   private int successRequestKeyCount = -1;
+  private double computeLatency = -1;
+  private double deserializeLatency = -1;
+  private double serializeLatency = -1;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
+  private final AggServerHttpRequestStats computeStats;
   private AggServerHttpRequestStats currentStats;
 
   //a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
@@ -56,7 +61,7 @@ public class StatsHandler extends ChannelDuplexHandler {
    * {@link HttpObjectAggregator}
    * {@link VerifySslHandler}
    * {@link ServerAclHandler}
-   * {@link GetRequestHttpHandler}
+   * {@link RouterRequestHttpHandler}
    * {@link StorageExecutionHandler}
    *
    */
@@ -78,15 +83,29 @@ public class StatsHandler extends ChannelDuplexHandler {
   }
 
   public void setRequestType(RequestType requestType) {
-    if (requestType == RequestType.SINGLE_GET) {
-      currentStats = singleGetStats;
-    } else {
-      currentStats = multiGetStats;
+    switch (requestType) {
+      case SINGLE_GET:
+        currentStats = singleGetStats;
+        break;
+      case MULTI_GET:
+        currentStats = multiGetStats;
+        break;
+      case COMPUTE:
+        currentStats = computeStats;
+        break;
+      default:
+        currentStats = singleGetStats;
     }
   }
 
   public void setRequestKeyCount(int keyCount) {
     this.requestKeyCount = keyCount;
+  }
+
+  public void setRequestInfo(RouterRequest request) {
+    setStoreName(request.getStoreName());
+    setRequestType(request.getRequestType());
+    setRequestKeyCount(request.getKeyCount());
   }
 
   public void setSuccessRequestKeyCount(int successKeyCount) {
@@ -95,6 +114,18 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   public void setBdbQueryLatency(double latency) {
     this.bdbQueryLatency = latency;
+  }
+
+  public void setComputeLatency(double latency) {
+    this.computeLatency = latency;
+  }
+
+  public void setDeserializeLatency(double latency) {
+    this.deserializeLatency = latency;
+  }
+
+  public void setSerializeLatency(double latency) {
+    this.serializeLatency = latency;
   }
 
   public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
@@ -109,9 +140,10 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.multiChunkLargeValueCount = multiChunkLargeValueCount;
   }
 
-  public StatsHandler(AggServerHttpRequestStats singleGetStats, AggServerHttpRequestStats multiGetStats) {
+  public StatsHandler(AggServerHttpRequestStats singleGetStats, AggServerHttpRequestStats multiGetStats, AggServerHttpRequestStats computeStats) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
+    this.computeStats = computeStats;
     // default to use single-get
     this.currentStats = singleGetStats;
   }
@@ -120,6 +152,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
     if (newRequest) {
       // Reset for every request
+      storeName = null;
       startTimeInNS = System.nanoTime();
       partsInvokeDelayLatency = -1;
       secondPartLatency = -1;
@@ -132,6 +165,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       requestKeyCount = -1;
       successRequestKeyCount = -1;
       multiChunkLargeValueCount = -1;
+      computeLatency = -1;
+      deserializeLatency = -1;
+      serializeLatency = -1;
 
       /**
        * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
@@ -216,6 +252,15 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (requestPartCount > 0) {
         currentStats.recordRequestPartCount(storeName, requestPartCount);
+      }
+      if (computeLatency >= 0) {
+        currentStats.recordComputeLatency(storeName, computeLatency, isAssembledMultiChunkLargeValue());
+      }
+      if (deserializeLatency >= 0) {
+        currentStats.recordDeserializeLatency(storeName, deserializeLatency, isAssembledMultiChunkLargeValue());
+      }
+      if (serializeLatency >= 0) {
+        currentStats.recordSerializeLatency(storeName, serializeLatency, isAssembledMultiChunkLargeValue());
       }
     }
   }

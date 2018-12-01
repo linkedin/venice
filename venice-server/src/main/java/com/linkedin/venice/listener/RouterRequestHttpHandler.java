@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
@@ -26,11 +27,11 @@ import java.net.URI;
  * {@link FullHttpRequest} for each request.
  * The downstream handler is not expected to use this object any more.
  */
-public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
+public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final String API_VERSION = "1";
   private final StatsHandler statsHandler;
 
-  public GetRequestHttpHandler(StatsHandler handler) {
+  public RouterRequestHttpHandler(StatsHandler handler) {
     super();
     this.statsHandler = handler;
   }
@@ -56,19 +57,25 @@ public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpR
           if (requestMethod.equals(HttpMethod.GET)) {
             // TODO: evaluate whether we can replace single-get by multi-get
             GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
-            statsHandler.setStoreName(getRouterRequest.getStoreName());
-            statsHandler.setRequestType(getRouterRequest.getRequestType());
-            statsHandler.setRequestKeyCount(1);
+            statsHandler.setRequestInfo(getRouterRequest);
             ctx.fireChannelRead(getRouterRequest);
           } else if (requestMethod.equals(HttpMethod.POST)){
             // Multi-get
             MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
-            statsHandler.setStoreName(multiGetRouterReq.getStoreName());
-            statsHandler.setRequestType(multiGetRouterReq.getRequestType());
-            statsHandler.setRequestKeyCount(multiGetRouterReq.getKeyCount());
+            statsHandler.setRequestInfo(multiGetRouterReq);
             ctx.fireChannelRead(multiGetRouterReq);
           } else {
             throw new VeniceException("Unknown request method: " + requestMethod + " for " + QueryAction.STORAGE);
+          }
+          break;
+        case COMPUTE:
+          // compute request
+          if (req.method().equals(HttpMethod.POST)) {
+            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req);
+            statsHandler.setRequestInfo(computeRouterReq);
+            ctx.fireChannelRead(computeRouterReq);
+          } else {
+            throw new VeniceException("Only support POST method for " + QueryAction.COMPUTE);
           }
           break;
         case HEALTH:
@@ -114,16 +121,15 @@ public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpR
     // Generating a URI lets us always take just the path.
     String[] requestParts = URI.create(req.uri()).getPath().split("/");
     HttpMethod reqMethod = req.method();
-    if ((reqMethod.equals(HttpMethod.GET) || reqMethod.equals(HttpMethod.POST)) &&
-        requestParts.length >=2 &&
-        requestParts[1].equalsIgnoreCase(QueryAction.STORAGE.toString())) {
-      return QueryAction.STORAGE;
-    } else if (reqMethod.equals(HttpMethod.GET) &&
-        requestParts.length >=2 &&
-        requestParts[1].equalsIgnoreCase(QueryAction.HEALTH.toString())) {
-      return QueryAction.HEALTH;
-    } else {
-      throw new VeniceException("Only able to parse GET requests for actions: storage, health.  Cannot parse request for: " + req.uri());
+    if ((!reqMethod.equals(HttpMethod.GET) && !reqMethod.equals(HttpMethod.POST)) ||
+        requestParts.length < 2) {
+      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute.  Cannot parse request for: " + req.uri());
+    }
+
+    try {
+      return QueryAction.valueOf(requestParts[1].toUpperCase());
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException("Only able to parse GET or POST requests for actions: storage, health, compute.  Cannot support action: " + requestParts[1], e);
     }
   }
 }

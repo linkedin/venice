@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -364,6 +365,40 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
         throw new VeniceNoStoreException(storeName);
       }
       return schemaData.cloneValueSchemas();
+    } finally {
+      schemaLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public SchemaEntry getLatestValueSchema(String storeName) {
+    SchemaEntry valueSchema = getLatestValueSchemaInternally(storeName);
+    if (null == valueSchema) {
+      return null;
+    }
+    return valueSchema.clone();
+  }
+
+  private SchemaEntry getLatestValueSchemaInternally(String storeName) {
+    schemaLock.readLock().lock();
+    try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
+      SchemaData schemaData = schemaMap.get(storeName);
+      if (null == schemaData) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      int latestValueSchemaId = schemaData.getMaxValueSchemaId();
+      if (latestValueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+        throw new VeniceException(storeName + " doesn't have latest schema!");
+      }
+      SchemaEntry valueSchema = schemaData.getValueSchema(latestValueSchemaId);
+      return valueSchema;
     } finally {
       schemaLock.readLock().unlock();
     }

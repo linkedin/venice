@@ -132,7 +132,7 @@ public class VeniceServer {
 
     //create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService =
-        new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo,schemaRepo, metricsRepository);
+        new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo, schemaRepo, metricsRepository);
 
     AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     storageService.setAggBdbStorageEngineStats(bdbStorageEngineStats);
@@ -150,8 +150,8 @@ public class VeniceServer {
     });
 
     //create and add ListenerServer for handling GET requests
-    ListenerService listenerService = new ListenerService(storageService.getStoreRepository(), metadataRepo, routingRepositoryFuture,
-        kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory, accessController);
+    ListenerService listenerService = new ListenerService(storageService.getStoreRepository(), metadataRepo, schemaRepo,
+        routingRepositoryFuture, kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory, accessController);
     services.add(listenerService);
 
     /**

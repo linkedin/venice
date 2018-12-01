@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.server.StoreRepository;
@@ -40,6 +41,7 @@ public class ListenerService extends AbstractVeniceService{
 
   public ListenerService(StoreRepository storeRepository,
                          ReadOnlyStoreRepository storeMetadataRepository,
+                         ReadOnlySchemaRepository schemaRepo,
                          CompletableFuture<RoutingDataRepository> routingRepository,
                          MetadataRetriever metadataRetriever,
                          VeniceConfigLoader veniceConfigLoader,
@@ -55,7 +57,7 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository, storeMetadataRepository, routingRepository,
+        .childHandler(new HttpChannelInitializer(storeRepository, storeMetadataRepository, schemaRepo, routingRepository,
             metadataRetriever, metricsRepository, sslFactory, serverConfig, accessController))
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)

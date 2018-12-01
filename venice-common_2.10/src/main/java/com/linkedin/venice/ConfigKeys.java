@@ -170,6 +170,7 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
   public static final String SERVER_FAIR_STORAGE_EXECUTION_QUEUE = "server.fair.storage.execution.queue";
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
+  public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
 
   /**
    * Database sync per bytes for transactional mode.

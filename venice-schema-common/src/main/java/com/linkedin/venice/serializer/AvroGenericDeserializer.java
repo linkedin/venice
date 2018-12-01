@@ -81,15 +81,25 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
 
   @Override
   public V deserialize(byte[] bytes) throws VeniceException {
+    return deserialize(null, bytes);
+  }
+
+  @Override
+  public V deserialize(V reuseRecord, byte[] bytes) throws VeniceException {
     // This param is to re-use a decoder instance. TODO: explore GC tuning later.
     BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
-    return deserialize(decoder);
+    return deserialize(reuseRecord, decoder);
   }
 
   @Override
   public V deserialize(BinaryDecoder decoder) throws VeniceException {
+    return deserialize(null, decoder);
+  }
+
+  @Override
+  public V deserialize(V reuseRecord, BinaryDecoder decoder) throws VeniceException {
     try {
-      return datumReader.read(null, decoder);
+      return datumReader.read(reuseRecord, decoder);
     } catch (Exception e) {
       throw new VeniceException("Could not deserialize bytes back into Avro object", e);
     }

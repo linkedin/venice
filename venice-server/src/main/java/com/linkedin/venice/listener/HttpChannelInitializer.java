@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -34,8 +35,11 @@ import java.util.concurrent.TimeUnit;
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   private final ThreadPoolExecutor executor;
+  private final ThreadPoolExecutor computeExecutor;
   protected final StorageExecutionHandler storageExecutionHandler;
-  private final AggServerHttpRequestStats singleGetStats, multiGetStats;
+  private final AggServerHttpRequestStats singleGetStats;
+  private final AggServerHttpRequestStats multiGetStats;
+  private final AggServerHttpRequestStats computeStats;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<ServerAclHandler> aclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
@@ -44,27 +48,29 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
 
-  public HttpChannelInitializer(StoreRepository storeRepository, ReadOnlyStoreRepository storeMetadataRepository, CompletableFuture<RoutingDataRepository> routingRepository, MetadataRetriever metadataRetriever, MetricsRepository metricsRepository,
-      Optional<SSLEngineComponentFactory> sslFactory, VeniceServerConfig serverConfig,
-      Optional<StaticAccessController> accessController) {
+  public HttpChannelInitializer(StoreRepository storeRepository,
+                                ReadOnlyStoreRepository storeMetadataRepository,
+                                ReadOnlySchemaRepository schemaRepo,
+                                CompletableFuture<RoutingDataRepository> routingRepository,
+                                MetadataRetriever metadataRetriever,
+                                MetricsRepository metricsRepository,
+                                Optional<SSLEngineComponentFactory> sslFactory,
+                                VeniceServerConfig serverConfig,
+                                Optional<StaticAccessController> accessController) {
     this.serverConfig = serverConfig;
 
-    BlockingQueue<Runnable> executorQueue;
-    if (serverConfig.isFairStorageExecutionQueue()) {
-      executorQueue = new FairBlockingQueue<>();
-    } else {
-      executorQueue = new LinkedBlockingQueue<>();
-    }
-    this.executor = new ThreadPoolExecutor(serverConfig.getRestServiceStorageThreadNum(),
-        serverConfig.getRestServiceStorageThreadNum(),
-        0, TimeUnit.MILLISECONDS,
-        executorQueue, new DaemonThreadFactory("StorageExecutionThread"));
+    this.executor = getThreadPool(serverConfig.getRestServiceStorageThreadNum(), "StorageExecutionThread");
+    this.computeExecutor = getThreadPool(serverConfig.getServerComputeThreadNum(), "StorageComputeThread");
+
     new ThreadPoolStats(metricsRepository, this.executor, "storage_execution_thread_pool");
+    new ThreadPoolStats(metricsRepository, this.computeExecutor, "storage_compute_thread_pool");
 
     singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
+    computeStats = new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE);
 
-    storageExecutionHandler = new StorageExecutionHandler(executor, storeRepository, metadataRetriever, serverConfig.getDataBasePath());
+    storageExecutionHandler = new StorageExecutionHandler(executor, computeExecutor, storeRepository, schemaRepo,
+        metadataRetriever, serverConfig.getDataBasePath());
 
     this.sslFactory = sslFactory;
     this.aclHandler = accessController.isPresent()
@@ -95,7 +101,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
           .addLast(new SSLInitializer(sslFactory.get()));
     }
 
-    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats);
+    StatsHandler statsHandler = new StatsHandler(singleGetStats, multiGetStats, computeStats);
     ch.pipeline().addLast(statsHandler)
         .addLast(new HttpServerCodec())
         .addLast(new HttpObjectAggregator(serverConfig.getMaxRequestSize()))
@@ -109,10 +115,15 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       }
     }
     ch.pipeline()
-        .addLast(new GetRequestHttpHandler(statsHandler))
+        .addLast(new RouterRequestHttpHandler(statsHandler))
         .addLast(quotaEnforcer)
         .addLast("storageExecutionHandler", storageExecutionHandler)
         .addLast(new ErrorCatchingHandler());
+  }
+
+  private ThreadPoolExecutor getThreadPool(int threadNum, String threadNamePrefix) {
+    return new ThreadPoolExecutor(threadNum, threadNum, 0, TimeUnit.MILLISECONDS,
+        serverConfig.getExecutionQueue(), new DaemonThreadFactory(threadNamePrefix));
   }
 
 }

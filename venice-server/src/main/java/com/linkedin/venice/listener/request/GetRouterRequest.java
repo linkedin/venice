@@ -36,6 +36,11 @@ public class GetRouterRequest extends RouterRequest {
     return RequestType.SINGLE_GET;
   }
 
+  @Override
+  public int getKeyCount() {
+    return 1;
+  }
+
   public static GetRouterRequest parseGetHttpRequest(HttpRequest request) {
     String uri = request.uri();
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path

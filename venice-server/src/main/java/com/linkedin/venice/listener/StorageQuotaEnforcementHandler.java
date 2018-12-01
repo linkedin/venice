@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
@@ -165,14 +166,18 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
    * @return
    */
   private int getRcu(RouterRequest request){
-    if (request.getRequestType().equals(RequestType.SINGLE_GET)){
-      return 1;
-    } else if (request.getRequestType().equals(RequestType.MULTI_GET)){
-      return ((MultiGetRouterRequestWrapper) request).getKeyCount();
-    } else {
-      logger.error("Unknown request type " + request.getRequestType().toString()
-          + ", request for resource: " + request.getResourceName());
-      return Integer.MAX_VALUE;
+    switch (request.getRequestType()) {
+      case SINGLE_GET:
+        return 1;
+      case MULTI_GET:
+        return request.getKeyCount();
+      case COMPUTE:
+        // Eventually, we'll want to add some extra cost beyond the look up cost for compute operations.
+        return request.getKeyCount();
+      default:
+        logger.error("Unknown request type " + request.getRequestType().toString()
+            + ", request for resource: " + request.getResourceName());
+        return Integer.MAX_VALUE;
     }
   }
 

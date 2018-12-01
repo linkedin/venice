@@ -21,4 +21,6 @@ public abstract class RouterRequest {
   }
 
   public abstract RequestType getRequestType();
+
+  public abstract int getKeyCount();
 }

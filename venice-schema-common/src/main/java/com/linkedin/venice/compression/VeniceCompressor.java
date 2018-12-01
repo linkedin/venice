@@ -15,6 +15,8 @@ public abstract class VeniceCompressor {
 
   public abstract ByteBuffer decompress(ByteBuffer data) throws IOException;
 
+  public abstract ByteBuffer decompress(ByteBuffer data, int offset, int length) throws IOException;
+
   public CompressionStrategy getCompressionStrategy() {
     return compressionStrategy;
   }
