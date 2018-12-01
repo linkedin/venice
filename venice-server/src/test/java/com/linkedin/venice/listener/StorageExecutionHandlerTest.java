@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -52,6 +53,8 @@ public class StorageExecutionHandlerTest {
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
     doReturn(Optional.of(expectedOffset)).when(mockMetadataRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
     when(mockCtx.writeAndFlush(any())).then(i -> {
@@ -63,7 +66,7 @@ public class StorageExecutionHandlerTest {
         new LinkedBlockingQueue<>(2));
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository,
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
         mockMetadataRetriever, null);
     testHandler.channelRead(mockCtx, testRequest);
 

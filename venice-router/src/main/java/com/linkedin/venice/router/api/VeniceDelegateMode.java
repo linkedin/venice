@@ -108,6 +108,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     ScatterGatherMode scatterMode = null;
     switch (venicePath.getRequestType()) {
       case MULTI_GET:
+      case COMPUTE:
         if (stickyRoutingEnabledForMultiGet) {
           scatterMode = SCATTER_GATHER_MODE_FOR_STICKY_MULTI_GET;
         } else {

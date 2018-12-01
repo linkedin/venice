@@ -1,18 +1,35 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.VeniceConstants;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
+import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
+import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
+import com.linkedin.venice.listener.response.MultiKeyResponseWrapper;
 import com.linkedin.venice.listener.response.ReadResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -20,6 +37,7 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.queues.LabeledRunnable;
 import io.netty.buffer.ByteBuf;
@@ -30,12 +48,23 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.File;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import javax.validation.constraints.NotNull;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.IOFileFilter;
 
@@ -49,17 +78,26 @@ import org.apache.commons.io.filefilter.IOFileFilter;
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final String databasePath;
   private final ExecutorService executor;
+  private final ExecutorService computeExecutor;
   private final StoreRepository storeRepository;
+  private final ReadOnlySchemaRepository schemaRepo;
   private final MetadataRetriever metadataRetriever;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(false);
 
-  public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull StoreRepository storeRepository,
+  private final Map<Utf8, Schema> computeResultSchemaCache;
+
+  public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
+      @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepo,
       @NotNull MetadataRetriever metadataRetriever, @NotNull String databasePath) {
     this.executor = executor;
+    this.computeExecutor = computeExecutor;
     this.storeRepository = storeRepository;
+    this.schemaRepo = schemaRepo;
     this.metadataRetriever = metadataRetriever;
     this.databasePath = databasePath;
+
+    this.computeResultSchemaCache = new ConcurrentHashMap<>();
   }
 
   @Override
@@ -88,7 +126,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     if (message instanceof RouterRequest) {
       RouterRequest request = (RouterRequest) message;
-      executor.submit(new LabeledRunnable(request.getStoreName(), ()-> {
+      getExecutor(request.getRequestType()).submit(new LabeledRunnable(request.getStoreName(), ()-> {
         double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
         ReadResponse response;
         try {
@@ -98,6 +136,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
               break;
             case MULTI_GET:
               response = handleMultiGetRequest((MultiGetRouterRequestWrapper) request);
+              break;
+            case COMPUTE:
+              response = handleComputeRequest((ComputeRouterRequestWrapper) message);
               break;
             default:
               throw new VeniceException("Unknown request type: " + request.getRequestType());
@@ -134,6 +175,18 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
   }
 
+  private ExecutorService getExecutor(RequestType requestType) {
+    switch (requestType) {
+      case SINGLE_GET:
+      case MULTI_GET:
+        return executor;
+      case COMPUTE:
+        return computeExecutor;
+      default:
+        throw new VeniceException("Request type " + requestType + " is not supported.");
+    }
+  }
+
   private static IOFileFilter listEverything = new IOFileFilter() {
     @Override
     public boolean accept(File file) {
@@ -161,10 +214,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     long queryStartTimeInNS = System.nanoTime();
     ValueRecord valueRecord = getValueRecord(store, partition, key, isChunked, response);
-    double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
     response.setValueRecord(valueRecord);
     response.setOffset(offset);
-    response.setBdbQueryLatency(bdbQueryLatency);
+    response.setBdbQueryLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
     return response;
   }
 
@@ -186,22 +238,229 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       }
     }
 
-    double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
-    responseWrapper.setBdbQueryLatency(bdbQueryLatency);
+    responseWrapper.setBdbQueryLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
 
     // Offset data
     Set<Integer> partitionIdSet = new HashSet<>();
-    keys.forEach(routerRequestKey -> {
-      int partitionId = routerRequestKey.partitionId;
-      if (!partitionIdSet.contains(partitionId)) {
-        partitionIdSet.add(partitionId);
-        Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partitionId);
-        long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
-        responseWrapper.addPartitionOffsetMapping(partitionId, offset);
-      }
-    });
+    keys.forEach(routerRequestKey ->
+        addPartitionOffsetMapping(topic, routerRequestKey.partitionId, partitionIdSet, responseWrapper));
 
     return responseWrapper;
+  }
+
+  private ReadResponse handleComputeRequest(ComputeRouterRequestWrapper request) {
+    String topic = request.getResourceName();
+    String storeName = request.getStoreName();
+    Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
+    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+
+    long queryStartTimeInNS = System.nanoTime();
+
+    // deserialize all value to the latest schema
+    Schema latestValueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();
+    ComputeRequestV1 computeRequest = request.getComputeRequest();
+
+    // try to get the result schema from the cache
+    Utf8 computeResultSchemaStr = (Utf8) computeRequest.resultSchemaStr;
+    Schema computeResultSchema = computeResultSchemaCache.get(computeResultSchemaStr);
+    if (computeResultSchema == null) {
+      computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
+      // sanity check on the result schema
+      ComputeUtils.checkResultSchema(computeResultSchema, latestValueSchema, (List) computeRequest.operations);
+      computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
+    }
+
+    ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper();
+    responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
+
+    // The following metrics will get incremented for each record processed in computeResult()
+    responseWrapper.setDeserializeLatency(0.0);
+    responseWrapper.setSerializeLatency(0.0);
+
+    // Reuse the same value record and result record instances for all values
+    GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
+    GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
+    for (ComputeRouterRequestKeyV1 key : keys) {
+      clearFieldsInReusedRecord(valueRecord, latestValueSchema);
+      clearFieldsInReusedRecord(resultRecord, computeResultSchema);
+      ComputeResponseRecordV1 record = computeResult(store,
+                                                     storeName,
+                                                     key.keyBytes,
+                                                     key.keyIndex,
+                                                     key.partitionId,
+                                                     computeRequest.operations,
+                                                     latestValueSchema,
+                                                     computeResultSchema,
+                                                     valueRecord,
+                                                     resultRecord,
+                                                     isChunked,
+                                                     responseWrapper);
+      if (null != record) {
+        responseWrapper.addRecord(record);
+      }
+    }
+
+    responseWrapper.setComputeLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
+
+    // Offset data
+    Set<Integer> partitionIdSet = new HashSet<>();
+    keys.forEach(routerRequestKey ->
+        addPartitionOffsetMapping(topic, routerRequestKey.partitionId, partitionIdSet, responseWrapper));
+
+    return responseWrapper;
+  }
+
+  private void addPartitionOffsetMapping(String topic, int partitionId, Set<Integer> partitionIdSet,
+      MultiKeyResponseWrapper responseWrapper) {
+    if (!partitionIdSet.contains(partitionId)) {
+      partitionIdSet.add(partitionId);
+      Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partitionId);
+      long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
+      responseWrapper.addPartitionOffsetMapping(partitionId, offset);
+    }
+  }
+
+  private void clearFieldsInReusedRecord(GenericRecord record, Schema schema) {
+    for (int idx = 0; idx < schema.getFields().size(); idx++) {
+      record.put(idx, null);
+    }
+  }
+
+  private ComputeResponseRecordV1 computeResult(
+      AbstractStorageEngine store,
+      String storeName,
+      ByteBuffer key,
+      final int keyIndex,
+      int partition,
+      List<Object> operations,
+      Schema latestValueSchema,
+      Schema computeResultSchema,
+      GenericRecord valueRecord,
+      GenericRecord resultRecord,
+      boolean isChunked,
+      ComputeResponseWrapper response) {
+    // get the raw bytes of the value from the key first
+    ByteBuffer keyBuffer;
+    if (isChunked) {
+      keyBuffer = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key));
+    } else {
+      keyBuffer = key;
+    }
+
+    /**
+     * Reuse MultiGetResponseRecordV1 while getting data from storage engine; MultiGetResponseRecordV1 contains
+     * useful information like schemaId of this record.
+     */
+    MultiGetResponseRecordV1 record = getFromStorage(
+        store,
+        partition,
+        keyBuffer,
+        response,
+        fullBytesToMultiGetResponseRecordV1,
+        constructNioByteBuffer,
+        addChunkIntoNioByteBuffer,
+        getSizeOfNioByteBuffer,
+        containerToMultiGetResponseRecord);
+    if (null == record) {
+      return null;
+    }
+
+    // deserialize raw byte value to GenericRecord
+    long deserializeStartTimeInNS = System.nanoTime();
+    RecordDeserializer<GenericRecord> deserializer =
+        SerializerDeserializerFactory.getAvroGenericDeserializer(
+            this.schemaRepo.getValueSchema(storeName, record.schemaId).getSchema(), // writer schema
+            latestValueSchema                                                       // reader schema
+        );
+
+    ByteBuffer decompressedData;
+    if (response.getCompressionStrategy() != CompressionStrategy.NO_OP) {
+      // decompress the data first
+      try {
+        decompressedData = CompressorFactory.getCompressor(response.getCompressionStrategy())
+            .decompress(
+                record.value,            // data
+                record.value.position(), // offset
+                record.value.remaining() // length
+            );
+
+      } catch (IOException e) {
+        throw new VeniceException("failed to decompress data. Store: " + storeName, e);
+      }
+    } else {
+      decompressedData = record.value;
+    }
+    BinaryDecoder decoder = DecoderFactory.defaultFactory()
+                            .binaryDecoder(
+                                decompressedData.array(),       // data
+                                decompressedData.position(),    // offset
+                                decompressedData.remaining(),   // length
+                                null                      // reused binary decoder
+                            );
+
+    // reuse the same Generic Record instance for all keys
+    valueRecord = deserializer.deserialize(valueRecord, decoder);
+    response.addDeserializeLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
+
+    Map<String, String> computationErrorMap = new HashMap<>();
+
+    // go through all operation
+    for (Object operation : operations) {
+      ComputeOperation op = (ComputeOperation) operation;
+      switch (ComputeOperationType.valueOf(op)) {
+        case DOT_PRODUCT:
+          DotProduct dotProduct = (DotProduct) op.operation;
+          try {
+            List<Float> valueVector = (List) valueRecord.get(dotProduct.field.toString());
+
+            if (valueVector.size() != dotProduct.dotProductParam.size()) {
+              computationErrorMap.put(dotProduct.resultFieldName.toString(),
+                  "Failed to compute because size of dot product parameter is: " + dotProduct.dotProductParam.size() +
+                      " while the size of value vector(" + dotProduct.field.toString() + ") is: " + valueVector.size());
+              continue;
+            }
+
+            // client will make sure that the result field is double type
+            double dotProductResult = 0.0;
+            for (int i = 0; i < dotProduct.dotProductParam.size(); i++) {
+              dotProductResult += dotProduct.dotProductParam.get(i) * valueVector.get(i);
+            }
+
+            // write to result record
+            resultRecord.put(dotProduct.resultFieldName.toString(), dotProductResult);
+          } catch (Exception e) {
+            computationErrorMap.put(dotProduct.resultFieldName.toString(), e.getMessage());
+          }
+          break;
+        default:
+          throw new VeniceException("Compute operation type " + op.operationType + " not supported");
+      }
+    }
+
+    // fill the empty field in result schema
+    for (Schema.Field field : computeResultSchema.getFields()) {
+      if (resultRecord.get(field.pos()) == null) {
+        if (field.name().equals(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
+          resultRecord.put(field.pos(), computationErrorMap);
+        } else {
+          // project from value record
+          resultRecord.put(field.pos(), valueRecord.get(field.name()));
+        }
+      }
+    }
+
+    // create a response record
+    ComputeResponseRecordV1 responseRecord = new ComputeResponseRecordV1();
+    responseRecord.keyIndex = keyIndex;
+
+    // serialize the compute result
+    long serializeStartTimeInNS = System.nanoTime();
+    RecordSerializer<GenericRecord> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
+    responseRecord.value = ByteBuffer.wrap(serializer.serialize(resultRecord));
+    response.addSerializeLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
+
+    return responseRecord;
   }
 
   /**

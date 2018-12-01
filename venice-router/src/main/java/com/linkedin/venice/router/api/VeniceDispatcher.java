@@ -282,10 +282,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             }
             break;
           case MULTI_GET:
+          case COMPUTE:
             // Get partition offset header
             if (statusCode == HttpStatus.SC_OK) {
               if (null == result.getFirstHeader(HttpConstants.VENICE_OFFSET)) {
-                throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.MULTI_GET),
+                throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
                     INTERNAL_SERVER_ERROR, "Header: " + HttpConstants.VENICE_OFFSET + " in the response from storage node is expected for address: " + address);
               }
               String offsetHeader = result.getFirstHeader(HttpConstants.VENICE_OFFSET);
@@ -306,7 +307,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
                      */
                     checkOffsetLag(resourceName, pName, host, partitionOffsetMap.get(partitionId));
                   } else {
-                    logger.error("Multi-get response doesn't contain offset for partition: " + pName);
+                    logger.error(requestType.name() + " response doesn't contain offset for partition: " + pName);
                   }
                 });
               } catch (IOException e) {
@@ -407,7 +408,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
                 updateCache(path, ((VeniceMultiGetPath) path).getRouterKeyByKeyIdx(record.keyIndex), Optional.of(record.value.array()), Optional.of(valueSchemaId), compressionStrategy);
               }
               statsForMultiGet.recordCacheUpdateLatencyForMultiGet(storeName, LatencyUtils.getLatencyInMS(cacheUpdateStartTimeInNS));
-            } else {
+            } else if (requestType.equals(RequestType.SINGLE_GET)){
               // Update cache for single-get request
               if (responseStatus == HttpStatus.SC_OK) {
                 updateCache(path, path.getPartitionKey(), Optional.of(contentToByte), Optional.of(valueSchemaId),

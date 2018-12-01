@@ -44,6 +44,10 @@ public class TestUtils {
   private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS * 100;
 
   public static String getUniqueString(String base) {
+    /**
+     * Dash(-) is an illegal character for avro; both compute and ETL feature uses store name in their avro schema;
+     * so it's better not to use dash in the store name.
+     */
     return base + "-" + System.currentTimeMillis() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
   }
 

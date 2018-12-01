@@ -30,6 +30,16 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor requestPartsInvokeDelayLatencySensor;
   private final Sensor requestPartCountSensor;
 
+  private final Sensor computeLatencySensor;
+  private final Sensor computeLatencyForSmallValueSensor;
+  private final Sensor computeLatencyForLargeValueSensor;
+  private final Sensor deserializeLatencySensor;
+  private final Sensor deserializeLatencyForSmallValueSensor;
+  private final Sensor deserializeLatencyForLargeValueSensor;
+  private final Sensor serializeLatencySensor;
+  private final Sensor serializeLatencyForSmallValueSensor;
+  private final Sensor serializeLatencyForLargeValueSensor;
+
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
@@ -117,6 +127,25 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     requestPartsInvokeDelayLatencySensor = registerSensor("request_parts_invoke_delay_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_parts_invoke_delay_latency")));
     requestPartCountSensor = registerSensor("request_part_count", new Avg(), new Max());
+
+    computeLatencySensor = registerSensor("storage_engine_compute_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_compute_latency")));
+    computeLatencyForSmallValueSensor = registerSensor("storage_engine_compute_latency_for_small_value",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_compute_latency_for_small_value")));
+    computeLatencyForLargeValueSensor = registerSensor("storage_engine_compute_latency_for_large_value",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_compute_latency_for_large_value")));
+    deserializeLatencySensor = registerSensor("storage_engine_deserialize_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_deserialize_latency")));
+    deserializeLatencyForSmallValueSensor = registerSensor("storage_engine_deserialize_latency_for_small_value",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_deserialize_latency_for_small_value")));
+    deserializeLatencyForLargeValueSensor = registerSensor("storage_engine_deserialize_latency_for_large_value",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_deserialize_latency_for_large_value")));
+    serializeLatencySensor = registerSensor("storage_engine_serialize_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_serialize_latency")));
+    serializeLatencyForSmallValueSensor = registerSensor("storage_engine_serialize_latency_for_small_value",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_serialize_latency_for_small_value")));
+    serializeLatencyForLargeValueSensor = registerSensor("storage_engine_serialize_latency_for_large_value",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_engine_serialize_latency_for_large_value")));
   }
 
   public void recordSuccessRequest() {
@@ -174,5 +203,32 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
   public void recordRequestPartCount(int partCount) {
     requestPartCountSensor.record(partCount);
+  }
+
+  public void recordComputeLatency(double latency, boolean assembledMultiChunkLargeValue) {
+    computeLatencySensor.record(latency);
+    if (assembledMultiChunkLargeValue) {
+      computeLatencyForLargeValueSensor.record(latency);
+    } else {
+      computeLatencyForSmallValueSensor.record(latency);
+    }
+  }
+
+  public void recordDeserializeLatency(double latency, boolean assembledMultiChunkLargeValue) {
+    deserializeLatencySensor.record(latency);
+    if (assembledMultiChunkLargeValue) {
+      deserializeLatencyForLargeValueSensor.record(latency);
+    } else {
+      deserializeLatencyForSmallValueSensor.record(latency);
+    }
+  }
+
+  public void recordSerializeLatency(double latency, boolean assembledMultiChunkLargeValue) {
+    serializeLatencySensor.record(latency);
+    if (assembledMultiChunkLargeValue) {
+      serializeLatencyForLargeValueSensor.record(latency);
+    } else {
+      serializeLatencyForSmallValueSensor.record(latency);
+    }
   }
 }

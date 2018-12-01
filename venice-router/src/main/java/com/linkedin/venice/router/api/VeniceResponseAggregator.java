@@ -260,11 +260,11 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         CompositeByteBuf compositeByteBuf = (CompositeByteBuf)response.content();
         for (int i = 0; i < compositeByteBuf.numComponents(); i++) {
           byte[] content = compositeByteBuf.internalComponent(i).array();
-          resultLen += addResponseToList(content, contentList, storeName, version, compressionStrategy, stats);
+          resultLen += addResponseToList(content, contentList, storeName, version, requestType, compressionStrategy, stats);
         }
       } else {
         byte[] content = response.content().array();
-        resultLen += addResponseToList(content, contentList, storeName, version, compressionStrategy, stats);
+        resultLen += addResponseToList(content, contentList, storeName, version, requestType, compressionStrategy, stats);
       }
 
     }
@@ -299,24 +299,36 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
   }
 
-  private int addResponseToList(byte[] content, List<byte[]> contentList, String storeName, int version, CompressionStrategy compressionStrategy, AggRouterHttpRequestStats stats) {
-    if (compressionStrategy != CompressionStrategy.NO_OP) {
-      /**
-       * Reuse the original byte array by {@link org.apache.avro.io.OptimizedBinaryDecoder}.
-       */
-      Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
-          OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
+  private int addResponseToList(byte[] content, List<byte[]> contentList, String storeName, int version,
+          RequestType requestType, CompressionStrategy compressionStrategy, AggRouterHttpRequestStats stats) {
+    switch (requestType) {
+      case COMPUTE:
+        // for compute request, decompression has been done on server already.
+        contentList.add(content);
+        return content.length;
+      case MULTI_GET:
+        if (compressionStrategy != CompressionStrategy.NO_OP) {
+          /**
+           * Reuse the original byte array by {@link org.apache.avro.io.OptimizedBinaryDecoder}.
+           */
+          Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
+              OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
 
-      for (MultiGetResponseRecordV1 record : records) {
-        record.value = decompressRecord(storeName, version, compressionStrategy, record.value, stats);
-      }
+          for (MultiGetResponseRecordV1 record : records) {
+            record.value = decompressRecord(storeName, version, compressionStrategy, record.value, stats);
+          }
 
-      byte[] decompressedRecords = recordSerializer.serializeObjects(records);
-      contentList.add(decompressedRecords);
-      return decompressedRecords.length;
-    } else {
-      contentList.add(content);
-      return content.length;
+          byte[] decompressedRecords = recordSerializer.serializeObjects(records);
+          contentList.add(decompressedRecords);
+          return decompressedRecords.length;
+        } else {
+          contentList.add(content);
+          return content.length;
+        }
+      case SINGLE_GET:
+        throw new VeniceException("Error! Processing single-get requests while building multi keys response. Store: " + storeName);
+      default:
+        throw new VeniceException("Unknown request type: " + requestType);
     }
   }
 }

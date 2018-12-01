@@ -5,6 +5,7 @@ import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -59,7 +60,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
     this.storeClient = storeClient;
     this.stats = stats;
     this.preRequestTimeInNS = preRequestTimeInNS;
-    this.resultSchemaName = storeClient.getStoreName() + "_VeniceComputeResult";
+    this.resultSchemaName = ComputeUtils.removeAvroIllegalCharacter(storeClient.getStoreName()) + "_VeniceComputeResult";
   }
 
   @Override

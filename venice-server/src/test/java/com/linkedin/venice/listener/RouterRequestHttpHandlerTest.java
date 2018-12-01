@@ -23,7 +23,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class GetRequestHttpHandlerTest {
+public class RouterRequestHttpHandlerTest {
 
   @Test
   public void parsesRequests()
@@ -38,7 +38,7 @@ public class GetRequestHttpHandlerTest {
 
   @Test
   public void respondsToHealthCheck() throws Exception {
-    GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
+    RouterRequestHttpHandler testHander = new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<HealthCheckRequest> argumentCaptor = ArgumentCaptor.forClass(HealthCheckRequest.class);
     HttpRequest healthMsg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/health");
@@ -52,7 +52,7 @@ public class GetRequestHttpHandlerTest {
       throws Exception {
 
     // Test handler
-    GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
+    RouterRequestHttpHandler testHander = new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<GetRouterRequest> argumentCaptor = ArgumentCaptor.forClass(GetRouterRequest.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, path);
@@ -76,7 +76,7 @@ public class GetRequestHttpHandlerTest {
 
   public void testBadRequest(String path, HttpMethod method)
       throws Exception {
-    GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
+    RouterRequestHttpHandler testHander = new RouterRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, path);
@@ -122,7 +122,7 @@ public class GetRequestHttpHandlerTest {
 
   public void doActionTest(String urlString, HttpMethod method, QueryAction expectedAction){
     HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, urlString);
-    QueryAction parsedAction = GetRequestHttpHandler.getQueryActionFromRequest(request);
+    QueryAction parsedAction = RouterRequestHttpHandler.getQueryActionFromRequest(request);
     Assert.assertEquals(parsedAction, expectedAction, "parsed wrong query action from string: " + urlString);
   }
 

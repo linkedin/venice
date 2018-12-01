@@ -7,23 +7,15 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.FullHttpRequest;
 
-import java.io.InputStream;
 import java.net.URI;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
-public class MultiGetRouterRequestWrapper extends RouterRequest {
-  private final Iterable<MultiGetRouterRequestKeyV1> keys;
-  private int keyCount = 0;
-
+public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<MultiGetRouterRequestKeyV1> {
   private MultiGetRouterRequestWrapper(String resourceName, Iterable<MultiGetRouterRequestKeyV1> keys) {
-    super(resourceName);
-
-    this.keys = keys;
-    this.keys.forEach( key -> ++keyCount);
+    super(resourceName, keys);
   }
 
   public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest) {
@@ -54,23 +46,15 @@ public class MultiGetRouterRequestWrapper extends RouterRequest {
     return new MultiGetRouterRequestWrapper(resourceName, keys);
   }
 
-  public static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
+  private static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
     RecordDeserializer<MultiGetRouterRequestKeyV1> deserializer =
         SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
 
     return deserializer.deserializeObjects(OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
   }
 
-  public Iterable<MultiGetRouterRequestKeyV1> getKeys() {
-    return this.keys;
-  }
-
   public String toString() {
     return "MultiGetRouterRequestWrapper(storeName: " + getStoreName() + ", key count: " + keyCount + ")";
-  }
-
-  public int getKeyCount() {
-    return this.keyCount;
   }
 
   @Override
