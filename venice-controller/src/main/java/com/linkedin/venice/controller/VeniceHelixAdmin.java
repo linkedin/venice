@@ -731,7 +731,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
 
         Version version = null;
-        OfflinePushStrategy strategy = null;
+        OfflinePushStrategy strategy;
+        VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
+        boolean logCompaction = false;
 
         try {
             resources.lockForMetadataOperation();
@@ -742,6 +744,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     Store store = repository.getStore(storeName);
                     if (store == null) {
                         throwStoreDoesNotExist(clusterName, storeName);
+                    }
+                    if (store.isHybrid()) {
+                        logCompaction = clusterConfig.isKafkaLogCompactionForHybridStoresEnabled();
+                    }
+                    if (store.isIncrementalPushEnabled()) {
+                        logCompaction = clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled();
                     }
                     strategy = store.getOffLinePushStrategy();
                     if (versionNumber == VERSION_ID_UNSET) {
@@ -766,9 +774,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     repository.unLock();
                 }
 
-                VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
-                createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount,
-                    clusterConfig.getKafkaReplicaFactor(), true);
+                checkControllerMastership(clusterName);
+                topicManager.createTopic(
+                    version.kafkaTopicName(),
+                    newTopicPartitionCount,
+                    clusterConfig.getKafkaReplicationFactor(),
+                    true,
+                    logCompaction,
+                    clusterConfig.getMinIsr()
+                );
 
                 if (sendStartOfPush) {
                     // Note this will use default values for "sorted", "chunked" and "compressionStrategy" properties.
@@ -935,7 +949,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
                 }
                 VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
-                createKafkaTopic(clusterName, realTimeTopic, partitionCount, clusterConfig.getKafkaReplicaFactor(), false);
+
+                checkControllerMastership(clusterName);
+                topicManager.createTopic(
+                    realTimeTopic,
+                    partitionCount,
+                    clusterConfig.getKafkaReplicationFactor(),
+                    store.getHybridStoreConfig().getRetentionTimeInMs(),
+                    false, // RT topics are never compacted
+                    clusterConfig.getMinIsr()
+                );
                 //TODO: if there is an online version from a batch push before this store was hybrid then we won't start
                 // replicating to it.  A new version must be created.
                 logger.warn("Creating real time topic per topic request for store " + storeName + ".  "
@@ -1754,14 +1777,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public double getStorageEngineOverheadRatio(String clusterName) {
         return multiClusterConfigs.getConfigForCluster(clusterName).getStorageEngineOverheadRatio();
-    }
-
-    // TODO: Though controller can control, multiple Venice-clusters, kafka topic name needs to be unique
-    // among them. If there the same store name is present in two different venice clusters, the code
-    // will fail and might exhibit other issues.
-    private void createKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int kafkaReplicaFactor, boolean eternal) {
-        checkControllerMastership(clusterName);
-        topicManager.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor, eternal);
     }
 
     private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor)

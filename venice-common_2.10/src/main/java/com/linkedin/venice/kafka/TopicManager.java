@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
-import kafka.log.LogConfig;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
@@ -29,6 +28,7 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
@@ -51,6 +51,8 @@ import org.codehaus.jackson.map.ObjectMapper;
  */
 public class TopicManager implements Closeable {
 
+  public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
+
   // Immutable state
   private final String zkConnection;
   private final int sessionTimeoutMs;
@@ -69,7 +71,6 @@ public class TopicManager implements Closeable {
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
   private static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
-  protected static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = TimeUnit.DAYS.toMillis(5); // 5 days
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
 
 
@@ -92,41 +93,87 @@ public class TopicManager implements Closeable {
         veniceConsumerFactory);
   }
 
+  /**
+   * Create a topic, and block until the topic is created, with a default timeout of
+   * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
+   *
+   * @see {@link #createTopic(String, int, int, boolean)}
+   */
   @Deprecated
   public void createTopic(String topicName, int numPartitions, int replication) {
     createTopic(topicName, numPartitions, replication, true);
   }
 
   /**
-   * Create a topic, and block until the topic is created (with a 25 second timeout after which this function will throw a VeniceException)
+   * Create a topic, and block until the topic is created, with a default timeout of
+   * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
+   *
+   * @see {@link #createTopic(String, int, int, boolean, boolean, Optional)}
+   */
+  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal) {
+    createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty());
+  }
+
+  /**
+   * Create a topic, and block until the topic is created, with a default timeout of
+   * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
+   *
    * @param topicName Name for the new topic
    * @param numPartitions number of partitions
    * @param replication replication factor
-   * @param eternal whether the topic should have infinite (~250 mil years) retention
+   * @param eternal if true, the topic will have "infinite" (~250 mil years) retention
+   *                if false, its retention will be set to {@link #DEFAULT_TOPIC_RETENTION_POLICY_MS} by default
+   * @param logCompaction whether to enable log compaction on the topic
+   * @param minIsr if present, will apply the specified min.isr to this topic,
+   *               if absent, Kafka cluster defaults will be used
    */
-  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal) {
+  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction, Optional<Integer> minIsr) {
+    long retentionTimeMs;
+    if (eternal) {
+      retentionTimeMs = ETERNAL_TOPIC_RETENTION_POLICY_MS;
+    }  else {
+      retentionTimeMs = DEFAULT_TOPIC_RETENTION_POLICY_MS;
+    }
+    createTopic(topicName, numPartitions, replication, retentionTimeMs, logCompaction, minIsr);
+  }
+
+
+  /**
+   * Create a topic, and block until the topic is created, with a default timeout of
+   * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
+   *
+   * @param topicName Name for the new topic
+   * @param numPartitions number of partitions
+   * @param replication replication factor
+   * @param retentionTimeMs Retention time, in ms, for the topic
+   * @param logCompaction whether to enable log compaction on the topic
+   * @param minIsr if present, will apply the specified min.isr to this topic,
+   *               if absent, Kafka cluster defaults will be used
+   */
+  public void createTopic(String topicName, int numPartitions, int replication, long retentionTimeMs, boolean logCompaction, Optional<Integer> minIsr) {
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     try {
-      // TODO: Stop using Kafka APIs which depend on ZK.
-      /**
-       * TODO: consider to increase {@link kafka.server.KafkaConfig.MinInSyncReplicasProp()} to be greater than 1,
-       * so Kafka broker won't miss any data when some broker is down.
-       *
-       *
-       * RackAwareMode.Safe: Use rack information if every broker has a rack. Otherwise, fallback to Disabled mode.
-       */
       Properties topicProperties = new Properties();
-      if (eternal) {
-        topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(ETERNAL_TOPIC_RETENTION_POLICY_MS));
-      }  else {
-        topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(DEFAULT_TOPIC_RETENTION_POLICY_MS));
+      topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
+      if (logCompaction) {
+        topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+      } else {
+        topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
       }
-      topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
+
+      // If not set, Kafka cluster defaults will apply
+      minIsr.ifPresent(minIsrConfig -> topicProperties.put(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, minIsrConfig));
+
+      // Just in case the Kafka cluster isn't configured as expected.
+      topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
+
       long startTime = System.currentTimeMillis();
       boolean asyncCreateOperationSucceeded = false;
       while (!asyncCreateOperationSucceeded) {
         try {
-            AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
+          // TODO: Stop using Kafka APIs which depend on ZK.
+          // RackAwareMode.Safe: Use rack information if every broker has a rack. Otherwise, fallback to Disabled mode.
+          AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
             asyncCreateOperationSucceeded = true;
         } catch (InvalidReplicationFactorException e) {
           if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
@@ -143,12 +190,12 @@ public class TopicManager implements Closeable {
         }
         Utils.sleep(200);
       }
+      boolean eternal = retentionTimeMs == ETERNAL_TOPIC_RETENTION_POLICY_MS;
       logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
     } catch (TopicExistsException e) {
-      long retentionPolicyInMs = eternal ? ETERNAL_TOPIC_RETENTION_POLICY_MS : DEFAULT_TOPIC_RETENTION_POLICY_MS;
       logger.info("Topic: " + topicName + " already exists, will update retention policy.");
-      updateTopicRetention(topicName, retentionPolicyInMs);
-      logger.info("Updated retention policy to be " + retentionPolicyInMs + "ms for topic: " + topicName);
+      updateTopicRetention(topicName, retentionTimeMs);
+      logger.info("Updated retention policy to be " + retentionTimeMs + "ms for topic: " + topicName);
     }
   }
 
@@ -199,9 +246,9 @@ public class TopicManager implements Closeable {
   public synchronized void updateTopicRetention(String topicName, long retentionInMS) {
     Properties topicProperties = getTopicConfig(topicName);
     String retentionInMSStr = Long.toString(retentionInMS);
-    if (!topicProperties.containsKey(LogConfig.RetentionMsProp()) || // config doesn't exist
-        !topicProperties.getProperty(LogConfig.RetentionMsProp()).equals(retentionInMSStr)) { // config is different
-      topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(retentionInMS));
+    if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
+        !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
+      topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
       AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
     }
   }
@@ -211,8 +258,8 @@ public class TopicManager implements Closeable {
     Map<String, Long> topicRetentions = new HashMap<>();
     Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.asJavaMap(allTopicConfigs);
     allTopicConfigsJavaMap.forEach( (topic, topicProperties) -> {
-      if (topicProperties.containsKey(LogConfig.RetentionMsProp())) {
-        topicRetentions.put(topic, Long.valueOf(topicProperties.getProperty(LogConfig.RetentionMsProp())));
+      if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
+        topicRetentions.put(topic, Long.valueOf(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG)));
       } else {
         topicRetentions.put(topic, UNKNOWN_TOPIC_RETENTION);
       }
@@ -222,8 +269,8 @@ public class TopicManager implements Closeable {
 
   public long getTopicRetention(String topicName) {
     Properties topicProperties = getTopicConfig(topicName);
-    if (topicProperties.containsKey(LogConfig.RetentionMsProp())) {
-      return Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp()));
+    if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
+      return Long.parseLong(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG));
     }
     return UNKNOWN_TOPIC_RETENTION;
   }

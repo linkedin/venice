@@ -61,7 +61,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         // TODO: Centralize default config values in a single place
         PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
             .put(extraProps.toProperties())
-            .put(KAFKA_REPLICA_FACTOR, 1)
+            .put(KAFKA_REPLICATION_FACTOR, 1)
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
             .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?

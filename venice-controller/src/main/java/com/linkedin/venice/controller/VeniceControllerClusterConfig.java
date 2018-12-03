@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -68,10 +69,16 @@ public class VeniceControllerClusterConfig {
   private String kafkaBootstrapServers;
 
   private String sslKafkaBootStrapServers;
+
   /**
-   * Number of replication for each kafka topic. It should be different from venice data replica factor.
+   * Number of replicas for each kafka topic. It can be different from the Venice Storage Node replication factor,
+   * defined by {@value com.linkedin.venice.ConfigKeys#DEFAULT_REPLICA_FACTOR}.
    */
-  private int kafkaReplicaFactor;
+  private int kafkaReplicationFactor;
+  private Optional<Integer> minIsr;
+  private boolean kafkaLogCompactionForHybridStores;
+  private boolean kafkaLogCompactionForIncrementalPushStores;
+
   /**
    * Address of zookeeper that kafka used. It may be different from what Helix used.
    */
@@ -99,7 +106,14 @@ public class VeniceControllerClusterConfig {
     zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
-    kafkaReplicaFactor = props.getInt(KAFKA_REPLICA_FACTOR);
+    try {
+      kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR);
+    } catch (UndefinedPropertyException e) {
+      kafkaReplicationFactor = props.getInt(KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING);
+    }
+    minIsr = props.getOptionalInt(KAFKA_MIN_ISR);
+    kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
+    kafkaLogCompactionForIncrementalPushStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
     replicaFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     numberOfPartition = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -208,8 +222,8 @@ public class VeniceControllerClusterConfig {
     return numberOfPartition;
   }
 
-  public int getKafkaReplicaFactor() {
-    return kafkaReplicaFactor;
+  public int getKafkaReplicationFactor() {
+    return kafkaReplicationFactor;
   }
 
   public long getPartitionSize() {
@@ -293,7 +307,15 @@ public class VeniceControllerClusterConfig {
     return adminTopicReplicationFactor;
   }
 
-  public void setAdminTopicReplicationFactor(int adminTopicReplicationFactor) {
-    this.adminTopicReplicationFactor = adminTopicReplicationFactor;
+  public Optional<Integer> getMinIsr() {
+    return minIsr;
+  }
+
+  public boolean isKafkaLogCompactionForHybridStoresEnabled() {
+    return kafkaLogCompactionForHybridStores;
+  }
+
+  public boolean isKafkaLogCompactionForIncrementalPushStoresEnabled() {
+    return kafkaLogCompactionForIncrementalPushStores;
   }
 }

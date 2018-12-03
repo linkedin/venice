@@ -1,5 +1,8 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.utils.Time;
+import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
@@ -10,6 +13,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
 @org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class HybridStoreConfig {
+  private static final long BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN = 2 * Time.MS_PER_DAY;
   private long rewindTimeInSeconds;
   private long offsetLagThresholdToGoOnline;
 
@@ -24,6 +28,28 @@ public class HybridStoreConfig {
   public long getRewindTimeInSeconds() {
     return rewindTimeInSeconds;
   }
+
+  /**
+   * The default retention time for the RT topic is defined in {@link TopicManager#DEFAULT_TOPIC_RETENTION_POLICY_MS},
+   * but if the rewind time is larger than this, then the RT topic's retention time needs to be set even higher,
+   * in order to guarantee that buffer replays do not lose data. In order to achieve this, the retention time is
+   * set to the max of either:
+   *
+   * 1. {@link TopicManager#DEFAULT_TOPIC_RETENTION_POLICY_MS}; or
+   * 2. {@link #rewindTimeInSeconds} + {@value #BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN};
+   *
+   * This is a convenience function, and thus must be ignored by the JSON machinery.
+   *
+   * @return the retention time for the RT topic, in milliseconds.
+   */
+  @JsonIgnore
+  @com.fasterxml.jackson.annotation.JsonIgnore
+  public long getRetentionTimeInMs() {
+    long rewindTimeInMs = rewindTimeInSeconds * Time.MS_PER_SECOND;
+    long minimumRetentionInMs = rewindTimeInMs + BUFFER_REPLAY_MINIMAL_SAFETY_MARGIN;
+    return Math.max(minimumRetentionInMs, TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
+  }
+
 
   public long getOffsetLagThresholdToGoOnline() {
     return offsetLagThresholdToGoOnline;

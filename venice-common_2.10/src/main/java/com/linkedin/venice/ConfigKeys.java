@@ -27,11 +27,7 @@ public class ConfigKeys {
   public static final String STATUS_MESSAGE_RETRY_DURATION_MS = "status.message.retry.duration.ms";
 
   // store specific properties
-  public static final String STORE_NAME = "store.name";
   public static final String PERSISTENCE_TYPE = "persistence.type";
-  public static final String STORAGE_REPLICATION_FACTOR = "storage.node.replicas";
-  public static final String NUMBER_OF_KAFKA_PARTITIONS = "kafka.number.partitions";
-  public static final String KAFKA_ZOOKEEPER_URL = "kafka.zookeeper.url";
   public static final String KAFKA_BROKERS = "kafka.brokers";
   public static final String KAFKA_BROKER_PORT = "kafka.broker.port";
   public static final String KAFKA_CONSUMER_FETCH_BUFFER_SIZE = "kafka.consumer.fetch.buffer.size";
@@ -69,9 +65,41 @@ public class ConfigKeys {
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
-  public static final String KAFKA_REPLICA_FACTOR = "kafka.replica.factor";
+
+  /**
+   * Whether to turn on Kafka's log compaction for the store-version topics of hybrid (and real-time only) stores.
+   *
+   * Will take effect at topic creation time, and when the hybrid config for the store is turned on.
+   */
+  public static final String KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES = "kafka.log.compaction.for.hybrid.stores";
+
+  /**
+   * Whether to turn on Kafka's log compaction for the store-version topics of incremental push stores.
+   *
+   * Will take effect at topic creation time, and when the incremental push config for the store is turned on.
+   */
+  public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES = "kafka.log.compaction.for.incremental.push.stores";
+
+  /**
+   * The min.isr property to be set at topic creation time. Will not modify already-existing topics.
+   *
+   * If unset, will use the Kafka cluster's default.
+   */
+  public static final String KAFKA_MIN_ISR = "kafka.min.isr";
+
+  /**
+   * The replication factor to set for real-time bufffer topics and store-version topics, at topic creation time.
+   */
+  public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
+
+  /**
+   * Fallback to remain compatible with the old config spelling.
+   *
+   * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
+   */
+  @Deprecated
+  public static final String KAFKA_REPLICATION_FACTOR_LEGACY_SPELLING = "kafka.replica.factor";
   public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
-  public static final String DEFAULT_PERSISTENCE_TYPE = "default.persistence.type";
   public static final String DEFAULT_READ_STRATEGY = "default.read.strategy";
   public static final String DEFAULT_OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
   public static final String DEFAULT_ROUTING_STRATEGY = "default.routing.strategy";
@@ -80,7 +108,6 @@ public class ConfigKeys {
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
-  public static final String MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER = "min.required.online.replica.to.stop.server";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
   public static final String DEFAULT_STORAGE_QUOTA = "default.storage.quota";

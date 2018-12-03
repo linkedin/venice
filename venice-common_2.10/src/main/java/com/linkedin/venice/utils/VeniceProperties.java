@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -262,6 +263,14 @@ public class VeniceProperties {
       return Integer.parseInt(get(name));
     } else {
       throw new UndefinedPropertyException(name);
+    }
+  }
+
+  public Optional<Integer> getOptionalInt(String name) {
+    if (containsKey(name)) {
+      return Optional.of(Integer.parseInt(get(name)));
+    } else {
+      return Optional.empty();
     }
   }
 

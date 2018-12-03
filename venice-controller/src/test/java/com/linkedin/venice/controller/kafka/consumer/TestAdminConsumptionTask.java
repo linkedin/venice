@@ -219,12 +219,12 @@ public class TestAdminConsumptionTask {
         .isMasterController(clusterName);
     if (isParent) {
       verify(topicManager, timeout(TIMEOUT))
-          .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true);
+          .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.of(0));
       verify(mockKafkaConsumer, timeout(TIMEOUT))
           .subscribe(any(), anyInt(), any());
     } else {
       verify(topicManager, never())
-          .createTopic(anyString(), anyInt(), anyInt(), anyBoolean());
+          .createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
       verify(mockKafkaConsumer, never())
           .subscribe(any(), anyInt(), any());
     }

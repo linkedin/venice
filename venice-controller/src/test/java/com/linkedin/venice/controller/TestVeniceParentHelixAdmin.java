@@ -53,7 +53,6 @@ import java.util.List;
 import java.util.Map;
 
 import java.util.Optional;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -141,7 +140,7 @@ public class TestVeniceParentHelixAdmin {
   private VeniceControllerConfig mockConfig(String clusterName) {
     VeniceControllerConfig config = mock(VeniceControllerConfig.class);
     doReturn(clusterName).when(config).getClusterName();
-    doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicaFactor();
+    doReturn(KAFKA_REPLICA_FACTOR).when(config).getKafkaReplicationFactor();
     doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
     doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
     return config;

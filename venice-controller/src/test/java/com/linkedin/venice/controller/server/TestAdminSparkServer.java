@@ -44,6 +44,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -637,7 +638,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(storeResponse.isError(), "Store should already be deleted.");
   }
 
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = TIME_OUT * 2)
   public void controllerClientCanGetExecutionOfDeleteStore()
       throws InterruptedException {
     String cluster = venice.getClusterName();
@@ -645,6 +646,9 @@ public class TestAdminSparkServer {
     VeniceControllerWrapper parentController =
         ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
+    TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.MILLISECONDS, () -> Assert.assertTrue(
+        parentController.isMasterController(cluster),
+        "Parent controller needs to be master in order for this test to proceed."));
     String storeName = "controllerClientCanGetExecutionOfDeleteStore";
     parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersionIdempotent(cluster, storeName, "test", 1, 1, true);

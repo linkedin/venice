@@ -101,7 +101,7 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   public int getKafkaReplicaFactor(){
-    return getCommonConfig().getKafkaReplicaFactor();
+    return getCommonConfig().getKafkaReplicationFactor();
   }
 
   public long getTopicCreationThrottlingTimeWindowMs(){
