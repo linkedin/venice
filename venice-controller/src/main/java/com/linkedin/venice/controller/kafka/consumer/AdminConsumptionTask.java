@@ -155,7 +155,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               String logMesssage = "Admin topic: " + topic + " hasn't been created yet. ";
               if (isParentController) {
                 logger.info(logMesssage + "Since this is the parent controller, it will be created it now.");
-                admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true);
+                admin.getTopicManager().createTopic(topic, 1, adminTopicReplicationFactor, true, false, Optional.of(adminTopicReplicationFactor - 1));
               } else {
                 // Child controllers should wait for MM to replicate the admin topic's existence.
                 if (System.currentTimeMillis() - lastLogTime > 60 * Time.MS_PER_SECOND) { // To reduce log bloat, only log once per minute
