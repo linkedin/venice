@@ -58,6 +58,7 @@ public class ControllerApiConstants {
 
   public static final String PUSH_JOB_STATUS = "push_job_status";
   public static final String PUSH_JOB_DURATION = "push_job_duration";
+  public static final String WRITE_COMPUTATION_ENABLED = "write_computation_enabled";
 
   private ControllerApiConstants(){}
 

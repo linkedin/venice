@@ -59,6 +59,7 @@ public enum Arg {
       "Configuration file for querying key in Venice client through SSL."),
   STARTING_OFFSET("starting_offset", "so", true, "Starting offset when dumping admin messages, inclusive"),
   MESSAGE_COUNT("message_count", "mc", true, "Max message count when dumping admin messages"),
+  WRITE_COMPUTATION_ENABLED("write-computation-enabled", "wc", true, "Whether or not write computation is enabled for a store"),
 
   FILTER_JSON("filter-json", "ftj", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
