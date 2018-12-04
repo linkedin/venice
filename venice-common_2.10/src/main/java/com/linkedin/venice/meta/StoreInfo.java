@@ -37,6 +37,7 @@ public class StoreInfo {
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
     storeInfo.setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     storeInfo.setMigrating(store.isMigrating());
+    storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
 
     return storeInfo;
   }
@@ -145,6 +146,11 @@ public class StoreInfo {
    * Whether or not the store is in the process of migration.
    */
   private boolean migrating = false;
+
+  /**
+   * Whether or not write-path computation feature is enabled for this store
+   */
+  private boolean writeComputationEnabled = false;
 
   public StoreInfo() {
   }
@@ -353,4 +359,13 @@ public class StoreInfo {
   public void setMigrating(boolean migrating) {
     this.migrating = migrating;
   }
+
+  public boolean isWriteComputationEnabled() {
+    return writeComputationEnabled;
+  }
+
+  public void setWriteComputationEnabled(boolean writeComputationEnabled) {
+    this.writeComputationEnabled = writeComputationEnabled;
+  }
+
 }

@@ -19,10 +19,11 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   /**
    * Useful for store migration
-    * @param srcStore The original store
+   * @param srcStore The original store
    */
   public UpdateStoreQueryParams(StoreInfo srcStore) {
     // Copy everything except current version number and largest used version number
+    // This method must be updated everytime a new store property is introduced
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams()
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
@@ -40,7 +41,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
-            .setStoreMigration(srcStore.isMigrating());
+            .setStoreMigration(srcStore.isMigrating())
+            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -184,6 +186,13 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Boolean> getStoreMigration() {
     return getBoolean(STORE_MIGRATION);
+  }
+
+  public UpdateStoreQueryParams setWriteComputationEnabled(boolean writeComputationEnabled) {
+    return putBoolean(WRITE_COMPUTATION_ENABLED, writeComputationEnabled);
+  }
+  public Optional<Boolean> getWriteComputationEnabled() {
+    return getBoolean(WRITE_COMPUTATION_ENABLED);
   }
 
 

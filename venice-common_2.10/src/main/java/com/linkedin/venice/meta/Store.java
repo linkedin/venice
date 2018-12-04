@@ -149,8 +149,6 @@ public class Store {
    */
   private boolean batchGetRouterCacheEnabled = false;
 
-
-
   /**
    * Batch get key number limit, and Venice will use cluster-level config if it is not positive.
    */
@@ -171,6 +169,11 @@ public class Store {
    * Whether or not the store is in the process of migration.
    */
   private boolean migrating = false;
+
+  /**
+   * Whether or not write-path computation feature is enabled for this store
+   */
+  private boolean writeComputationEnabled = false;
 
 
 
@@ -318,6 +321,11 @@ public class Store {
     return partitionCount;
   }
 
+  public void setPartitionCount(int partitionCount) {
+    this.partitionCount = partitionCount;
+  }
+
+
   public boolean isEnableWrites() {
     return enableWrites;
   }
@@ -404,6 +412,46 @@ public class Store {
 
   public void setIncrementalPushEnabled(boolean incrementalPushEnabled) {
     this.incrementalPushEnabled = incrementalPushEnabled;
+  }
+
+  public static void setDefaultStorageQuota(long storageQuota) {
+    Store.DEFAULT_STORAGE_QUOTA = storageQuota;
+  }
+
+  public static void setDefaultReadQuota(long readQuota) {
+    Store.DEFAULT_READ_QUOTA = readQuota;
+  }
+
+  public boolean isAccessControlled() {
+    return accessControlled;
+  }
+
+  public void setAccessControlled(boolean accessControlled) {
+    this.accessControlled = accessControlled;
+  }
+
+  public boolean isMigrating() {
+    return migrating;
+  }
+
+  public void setMigrating(boolean migrating) {
+    this.migrating = migrating;
+  }
+
+  public int getNumVersionsToPreserve() {
+    return numVersionsToPreserve;
+  }
+
+  public void setNumVersionsToPreserve(int numVersionsToPreserve) {
+    this.numVersionsToPreserve = numVersionsToPreserve;
+  }
+
+  public boolean isWriteComputationEnabled() {
+    return writeComputationEnabled;
+  }
+
+  public void setWriteComputationEnabled(boolean writeComputationEnabled) {
+    this.writeComputationEnabled = writeComputationEnabled;
   }
 
   /**
@@ -623,6 +671,7 @@ public class Store {
     result = 31 * result + numVersionsToPreserve;
     result = 31 * result + (incrementalPushEnabled ? 1 : 0);
     result = 31 * result + (migrating ? 1 : 0);
+    result = 31 * result + (writeComputationEnabled ? 1 : 0);
     return result;
   }
 
@@ -657,11 +706,8 @@ public class Store {
     if (numVersionsToPreserve != store.numVersionsToPreserve) return false;
     if (incrementalPushEnabled != store.incrementalPushEnabled) return false;
     if (migrating != store.migrating) return false;
+    if (writeComputationEnabled != store.writeComputationEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
-  }
-
-  public void setPartitionCount(int partitionCount) {
-    this.partitionCount = partitionCount;
   }
 
   /**
@@ -695,6 +741,7 @@ public class Store {
     clonedStore.setIncrementalPushEnabled(incrementalPushEnabled);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     clonedStore.setMigrating(migrating);
+    clonedStore.setWriteComputationEnabled(writeComputationEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
@@ -716,35 +763,4 @@ public class Store {
     }
   }
 
-  public static void setDefaultStorageQuota(long storageQuota) {
-    Store.DEFAULT_STORAGE_QUOTA = storageQuota;
-  }
-
-  public static void setDefaultReadQuota(long readQuota) {
-    Store.DEFAULT_READ_QUOTA = readQuota;
-  }
-
-  public boolean isAccessControlled() {
-    return accessControlled;
-  }
-
-  public void setAccessControlled(boolean accessControlled) {
-    this.accessControlled = accessControlled;
-  }
-
-  public boolean isMigrating() {
-    return migrating;
-  }
-
-  public void setMigrating(boolean migrating) {
-    this.migrating = migrating;
-  }
-
-  public int getNumVersionsToPreserve() {
-    return numVersionsToPreserve;
-  }
-
-  public void setNumVersionsToPreserve(int numVersionsToPreserve) {
-    this.numVersionsToPreserve = numVersionsToPreserve;
-  }
 }
