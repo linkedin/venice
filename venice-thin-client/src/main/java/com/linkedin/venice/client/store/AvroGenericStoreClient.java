@@ -45,7 +45,10 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @return
    */
   @Experimental
-  ComputeRequestBuilder<K> compute();
+  default ComputeRequestBuilder<K> compute() {
+    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
+        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+  }
 
   void start() throws VeniceClientException;
 
