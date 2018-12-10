@@ -1538,6 +1538,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setWriteComputationEnabled(String clusterName, String storeName,
+        boolean writeComputationEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setWriteComputationEnabled(writeComputationEnabled);
+            return store;
+        });
+    }
+
+    public synchronized void setReadComputationEnabled(String clusterName, String storeName,
+        boolean computationEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setReadComputationEnabled(computationEnabled);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1595,7 +1611,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Integer> batchGetLimit,
         Optional<Integer> numVersionsToPreserve,
         Optional<Boolean> incrementalPushEnabled,
-        Optional<Boolean> storeMigration) {
+        Optional<Boolean> storeMigration,
+        Optional<Boolean> writeComputationEnabled,
+        Optional<Boolean> readComputationEnabled) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -1701,6 +1719,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (storeMigration.isPresent()) {
                 setStoreMigration(clusterName, storeName, storeMigration.get());
             }
+
+            if (writeComputationEnabled.isPresent()) {
+                setWriteComputationEnabled(clusterName, storeName, writeComputationEnabled.get());
+            }
+
+            if (readComputationEnabled.isPresent()) {
+                setReadComputationEnabled(clusterName, storeName, readComputationEnabled.get());
+            }
+
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
             logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName

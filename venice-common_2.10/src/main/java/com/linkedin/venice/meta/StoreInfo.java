@@ -38,6 +38,7 @@ public class StoreInfo {
     storeInfo.setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     storeInfo.setMigrating(store.isMigrating());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
+    storeInfo.setReadComputationEnabled(store.isReadComputationEnabled());
 
     return storeInfo;
   }
@@ -151,6 +152,11 @@ public class StoreInfo {
    * Whether or not write-path computation feature is enabled for this store
    */
   private boolean writeComputationEnabled = false;
+
+  /**
+   * Whether read-path computation is enabled for this store.
+   */
+  private boolean readComputationEnabled = false;
 
   public StoreInfo() {
   }
@@ -368,4 +374,11 @@ public class StoreInfo {
     this.writeComputationEnabled = writeComputationEnabled;
   }
 
+  public boolean isReadComputationEnabled() {
+    return readComputationEnabled;
+  }
+
+  public void setReadComputationEnabled(boolean readComputationEnabled) {
+    this.readComputationEnabled = readComputationEnabled;
+  }
 }

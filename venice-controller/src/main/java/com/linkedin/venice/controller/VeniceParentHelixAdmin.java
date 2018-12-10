@@ -1051,7 +1051,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> batchGetLimit,
       Optional<Integer> numVersionsToPreserve,
       Optional<Boolean> incrementalPushEnabled,
-      Optional<Boolean> storeMigration) {
+      Optional<Boolean> storeMigration,
+      Optional<Boolean> writeComputationEnabled,
+      Optional<Boolean> readComputationEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -1111,6 +1113,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.incrementalPushEnabled =
           incrementalPushEnabled.isPresent() ? incrementalPushEnabled.get() : store.isIncrementalPushEnabled();
       setStore.isMigrating = storeMigration.isPresent() ? storeMigration.get() : store.isMigrating();
+      setStore.writeComputationEnabled = writeComputationEnabled.isPresent() ? writeComputationEnabled.get() : store.isWriteComputationEnabled();
+      setStore.readComputationEnabled = readComputationEnabled.isPresent() ? readComputationEnabled.get() : store.isReadComputationEnabled();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();

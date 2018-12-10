@@ -607,7 +607,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       Optional.of(message.batchGetLimit),
                       Optional.of(message.numVersionsToPreserve),
                       Optional.of(message.incrementalPushEnabled),
-                      Optional.of(message.isMigrating)
+                      Optional.of(message.isMigrating),
+                      Optional.of(message.writeComputationEnabled),
+                      Optional.of(message.readComputationEnabled)
         );
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);

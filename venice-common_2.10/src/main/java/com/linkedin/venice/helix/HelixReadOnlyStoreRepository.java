@@ -315,6 +315,20 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     }
   }
 
+  @Override
+  public boolean isReadComputationEnabled(String name) {
+    metadataLock.readLock().lock();
+    try {
+      Store store = storeMap.get(name);
+      if (null == store) {
+        throw new VeniceNoStoreException(name);
+      }
+      return store.isReadComputationEnabled();
+    } finally {
+      metadataLock.readLock().unlock();
+    }
+  }
+
   protected void triggerStoreCreationListener(Store store) {
     for (StoreDataChangedListener listener : dataChangedListenerSet) {
       try {

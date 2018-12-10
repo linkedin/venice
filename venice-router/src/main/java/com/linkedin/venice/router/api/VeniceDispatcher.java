@@ -207,6 +207,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         break;
       case COMPUTE:
         routeStats = routeStatsForCompute;
+
+        // check whether the store is enabled for compute
+        if (!storeRepository.isReadComputationEnabled(storeName)) {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
+              Optional.of(RequestType.COMPUTE), METHOD_NOT_ALLOWED,
+              "Your store is not enabled for read computations, please contact Venice team if you would like to enable compute feature");
+        }
         break;
       default:
         String errMsg = "Request type " + path.getRequestType() + " is not supported!";

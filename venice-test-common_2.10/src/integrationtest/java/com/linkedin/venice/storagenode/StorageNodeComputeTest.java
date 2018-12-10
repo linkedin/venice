@@ -93,6 +93,7 @@ public class StorageNodeComputeTest {
   public void testCompute(CompressionStrategy compressionStrategy) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
+    params.setReadComputationEnabled(true);
     veniceCluster.updateStore(storeName, params);
 
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
