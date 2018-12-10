@@ -703,6 +703,8 @@ public class TestAdminConsumptionTask {
     boolean enableWrites = true;
     boolean accessControlled = true;
     boolean storeMigration = true;
+    boolean writeComputationEnabled = true;
+    boolean computationEnabled = true;
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -714,6 +716,8 @@ public class TestAdminConsumptionTask {
     setStore.accessControlled = accessControlled;
     setStore.incrementalPushEnabled = true;
     setStore.isMigrating = storeMigration;
+    setStore.writeComputationEnabled = writeComputationEnabled;
+    setStore.computationEnabled = computationEnabled;
 
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
@@ -741,7 +745,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any(), any(), any(),
         any(), any(), any(), any(), any(), eq(Optional.of(123L)), eq(Optional.of(1000L)),
         eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)),
-        eq(Optional.of(storeMigration)));
+        eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)));
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema, long executionId) {

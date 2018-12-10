@@ -202,7 +202,9 @@ public interface Admin {
                      Optional<Integer> batchGetLimit,
                      Optional<Integer> numVersionsToPreserve,
                      Optional<Boolean> incrementalPushEnabled,
-                     Optional<Boolean> storeMigration);
+                     Optional<Boolean> storeMigration,
+                     Optional<Boolean> writeComputationEnabled,
+                     Optional<Boolean> computationEnabled);
 
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
@@ -227,7 +229,9 @@ public interface Admin {
             params.getBatchGetLimit(),
             params.getNumVersionsToPreserve(),
             params.getIncrementalPushEnabled(),
-            params.getStoreMigration());
+            params.getStoreMigration(),
+            params.getWriteComputationEnabled(),
+            params.getReadComputationEnabled());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);

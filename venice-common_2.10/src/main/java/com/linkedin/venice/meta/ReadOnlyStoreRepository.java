@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 
@@ -74,4 +75,11 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * @return
    */
   int getBatchGetLimit(String name);
+
+  /**
+   * Whether computation is enabled for the specified store.
+   * @param name store name
+   * @return
+   */
+  boolean isReadComputationEnabled(String name);
 }

@@ -211,7 +211,9 @@ public class TestVeniceParentHelixAdmin {
         Optional<Integer> batchGetLimit,
         Optional<Integer> numVersionsToPreserve,
         Optional<Boolean> incrementalPushEnabled,
-        Optional<Boolean> storeMigration){
+        Optional<Boolean> storeMigration,
+        Optional<Boolean> writeComputationEnabled,
+        Optional<Boolean> computationEnabled){
       doReturn(true).when(store).isHybrid();
     }
 
@@ -909,6 +911,7 @@ public class TestVeniceParentHelixAdmin {
     String valueSchemaStr = "\"string\"";
 
     ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
+    ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl);
     controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     MultiStoreResponse response = ControllerClient.listStores(controllerUrl, clusterName);
     String[] stores = response.getStores();
@@ -956,7 +959,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(storeResponse.getStore().isChunkingEnabled());
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       Assert.assertTrue(childStoreResponse.getStore().isChunkingEnabled());
     });
 
@@ -967,7 +970,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(storeResponse.getStore().isSingleGetRouterCacheEnabled());
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       Assert.assertTrue(childStoreResponse.getStore().isSingleGetRouterCacheEnabled());
     });
 
@@ -978,7 +981,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(storeResponse.getStore().isBatchGetRouterCacheEnabled());
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       Assert.assertTrue(childStoreResponse.getStore().isBatchGetRouterCacheEnabled());
     });
 
@@ -989,7 +992,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), 100);
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       Assert.assertEquals(childStoreResponse.getStore().getBatchGetLimit(), 100);
     });
 
@@ -1002,6 +1005,30 @@ public class TestVeniceParentHelixAdmin {
     // This command should not fail
     ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAccessControlled(true));
     Assert.assertFalse(controllerResponse.isError());
+
+    // Update writeComputationEnabled
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.getStore().isWriteComputationEnabled());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isWriteComputationEnabled());
+    // Child controller will be updated asynchronously
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+      Assert.assertTrue(childStoreResponse.getStore().isWriteComputationEnabled());
+    });
+
+    // Update computationEnabled
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.getStore().isComputationEnabled());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setComputationEnabled(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isComputationEnabled());
+    // Child controller will be updated asynchronously
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+      Assert.assertTrue(childStoreResponse.getStore().isComputationEnabled());
+    });
 
     controllerWrapper.close();
     childControllerWrapper.close();

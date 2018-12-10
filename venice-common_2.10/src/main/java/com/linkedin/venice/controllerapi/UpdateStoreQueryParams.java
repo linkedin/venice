@@ -42,7 +42,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
             .setStoreMigration(srcStore.isMigrating())
-            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled());
+            .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
+            .setReadComputationEnabled(srcStore.isReadComputationEnabled());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -193,6 +194,13 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Boolean> getWriteComputationEnabled() {
     return getBoolean(WRITE_COMPUTATION_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setReadComputationEnabled(boolean readComputationEnabled) {
+    return putBoolean(READ_COMPUTATION_ENABLED, readComputationEnabled);
+  }
+  public Optional<Boolean> getReadComputationEnabled() {
+    return getBoolean(READ_COMPUTATION_ENABLED);
   }
 
 

@@ -175,6 +175,11 @@ public class Store {
    */
   private boolean writeComputationEnabled = false;
 
+  /**
+   * Whether read-path computation is enabled for this store.
+   */
+  private boolean readComputationEnabled = false;
+
 
 
 
@@ -454,6 +459,12 @@ public class Store {
     this.writeComputationEnabled = writeComputationEnabled;
   }
 
+  public boolean isReadComputationEnabled() { return readComputationEnabled; }
+
+  public void setReadComputationEnabled(boolean readComputationEnabled) {
+    this.readComputationEnabled = readComputationEnabled;
+  }
+
   /**
    * Add a version into store.
    *
@@ -672,6 +683,7 @@ public class Store {
     result = 31 * result + (incrementalPushEnabled ? 1 : 0);
     result = 31 * result + (migrating ? 1 : 0);
     result = 31 * result + (writeComputationEnabled ? 1 : 0);
+    result = 31 * result + (readComputationEnabled ? 1 : 0);
     return result;
   }
 
@@ -707,6 +719,7 @@ public class Store {
     if (incrementalPushEnabled != store.incrementalPushEnabled) return false;
     if (migrating != store.migrating) return false;
     if (writeComputationEnabled != store.writeComputationEnabled) return false;
+    if (readComputationEnabled != store.readComputationEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -742,6 +755,7 @@ public class Store {
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     clonedStore.setMigrating(migrating);
     clonedStore.setWriteComputationEnabled(writeComputationEnabled);
+    clonedStore.setReadComputationEnabled(readComputationEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

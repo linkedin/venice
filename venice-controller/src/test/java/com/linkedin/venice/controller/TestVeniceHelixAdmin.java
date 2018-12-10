@@ -1540,6 +1540,34 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
   }
 
+  @Test
+  public void testWriteComputationEnabled() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertFalse(store.isWriteComputationEnabled());
+
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setWriteComputationEnabled(true));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.isWriteComputationEnabled());
+  }
+
+  @Test
+  public void testComputationEnabled() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertFalse(store.isComputationEnabled());
+
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setComputationEnabled(true));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.isComputationEnabled());
+  }
+
   private Properties getControllerProperties(String clusterName)
       throws IOException {
     String currentPath = Paths.get("").toAbsolutePath().toString();
