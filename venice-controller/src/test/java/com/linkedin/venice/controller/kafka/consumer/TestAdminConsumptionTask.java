@@ -717,7 +717,7 @@ public class TestAdminConsumptionTask {
     setStore.incrementalPushEnabled = true;
     setStore.isMigrating = storeMigration;
     setStore.writeComputationEnabled = writeComputationEnabled;
-    setStore.computationEnabled = computationEnabled;
+    setStore.readComputationEnabled = computationEnabled;
 
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
