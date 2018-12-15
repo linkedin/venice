@@ -1020,14 +1020,14 @@ public class TestVeniceParentHelixAdmin {
 
     // Update computationEnabled
     storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.getStore().isComputationEnabled());
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setComputationEnabled(true));
+    Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isComputationEnabled());
+    Assert.assertTrue(storeResponse.getStore().isReadComputationEnabled());
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
       StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isComputationEnabled());
+      Assert.assertTrue(childStoreResponse.getStore().isReadComputationEnabled());
     });
 
     controllerWrapper.close();

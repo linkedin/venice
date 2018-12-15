@@ -1560,12 +1560,12 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
 
     Store store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertFalse(store.isComputationEnabled());
+    Assert.assertFalse(store.isReadComputationEnabled());
 
     veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
-        .setComputationEnabled(true));
+        .setReadComputationEnabled(true));
     store = veniceAdmin.getStore(clusterName, storeName);
-    Assert.assertTrue(store.isComputationEnabled());
+    Assert.assertTrue(store.isReadComputationEnabled());
   }
 
   private Properties getControllerProperties(String clusterName)
