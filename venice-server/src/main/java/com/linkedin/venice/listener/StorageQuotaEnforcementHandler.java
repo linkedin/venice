@@ -1,5 +1,7 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
@@ -13,6 +15,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
@@ -25,6 +28,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -283,8 +287,48 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
     List<String> topics = store.getVersions().stream().map((version) -> version.kafkaTopicName()).collect(Collectors.toList());
     for (String topic : topics) {
       routingRepository.subscribeRoutingDataChange(topic, this);
-      //make sure we're up-to-date after registering as a listener
-      this.onRoutingDataChanged(routingRepository.getPartitionAssignments(topic));
+      try {
+        /**
+         * make sure we're up-to-date after registering as a listener
+         *
+         * During a new push, a new version is added to the version list of the Store metadata before the push actually
+         * starts, so this function (StorageQuotaEnforcementHandler#handleStoreChanged()) is invoked before the new
+         * resource assignment shows up in the external view, so calling routingRepository.getPartitionAssignments() for
+         * a the future version will fail in most cases, because the new topic is not in the external view at all.
+         *
+         */
+        this.onRoutingDataChanged(routingRepository.getPartitionAssignments(topic));
+      } catch (VeniceNoHelixResourceException e) {
+        Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
+        if (version.isPresent() && version.get().getStatus().equals(VersionStatus.ONLINE)) {
+          /**
+           * The store metadata believes this version is online, but the partition assignment is not in the
+           * external view.
+           */
+          if (isOldestVersion(Version.parseVersionFromKafkaTopicName(topic), topics)) {
+            /**
+             * It could happen to a tiny store. When the push job completes, the status of the latest version will
+             * be updated, which will result in invoking this handleStoreChanged() function; then the helix resource
+             * of the old version will be dropped. Dropping the related helix resource completes too fast, even
+             * before this store update callback completes, so it couldn't find the old resource in the external
+             * view.
+             */
+
+            // do not remove this topic from the old topics set
+            continue;
+          }
+
+          /**
+           * For future version, it's possible that store metadata update callback is invoked faster than
+           * the external view change callback; but for any other versions between future version and the
+           * oldest version that should be retire, they should exist on external view if they are online.
+           */
+          if (!isLatestVersion(Version.parseVersionFromKafkaTopicName(topic), topics)) {
+            throw new VeniceException("Metadata for store " + store.getName() + " shows that version "
+                + version.get().getNumber() + " is online but couldn't find the resource in external view:", e);
+          }
+        }
+      }
       oldTopics.remove(topic);
     }
 
@@ -302,6 +346,26 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
       routingRepository.unSubscribeRoutingDataChange(topic, this);
       storeVersionBuckets.remove(topic);
     }
+  }
+
+  private boolean isOldestVersion(int version, List<String> topics) {
+    for (String topic : topics) {
+      if (Version.parseVersionFromKafkaTopicName(topic) < version) {
+        // there is a smaller version
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean isLatestVersion(int version, List<String> topics) {
+    for (String topic : topics) {
+      if (Version.parseVersionFromKafkaTopicName(topic) > version) {
+        // there is a bigger version
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
