@@ -24,14 +24,6 @@ class PartitionConsumptionState {
   private int processedRecordSize;
   private long processedRecordSizeSinceLastSync;
 
-  /**
-   * The last time that the offset record is flushed to disk.
-   *
-   * There are 2 metrics: processed record size since last sync and the passed time since last sync;
-   * whichever meets the threshold first, we flush the offset record to disk.
-   */
-  private long timestampOfLastSync;
-
   private long lastTimeOfSourceTopicOffsetLookup;
   private long sourceTopicMaxOffset;
 
@@ -55,7 +47,6 @@ class PartitionConsumptionState {
     this.processedRecordNum = 0;
     this.processedRecordSize = 0;
     this.processedRecordSizeSinceLastSync = 0;
-    this.timestampOfLastSync = System.currentTimeMillis();
     this.lastTimeOfSourceTopicOffsetLookup = -1;
     this.sourceTopicMaxOffset = -1;
   }
@@ -163,7 +154,6 @@ class PartitionConsumptionState {
         ", processedRecordNum=" + processedRecordNum +
         ", processedRecordSize=" + processedRecordSize +
         ", processedRecordSizeSinceLastSync=" + processedRecordSizeSinceLastSync +
-        ", timestampOfLastSync=" + timestampOfLastSync +
         '}';
   }
 
@@ -175,14 +165,6 @@ class PartitionConsumptionState {
   }
   public void resetProcessedRecordSizeSinceLastSync() {
     this.processedRecordSizeSinceLastSync = 0;
-  }
-
-  public long getTimestampOfLastSync() {
-    return this.timestampOfLastSync;
-  }
-
-  public void resetTimestampOfLastSync() {
-    this.timestampOfLastSync = System.currentTimeMillis();
   }
 
   public boolean isIncrementalPushEnabled() {
