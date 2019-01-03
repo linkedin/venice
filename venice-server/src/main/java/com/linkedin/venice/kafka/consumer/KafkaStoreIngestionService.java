@@ -178,7 +178,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       consumerExecutorService.shutdown();
 
       try {
-        consumerExecutorService.awaitTermination(5, TimeUnit.SECONDS);
+        consumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
       } catch(InterruptedException e) {
         logger.info("Error shutting down consumer service", e);
       }

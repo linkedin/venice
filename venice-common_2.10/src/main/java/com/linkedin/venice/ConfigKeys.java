@@ -193,24 +193,6 @@ public class ConfigKeys {
   public static final String SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.bytes.interval.for.deferred.write.mode";
 
   /**
-   * Passed time since last sync is another parameter that decides whether the offset record is flushed to disk;
-   * whichever (bytes consumed or number of records consumed or passed time) meets the threshold first,
-   * the offset record will be flushed.
-   *
-   * Negative value will disable this threshold.
-   */
-  public static final String SERVER_DATABASE_SYNC_TIME_INTERNAL_FOR_TRANSACTIONAL_MODE = "server.database.sync.time.interval.for.transactional.mode";
-
-  /**
-   * Passed time since last sync is another parameter that decides whether the offset record is flushed to disk;
-   * whichever (bytes consumed or number of records consumed or passed time) meets the threshold first,
-   * the offset record will be flushed.
-   *
-   * Negative value will disable this threshold.
-   */
-  public static final String SERVER_DATABASE_SYNC_TIME_INTERNAL_FOR_DEFERRED_WRITE_MODE = "server.database.sync.time.interval.for.deferred.write.mode";
-
-  /**
    * When load balance happens, a replica could be moved to another storage node.
    * When dropping the existing replica through Helix state transition: 'ONLINE' -> 'OFFLINE' and 'OFFLINE' -> 'DROPPED',
    * a race condition could happen since Router in-memory partition assignment update through Zookeeper

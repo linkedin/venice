@@ -143,11 +143,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
 
-  /** Passed time interval before persisting offset in offset db for transactional mode database. */
-  private final long databaseSyncTimeIntervalForTransactionalMode;
-  /** Passed time interval before persisting offset in offset db for deferred-write database. */
-  private final long databaseSyncTimeIntervalForDeferredWriteMode;
-
   /** A quick check point to see if incremental push is supported.
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
   private final boolean isIncrementalPushEnabled;
@@ -175,8 +170,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.databaseSyncTimeIntervalForTransactionalMode = storeConfig.getDatabaseSyncTimeIntervalForTransactionalMode();
-    this.databaseSyncTimeIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncTimeIntervalForDeferredWriteMode();
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -515,6 +508,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions();
         processMessages();
       }
+
+      // If the ingestion task is stopped gracefully (server stops or kill push job), persist processed offset to disk
+      for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
+        syncOffset(topic, partitionConsumptionState);
+      }
+
     } catch (VeniceIngestionTaskKilledException ke){
       logger.info(consumerTaskId+"is killed, start to report to notifier.", ke);
       notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
@@ -899,13 +898,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long syncBytesInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncBytesIntervalForDeferredWriteMode
         : databaseSyncBytesIntervalForTransactionalMode;
 
-    long syncTimeInterval = partitionConsumptionState.isDeferredWrite() ? databaseSyncTimeIntervalForDeferredWriteMode
-        : databaseSyncTimeIntervalForTransactionalMode;
-
     // If the following condition is true, then we want to sync to disk.
     boolean recordsProcessedAboveSyncIntervalThreshold = false;
-    if ((syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval)) ||
-        (syncTimeInterval > 0 && (System.currentTimeMillis() - partitionConsumptionState.getTimestampOfLastSync() >= syncTimeInterval))) {
+    if (syncBytesInterval > 0 && (partitionConsumptionState.getProcessedRecordSizeSinceLastSync() >= syncBytesInterval)) {
       recordsProcessedAboveSyncIntervalThreshold = true;
       syncOffset(topic, partitionConsumptionState);
     }
@@ -937,7 +932,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     offsetRecord.setDatabaseInfo(dbCheckpointingInfo);
     storageMetadataService.put(this.topic, partition, offsetRecord);
     ps.resetProcessedRecordSizeSinceLastSync();
-    ps.resetTimestampOfLastSync();
   }
 
   public void setLastDrainerException(Exception e) {
@@ -1044,6 +1038,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
          * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
          */
         StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partition, false, partitionConsumptionState);
+
+        /**
+         * Update the transactional/deferred mode of the partition.
+         */
+        partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
+
         /**
          * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
          */

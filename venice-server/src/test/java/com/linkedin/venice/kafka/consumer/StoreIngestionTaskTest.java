@@ -147,8 +147,6 @@ public class StoreIngestionTaskTest {
   private Optional<HybridStoreConfig> hybridStoreConfig;
   private long databaseSyncBytesIntervalForTransactionalMode = 1;
   private long databaseSyncBytesIntervalForDeferredWriteMode = 2;
-  private long databaseSyncTimeIntervalForTransactionalMode = TimeUnit.MINUTES.toMillis(10);
-  private long databaseSyncTimeIntervalForDeferredWriteMode = TimeUnit.MINUTES.toMillis(20);
 
   private static final String storeNameWithoutVersionInfo = "TestTopic";
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -331,8 +329,6 @@ public class StoreIngestionTaskTest {
     doReturn(EMPTY_POLL_SLEEP_MS).when(storeConfig).getKafkaEmptyPollSleepMs();
     doReturn(databaseSyncBytesIntervalForTransactionalMode).when(storeConfig).getDatabaseSyncBytesIntervalForTransactionalMode();
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig).getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    doReturn(databaseSyncTimeIntervalForTransactionalMode).when(storeConfig).getDatabaseSyncTimeIntervalForTransactionalMode();
-    doReturn(databaseSyncTimeIntervalForDeferredWriteMode).when(storeConfig).getDatabaseSyncTimeIntervalForDeferredWriteMode();
     doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
 
     storeIngestionTaskUnderTest =
@@ -483,9 +479,6 @@ public class StoreIngestionTaskTest {
     doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
     doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-    databaseSyncTimeIntervalForTransactionalMode = TimeUnit.MINUTES.toMillis(5); // set a big number
-    databaseSyncTimeIntervalForDeferredWriteMode = TimeUnit.MINUTES.toMillis(10); // set a big number
-
     runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
@@ -521,9 +514,6 @@ public class StoreIngestionTaskTest {
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-
-    databaseSyncTimeIntervalForTransactionalMode = TimeUnit.MINUTES.toMillis(5); // set a big number
-    databaseSyncTimeIntervalForDeferredWriteMode = TimeUnit.MINUTES.toMillis(10); // set a big number
 
     //runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
@@ -1077,8 +1067,6 @@ public class StoreIngestionTaskTest {
       throws Exception {
     // Do not persist every message.
     databaseSyncBytesIntervalForTransactionalMode = 1000;
-    databaseSyncTimeIntervalForTransactionalMode = TimeUnit.MINUTES.toMillis(5); // set a big number
-    databaseSyncTimeIntervalForDeferredWriteMode = TimeUnit.MINUTES.toMillis(10); // set a big number
     List<Long> offsets = new ArrayList<>();
     offsets.add(5l);
     try {

@@ -103,10 +103,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
 
-  private final long databaseSyncTimeIntervalForTransactionalMode;
-
-  private final long databaseSyncTimeIntervalForDeferredWriteMode;
-
   private final double diskFullThreshold;
 
   private final int partitionGracefulDropDelaySeconds;
@@ -159,8 +155,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     fairStorageExecutionQueue = serverProperties.getBoolean(SERVER_FAIR_STORAGE_EXECUTION_QUEUE, false);
     databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
-    databaseSyncTimeIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_TIME_INTERNAL_FOR_TRANSACTIONAL_MODE, TimeUnit.MINUTES.toMillis(1)); // 1 minutes
-    databaseSyncTimeIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_TIME_INTERNAL_FOR_DEFERRED_WRITE_MODE, TimeUnit.MINUTES.toMillis(1)); // 1 minutes
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.90);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
     storageLeakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 6 * 60)); // 6 hours by default
@@ -254,14 +248,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDatabaseSyncBytesIntervalForDeferredWriteMode() {
     return databaseSyncBytesIntervalForDeferredWriteMode;
-  }
-
-  public long getDatabaseSyncTimeIntervalForTransactionalMode() {
-    return databaseSyncTimeIntervalForTransactionalMode;
-  }
-
-  public long getDatabaseSyncTimeIntervalForDeferredWriteMode() {
-    return databaseSyncTimeIntervalForDeferredWriteMode;
   }
 
   public double getDiskFullThreshold(){
