@@ -230,7 +230,8 @@ public class RouterServer extends AbstractVeniceService {
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository, boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
-    zkClient = new ZkClient(config.getZkConnection());
+    zkClient = new ZkClient(config.getZkConnection(), ZkClient.DEFAULT_SESSION_TIMEOUT,
+        ZkClient.DEFAULT_CONNECTION_TIMEOUT);
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "router-zk-client"));
 
     this.adapter = new HelixAdapterSerializer();

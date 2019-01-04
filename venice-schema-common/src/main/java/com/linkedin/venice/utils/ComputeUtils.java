@@ -69,6 +69,9 @@ public class ComputeUtils {
    * @return a string that doesn't contain any illegal character
    */
   public static String removeAvroIllegalCharacter(String name) {
+    if (null == name) {
+      throw new NullPointerException("The name parameter must be specified");
+    }
     Matcher m = VALID_AVRO_NAME_PATTERN.matcher(name);
     if (m.matches()) {
       return name;

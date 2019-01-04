@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -239,7 +240,7 @@ public class TestHelixRoutingDataRepository {
     newMaster.disconnect();
   }
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testNodeChanged()
       throws InterruptedException {
     manager.disconnect();
