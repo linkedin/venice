@@ -44,6 +44,30 @@
                         "doc": "The field name used to store the calculated result"
                       }
                     ]
+                  },
+                  {
+                    "name": "CosineSimilarity",
+                    "type": "record",
+                    "fields": [
+                      {
+                        "name": "field",
+                        "type": "string",
+                        "doc": "The field in the original value record, which will used to execute cosine-similarity calculation"
+                      },
+                      {
+                        "name": "cosSimilarityParam",
+                        "type": {
+                          "type": "array",
+                          "items": "float"
+                        },
+                        "doc": "The passed feature vector, which will be used to execute cosine-similarity calculation against the field in the original value record"
+                      },
+                      {
+                        "name": "resultFieldName",
+                        "type": "string",
+                        "doc": "The field name used to store the calculated result"
+                      }
+                    ]
                   }
                 ]
               }
