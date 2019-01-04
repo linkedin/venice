@@ -4,8 +4,10 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.WatchedEvent;
 import org.testng.Assert;
@@ -30,35 +32,59 @@ public class TestZkClientStatusStats {
 
   @Test
   public void testStatsCanUpdateZkStatus() {
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_disconnection_times.Count").value(), 0d);
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_status.Gauge").value(), -1d);
-
-    zkStats.handleStateChanged(KeeperState.Disconnected);
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_disconnection_times.Count").value(), 1d);
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_status.Gauge").value(), 0d);
-
-    zkStats.handleStateChanged(KeeperState.SyncConnected);
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_status.Gauge").value(), 3d);
+    long reconnectionLatency = 1;
+    testState(0, 0, 0, Double.NaN, KeeperState.Unknown);
+    changeAndTestState(1, 0, 0, Double.NaN, KeeperState.Disconnected);
+    Utils.sleep(reconnectionLatency);
+    changeAndTestState(1, 1, 0, reconnectionLatency, KeeperState.SyncConnected);
+    changeAndTestState(1, 1, 1, reconnectionLatency, KeeperState.Expired);
   }
 
   @Test
   public void testZkClientCanUpdateStatus() {
-    ZkServerWrapper zkServer = ServiceFactory.getZkServer();
-    ZkClient zkClient = new ZkClient(zkServer.getAddress());
-    zkClient.waitUntilConnected(5000, TimeUnit.MILLISECONDS);
-    zkClient.subscribeStateChanges(zkStats);
+    ZkServerWrapper zkServer = null;
+    ZkClient zkClient = null;
+    try {
+      zkServer = ServiceFactory.getZkServer();
+      zkClient = new ZkClient(zkServer.getAddress());
+      long zkConnectionTimeout = 5000;
+      Assert.assertTrue(zkClient.waitUntilConnected(zkConnectionTimeout, TimeUnit.MILLISECONDS),
+          "ZK did not connect within " + zkConnectionTimeout + " ms.");
+      zkClient.subscribeStateChanges(zkStats);
 
-    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_disconnection_times.Count").value(), 0d);
+      testState(0, 0, 0, Double.NaN, KeeperState.Unknown);
 
-    zkClient.process(new WatchedEvent(null, KeeperState.Disconnected, null));
-    zkClient.process(new WatchedEvent(null, KeeperState.SyncConnected, null));
-    TestUtils.waitForNonDeterministicAssertion(10000, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(reporter.query("." + clientName + "--zk_client_disconnection_times.Count").value(), 1d);
-      Assert.assertEquals(reporter.query("." + clientName + "--zk_client_status.Gauge").value(), 3d);
+      zkClient.process(new WatchedEvent(null, KeeperState.Disconnected, null));
+      zkClient.process(new WatchedEvent(null, KeeperState.SyncConnected, null));
+      TestUtils.waitForNonDeterministicAssertion(10000, TimeUnit.MILLISECONDS, () -> {
+        testState(1, 1, 0, 0, KeeperState.SyncConnected);
+      });
+    } finally {
+      if (zkClient != null) {
+        zkClient.close();
+      }
+      IOUtils.closeQuietly(zkServer);
+    }
+  }
 
-    });
+  private void changeAndTestState(double expectedDisconnectedCount, double expectedSyncConnectedCount,
+      double expectedExpiredCount, double minimumExpectedReconnectionLatency, KeeperState newState) {
+    zkStats.handleStateChanged(newState);
+    testState(expectedDisconnectedCount, expectedSyncConnectedCount, expectedExpiredCount, minimumExpectedReconnectionLatency, newState);
+  }
 
-    zkClient.close();
-    zkServer.close();
+  private void testState(double expectedDisconnectedCount, double expectedSyncConnectedCount,
+      double expectedExpiredCount, double minimumExpectedReconnectionLatency, KeeperState newState) {
+    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_Disconnected.Count").value(), expectedDisconnectedCount);
+    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_SyncConnected.Count").value(), expectedSyncConnectedCount);
+    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_Expired.Count").value(), expectedExpiredCount);
+    Assert.assertEquals(reporter.query("." + clientName + "--zk_client_status.Gauge").value(), (double) newState.getIntValue());
+    double reconnectionLatency = reporter.query("." + clientName + "--zk_client_reconnection_latency.Avg").value();
+    if (Double.isNaN(minimumExpectedReconnectionLatency)) {
+      Assert.assertEquals(reconnectionLatency, minimumExpectedReconnectionLatency);
+    } else {
+      Assert.assertTrue(reconnectionLatency >= minimumExpectedReconnectionLatency,
+          "Reconnection latency expected to be at least " + minimumExpectedReconnectionLatency + " but was " + reconnectionLatency);
+    }
   }
 }

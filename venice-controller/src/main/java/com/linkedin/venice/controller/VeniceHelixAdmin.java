@@ -52,7 +52,9 @@ import java.util.*;
 
 import java.util.concurrent.ConcurrentHashMap;
 
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
@@ -63,6 +65,7 @@ import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.manager.zk.ZNRecordSerializer;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
@@ -157,8 +160,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
         this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
 
-        // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
-        this.admin = new ZKHelixAdmin(multiClusterConfigs.getZkAddress());
+        // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
+        ZkClient zkClientForHelixAdmin = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
+            ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        zkClientForHelixAdmin.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client-for-helix-admin"));
+        /**
+         * N.B.: The following setup steps are necessary when using the {@link ZKHelixAdmin} constructor which takes
+         * in an external {@link ZkClient}.
+         *
+         * {@link ZkClient#setZkSerializer(ZkSerializer)} is necessary, otherwise Helix will throw:
+         *
+         * org.I0Itec.zkclient.exception.ZkMarshallingError: java.io.NotSerializableException: org.apache.helix.ZNRecord
+         */
+        zkClientForHelixAdmin.setZkSerializer(new ZNRecordSerializer());
+        if (!zkClientForHelixAdmin.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {
+            throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
+        }
+        this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
             ZkClient.DEFAULT_CONNECTION_TIMEOUT);
@@ -2018,8 +2036,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         boolean isClusterCreated = admin.addCluster(controllerClusterName, false);
         if(isClusterCreated == false) {
-            logger.info("Cluster  " + controllerClusterName + " Creation returned false. ");
-            return;
+            /**
+             * N.B.: {@link HelixAdmin#addCluster(String, boolean)} has a somewhat quirky implementation:
+             *
+             * When it returns true, it does not necessarily mean the cluster is fully created, because it
+             * short-circuits the rest of its work if it sees the top-level znode is present.
+             *
+             * When it returns false, it means the cluster is either not created at all or is only partially
+             * created.
+             *
+             * Therefore, when calling this function twice in a row, it is possible that the first invocation
+             * may do a portion of the setup work, and then fail on a subsequent step (thus returning false);
+             * and that the second invocation would short-circuit when seeing that the initial portion of the
+             * work is done (thus returning true). In this case, however, the cluster is actually not created.
+             *
+             * Because the function swallows any errors (though still logs them, thankfully) and only returns
+             * a boolean, it is impossible to catch the specific exception that prevented the first invocation
+             * from working, hence why our own logs instruct the operator to look for previous Helix logs for
+             * the details...
+             *
+             * In the main code, I (FGV) believe we don't retry the #addCluster() call, so we should not fall
+             * in the scenario where this returns true and we mistakenly think the cluster exists. This does
+             * happen in the integration test suite, however, which retries service creation several times
+             * if it gets any exception.
+             *
+             * In any case, if we call this function twice and progress past this code block, another Helix
+             * function below, {@link HelixAdmin#setConfig(HelixConfigScope, Map)}, fails with the following
+             * symptoms:
+             *
+             * org.apache.helix.HelixException: fail to set config. cluster: venice-controllers is NOT setup.
+             *
+             * Thus, if you see this, it is actually because {@link HelixAdmin#addCluster(String, boolean)}
+             * returned true even though the Helix cluster is only partially setup.
+             */
+            throw new VeniceException("admin.addCluster() for '" + controllerClusterName + "' returned false. "
+                + "Look for previous errors logged by Helix for more details...");
         }
         HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
             forCluster(controllerClusterName).build();
@@ -2027,6 +2078,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
         // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
         helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
+        /**
+         * This {@link HelixAdmin#setConfig(HelixConfigScope, Map)} function will throw a HelixException if
+         * the previous {@link HelixAdmin#addCluster(String, boolean)} call failed silently (details above).
+         */
         admin.setConfig(configScope, helixClusterProperties);
         admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
     }
