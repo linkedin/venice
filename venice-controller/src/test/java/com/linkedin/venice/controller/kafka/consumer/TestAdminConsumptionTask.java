@@ -299,7 +299,7 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
-  public void testConsumeFailExecutionIdStats() throws IOException, InterruptedException {
+  public void testConsumeFailedStats() throws IOException, InterruptedException {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
@@ -320,6 +320,9 @@ public class TestAdminConsumptionTask {
     });
 
     verify(mockStats, timeout(100).atLeastOnce()).setAdminConsumptionFailedOffset(1);
+    verify(mockStats, timeout(100).atLeastOnce()).recordPendingAdminMessagesCount(2D);
+    verify(mockStats, timeout(100).atLeastOnce()).recordStoresWithPendingAdminMessagesCount(1D);
+    verify(mockStats, timeout(100).atLeastOnce()).recordAdminConsumptionCycleDurationMs(anyDouble());
 
     task.close();
     executor.shutdown();

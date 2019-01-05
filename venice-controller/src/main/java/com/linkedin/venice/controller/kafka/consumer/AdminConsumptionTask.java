@@ -3,23 +3,8 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
-import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
-import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
-import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
-import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
-import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
-import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
-import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
-import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
-import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
-import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
@@ -38,6 +23,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -154,7 +140,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.producerTrackerMap = new HashMap<>();
     this.storeAdminOperationsMapWithOffset = new HashMap<>();
     this.problematicStores = new HashMap<>();
-    this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>());
+    this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS,
+        new LinkedBlockingQueue<>(), new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
   }
 
@@ -294,8 +281,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     if (isRunning.get()) {
       if (!tasks.isEmpty()) {
+        int pendingAdminMessagesCount = 0;
+        int storesWithPendingAdminMessagesCount = 0;
+        long adminExecutionTasksInvokeTime = System.currentTimeMillis();
         // Wait for the worker threads to finish processing the internal admin topics.
         List<Future<Void>> results = executorService.invokeAll(tasks, processingCycleTimeoutInMs, TimeUnit.MILLISECONDS);
+        stats.recordAdminConsumptionCycleDurationMs(System.currentTimeMillis() - adminExecutionTasksInvokeTime);
         Map<String, Long> newLastSucceededExecutionIdMap = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
         for (int i = 0; i < results.size(); i++) {
           String storeName = stores.get(i);
@@ -310,6 +301,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               // only mark the store problematic if it didn't make any progress.
               problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getFirst());
               logger.warn("Could not finish processing admin operations for store " + storeName + " in time");
+              pendingAdminMessagesCount += storeAdminOperationsMapWithOffset.get(storeName).size();
+              storesWithPendingAdminMessagesCount++;
             }
           } else {
             try {
@@ -319,6 +312,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               }
             } catch (ExecutionException e) {
               problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getFirst());
+              pendingAdminMessagesCount += storeAdminOperationsMapWithOffset.get(storeName).size();
+              storesWithPendingAdminMessagesCount++;
             }
           }
         }
@@ -362,6 +357,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
         }
         executionIdAccessor.updateLastSucceededExecutionId(clusterName, lastSucceededExecutionId);
+        stats.recordPendingAdminMessagesCount(pendingAdminMessagesCount);
+        stats.recordStoresWithPendingAdminMessagesCount(storesWithPendingAdminMessagesCount);
       } else {
         // in situations when we skipped a blocking message (while delegating) and no other messages are queued up.
         persistLastOffset();
