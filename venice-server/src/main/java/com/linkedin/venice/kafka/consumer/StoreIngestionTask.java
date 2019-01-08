@@ -48,6 +48,7 @@ import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -1419,6 +1420,30 @@ public class StoreIngestionTask implements Runnable, Closeable {
       }
       public int partition() {
         return partitionId;
+      }
+
+      /**
+       * The following {@link #equals(Object)} and {@link #hashCode()} are required to make sure
+       * The following cache map: {@link #cachedLatestOffsets} works correctly.
+       * Otherwise, every {@link #getOffset(String, int)} will invoke a call to Kafka and persist
+       * a new entry in {@link #cachedLatestOffsets}, which is leaking memory.
+       */
+
+      @Override
+      public boolean equals(Object o) {
+        if (this == o) {
+          return true;
+        }
+        if (!(o instanceof TopicAndPartition)) {
+          return false;
+        }
+        TopicAndPartition that = (TopicAndPartition) o;
+        return partitionId == that.partitionId && Objects.equals(topic, that.topic);
+      }
+
+      @Override
+      public int hashCode() {
+        return Objects.hash(topic, partitionId);
       }
     }
     private final TopicManager topicManager;
