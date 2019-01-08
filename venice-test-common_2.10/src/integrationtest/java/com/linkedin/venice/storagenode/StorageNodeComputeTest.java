@@ -20,6 +20,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -122,9 +123,7 @@ public class StorageNodeComputeTest {
         keySet.add(keyPrefix + i);
       }
       keySet.add("unknown_key");
-      Float[] p = new Float[2];
-      p[0] = new Float(100.0);
-      p[1] = new Float(0.1);
+      List<Float> p = Arrays.asList(100.0f, 0.1f);
       Map<String, GenericRecord> computeResult = (Map<String, GenericRecord>) storeClient.compute()
           .project("id")
           .dotProduct("member_feature", p, "member_score")
@@ -136,7 +135,7 @@ public class StorageNodeComputeTest {
         // check projection result
         Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
         // check dotProduct result
-        Assert.assertEquals(entry.getValue().get("member_score"), (double) (p[0] * keyIdx + p[1] * (keyIdx * 10)));
+        Assert.assertEquals(entry.getValue().get("member_score"), (double) (p.get(0) * keyIdx + p.get(1) * (keyIdx * 10)));
       }
     }
   }

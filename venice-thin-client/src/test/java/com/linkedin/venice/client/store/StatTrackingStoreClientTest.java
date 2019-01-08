@@ -16,6 +16,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -217,7 +218,7 @@ public class StatTrackingStoreClientTest {
     keys.add("key2");
   }
 
-  private static final Float[] dotProductParam = new Float[]{0.1f, 0.2f};
+  private static final List<Float> dotProductParam = Arrays.asList(0.1f, 0.2f);
 
   @Test
   public void testCompute() throws ExecutionException, InterruptedException {
