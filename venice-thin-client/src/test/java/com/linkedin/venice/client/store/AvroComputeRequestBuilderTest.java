@@ -3,9 +3,11 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -38,7 +40,8 @@ public class AvroComputeRequestBuilderTest {
   private static final Schema ARRAY_SCHEMA = Schema.parse("{\"type\": \"array\", \"items\": \"float\"}");
 
   private static final Set<String> keys = new HashSet<>();
-  private static final Float[] dotProductParam = new Float[]{1.0f, 2.0f};
+  private static final List<Float> dotProductParam = Arrays.asList(1.0f, 2.0f);
+  private static final List<Float> cosineSimilarityParam = Arrays.asList(3.0f, 4.0f);
 
   @Test
   public void testComputeRequestBuilder() {
@@ -58,11 +61,14 @@ public class AvroComputeRequestBuilderTest {
         .dotProduct("float_array_field1", dotProductParam, "float_array_field1_dot_product_result")
         .dotProduct("float_array_field2", dotProductParam, "float_array_field2_dot_product_result")
         .dotProduct("float_array_field2", dotProductParam, "float_array_field2_another_dot_product_result")
+        .cosineSimilarity("float_array_field1", cosineSimilarityParam, "float_array_field1_cosine_similarity_result")
+        .cosineSimilarity("float_array_field2", cosineSimilarityParam, "float_array_field2_cosine_similarity_result")
+        .cosineSimilarity("float_array_field2", cosineSimilarityParam, "float_array_field2_another_cosine_similarity_result")
         .execute(keys);
 
     verify(mockClient).compute(computeRequestCaptor.capture(), keysCaptor.capture(), resultSchemaCaptor.capture(),
         statsCaptor.capture(), preRequestTimeCaptor.capture());
-    String expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"float_field\",\"type\":\"float\",\"doc\":\"\"},{\"name\":\"record_field\",\"type\":{\"type\":\"record\",\"name\":\"Record1\",\"fields\":[{\"name\":\"nested_field1\",\"type\":\"double\",\"doc\":\"doc for nested field\"}]},\"doc\":\"\"},{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_another_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\",\"default\":{}}]}";
+    String expectedSchema = "{\"type\":\"record\",\"name\":\"testStore_VeniceComputeResult\",\"doc\":\"\",\"fields\":[{\"name\":\"float_field\",\"type\":\"float\",\"doc\":\"\"},{\"name\":\"record_field\",\"type\":{\"type\":\"record\",\"name\":\"Record1\",\"fields\":[{\"name\":\"nested_field1\",\"type\":\"double\",\"doc\":\"doc for nested field\"}]},\"doc\":\"\"},{\"name\":\"int_field\",\"type\":\"int\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_another_dot_product_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field1_cosine_similarity_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_cosine_similarity_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"float_array_field2_another_cosine_similarity_result\",\"type\":\"double\",\"doc\":\"\",\"default\":0},{\"name\":\"__veniceComputationError__\",\"type\":{\"type\":\"map\",\"values\":\"string\"},\"doc\":\"\",\"default\":{}}]}";
     Assert.assertEquals(resultSchemaCaptor.getValue().toString(), expectedSchema);
     Assert.assertEquals(keysCaptor.getValue(), keys);
     Assert.assertFalse(statsCaptor.getValue().isPresent());
@@ -70,7 +76,7 @@ public class AvroComputeRequestBuilderTest {
     ComputeRequestV1 capturedComputeRequest = computeRequestCaptor.getValue();
     Assert.assertNotNull(capturedComputeRequest);
     Assert.assertEquals(capturedComputeRequest.resultSchemaStr.toString(), expectedSchema);
-    Assert.assertEquals(capturedComputeRequest.operations.size(), 3);
+    Assert.assertEquals(capturedComputeRequest.operations.size(), 6);
 
     List<Float> expectedDotProductParam = new ArrayList<>();
     for (Float f : dotProductParam) {
@@ -102,6 +108,37 @@ public class AvroComputeRequestBuilderTest {
     Assert.assertEquals(dotProduct3.field.toString(), "float_array_field2");
     Assert.assertEquals(dotProduct3.resultFieldName.toString(), "float_array_field2_another_dot_product_result");
     Assert.assertEquals(dotProduct3.dotProductParam, expectedDotProductParam);
+
+    List<Float> expectedCosineSimilarityParam = new ArrayList<>();
+    for (Float f : cosineSimilarityParam) {
+      expectedCosineSimilarityParam.add(f);
+    }
+    ComputeOperation computeOperation4 = (ComputeOperation)capturedComputeRequest.operations.get(3);
+    Assert.assertNotNull(computeOperation4);
+    Assert.assertEquals(computeOperation4.operationType, COSINE_SIMILARITY.getValue());
+    CosineSimilarity cosineSimilarity1 = (CosineSimilarity) computeOperation4.operation;
+    Assert.assertNotNull(cosineSimilarity1);
+    Assert.assertEquals(cosineSimilarity1.field.toString(), "float_array_field1");
+    Assert.assertEquals(cosineSimilarity1.resultFieldName.toString(), "float_array_field1_cosine_similarity_result");
+    Assert.assertEquals(cosineSimilarity1.cosSimilarityParam, expectedCosineSimilarityParam);
+
+    ComputeOperation computeOperation5 = (ComputeOperation)capturedComputeRequest.operations.get(4);
+    Assert.assertNotNull(computeOperation5);
+    Assert.assertEquals(computeOperation5.operationType, COSINE_SIMILARITY.getValue());
+    CosineSimilarity cosineSimilarity2 = (CosineSimilarity) computeOperation5.operation;
+    Assert.assertNotNull(cosineSimilarity2);
+    Assert.assertEquals(cosineSimilarity2.field.toString(), "float_array_field2");
+    Assert.assertEquals(cosineSimilarity2.resultFieldName.toString(), "float_array_field2_cosine_similarity_result");
+    Assert.assertEquals(cosineSimilarity2.cosSimilarityParam, expectedCosineSimilarityParam);
+
+    ComputeOperation computeOperation6 = (ComputeOperation)capturedComputeRequest.operations.get(5);
+    Assert.assertNotNull(computeOperation6);
+    Assert.assertEquals(computeOperation6.operationType, COSINE_SIMILARITY.getValue());
+    CosineSimilarity cosineSimilarity3 = (CosineSimilarity) computeOperation6.operation;
+    Assert.assertNotNull(cosineSimilarity3);
+    Assert.assertEquals(cosineSimilarity3.field.toString(), "float_array_field2");
+    Assert.assertEquals(cosineSimilarity3.resultFieldName.toString(), "float_array_field2_another_cosine_similarity_result");
+    Assert.assertEquals(cosineSimilarity3.cosSimilarityParam, expectedCosineSimilarityParam);
   }
 
   @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Only value schema with 'RECORD' type is supported")
@@ -120,12 +157,21 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Unknown dotProduct field.*")
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Unknown DOT_PRODUCT field.*")
   public void testDotProductAgainstUnknownField() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
         mockClient, Optional.empty(), 0);
     computeRequestBuilder.dotProduct("some_unknown_field", dotProductParam, "new_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "Unknown COSINE_SIMILARITY field.*")
+  public void testCosineSimilarityAgainstUnknownField() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.cosineSimilarity("some_unknown_field", cosineSimilarityParam, "new_unknown_field");
     computeRequestBuilder.execute(keys);
   }
 
@@ -138,12 +184,30 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*isn't with 'ARRAY' type")
+  public void testCosineSimilarityAgainstNonFloatArrayField1() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.cosineSimilarity("int_field", cosineSimilarityParam, "new_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
   @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'")
   public void testDotProductAgainstNonFloatArrayField2() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
         mockClient, Optional.empty(), 0);
     computeRequestBuilder.dotProduct("int_array_field2", dotProductParam, "new_unknown_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".*int_array_field2 isn't an 'ARRAY' of 'FLOAT'")
+  public void testCosineSimilarityAgainstNonFloatArrayField2() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.cosineSimilarity("int_array_field2", cosineSimilarityParam, "new_unknown_field");
     computeRequestBuilder.execute(keys);
   }
 
@@ -166,7 +230,16 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DotProduct result field: int_field collides with the fields defined in value schema")
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = ".* __veniceComputationError__ is reserved.*")
+  public void testCosineSimilarityWhileResultFieldUsingReservedFieldName() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.cosineSimilarity("float_array_field1", cosineSimilarityParam, VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME);
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DOT_PRODUCT result field: int_field collides with the fields defined in value schema")
   public void testDotProductWhileResultFieldUsingExistingFieldName() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
@@ -175,13 +248,42 @@ public class AvroComputeRequestBuilderTest {
     computeRequestBuilder.execute(keys);
   }
 
-  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DotProduct result field: same_field_name has been specified more than once")
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: int_field collides with the fields defined in value schema")
+  public void testCosineSimilarityWhileResultFieldUsingExistingFieldName() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.cosineSimilarity("float_array_field1", cosineSimilarityParam, "int_field");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "DOT_PRODUCT result field: same_field_name has been specified more than once")
   public void testDotProductWhileResultFieldUsingSameFieldNameMultipleTimes() {
     AbstractAvroStoreClient mockClient = getMockClient();
     AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
         mockClient, Optional.empty(), 0);
     computeRequestBuilder.dotProduct("float_array_field1", dotProductParam, "same_field_name");
     computeRequestBuilder.dotProduct("float_array_field2", dotProductParam, "same_field_name");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: same_field_name has been specified more than once")
+  public void testCosineSimilarityWhileResultFieldUsingSameFieldNameMultipleTimes() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.cosineSimilarity("float_array_field1", cosineSimilarityParam, "same_field_name");
+    computeRequestBuilder.cosineSimilarity("float_array_field2", cosineSimilarityParam, "same_field_name");
+    computeRequestBuilder.execute(keys);
+  }
+
+  @Test (expectedExceptions = VeniceClientException.class, expectedExceptionsMessageRegExp = "COSINE_SIMILARITY result field: same_field_name has been specified more than once")
+  public void testDifferentOperationsWhileResultFieldUsingSameFieldNameMultipleTimes() {
+    AbstractAvroStoreClient mockClient = getMockClient();
+    AvroComputeRequestBuilder<String> computeRequestBuilder = new AvroComputeRequestBuilder(VALID_RECORD_SCHEMA,
+        mockClient, Optional.empty(), 0);
+    computeRequestBuilder.dotProduct("float_array_field1", dotProductParam, "same_field_name");
+    computeRequestBuilder.cosineSimilarity("float_array_field2", cosineSimilarityParam, "same_field_name");
     computeRequestBuilder.execute(keys);
   }
 

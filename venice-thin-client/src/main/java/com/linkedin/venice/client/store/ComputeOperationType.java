@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
@@ -7,7 +8,8 @@ import java.util.Map;
 
 
 public enum ComputeOperationType {
-  DOT_PRODUCT(0);
+  DOT_PRODUCT(0),
+  COSINE_SIMILARITY(1);
 
   private final int value;
   private static final Map<Integer, ComputeOperationType> OPERATION_TYPE_MAP = getOperationTypeMap();
@@ -19,6 +21,7 @@ public enum ComputeOperationType {
   public Object getNewInstance() {
     switch (valueOf(value)) {
       case DOT_PRODUCT: return new DotProduct();
+      case COSINE_SIMILARITY: return new CosineSimilarity();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }
