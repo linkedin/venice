@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -19,16 +20,31 @@ import org.apache.log4j.Logger;
 
 /**
  * This class is not thread safe because of the internal {@link KafkaConsumer} being used.
+ * backoff
  */
 @NotThreadsafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   private static final Logger logger = Logger.getLogger(ApacheKafkaConsumer.class);
-  private static final int MAX_RETRY_COUNT = 3;
+
+  public static final String CONSUMER_POLL_RETRY_TIMES_CONFIG = "consumer.poll.retry.times";
+  public static final String CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG = "consumer.poll.retry.backoff.ms";
+
+  private static final int CONSUMER_POLL_RETRY_TIMES_DEFAULT = 3;
+  private static final int CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT = 0;
 
   private final Consumer kafkaConsumer;
 
+  private final int consumerPollRetryTimes;
+  private final int consumerPollRetryBackoffMs;
+
   public ApacheKafkaConsumer(Properties props) {
     this.kafkaConsumer = new KafkaConsumer(props);
+
+    VeniceProperties veniceProperties = new VeniceProperties(props);
+    consumerPollRetryTimes = veniceProperties.getInt(CONSUMER_POLL_RETRY_TIMES_CONFIG, CONSUMER_POLL_RETRY_TIMES_DEFAULT);
+    consumerPollRetryBackoffMs = veniceProperties.getInt(CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG, CONSUMER_POLL_RETRY_BACKOFF_MS_DEFAULT);
+    logger.info("Consumer poll retry times: " + consumerPollRetryTimes);
+    logger.info("Consumer poll retry back off in ms: " + consumerPollRetryBackoffMs);
   }
 
   public ApacheKafkaConsumer(VeniceProperties props) {
@@ -102,16 +118,24 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     int attemptCount = 1;
     ConsumerRecords records = ConsumerRecords.empty();
-    while (attemptCount <= MAX_RETRY_COUNT) {
+    while (attemptCount <= consumerPollRetryTimes) {
       try {
         records = kafkaConsumer.poll(timeout);
         break;
       } catch (RetriableException e) {
         logger.warn(
             "Retriable exception thrown when attempting to consume records from kafka, attempt " + attemptCount + "/"
-                + MAX_RETRY_COUNT, e);
-        if (attemptCount == MAX_RETRY_COUNT) {
+                + consumerPollRetryTimes, e);
+        if (attemptCount == consumerPollRetryTimes) {
           throw e;
+        }
+        try {
+          if (consumerPollRetryBackoffMs > 0) {
+            Thread.sleep(consumerPollRetryBackoffMs);
+          }
+        } catch (InterruptedException ie) {
+          // Here will still throw the actual exception thrown by internal consumer to make sure the stacktrace is meaningful.
+          throw new VeniceException("Consumer poll retry back off sleep got interrupted", e);
         }
       } finally {
         attemptCount++;

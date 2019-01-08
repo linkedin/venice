@@ -235,6 +235,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_KAFKA_MAX_POLL_RECORDS = "server.kafka.max.poll.records";
 
+  /**
+   * This config is used to control how many times Kafka consumer would retry polling during ingestion
+   * when hitting {@link org.apache.kafka.common.errors.RetriableException}.
+   */
+  public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
+
+  /**
+   * This config is used to control the backoff time between Kafka consumer poll retries.
+   */
+  public static final String SERVER_KAFKA_POLL_RETRY_BACKOFF_MS = "server.kafka.poll.backoff.ms";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
