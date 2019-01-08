@@ -117,6 +117,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int kafkaMaxPollRecords;
 
+  private final int kafkaPollRetryTimes;
+
+  private final int kafkaPollRetryBackoffMs;
+
   /**
    * The number of threads being used to serve compute request.
    */
@@ -163,6 +167,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     //June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys per second
     nodeCapacityInRcu = serverProperties.getLong(SERVER_NODE_CAPACITY_RCU, 50000);
     kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
+    kafkaPollRetryTimes = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
+    kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
   }
 
   public int getListenerPort() {
@@ -276,6 +282,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getKafkaMaxPollRecords() {
     return kafkaMaxPollRecords;
+  }
+
+  public int getKafkaPollRetryTimes() {
+    return kafkaPollRetryTimes;
+  }
+
+  public int getKafkaPollRetryBackoffMs() {
+    return kafkaPollRetryBackoffMs;
   }
 
   public BlockingQueue<Runnable> getExecutionQueue() {
