@@ -3,7 +3,6 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
-import java.util.Collections;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
@@ -138,9 +137,19 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
   public void testReduceWithWriterException() throws IOException {
     AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
       @Override
+      public void close(boolean shouldEndAllSegments) throws IOException {
+        // no-op
+      }
+
+      @Override
       public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback) {
         callback.onCompletion(null, new VeniceException("Fake exception"));
         return null;
+      }
+
+      @Override
+      public void flush() {
+        // no-op
       }
 
       @Override
@@ -164,5 +173,45 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
     // The following 'reduce' operation will throw exception
     reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
+  }
+
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = "KafkaPushJob failed with exception.*")
+  public void testClosingReducerWithWriterException() throws IOException {
+    AbstractVeniceWriter exceptionWriter = new AbstractVeniceWriter(TOPIC_NAME) {
+      @Override
+      public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback) {
+        callback.onCompletion(null, new VeniceException("Some writer exception"));
+        return null;
+      }
+
+      @Override
+      public void flush() {
+        // no-op
+      }
+
+      @Override
+      public void close(boolean shouldCloseAllSegments) {
+        Assert.assertFalse(shouldCloseAllSegments, "A writer exception is thrown, should not close all segments");
+      }
+
+      @Override
+      public void close() throws IOException {
+        // no-op
+      }
+    };
+    VeniceReducer reducer = new VeniceReducer();
+    reducer.setVeniceWriter(exceptionWriter);
+    reducer.configure(setupJobConf());
+    final String keyFieldValue = "test_key";
+    final String valueFieldValue = "test_value";
+    BytesWritable keyWritable = new BytesWritable(keyFieldValue.getBytes());
+    BytesWritable valueWritable = new BytesWritable(valueFieldValue.getBytes());
+    ArrayList<BytesWritable> values = new ArrayList();
+    values.add(valueWritable);
+    OutputCollector mockCollector = mock(OutputCollector.class);
+    Reporter mockReporter = mock(Reporter.class);
+
+    reducer.reduce(keyWritable, values.iterator(), mockCollector, mockReporter);
+    reducer.close();
   }
 }
