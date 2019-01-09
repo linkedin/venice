@@ -19,7 +19,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -178,7 +177,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     LOGGER.info("Kafka message progress before flushing and closing producer:");
     logMessageProgress();
     if (null != veniceWriter) {
-      veniceWriter.close();
+      veniceWriter.flush();
+      boolean shouldEndAllSegments = messageErrored.get() == 0 && messageSent == messageCompleted.get() &&
+          previousReporter.getProgress() == 1.0;
+      veniceWriter.close(shouldEndAllSegments);
     }
     maybePropagateCallbackException();
     LOGGER.info("Kafka message progress after flushing and closing producer:");

@@ -19,7 +19,6 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -29,14 +28,10 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.errors.RecordBatchTooLargeException;
-import org.apache.kafka.common.errors.RecordTooLargeException;
 import org.apache.log4j.Logger;
 
 
@@ -150,14 +145,29 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
         () -> new ApacheKafkaProducer(props));
   }
 
+  /**
+   * Close the {@link VeniceWriter}
+   * @param shouldEndAllSegments whether to end the segments and send END_OF_SEGMENT control message.
+   */
+  @Override
+  public void close(boolean shouldEndAllSegments) {
+    //If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+    // will not do anything (it's idempotent). Segments should not be ended if there are still data missing.
+    if (shouldEndAllSegments) {
+      endAllSegments(true);
+    }
+    producer.close(closeTimeOut);
+  }
 
   public void close() {
-    /**
-     * If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
-     * will not do anything (it's idempotent).
-     */
-    endAllSegments(true);
-    producer.close(closeTimeOut);
+    close(true);
+  }
+
+  /**
+   * Call flush on the internal {@link KafkaProducerWrapper}.
+   */
+  public void flush() {
+    producer.flush();
   }
 
   public String toString() {

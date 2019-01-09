@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -32,5 +33,9 @@ public abstract class AbstractVeniceWriter <K, V> implements Closeable {
 
   public Map<String, String > getProducerMetrics() { return Collections.emptyMap(); }
 
+  public abstract void close(boolean shouldEndAllSegments) throws IOException;
+
   public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback);
+
+  public abstract void flush();
 }
