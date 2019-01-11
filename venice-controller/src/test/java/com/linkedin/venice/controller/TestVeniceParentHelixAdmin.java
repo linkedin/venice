@@ -213,7 +213,7 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> incrementalPushEnabled,
         Optional<Boolean> storeMigration,
         Optional<Boolean> writeComputationEnabled,
-        Optional<Boolean> computationEnabled){
+        Optional<Boolean> readComputationEnabled){
       doReturn(true).when(store).isHybrid();
     }
 
