@@ -20,7 +20,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.client.store.ComputeOperationType.*;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
 import static org.mockito.Mockito.*;
 
 

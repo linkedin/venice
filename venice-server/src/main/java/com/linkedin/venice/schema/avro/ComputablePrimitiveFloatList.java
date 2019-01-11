@@ -98,7 +98,7 @@ public class ComputablePrimitiveFloatList extends AbstractList<Float>
     }
     float l2norm = 0.0f;
     for (int i = 0; i < size(); i++) {
-      l2norm += get(i) * get(i);
+      l2norm += getPrimitive(i) * getPrimitive(i);
     }
     this.l2norm = l2norm;
     l2normComputed = true;

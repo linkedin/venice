@@ -133,9 +133,11 @@ public class StorageNodeComputeTest {
       }
       keySet.add("unknown_key");
       List<Float> p = Arrays.asList(100.0f, 0.1f);
+      List<Float> cosP = Arrays.asList(123.4f, 5.6f);
       Map<String, GenericRecord> computeResult = (Map<String, GenericRecord>) storeClient.compute()
           .project("id")
           .dotProduct("member_feature", p, "member_score")
+          .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
           .execute(keySet)
           .get();
       Assert.assertEquals(computeResult.size(), 10);
@@ -145,6 +147,13 @@ public class StorageNodeComputeTest {
         Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
         // check dotProduct result
         Assert.assertEquals(entry.getValue().get("member_score"), (double) (p.get(0) * keyIdx + p.get(1) * (keyIdx * 10)));
+
+        // check cosine similarity result
+        double dotProductResult = (double) (cosP.get(0) * (float)keyIdx + cosP.get(1) * (float)(keyIdx * 10));
+        double valueVectorMagnitude = Math.sqrt((double) ((float)keyIdx * (float)keyIdx + ((float)keyIdx * 10.0f) * ((float)keyIdx * 10.0f)));
+        double parameterVectorMagnitude = Math.sqrt((double) (cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+        double expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
+        Assert.assertEquals((double)entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001d);
       }
     }
 

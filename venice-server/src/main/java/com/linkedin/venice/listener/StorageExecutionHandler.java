@@ -3,9 +3,11 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compute.CosineSimilarityOperator;
+import com.linkedin.venice.compute.DotProductOperator;
+import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
-import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
@@ -88,6 +90,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(false);
 
   private final Map<Utf8, Schema> computeResultSchemaCache;
+
+  private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>(){
+    {
+      put(ComputeOperationType.DOT_PRODUCT.getValue(), new DotProductOperator());
+      put(ComputeOperationType.COSINE_SIMILARITY.getValue(), new CosineSimilarityOperator());
+    }
+  };
 
   public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
       @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepo,
@@ -256,8 +265,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
 
-    long queryStartTimeInNS = System.nanoTime();
-
     // deserialize all value to the latest schema
     Schema latestValueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();
     ComputeRequestV1 computeRequest = request.getComputeRequest();
@@ -277,8 +284,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
 
     // The following metrics will get incremented for each record processed in computeResult()
-    responseWrapper.setDeserializeLatency(0.0);
-    responseWrapper.setSerializeLatency(0.0);
+    responseWrapper.setReadComputeDeserializationLatency(0.0);
+    responseWrapper.setReadComputeSerializationLatency(0.0);
+    responseWrapper.setReadComputeLatency(0.0);
 
     // Reuse the same value record and result record instances for all values
     GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
@@ -302,8 +310,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         responseWrapper.addRecord(record);
       }
     }
-
-    responseWrapper.setComputeLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
 
     // Offset data
     Set<Integer> partitionIdSet = new HashSet<>();
@@ -382,7 +388,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       try {
         decompressedData = CompressorFactory.getCompressor(response.getCompressionStrategy())
             .decompress(
-                record.value,            // data
+                record.value.array(),    // data
                 record.value.position(), // offset
                 record.value.remaining() // length
             );
@@ -403,42 +409,15 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // reuse the same Generic Record instance for all keys
     valueRecord = deserializer.deserialize(valueRecord, decoder);
-    response.addDeserializeLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
+    response.addReadComputeDeserializationLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
 
+    long computeStartTimeInNS = System.nanoTime();
     Map<String, String> computationErrorMap = new HashMap<>();
 
     // go through all operation
     for (Object operation : operations) {
       ComputeOperation op = (ComputeOperation) operation;
-      switch (ComputeOperationType.valueOf(op)) {
-        case DOT_PRODUCT:
-          DotProduct dotProduct = (DotProduct) op.operation;
-          try {
-            ComputablePrimitiveFloatList valueVector = (ComputablePrimitiveFloatList) valueRecord.get(dotProduct.field.toString());
-            ComputablePrimitiveFloatList dotProductParam = (ComputablePrimitiveFloatList) dotProduct.dotProductParam;
-
-            if (valueVector.size() != dotProductParam.size()) {
-              computationErrorMap.put(dotProduct.resultFieldName.toString(),
-                  "Failed to compute because size of dot product parameter is: " + dotProductParam.size() +
-                      " while the size of value vector(" + dotProduct.field.toString() + ") is: " + valueVector.size());
-              continue;
-            }
-
-            // client will make sure that the result field is double type
-            double dotProductResult = 0.0;
-            for (int i = 0; i < dotProductParam.size(); i++) {
-              dotProductResult += dotProductParam.getPrimitive(i) * valueVector.getPrimitive(i);
-            }
-
-            // write to result record
-            resultRecord.put(dotProduct.resultFieldName.toString(), dotProductResult);
-          } catch (Exception e) {
-            computationErrorMap.put(dotProduct.resultFieldName.toString(), e.getMessage());
-          }
-          break;
-        default:
-          throw new VeniceException("Compute operation type " + op.operationType + " not supported");
-      }
+      computeOperators.get(op.operationType).compute(op, valueRecord, resultRecord, computationErrorMap);
     }
 
     // fill the empty field in result schema
@@ -452,6 +431,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         }
       }
     }
+    response.addReadComputeLatency(LatencyUtils.getLatencyInMS(computeStartTimeInNS));
 
     // create a response record
     ComputeResponseRecordV1 responseRecord = new ComputeResponseRecordV1();
@@ -461,7 +441,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     long serializeStartTimeInNS = System.nanoTime();
     RecordSerializer<GenericRecord> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
     responseRecord.value = ByteBuffer.wrap(serializer.serialize(resultRecord));
-    response.addSerializeLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
+    response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;
   }

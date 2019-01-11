@@ -6,6 +6,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.Arrays;
@@ -24,7 +25,7 @@ import org.apache.avro.generic.GenericRecord;
 import org.codehaus.jackson.node.JsonNodeFactory;
 
 import static com.linkedin.venice.VeniceConstants.*;
-import static com.linkedin.venice.client.store.ComputeOperationType.*;
+import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType.*;
 
 
 /**

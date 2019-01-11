@@ -20,7 +20,7 @@ public class NoopCompressor extends VeniceCompressor {
   }
 
   @Override
-  public ByteBuffer decompress(ByteBuffer data, int offset, int length) throws IOException {
-    return ByteBuffer.wrap(data.array(), offset, length);
+  public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
+    return ByteBuffer.wrap(data, offset, length);
   }
 }

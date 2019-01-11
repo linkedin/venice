@@ -82,18 +82,18 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordRequestPartCount(partCount);
   }
 
-  public void recordComputeLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
-    totalStats.recordComputeLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStats(storeName).recordComputeLatency(latency, assembledMultiChunkLargeValue);
+  public void recordReadComputeLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
+    totalStats.recordReadComputeLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordReadComputeLatency(latency, assembledMultiChunkLargeValue);
   }
 
-  public void recordDeserializeLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
-    totalStats.recordDeserializeLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStats(storeName).recordDeserializeLatency(latency, assembledMultiChunkLargeValue);
+  public void recordReadComputeDeserializationLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
+    totalStats.recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordReadComputeDeserializationLatency(latency, assembledMultiChunkLargeValue);
   }
 
-  public void recordSerializeLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
-    totalStats.recordSerializeLatency(latency, assembledMultiChunkLargeValue);
-    getStoreStats(storeName).recordSerializeLatency(latency, assembledMultiChunkLargeValue);
+  public void recordReadComputeSerializationLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
+    totalStats.recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
   }
 }

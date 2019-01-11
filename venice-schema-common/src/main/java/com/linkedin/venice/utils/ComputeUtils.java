@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -36,6 +37,13 @@ public class ComputeUtils {
             throw new VeniceException("The field " + dotProduct.field.toString() + " being operated on is not in value schema");
           }
           operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), Schema.Type.DOUBLE));
+          break;
+        case COSINE_SIMILARITY:
+          CosineSimilarity cosineSimilarity = (CosineSimilarity)operation.operation;
+          if (!valueFieldStrings.contains(cosineSimilarity.field.toString())) {
+            throw new VeniceException("The field " + cosineSimilarity.field.toString() + " being operated on is not in value schema");
+          }
+          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(), Schema.Type.DOUBLE));
           break;
         default:
           throw new VeniceException("Compute operation type " + operation.operationType + " not supported");
