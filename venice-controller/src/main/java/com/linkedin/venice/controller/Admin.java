@@ -204,7 +204,7 @@ public interface Admin {
                      Optional<Boolean> incrementalPushEnabled,
                      Optional<Boolean> storeMigration,
                      Optional<Boolean> writeComputationEnabled,
-                     Optional<Boolean> computationEnabled);
+                     Optional<Boolean> readComputationEnabled);
 
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
