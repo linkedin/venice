@@ -25,9 +25,9 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
   private int successRequestKeyCount = -1;
-  private double computeLatency = -1;
-  private double deserializeLatency = -1;
-  private double serializeLatency = -1;
+  private double readComputeLatency = -1;
+  private double readComputeDeserializationLatency = -1;
+  private double readComputeSerializationLatency = -1;
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
@@ -116,16 +116,16 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.bdbQueryLatency = latency;
   }
 
-  public void setComputeLatency(double latency) {
-    this.computeLatency = latency;
+  public void setReadComputeLatency(double latency) {
+    this.readComputeLatency = latency;
   }
 
-  public void setDeserializeLatency(double latency) {
-    this.deserializeLatency = latency;
+  public void setReadComputeDeserializationLatency(double latency) {
+    this.readComputeDeserializationLatency = latency;
   }
 
-  public void setSerializeLatency(double latency) {
-    this.serializeLatency = latency;
+  public void setReadComputeSerializationLatency(double latency) {
+    this.readComputeSerializationLatency = latency;
   }
 
   public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
@@ -165,9 +165,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       requestKeyCount = -1;
       successRequestKeyCount = -1;
       multiChunkLargeValueCount = -1;
-      computeLatency = -1;
-      deserializeLatency = -1;
-      serializeLatency = -1;
+      readComputeLatency = -1;
+      readComputeDeserializationLatency = -1;
+      readComputeSerializationLatency = -1;
 
       /**
        * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
@@ -253,14 +253,14 @@ public class StatsHandler extends ChannelDuplexHandler {
       if (requestPartCount > 0) {
         currentStats.recordRequestPartCount(storeName, requestPartCount);
       }
-      if (computeLatency >= 0) {
-        currentStats.recordComputeLatency(storeName, computeLatency, isAssembledMultiChunkLargeValue());
+      if (readComputeLatency >= 0) {
+        currentStats.recordReadComputeLatency(storeName, readComputeLatency, isAssembledMultiChunkLargeValue());
       }
-      if (deserializeLatency >= 0) {
-        currentStats.recordDeserializeLatency(storeName, deserializeLatency, isAssembledMultiChunkLargeValue());
+      if (readComputeDeserializationLatency >= 0) {
+        currentStats.recordReadComputeDeserializationLatency(storeName, readComputeDeserializationLatency, isAssembledMultiChunkLargeValue());
       }
-      if (serializeLatency >= 0) {
-        currentStats.recordSerializeLatency(storeName, serializeLatency, isAssembledMultiChunkLargeValue());
+      if (readComputeSerializationLatency >= 0) {
+        currentStats.recordReadComputeSerializationLatency(storeName, readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
       }
     }
   }

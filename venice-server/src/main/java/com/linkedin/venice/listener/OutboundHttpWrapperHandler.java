@@ -47,9 +47,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         statsHandler.setStorageExecutionHandlerSubmissionWaitTime(obj.getStorageExecutionHandlerSubmissionWaitTime());
         statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
         statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
-        statsHandler.setComputeLatency(obj.getComputeLatency());
-        statsHandler.setDeserializeLatency(obj.getDeserializeLatency());
-        statsHandler.setSerializeLatency(obj.getSerializeLatency());
+        statsHandler.setReadComputeLatency(obj.getReadComputeLatency());
+        statsHandler.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
+        statsHandler.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
         compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();

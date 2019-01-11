@@ -25,12 +25,12 @@ public class GzipCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer decompress(ByteBuffer data) throws IOException {
-    return decompress(data, data.position(), data.remaining());
+    return decompress(data.array(), data.position(), data.remaining());
   }
 
   @Override
-  public ByteBuffer decompress(ByteBuffer data, int offset, int length) throws IOException {
-    GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(data.array(), offset, length));
+  public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
+    GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(data, offset, length));
     ByteBuffer decompressed = ByteBuffer.wrap(IOUtils.toByteArray(gis));
     gis.close();
     return decompressed;

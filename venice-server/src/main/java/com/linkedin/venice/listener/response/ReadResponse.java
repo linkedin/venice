@@ -10,9 +10,9 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  */
 public abstract class ReadResponse {
   private double bdbQueryLatency = -1;
-  private double computeLatency = -1;
-  private double deserializeLatency = -1;
-  private double serializeLatency = -1;
+  private double readComputeLatency = -1;
+  private double readComputeDeserializationLatency = -1;
+  private double readComputeSerializationLatency = -1;
   private double storageExecutionSubmissionWaitTime;
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
@@ -33,36 +33,40 @@ public abstract class ReadResponse {
     return this.bdbQueryLatency;
   }
 
-  public void setComputeLatency(double latency) {
-    this.computeLatency = latency;
+  public void setReadComputeLatency(double latency) {
+    this.readComputeLatency = latency;
   }
 
-  public double getComputeLatency() {
-    return this.computeLatency;
+  public void addReadComputeLatency(double latency) {
+    this.readComputeLatency += latency;
   }
 
-  public void setDeserializeLatency(double latency) {
-    this.deserializeLatency = latency;
+  public double getReadComputeLatency() {
+    return this.readComputeLatency;
   }
 
-  public void addDeserializeLatency(double latency) {
-    this.deserializeLatency += latency;
+  public void setReadComputeDeserializationLatency(double latency) {
+    this.readComputeDeserializationLatency = latency;
   }
 
-  public double getDeserializeLatency() {
-    return this.deserializeLatency;
+  public void addReadComputeDeserializationLatency(double latency) {
+    this.readComputeDeserializationLatency += latency;
   }
 
-  public void setSerializeLatency(double latency) {
-    this.serializeLatency = latency;
+  public double getReadComputeDeserializationLatency() {
+    return this.readComputeDeserializationLatency;
   }
 
-  public void addSerializeLatency(double latency) {
-    this.serializeLatency += latency;
+  public void setReadComputeSerializationLatency(double latency) {
+    this.readComputeSerializationLatency = latency;
   }
 
-  public double getSerializeLatency() {
-    return this.serializeLatency;
+  public void addReadComputeSerializationLatency(double latency) {
+    this.readComputeSerializationLatency += latency;
+  }
+
+  public double getReadComputeSerializationLatency() {
+    return this.readComputeSerializationLatency;
   }
 
   public double getStorageExecutionHandlerSubmissionWaitTime() {

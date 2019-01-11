@@ -213,14 +213,16 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    * This function is used to retrieve key schema for the given store.
    * If store doesn't exist, this function will return null;
    * If key schema for the given store doesn't exist, will return null;
-   * Otherwise, it will return a cloned version of key schema;
+   * Otherwise, it will return the key schema;
+   *
+   * Caller shouldn't modify the returned SchemeEntry
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    *
    * @param storeName
    * @return
    *    null, if key schema for the given store doesn't exist;
-   *    cloned key schema entry, otherwise;
+   *    key schema entry, otherwise;
    */
   @Override
   public SchemaEntry getKeySchema(String storeName) {
@@ -238,11 +240,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
         throw new VeniceNoStoreException(storeName);
       }
       SchemaEntry keySchema = schemaData.getKeySchema();
-      if (null == keySchema) {
-        return null;
-      }
-      // Return cloned version since the cached schema should not be changed by caller
-      return keySchema.clone();
+
+      return keySchema;
     } finally {
       schemaLock.readLock().unlock();
     }
@@ -251,21 +250,20 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   /**
    * This function is used to retrieve the value schema for the given store and value schema id.
    *
+   * Caller shouldn't modify the returned SchemeEntry
+   *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    *
    * @param storeName
    * @param id
    * @return
    *    null, if the schema doesn't exist;
-   *    cloned value schema entry, otherwise;
+   *    value schema entry, otherwise;
    */
   @Override
   public SchemaEntry getValueSchema(String storeName, int id) {
     SchemaEntry valueSchema = getValueSchemaInternally(storeName, id);
-    if (null == valueSchema) {
-      return null;
-    }
-    return valueSchema.clone();
+    return valueSchema;
   }
 
   private SchemaEntry getValueSchemaInternally(String storeName, int id) {
@@ -343,11 +341,12 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   /**
    * This function is used to retrieve all the value schemas for the given store.
    *
+   * Caller shouldn't modify the returned SchemeEntry list.
+   *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    *
    * @param storeName
-   * @return
-   *    cloned list
+   * @return value schema list
    */
   @Override
   public Collection<SchemaEntry> getValueSchemas(String storeName) {
@@ -364,22 +363,17 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
-      return schemaData.cloneValueSchemas();
+      return schemaData.getValueSchemas();
     } finally {
       schemaLock.readLock().unlock();
     }
   }
 
+  /**
+   * Caller shouldn't modify the returned SchemeEntry
+   */
   @Override
   public SchemaEntry getLatestValueSchema(String storeName) {
-    SchemaEntry valueSchema = getLatestValueSchemaInternally(storeName);
-    if (null == valueSchema) {
-      return null;
-    }
-    return valueSchema.clone();
-  }
-
-  private SchemaEntry getLatestValueSchemaInternally(String storeName) {
     schemaLock.readLock().lock();
     try {
       /**

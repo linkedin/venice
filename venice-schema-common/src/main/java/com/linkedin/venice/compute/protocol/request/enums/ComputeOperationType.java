@@ -1,23 +1,39 @@
 package com.linkedin.venice.compute.protocol.request.enums;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
+import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.apache.avro.generic.GenericRecord;
 
 
 public enum ComputeOperationType {
-  DOT_PRODUCT(0);
+  DOT_PRODUCT(0),
+  COSINE_SIMILARITY(1);
 
   private final int value;
-  private static final Map<Integer, ComputeOperationType> COMPUTE_OPERATION_TYPE_MAP = getOperationTypeMap();
+  private static final Map<Integer, ComputeOperationType> OPERATION_TYPE_MAP = getOperationTypeMap();
 
   ComputeOperationType(int value) {
     this.value = value;
   }
 
-  public static ComputeOperationType valueOf(int value) {
-    ComputeOperationType type = COMPUTE_OPERATION_TYPE_MAP.get(value);
+  public Object getNewInstance() {
+    switch (valueOf(value)) {
+      case DOT_PRODUCT:
+        return new DotProduct();
+      case COSINE_SIMILARITY:
+        return new CosineSimilarity();
+      default:
+        throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
+    }
+  }
+
+  private static ComputeOperationType valueOf(int value) {
+    ComputeOperationType type = OPERATION_TYPE_MAP.get(value);
     if (type == null) {
       throw new VeniceException("Invalid compute operation type: " + value);
     }
@@ -35,4 +51,9 @@ public enum ComputeOperationType {
     }
     return intToTypeMap;
   }
+
+  public int getValue() {
+    return value;
+  }
+
 }
