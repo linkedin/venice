@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -96,6 +97,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String PUSH_JOB_STATUS_STORE_OWNER = "venice-internal";
   private static final int PUSH_JOB_STATUS_STORE_PARTITION_NUM = 32;
+  private static final int VERSION_ID_UNSET = -1;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
   public static final int MAX_PUSH_STATUS_PER_STORE_TO_KEEP = 10;
@@ -108,6 +110,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Lock lock = new ReentrantLock();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
+  private final boolean addVersionViaAdminProtocol;
   private long lastTopicCreationTime = -1;
   private Time timer = new SystemTime();
 
@@ -167,7 +170,7 @@ public class VeniceParentHelixAdmin implements Admin {
     this.maxErroredTopicNumToKeep = multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
     this.offlinePushAccessor =
         new ParentHelixOfflinePushAccessor(veniceHelixAdmin.getZkClient(), veniceHelixAdmin.getAdapterSerializer());
-
+    this.addVersionViaAdminProtocol = multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled();
     // Start store migration monitor background thread
     startStoreMigrationMonitor();
   }
@@ -288,9 +291,10 @@ public class VeniceParentHelixAdmin implements Admin {
         }
       }
       if (store.getVersions().isEmpty()) {
-        int numberOfPartitions = PUSH_JOB_STATUS_STORE_PARTITION_NUM;
         int replicationFactor = getReplicationFactor(clusterName, storeName);
-        Version version = incrementVersion(clusterName, storeName, numberOfPartitions, replicationFactor);
+        Version version =
+            incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
+                PUSH_JOB_STATUS_STORE_PARTITION_NUM, replicationFactor, true);
         writeEndOfPush(clusterName, storeName, version.getNumber(), true);
         store = getStore(clusterName, storeName);
         if (store.getVersions().isEmpty()) {
@@ -405,7 +409,6 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.STORE_CREATION.getValue();
       message.payloadUnion = storeCreation;
-
       sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {
       releaseLock();
@@ -473,15 +476,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       storeRepo.unLock();
     }
-  }
-
-  //TODO deprecate this method in the Admin interface in favor of the one that accepts a push ID
-  @Override
-  public Version incrementVersion(String clusterName,
-      String storeName,
-      int numberOfPartition,
-      int replicationFactor) {
-    return incrementVersion(clusterName, storeName, Version.guidBasedDummyPushId(), numberOfPartition, replicationFactor);
   }
 
   /**
@@ -650,6 +644,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   // TODO: this function isn't able to block parallel push in theory since it is not synchronized.
+  // TODO: this function should be removed, keeping for now as a record on how we used to use mayThrottleTopicCreation and createOfflinePushStatus
   public Version incrementVersion(String clusterName,
                                   String storeName,
                                   String pushJobId,
@@ -704,6 +699,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  // TODO throttle for topic creation may no longer be needed, if so remove this method.
   /**
    * This method will throttle the topic creation operation. During each time window, it only allow ONE topic to be created.
    * Other topic creation request will be blocked until time goes to the next time window.
@@ -729,6 +725,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
+   * TODO: Remove the old behavior and refactor once add version via the admin protocol is stable.
    * TODO: refactor so that this method and the counterpart in {@link VeniceHelixAdmin} should have same behavior
    */
   @Override
@@ -736,28 +733,52 @@ public class VeniceParentHelixAdmin implements Admin {
       int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
       boolean sendStartOfPush) {
 
-    Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
-    if (currentPush.isPresent()) {
-      int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPush.get());
+    Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
+    if (currentPushTopic.isPresent()) {
+      int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
       Optional<Version> version = getStore(clusterName, storeName).getVersion(currentPushVersion);
       if (!version.isPresent()) {
-        throw new VeniceException("There should be a corresponding version with the ongoing push: " + currentPush);
+        throw new VeniceException("A corresponding version should exist with the ongoing push with topic "
+            + currentPushTopic);
       }
-      String existingPushId = version.get().getPushJobId();
-      if (!existingPushId.equals(pushJobId)) {
+      String existingPushJobId = version.get().getPushJobId();
+      if (!existingPushJobId.equals(pushJobId)) {
         throw new VeniceException(
-            "Topic " + currentPush + " already exists for store " + storeName + " and does not match pushJobId "
-                + pushJobId + ".  This topic represents a different ongoing push initiated from " + existingPushId
-                + " which must be killed or let complete before starting another push.");
+            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
+                + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
+                + " is found and it must be terminated before another push can be started.");
       }
     }
-
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
-    Version newVersion =
-        veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions,
-            replicationFactor, false, isIncrementalPush, sendStartOfPush);
+    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions,
+        replicationFactor, false, isIncrementalPush, sendStartOfPush);;
+    if (addVersionViaAdminProtocol && !isIncrementalPush) {
+      acquireLock(clusterName);
+      try {
+        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion.getNumber(), numberOfPartitions);
+      } finally {
+        releaseLock();
+      }
+    }
     cleanupHistoricalVersions(clusterName, storeName);
+
     return newVersion;
+  }
+
+  protected void sendAddVersionAdminMessage(String clusterName, String storeName, String pushJobId, int versionNum,
+      int numberOfPartitions) {
+    AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
+    addVersion.clusterName = clusterName;
+    addVersion.storeName = storeName;
+    addVersion.pushJobId = pushJobId;
+    addVersion.versionNum = versionNum;
+    addVersion.numberOfPartitions = numberOfPartitions;
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.ADD_VERSION.getValue();
+    message.payloadUnion = addVersion;
+
+    sendAdminMessageAndWaitForConsumed(clusterName, message);
   }
 
   @Override

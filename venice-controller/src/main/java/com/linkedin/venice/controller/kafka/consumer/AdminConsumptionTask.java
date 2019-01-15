@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -46,6 +47,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.helix.HelixAdmin;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -66,7 +68,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final String topic;
   private final String consumerTaskId;
   private final OffsetManager offsetManager;
-  private final Admin admin;
+  private final VeniceHelixAdmin admin;
   private final boolean isParentController;
   private final AtomicBoolean isRunning;
   private final AdminOperationSerializer deserializer;
@@ -111,7 +113,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
-      Admin admin,
+      VeniceHelixAdmin admin,
       OffsetManager offsetManager,
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
@@ -143,6 +145,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(), new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
+    this.stats.setAdminConsumptionFailedOffset(failingOffset);
   }
 
   @Override
@@ -515,11 +518,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return skip;
   }
 
-  public long getLastSucceededExecutionId() {
+  long getLastSucceededExecutionId() {
     return lastSucceededExecutionId;
   }
 
-  public long getFailingOffset() {
+  long getFailingOffset() {
     return failingOffset;
   }
 

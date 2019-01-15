@@ -145,26 +145,6 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * Use {@link #requestTopicForWrites(String, long, PushType, String, boolean)} instead
-   * @param storeName
-   * @param storeSize
-   * @return
-   */
-  @Deprecated //Marked deprecated, but we should keep using this for H2V until we can do push ID based idempotent topic requests
-  public VersionCreationResponse createNewStoreVersion(String storeName, long storeSize) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(STORE_SIZE, Long.toString(storeSize));
-      String responseJson = postRequest(ControllerRoute.CREATE_VERSION.getPath(), params);
-      return mapper.readValue(responseJson, VersionCreationResponse.class);
-    } catch (Exception e){
-      return handleError(
-          new VeniceException("Error creating version for store: " + storeName, e), new VersionCreationResponse());
-    }
-  }
-
-  /**
    * Request a topic for the VeniceWriter to write into.  A new H2V push, or a Samza bulk processing job should both use
    * this method.  The push job ID needs to be unique for this push.  Multiple requests with the same pushJobId are
    * idempotent and will return the same topic.
@@ -231,16 +211,6 @@ public class ControllerClient implements Closeable {
       return mapper.readValue(responseJson, VersionCreationResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error generating empty push for store: " + storeName, e), new VersionCreationResponse());
-    }
-  }
-
-  @Deprecated
-  public static VersionCreationResponse createNewStoreVersion(String urlsToFindMasterController, String clusterName, String storeName, long storeSize) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.createNewStoreVersion(storeName, storeSize);
-    } catch (Exception e){
-      return handleError(
-          new VeniceException("Error creating version for store: " + storeName, e), new VersionCreationResponse());
     }
   }
 

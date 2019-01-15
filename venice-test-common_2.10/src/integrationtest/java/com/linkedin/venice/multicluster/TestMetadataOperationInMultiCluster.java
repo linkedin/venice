@@ -1,5 +1,6 @@
 package com.linkedin.venice.multicluster;
 
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -10,6 +11,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.HashMap;
@@ -60,20 +62,26 @@ public class TestMetadataOperationInMultiCluster {
     Assert.assertTrue(storeResponse.isError(), "Should not create the duplicated store even in another cluster.");
 
     // Create another store in this cluster
-    String sceondStoreName = "testCreateStoreAndVersionForMultiCluster_1";
-    storeResponse = secondControllerClient.createNewStore(sceondStoreName, "test", keySchema, valSchema);
+    String secondStoreName = "testCreateStoreAndVersionForMultiCluster_1";
+    storeResponse = secondControllerClient.createNewStore(secondStoreName, "test", keySchema, valSchema);
     Assert.assertFalse(storeResponse.isError(), "Should create a new store.");
 
-    VersionCreationResponse versionCreationResponse = controllerClient.createNewStoreVersion(storeName, 1000);
+    VersionCreationResponse versionCreationResponse =
+        controllerClient.requestTopicForWrites(storeName, 1000, ControllerApiConstants.PushType.BATCH,
+            Version.guidBasedDummyPushId(), false);
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
-    versionCreationResponse = secondControllerClient.createNewStoreVersion(sceondStoreName, 1000);
+    versionCreationResponse =
+        controllerClient.requestTopicForWrites(secondStoreName, 1000, ControllerApiConstants.PushType.BATCH,
+        Version.guidBasedDummyPushId(), false);
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
     // Create version in wrong cluster
-    versionCreationResponse = controllerClient.createNewStoreVersion(sceondStoreName, 1000);
+    versionCreationResponse =
+        controllerClient.requestTopicForWrites(secondStoreName, 1000, ControllerApiConstants.PushType.BATCH,
+        Version.guidBasedDummyPushId(), false);
     Assert.assertTrue(versionCreationResponse.isError());
 
     multiClusterWrapper.close();

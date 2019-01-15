@@ -27,48 +27,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 public class CreateVersion {
   private static final Logger logger = Logger.getLogger(CreateVersion.class);
 
-  public static Route createVersionRoute(Admin admin) {
-    return (request, response) -> {
-      VersionCreationResponse responseObject = new VersionCreationResponse();
-      try {
-        AdminSparkServer.validateParams(request, CREATE_VERSION.getParams(), admin);
-        String clusterName = request.queryParams(CLUSTER);
-        String storeName = request.queryParams(NAME);
-        responseObject.setCluster(clusterName);
-        responseObject.setName(storeName);
-
-        // TODO we should verify the data size at first. If it exceeds the quota, controller should reject this request.
-        // TODO And also we should use quota to calculate partition count to avoid this case that data size of first
-        // push is very small but grow dramatically because quota of this store is very large.
-        // Store size in Bytes
-        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
-        int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
-        int replicaFactor = admin.getReplicationFactor(clusterName, storeName);
-        Version version = admin.incrementVersion(clusterName, storeName, partitionNum, replicaFactor);
-        // The actual partition number could be different from the one calculated here,
-        // since Venice is not using dynamic partition number across different versions.
-        responseObject.setPartitions(admin.getStore(clusterName, storeName).getPartitionCount());
-        responseObject.setReplicas(replicaFactor);
-        responseObject.setVersion(version.getNumber());
-        responseObject.setKafkaTopic(version.kafkaTopicName());
-        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
-        responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers(isSSL));
-        responseObject.setEnableSSL(isSSL);
-        responseObject.setCompressionStrategy(version.getCompressionStrategy());
-      } catch (Throwable e) {
-        // TODO use the VeniceRouterHandler.handle
-        if (e.getMessage() != null) {
-          responseObject.setError(e.getMessage());
-        } else {
-          responseObject.setError(e.getClass().getName());
-        }
-        AdminSparkServer.handleError(e, request, response);
-      }
-      response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
-    };
-  }
-
   /**
    * Instead of asking Venice to create a version, pushes should ask venice which topic to write into.
    * The logic below includes the ability to respond with an existing topic for the same push, allowing requests
@@ -219,9 +177,8 @@ public class CreateVersion {
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        //Temporary fix until we can make #incrementVersionIdempotent work from the parent controller for versions beyond the first
-        //Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor, true);
-        Version version = admin.incrementVersion(clusterName, storeName, partitionNum, replicationFactor); //TEMP
+        Version version =
+            admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor, true);
         int versionNumber = version.getNumber();
 
         responseObject.setCluster(clusterName);

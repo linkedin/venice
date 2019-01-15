@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -10,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -455,7 +457,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
     NewStoreResponse response = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
     // Create new version
-    VersionCreationResponse newVersion = controllerClient.createNewStoreVersion(storeName, storeSize);
+    VersionCreationResponse newVersion = controllerClient.requestTopicForWrites(storeName, storeSize,
+        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false);
     if (newVersion.isError()) {
       throw new VeniceException(newVersion.getError());
     }
@@ -530,8 +533,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VersionCreationResponse getNewVersion(String url, String storeName, int dataSize) {
+    ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
     VersionCreationResponse newVersion =
-        ControllerClient.createNewStoreVersion(url, clusterName, storeName, dataSize);
+        controllerClient.requestTopicForWrites(storeName, dataSize, ControllerApiConstants.PushType.BATCH,
+            Version.guidBasedDummyPushId(), false);
     if (newVersion.isError()) {
       throw new VeniceException(newVersion.getError());
     }

@@ -681,4 +681,14 @@ public class ConfigKeys {
    * The job identifier as part of a map reduce job id.
    */
   public static final String PUSH_JOB_MAP_REDUCE_JOB_ID = "push.job.map.reduce.job.id";
+
+  /**
+   * Flag to indicate whether to perform add version and start of ingestion via the admin protocol.
+   */
+  public static final String CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL = "controller.add.version.via.admin.protocol";
+
+  /**
+   * Flag to indicate whether to perform add version and start of ingestion via the topic monitor.
+   */
+  public static final String CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR = "controller.add.version.via.topic.monitor";
 }

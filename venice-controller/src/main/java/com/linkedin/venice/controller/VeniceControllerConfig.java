@@ -48,6 +48,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String pushJobStatusStoreName;
   private final String pushJobStatusStoreClusterName;
   private final int pushJobStatusValueSchemaId;
+  private final boolean addVersionViaAdminProtocol;
+  private final boolean addVersionViaTopicMonitor;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -102,6 +104,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.pushJobStatusStoreName = props.getString(PUSH_JOB_STATUS_STORE_NAME, "");
     this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
     this.pushJobStatusValueSchemaId = props.getInt(PUSH_JOB_STATUS_VALUE_SCHEMA_ID, 1);
+    this.addVersionViaAdminProtocol = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false);
+    this.addVersionViaTopicMonitor = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, true);
   }
 
   public int getAdminPort() {
@@ -211,6 +215,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public String getPushJobStatusStoreClusterName() { return pushJobStatusStoreClusterName; }
 
   public int getPushJobStatusValueSchemaId() {return pushJobStatusValueSchemaId; }
+
+  public boolean isAddVersionViaAdminProtocolEnabled() { return addVersionViaAdminProtocol; }
+
+  public boolean isAddVersionViaTopicMonitorEnabled() { return addVersionViaTopicMonitor; }
 
   /**
    * @param clusterPros list of child controller uris

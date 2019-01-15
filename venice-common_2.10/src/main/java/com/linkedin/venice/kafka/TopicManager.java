@@ -380,7 +380,7 @@ public class TopicManager implements Closeable {
 
     List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
     if (partitionInfoList == null) {
-      logger.error("getConsumer().partitionsFor() returned null for topic: " + topic);
+      logger.warn("getConsumer().partitionsFor() returned null for topic: " + topic);
       return false;
     }
 
