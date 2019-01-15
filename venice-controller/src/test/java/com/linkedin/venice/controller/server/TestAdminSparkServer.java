@@ -459,7 +459,8 @@ public class TestAdminSparkServer {
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
     String storeName = "controllerClientCanDeleteAllVersion";
     parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
-    parentController.getVeniceAdmin().incrementVersion(cluster, storeName, 1, 1);
+    parentController.getVeniceAdmin().incrementVersionIdempotent(cluster, storeName, Version.guidBasedDummyPushId(),
+        1, 1, true);
 
     ControllerClient controllerClient = new ControllerClient(cluster, parentController.getControllerUrl());
     controllerClient.enableStoreReads(storeName, false);

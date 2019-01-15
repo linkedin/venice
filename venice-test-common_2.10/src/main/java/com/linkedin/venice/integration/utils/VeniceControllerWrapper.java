@@ -92,7 +92,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 2000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
-            .put(PERSISTENCE_TYPE, PersistenceType.BDB);
+            .put(PERSISTENCE_TYPE, PersistenceType.BDB)
+            // Moving from topic monitor to admin protocol for add version and starting ingestion
+            .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
+            .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false);
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());

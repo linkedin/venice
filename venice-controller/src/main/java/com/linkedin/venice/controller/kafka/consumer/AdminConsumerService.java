@@ -92,6 +92,10 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
+  public long getFailingOffset() {
+    return consumerTask.getFailingOffset();
+  }
+
   private KafkaConsumerWrapper createKafkaConsumer(String clusterName) {
     Properties kafkaConsumerProperties = new Properties();
     /**

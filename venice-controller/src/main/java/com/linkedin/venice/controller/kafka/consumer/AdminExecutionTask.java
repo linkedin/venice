@@ -3,8 +3,10 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
@@ -47,7 +49,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final String storeName;
   private long lastSucceededExecutionId;
   private final Queue<Pair<Long, AdminOperation>> internalTopic;
-  private final Admin admin;
+  private final VeniceHelixAdmin admin;
   private ExecutionIdAccessor executionIdAccessor;
   private final boolean isParentController;
 
@@ -57,7 +59,7 @@ public class AdminExecutionTask implements Callable<Void> {
       String storeName,
       long lastSucceededExecutionId,
       Queue<Pair<Long, AdminOperation>> internalTopic,
-      Admin admin,
+      VeniceHelixAdmin admin,
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController) {
     this.logger = logger;
@@ -97,7 +99,8 @@ public class AdminExecutionTask implements Callable<Void> {
        * {@link #lastSucceededExecutionId} is monotonically increasing, and being persisted to Zookeeper after processing
        * each message, so it is safe to filter out all the processed messages.
        */
-      logger.warn("Execution id of message: " + adminOperation + " is smaller than last succeeded execution id: "
+      logger.warn("Execution id of message: " + adminOperation
+          + " for store " + storeName + " is smaller than last succeeded execution id: "
           + lastSucceededExecutionId + ", so will skip it");
       return;
     }
@@ -149,6 +152,9 @@ public class AdminExecutionTask implements Callable<Void> {
         break;
       case ABORT_MIGRATION:
         handleAbortMigration((AbortMigration) adminOperation.payloadUnion);
+        break;
+      case ADD_VERSION:
+        handleAddVersion((AddVersion) adminOperation.payloadUnion);
         break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
@@ -349,5 +355,19 @@ public class AdminExecutionTask implements Callable<Void> {
     String storeName = message.storeName.toString();
 
     admin.abortMigration(srcClusterName, destClusterName, storeName);
+  }
+
+  private void handleAddVersion(AddVersion message) {
+    if (isParentController) {
+      // No op, parent controller only needs to verify this message was produced successfully.
+      return;
+    }
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    String pushJobId = message.pushJobId.toString();
+    int versionNumber = message.versionNum;
+    int numberOfPartitions = message.numberOfPartitions;
+
+    admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions);
   }
 }

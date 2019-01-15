@@ -86,12 +86,6 @@ public interface Admin {
         int replicationFactor);
 
     /**
-     * Use {@link #incrementVersionIdempotent(String, String, String, int, int, boolean)} instead
-     */
-    @Deprecated
-    Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicationFactor);
-
-    /**
      * The implementation of this method must take no action and return the same Version object if the same parameters
      * are provided on a subsequent invocation.  The expected use is multiple distributed components of a single push
      * (with a single jobPushId) that each need to query Venice for the Version (and Kafka topic) to write into.  The

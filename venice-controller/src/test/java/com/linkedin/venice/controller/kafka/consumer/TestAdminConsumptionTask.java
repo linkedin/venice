@@ -4,6 +4,7 @@ import com.google.common.collect.Sets;
 import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
@@ -95,7 +96,7 @@ public class TestAdminConsumptionTask {
 
   // Objects will be used by each test method
   private KafkaConsumerWrapper mockKafkaConsumer;
-  private Admin admin;
+  private VeniceHelixAdmin admin;
   private OffsetManager offsetManager;
   private ExecutorService executor;
   private InMemoryKafkaBroker inMemoryKafkaBroker;
@@ -114,7 +115,7 @@ public class TestAdminConsumptionTask {
 
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
 
-    admin = mock(Admin.class);
+    admin = mock(VeniceHelixAdmin.class);
     // By default, current controller is the master controller
     doReturn(true).when(admin).isMasterController(clusterName);
 

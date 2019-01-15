@@ -7,17 +7,21 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class AddVersion extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AddVersion\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"versionNum\",\"type\":\"int\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AddVersion\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"versionNum\",\"type\":\"int\"},{\"name\":\"numberOfPartitions\",\"type\":\"int\"}]}");
   public java.lang.CharSequence clusterName;
   public java.lang.CharSequence storeName;
+  public java.lang.CharSequence pushJobId;
   public int versionNum;
+  public int numberOfPartitions;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return clusterName;
     case 1: return storeName;
-    case 2: return versionNum;
+    case 2: return pushJobId;
+    case 3: return versionNum;
+    case 4: return numberOfPartitions;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -27,7 +31,9 @@ public class AddVersion extends org.apache.avro.specific.SpecificRecordBase impl
     switch (field$) {
     case 0: clusterName = (java.lang.CharSequence)value$; break;
     case 1: storeName = (java.lang.CharSequence)value$; break;
-    case 2: versionNum = (java.lang.Integer)value$; break;
+    case 2: pushJobId = (java.lang.CharSequence)value$; break;
+    case 3: versionNum = (java.lang.Integer)value$; break;
+    case 4: numberOfPartitions = (java.lang.Integer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

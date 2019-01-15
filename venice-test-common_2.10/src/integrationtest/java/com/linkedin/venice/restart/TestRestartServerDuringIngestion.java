@@ -4,6 +4,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -116,7 +117,9 @@ public abstract class TestRestartServerDuringIngestion {
     // Create a new version
     ControllerClient controllerClient =
         new ControllerClient(cluster.getClusterName(), veniceUrl);
-    VersionCreationResponse versionCreationResponse = controllerClient.createNewStoreVersion(storeName, 1024 * 1024);
+    VersionCreationResponse versionCreationResponse =
+        controllerClient.requestTopicForWrites(storeName, 1024 * 1024, ControllerApiConstants.PushType.BATCH,
+            Version.guidBasedDummyPushId(), false);
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     Properties veniceWriterProperties = new Properties();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
@@ -70,10 +71,14 @@ public class VeniceController {
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
     if (!multiClusterConfigs.isParent())
     {
-      topicMonitor =
-          new TopicMonitor(controllerService.getVeniceHelixAdmin(), multiClusterConfigs.getTopicMonitorPollIntervalMs(),
-              controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory(),
-              new TopicMonitorStats(metricsRepository, multiClusterConfigs.getControllerName() + ".topic_monitor"));
+      if (multiClusterConfigs.getCommonConfig().isAddVersionViaTopicMonitorEnabled()) {
+        topicMonitor = new TopicMonitor(controllerService.getVeniceHelixAdmin(), multiClusterConfigs.getTopicMonitorPollIntervalMs(),
+            controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory(),
+            new TopicMonitorStats(metricsRepository, multiClusterConfigs.getControllerName() + ".topic_monitor"));
+      } else {
+        logger.info("Topic monitor will not be initialized for this controller because it has been disabled by the"
+            + ConfigKeys.CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR + " config");
+      }
     }
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);

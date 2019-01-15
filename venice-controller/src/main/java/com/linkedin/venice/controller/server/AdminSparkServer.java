@@ -93,11 +93,6 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
     });
 
-    httpService.get(CREATE_VERSION.getPath(), (request, response) -> {
-      response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Create New Store", CREATE_VERSION.getPath(), CREATE_VERSION.getParams ());
-    });
-
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
       return writeMenu("Set Active Version", SET_VERSION.getPath(), SET_VERSION.getParams());
@@ -112,7 +107,6 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), JobRoutes.killOfflinePushJob(admin));
     httpService.post(SKIP_ADMIN.getPath(), SkipAdminRoute.getRoute(admin));
 
-    httpService.post(CREATE_VERSION.getPath(), CreateVersion.createVersionRoute(admin));
     httpService.post(EMPTY_PUSH.getPath(), CreateVersion.emptyPush(admin));
     httpService.post(END_OF_PUSH.getPath(), CreateVersion.writeEndOfPush(admin));
     httpService.post(REQUEST_TOPIC.getPath(), CreateVersion.requestTopicForPushing(admin));

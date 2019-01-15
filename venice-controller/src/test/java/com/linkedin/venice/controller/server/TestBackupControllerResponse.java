@@ -20,7 +20,7 @@ import org.apache.http.message.BasicNameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
 public class TestBackupControllerResponse {
@@ -43,7 +43,7 @@ public class TestBackupControllerResponse {
     // Find the url for slave controller
     String controllerUrl = controller1.isMasterController(clusterName)?controller2.getControllerUrl():controller1.getControllerUrl();
 
-    final HttpPost post = new HttpPost(controllerUrl + CREATE_VERSION.getPath());
+    final HttpPost post = new HttpPost(controllerUrl + REQUEST_TOPIC.getPath());
     List<NameValuePair> params = new ArrayList<NameValuePair>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     post.setEntity(new UrlEncodedFormEntity(params));
