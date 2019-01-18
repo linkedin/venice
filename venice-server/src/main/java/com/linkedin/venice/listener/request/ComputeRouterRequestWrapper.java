@@ -5,6 +5,7 @@ import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.schema.avro.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -47,7 +48,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     httpRequest.content().readBytes(requestContent);
 
     RecordDeserializer<ComputeRequestV1> computeRequestDeserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class);
+        ComputableSerializerDeserializerFactory.getComputableAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class);
     BinaryDecoder decoder =
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
     ComputeRequestV1 computeRequest = computeRequestDeserializer.deserialize(decoder);

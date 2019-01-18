@@ -1,6 +1,8 @@
 package com.linkedin.venice.serializer;
 
+import java.util.function.Function;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -16,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SerializerDeserializerFactory {
   // Class works as the key of caching map for SerializerDeserializerFactory
-  private static class SchemaPairAndClassContainer {
+  protected static class SchemaPairAndClassContainer {
     public Schema writer;
     public Schema reader;
     public Class c;
@@ -121,9 +123,17 @@ public class SerializerDeserializerFactory {
   }
 
   public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c, AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl) {
+    return getAvroSpecificDeserializerInternal(writer, c,
+        container -> avroSpecificDeserializerMap.computeIfAbsent(container,
+            k -> new AvroSpecificDeserializer<V>(container.writer, container.c, multiGetEnvelopeIterableImpl)));
+  }
+
+  protected static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializerInternal(
+      Schema writer,
+      Class<V> c,
+      Function<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>> deserializerGenerator) {
     Schema reader = SpecificData.get().getSchema(c);
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, c);
-    return (AvroSpecificDeserializer<V>) avroSpecificDeserializerMap.computeIfAbsent(
-        container, key -> new AvroSpecificDeserializer<V>(key.writer, key.c, multiGetEnvelopeIterableImpl));
+    return (AvroSpecificDeserializer<V>) deserializerGenerator.apply(container);
   }
 }

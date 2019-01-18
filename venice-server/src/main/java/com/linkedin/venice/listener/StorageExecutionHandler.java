@@ -24,6 +24,8 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.schema.avro.ComputablePrimitiveFloatList;
+import com.linkedin.venice.schema.avro.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
@@ -369,7 +371,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // deserialize raw byte value to GenericRecord
     long deserializeStartTimeInNS = System.nanoTime();
     RecordDeserializer<GenericRecord> deserializer =
-        SerializerDeserializerFactory.getAvroGenericDeserializer(
+        ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(
             this.schemaRepo.getValueSchema(storeName, record.schemaId).getSchema(), // writer schema
             latestValueSchema                                                       // reader schema
         );
@@ -412,19 +414,20 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         case DOT_PRODUCT:
           DotProduct dotProduct = (DotProduct) op.operation;
           try {
-            List<Float> valueVector = (List) valueRecord.get(dotProduct.field.toString());
+            ComputablePrimitiveFloatList valueVector = (ComputablePrimitiveFloatList) valueRecord.get(dotProduct.field.toString());
+            ComputablePrimitiveFloatList dotProductParam = (ComputablePrimitiveFloatList) dotProduct.dotProductParam;
 
-            if (valueVector.size() != dotProduct.dotProductParam.size()) {
+            if (valueVector.size() != dotProductParam.size()) {
               computationErrorMap.put(dotProduct.resultFieldName.toString(),
-                  "Failed to compute because size of dot product parameter is: " + dotProduct.dotProductParam.size() +
+                  "Failed to compute because size of dot product parameter is: " + dotProductParam.size() +
                       " while the size of value vector(" + dotProduct.field.toString() + ") is: " + valueVector.size());
               continue;
             }
 
             // client will make sure that the result field is double type
             double dotProductResult = 0.0;
-            for (int i = 0; i < dotProduct.dotProductParam.size(); i++) {
-              dotProductResult += dotProduct.dotProductParam.get(i) * valueVector.get(i);
+            for (int i = 0; i < dotProductParam.size(); i++) {
+              dotProductResult += dotProductParam.getPrimitive(i) * valueVector.getPrimitive(i);
             }
 
             // write to result record
