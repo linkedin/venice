@@ -133,16 +133,15 @@ class IngestionNotificationDispatcher {
             return false;
           }
 
-          logger.info("pcs: " + pcs);
           if (!isCurrentVersion.getAsBoolean() && // The currently-active version should always report progress.
               (!pcs.isStarted() ||
                   pcs.isEndOfPushReceived() ||
                   pcs.isErrorReported())) {
-            logger.warn("Can not report progress for Topic:" + topic +
-                ", Partition:" + pcs.getPartition() +
-                ", offset:" + pcs.getOffsetRecord().getOffset() +
-                ", because it has not been started or already been terminated." +
-                " partitionConsumptionState: " + pcs.toString());
+            if (logger.isDebugEnabled()) {
+              logger.debug("Can not report progress for topic '" + topic +
+                  "', because it has not been started or has already been terminated. partitionConsumptionState: " +
+                  pcs.toString());
+            }
             return false;
           }
 

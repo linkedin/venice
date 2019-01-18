@@ -1174,7 +1174,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
       }
     } catch (DuplicateDataException e) {
       versionedDIVStats.recordDuplicateMsg(storeNameWithoutVersionInfo, storeVersion);
-      logger.info(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
+      if (logger.isDebugEnabled()) {
+        logger.debug(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
+      }
     } catch (PersistenceFailureException ex) {
       if (partitionConsumptionStateMap.containsKey(consumerRecord.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
