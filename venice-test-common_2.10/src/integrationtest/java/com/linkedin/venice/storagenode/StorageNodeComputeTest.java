@@ -1,5 +1,6 @@
 package com.linkedin.venice.storagenode;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -13,18 +14,22 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -62,8 +67,12 @@ public class StorageNodeComputeTest {
 
   @BeforeClass
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    boolean enableSSL = false;
-    veniceCluster = ServiceFactory.getVeniceCluster(enableSSL);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, false, false);
+    // To trigger long-tail retry
+    Properties routerProperties = new Properties();
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_BATCH_GET_THRESHOLD_MS, "1-:1");
+    veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
 
     String keySchema = "\"string\"";
@@ -138,6 +147,18 @@ public class StorageNodeComputeTest {
         Assert.assertEquals(entry.getValue().get("member_score"), (double) (p.get(0) * keyIdx + p.get(1) * (keyIdx * 10)));
       }
     }
+
+    // Check retry requests
+    double computeRetries = 0;
+    for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
+      MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+      if (metrics.containsKey(".total--compute_retry_count.LambdaStat")) {
+        computeRetries += metrics.get(".total--compute_retry_count.LambdaStat").value();
+      }
+    }
+
+    Assert.assertTrue(computeRetries > 0, "After " + rounds + " reads, there should be some compute retry requests");
   }
 
   private int getKeyIndex(String key, String keyPrefix) {
