@@ -20,8 +20,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -30,6 +32,8 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 import org.apache.samza.SamzaException;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -171,11 +175,13 @@ public class VeniceSystemProducer implements SystemProducer {
       throw new SamzaException("The store of the incoming message: " + storeOfIncomingMessage +
           " is unexpected, and it should be " + storeName);
     }
+
+    send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
+  }
+
+  protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
+
     String topic = versionCreationResponse.getKafkaTopic();
-
-    Object keyObject = outgoingMessageEnvelope.getKey();
-    Object valueObject = outgoingMessageEnvelope.getMessage();
-
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
 
     if (!keySchema.equals(keyObjectSchema)) {
@@ -192,9 +198,12 @@ public class VeniceSystemProducer implements SystemProducer {
     }
 
     byte[] key = serializeObject(topic, keyObject);
+    final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
+    final Callback callback = new VeniceWriter.CompletableFutureCallback(
+        completableFuture);
 
     if (null == valueObject) {
-      veniceWriter.delete(key);
+      veniceWriter.delete(key, callback);
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
       int valueSchemaId = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
@@ -206,12 +215,27 @@ public class VeniceSystemProducer implements SystemProducer {
       });
       byte[] value = serializeObject(topic, valueObject);
 
-      veniceWriter.put(key, value, valueSchemaId);
+      veniceWriter.put(key, value, valueSchemaId, callback);
     }
+    return completableFuture;
   }
 
+  public CompletableFuture<Void> put(Object keyObject, Object valueObject) {
+    return send(keyObject, valueObject);
+  }
+
+  public CompletableFuture<Void> delete(Object keyObject) {
+    return send(keyObject, null);
+  }
+
+  /**
+   * Flushing the data to Venice store in case VeniceSystemProducer buffers message.
+   *
+   * @param s String representing the source of the message. Currently VeniceSystemProducer is not using this param.
+   */
   @Override
   public void flush(String s) {
+    veniceWriter.flush();
   }
 
   private static Schema getSchemaFromObject(Object object) {

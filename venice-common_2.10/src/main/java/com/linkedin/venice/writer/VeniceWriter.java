@@ -25,6 +25,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -197,11 +198,24 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public Future<RecordMetadata> delete(K key) {
+    return delete(key, null);
+  }
+
+  /**
+   * Execute a standard "delete" on the key.
+   *
+   * @param key - The key to delete in storage.
+   * @param callback - Callback function invoked by Kafka producer after sending the message.
+   * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
+   * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
+   * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
+   */
+  public Future<RecordMetadata> delete(K key, Callback callback) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, keySerializer.serialize(topicName, key));
     int partition = getPartition(kafkaKey);
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.DELETE, partition);
     kafkaValue.payloadUnion = new Delete();
-    return sendMessage(kafkaKey, kafkaValue, partition);
+    return sendMessage(kafkaKey, kafkaValue, partition, callback);
   }
 
   /**
@@ -332,7 +346,15 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
     segmentsMap.get(partition).addToCheckSum(key, value);
-    Callback messageCallback = (null != callback ? callback : new KafkaMessageCallback(key, value, logger));
+    Callback messageCallback = callback;
+    if (null == callback) {
+      messageCallback = new KafkaMessageCallback(key, value, logger);
+    } else if (callback instanceof CompletableFutureCallback) {
+      CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback)callback;
+      if (completableFutureCallBack.callback == null) {
+        completableFutureCallBack.callback = new KafkaMessageCallback(key, value, logger);
+      }
+    }
     return producer.sendMessage(topicName, key, value, partition, messageCallback);
   }
 
@@ -691,6 +713,36 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
         logger.error("Failed to send out message to Kafka producer: [key: " + key + ", value: " + value + "]", e);
+      }
+    }
+  }
+
+  /**
+   * Compose a CompletableFuture and Callback together to be a {@code CompletableFutureCallback} type.
+   * When the {@code CompletableFutureCallback} is called, the {@code CompletableFuture} internal state will be
+   * changed and the callback will be called. The caller can pass a {@code CompletableFutureCallback} to a function
+   * accepting a {@code Callback} parameter to get a {@code CompletableFuture} after the function returns.
+   */
+  public static class CompletableFutureCallback implements Callback {
+    private final CompletableFuture<Void> completableFuture;
+    private Callback callback;
+
+    public CompletableFutureCallback(CompletableFuture<Void> completableFuture) {
+      this(completableFuture, null);
+    }
+
+    public CompletableFutureCallback(CompletableFuture<Void> completableFuture, Callback callback) {
+      this.completableFuture = completableFuture;
+      this.callback = callback;
+    }
+
+    @Override
+    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+      callback.onCompletion(recordMetadata, e);
+      if (e == null) {
+        completableFuture.complete(null);
+      } else {
+        completableFuture.completeExceptionally(e);
       }
     }
   }
