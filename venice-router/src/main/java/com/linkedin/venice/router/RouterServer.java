@@ -428,7 +428,7 @@ public class RouterServer extends AbstractVeniceService {
         )
         .metricsProvider(new VeniceMetricsProvider())
         .longTailRetrySupplier(retrySupplier)
-        .scatterGatherStatsProvider(new LongTailRetryStatsProvider(statsForSingleGet, statsForMultiGet))
+        .scatterGatherStatsProvider(new LongTailRetryStatsProvider(statsForSingleGet, statsForMultiGet, statsForCompute))
         .enableStackTraceResponseForException(true)
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
