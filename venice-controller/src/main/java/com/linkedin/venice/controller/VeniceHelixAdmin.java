@@ -2508,7 +2508,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Pair<String, String> discoverCluster(String storeName) {
         StoreConfig config = storeConfigAccessor.getStoreConfig(storeName);
         if (config == null || Utils.isNullOrEmpty(config.getCluster())) {
-            throw new VeniceException("Could not find the cluster by given store: " + storeName);
+            throw new VeniceException("Could not find the given store: " + storeName
+            + ". Make sure the store is created and the provided store name is correct");
         }
         String clusterName = config.getCluster();
         String d2Service = multiClusterConfigs.getClusterToD2Map().get(clusterName);
