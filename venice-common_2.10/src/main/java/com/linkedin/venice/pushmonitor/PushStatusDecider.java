@@ -83,36 +83,36 @@ public abstract class PushStatusDecider {
   /**
    * @return status details: if empty, push has enough replicas in every partition, otherwise, message contains details
    */
-  public Optional<String> hasEnoughNodesToStartPush(OfflinePushStatus offlinePushStatus, ResourceAssignment resourceAssignment) {
-    if (!resourceAssignment.containsResource(offlinePushStatus.getKafkaTopic())) {
+  public Optional<String> hasEnoughNodesToStartPush(String kafkaTopic, int replicationFactor, ResourceAssignment resourceAssignment) {
+    if (!resourceAssignment.containsResource(kafkaTopic)) {
       String reason = "not yet in EXTERNALVIEW";
-      logger.info("Routing data repository has not created assignment for resource: " + offlinePushStatus.getKafkaTopic()
+      logger.info("Routing data repository has not created assignment for resource: " + kafkaTopic
               + "(" + reason + ")");
       return Optional.of(reason);
     }
     PartitionAssignment partitionAssignment =
-        resourceAssignment.getPartitionAssignment(offlinePushStatus.getKafkaTopic());
+        resourceAssignment.getPartitionAssignment(kafkaTopic);
     if (!partitionAssignment.hasEnoughAssignedPartitions()) {
       String reason = "not enough partitions in EXTERNALVIEW";
-      logger.info("There are " + reason + " assigned to resource: " + offlinePushStatus.getKafkaTopic());
+      logger.info("There are " + reason + " assigned to resource: " + kafkaTopic);
       return Optional.of(reason);
     }
     ArrayList<Integer> underReplicatedPartition = new ArrayList<>();
     for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if (!this.hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(),
-          offlinePushStatus.getReplicationFactor())) {
+      if (!this.hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(), replicationFactor)) {
         underReplicatedPartition.add(partition.getId());
-        logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + offlinePushStatus.getKafkaTopic());
+        logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + kafkaTopic);
       }
     }
     if (underReplicatedPartition.isEmpty()) {
       return Optional.empty();
     } else {
       String reason = underReplicatedPartition.size() + " partitions under-replicated in EXTERNALVIEW";
-      logger.info(reason + " for resource '" + offlinePushStatus.getKafkaTopic() + "': " + underReplicatedPartition.toString());
+      logger.info(reason + " for resource '" + kafkaTopic + "': " + underReplicatedPartition.toString());
       return Optional.of(reason);
     }
   }
+
 
   public abstract OfflinePushStrategy getStrategy();
 

@@ -58,7 +58,7 @@ public class ParentHelixOfflinePushAccessor {
     HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(clusterName, pushStatus.getKafkaTopic()),
         pushStatus);
     logger.info(
-        "Updated push status for topic+" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
+        "Updated push status for topic: " + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
             + pushStatus.getCurrentStatus());
   }
 

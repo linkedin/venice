@@ -39,6 +39,9 @@ public enum ExecutionStatus {
   /** An incremental push job/task is completed*/
   END_OF_INCREMENTAL_PUSH_RECEIVED(true, true, false, true),
 
+  /* Task is dropped by the storage node */
+  DROPPED(false, true, false, false),
+
   /**
    * For task, data is read and put into storage engine.
    * For Job, all of tasks are completed.

@@ -944,8 +944,8 @@ public class TestVeniceHelixAdmin {
     // two offline jobs are running.
     OfflinePushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getOfflinePushMonitor();
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
-        () -> monitor.getOfflinePushStatus(Version.composeKafkaTopic(storeName, 1)).equals(ExecutionStatus.COMPLETED)
-            && monitor.getOfflinePushStatus(Version.composeKafkaTopic(storeName, 2)).equals(ExecutionStatus.COMPLETED)
+        () -> monitor.getPushStatus(Version.composeKafkaTopic(storeName, 1)).equals(ExecutionStatus.COMPLETED)
+            && monitor.getPushStatus(Version.composeKafkaTopic(storeName, 2)).equals(ExecutionStatus.COMPLETED)
     );
   }
 
