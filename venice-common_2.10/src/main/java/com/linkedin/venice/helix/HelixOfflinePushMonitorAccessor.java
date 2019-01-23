@@ -124,7 +124,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public void updateOfflinePushStatus(OfflinePushStatus pushStatus) {
     HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     logger.info(
-        "Updated push status for topic+" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
+        "Updated push status for topic " + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
             + pushStatus.getCurrentStatus());
   }
 

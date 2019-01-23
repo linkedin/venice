@@ -138,7 +138,7 @@ public class OfflinePushMonitorTest {
 
   @Test
   public void testLoadLegacyPushes() {
-    String topic = "testLoadLegacyPushes";
+    String topic = "testLoadLegacyPushes_v1";
     List<OfflinePushStatus> statusList = new ArrayList<>();
     OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -233,7 +233,7 @@ public class OfflinePushMonitorTest {
       }
     }
     for (; i < statusCount; i++) {
-      Assert.assertEquals(monitor.getOfflinePushStatus("testLoadAllPushes_v" + i), ExecutionStatus.ERROR);
+      Assert.assertEquals(monitor.getPushStatus("testLoadAllPushes_v" + i), ExecutionStatus.ERROR);
     }
   }
 
@@ -244,7 +244,7 @@ public class OfflinePushMonitorTest {
 
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
         ExecutionStatus.NOT_CREATED);
 
     //prepare new partition status
@@ -261,7 +261,7 @@ public class OfflinePushMonitorTest {
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
     //OfflinePushMonitor should return SOIP_RECEIVED if any of replica receives SOIP_RECEIVED
-    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
 
     //update 2 of the replica status to END_OF_INCREMENTAL_PUSH_RECEIVED (EOIP_RECEIVED)
@@ -278,19 +278,19 @@ public class OfflinePushMonitorTest {
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
     //OfflinePushMonitor should be able to filter out irrelevant IP versions
-    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED);
 
     replicaStatuses.get(2).updateStatus(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED, incrementalPushVersion);
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
         ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
 
     replicaStatuses.get(0).updateStatus(ExecutionStatus.WARNING, incrementalPushVersion);
 
     monitor.onPartitionStatusChange(topic, new ReadOnlyPartitionStatus(0, replicaStatuses));
-    Assert.assertEquals(monitor.getOfflinePushStatus(topic, Optional.of(incrementalPushVersion)),
+    Assert.assertEquals(monitor.getPushStatus(topic, Optional.of(incrementalPushVersion)),
         ExecutionStatus.ERROR);
   }
 
@@ -429,30 +429,6 @@ public class OfflinePushMonitorTest {
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
     Mockito.verify(mockPushHealthStats, Mockito.times(1)).recordFailedPush(eq("testOnRoutingDataDeleted"), anyLong());
    }
-
-  @Test
-  public void testWaitUntilNodesAreAssignedForResource()
-      throws InterruptedException {
-    String topic = "testWaitUntilNodesAreAssignedForResource_v1";
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    // Make push failed after 1s.
-    new Thread(() -> {
-      try {
-        Thread.sleep(1000l);
-      } catch (InterruptedException e) {
-      }
-      monitor.markOfflinePushAsError(topic, "synthetic error");
-    }).run();
-
-    try {
-      monitor.waitUntilNodesAreAssignedForResource(topic, 3000l);
-      Mockito.verify(mockPushHealthStats, Mockito.times(1)).recordFailedPush(eq("testOnRoutingDataDeleted"), anyLong());
-      Assert.fail("The waiting should be interrupted. As the push will fail.");
-    } catch (VeniceException e) {
-      //expected
-    }
-  }
 
   private Store prepareMockStore(String topic) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
