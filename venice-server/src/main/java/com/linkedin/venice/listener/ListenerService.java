@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -47,7 +48,8 @@ public class ListenerService extends AbstractVeniceService{
                          VeniceConfigLoader veniceConfigLoader,
                          MetricsRepository metricsRepository,
                          Optional<SSLEngineComponentFactory> sslFactory,
-                         Optional<StaticAccessController> accessController) {
+                         Optional<StaticAccessController> accessController,
+                         DiskHealthCheckService diskHealthCheckService) {
     serverConfig = veniceConfigLoader.getVeniceServerConfig();
     this.port = serverConfig.getListenerPort();
 
@@ -58,7 +60,7 @@ public class ListenerService extends AbstractVeniceService{
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
         .childHandler(new HttpChannelInitializer(storeRepository, storeMetadataRepository, schemaRepo, routingRepository,
-            metadataRetriever, metricsRepository, sslFactory, serverConfig, accessController))
+            metadataRetriever, metricsRepository, sslFactory, serverConfig, accessController, diskHealthCheckService))
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

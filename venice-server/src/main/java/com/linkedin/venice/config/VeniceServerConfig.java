@@ -126,6 +126,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int serverComputeThreadNum;
 
+  private final long diskHealthCheckIntervalInMS;
+
+  private final boolean diskHealthCheckServiceEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -169,6 +173,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
     kafkaPollRetryTimes = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
     kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
+    diskHealthCheckIntervalInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 60)); // 1 minute by default
+    diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -290,6 +296,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getKafkaPollRetryBackoffMs() {
     return kafkaPollRetryBackoffMs;
+  }
+
+  public long getDiskHealthCheckIntervalInMS() {
+    return diskHealthCheckIntervalInMS;
+  }
+
+  public boolean isDiskHealthCheckServiceEnabled() {
+    return diskHealthCheckServiceEnabled;
   }
 
   public BlockingQueue<Runnable> getExecutionQueue() {

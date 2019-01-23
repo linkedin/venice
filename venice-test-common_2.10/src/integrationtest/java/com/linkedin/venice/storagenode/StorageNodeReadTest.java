@@ -12,6 +12,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -35,6 +36,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -53,6 +55,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 import spark.utils.IOUtils;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 
@@ -296,6 +299,37 @@ public class StorageNodeReadTest {
       Assert.assertTrue(map.get("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat").value() < 0.0);
     }
 
+  }
+
+  @Test
+  public void testDiskHealthCheckService() throws Exception  {
+    Properties serverProperties = new Properties();
+    serverProperties.put(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10); // set health check interval to 10 seconds
+    VeniceServerWrapper serverWrapper = veniceCluster.addVeniceServer(serverProperties);
+    String testServerAddr = serverWrapper.getAddress();
+
+    try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
+      client.start();
+
+      HttpResponse response = sendHeartbeatRequest(client, testServerAddr);
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
+
+      // wait for the next health check cycle
+      Thread.sleep(TimeUnit.SECONDS.toMillis(15));
+      response = sendHeartbeatRequest(client, testServerAddr);
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
+    }
+  }
+
+  private HttpResponse sendHeartbeatRequest(CloseableHttpAsyncClient client, String serverAddress) throws Exception {
+    StringBuilder sb = new StringBuilder().append("http://")
+        .append(serverAddress)
+        .append("/")
+        .append(QueryAction.HEALTH.toString().toLowerCase())
+        .append("?f=b64");
+    HttpGet getReq = new HttpGet(sb.toString());
+    Future<HttpResponse> future = client.execute(getReq, null);
+    return future.get();
   }
 
   private void pushSyntheticData(String keyPrefix, String valuePrefix, int numOfRecords, VeniceClusterWrapper veniceCluster, VeniceWriter<Object, Object> veniceWriter, int pushVersion) throws Exception {

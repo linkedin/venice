@@ -34,6 +34,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -71,6 +72,7 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.IOFileFilter;
+import org.apache.log4j.Logger;
 
 
 /***
@@ -80,7 +82,9 @@ import org.apache.commons.io.filefilter.IOFileFilter;
  */
 @ChannelHandler.Sharable
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
-  private final String databasePath;
+  private static final Logger logger = Logger.getLogger(StorageExecutionHandler.class);
+
+  private final DiskHealthCheckService diskHealthCheckService;
   private final ExecutorService executor;
   private final ExecutorService computeExecutor;
   private final StoreRepository storeRepository;
@@ -100,13 +104,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
   public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
       @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepo,
-      @NotNull MetadataRetriever metadataRetriever, @NotNull String databasePath) {
+      @NotNull MetadataRetriever metadataRetriever, @NotNull DiskHealthCheckService healthCheckService) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storeRepository = storeRepository;
     this.schemaRepo = schemaRepo;
     this.metadataRetriever = metadataRetriever;
-    this.databasePath = databasePath;
+    this.diskHealthCheckService = healthCheckService;
 
     this.computeResultSchemaCache = new ConcurrentHashMap<>();
   }
@@ -161,23 +165,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         }
       }));
     } else if (message instanceof HealthCheckRequest) {
-      executor.submit(new Runnable() {
-        @Override
-        public void run() {
-          try {
-            File databaseDir = new File(databasePath);
-            if (!databaseDir.exists() || !databaseDir.isDirectory()) {
-              context.writeAndFlush(new HttpShortcutResponse("Database dir does not existed or is corrupted!",
-                  HttpResponseStatus.INTERNAL_SERVER_ERROR));
-            }
-            // list everything in the database directory to actually check the health status of the disk
-            FileUtils.listFiles(databaseDir, listEverything, listEverything);
-            context.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
-          } catch (Exception e) {
-            context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
-          }
-        }
-      });
+      if (diskHealthCheckService.isDiskHealthy()) {
+        context.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
+      } else {
+        context.writeAndFlush(new HttpShortcutResponse("Venice storage node hardware is not healthy!", HttpResponseStatus.INTERNAL_SERVER_ERROR));
+        logger.error("Disk is not healthy according to the disk health check service: " + diskHealthCheckService.getErrorMessage());
+      }
 
     } else {
       context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",

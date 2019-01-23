@@ -246,6 +246,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_KAFKA_POLL_RETRY_BACKOFF_MS = "server.kafka.poll.backoff.ms";
 
+  /**
+   * This config decides the frequency of the disk health check; the disk health check service writes
+   * 64KB data to a temporary file in the database directory and read from the file for each health check.
+   */
+  public static final String SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS = "server.disk.health.check.interval.in.seconds";
+
+  /**
+   * This config is used to enable/disable the disk health check service.
+   */
+  public static final String SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED = "server.disk.health.check.service.enabled";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
