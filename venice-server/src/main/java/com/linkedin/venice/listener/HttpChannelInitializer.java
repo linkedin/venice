@@ -14,6 +14,7 @@ import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.stats.AggServerQuotaTokenBucketStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.stats.ThreadPoolStats;
+import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
@@ -56,7 +57,8 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
                                 MetricsRepository metricsRepository,
                                 Optional<SSLEngineComponentFactory> sslFactory,
                                 VeniceServerConfig serverConfig,
-                                Optional<StaticAccessController> accessController) {
+                                Optional<StaticAccessController> accessController,
+                                DiskHealthCheckService diskHealthCheckService) {
     this.serverConfig = serverConfig;
 
     this.executor = getThreadPool(serverConfig.getRestServiceStorageThreadNum(), "StorageExecutionThread");
@@ -70,7 +72,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     computeStats = new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE);
 
     storageExecutionHandler = new StorageExecutionHandler(executor, computeExecutor, storeRepository, schemaRepo,
-        metadataRetriever, serverConfig.getDataBasePath());
+        metadataRetriever, diskHealthCheckService);
 
     this.sslFactory = sslFactory;
     this.aclHandler = accessController.isPresent()

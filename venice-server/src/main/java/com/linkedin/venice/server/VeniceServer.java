@@ -24,9 +24,11 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
+import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
+import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -54,6 +56,7 @@ public class VeniceServer {
   private BdbStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private LeakedResourceCleaner leakedResourceCleaner;
+  private DiskHealthCheckService diskHealthCheckService;
 
   private MetricsRepository metricsRepository;
 
@@ -139,6 +142,15 @@ public class VeniceServer {
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
     storageService.setAggVersionedStorageEngineStats(storageEngineStats);
 
+    VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
+    this.diskHealthCheckService = new DiskHealthCheckService(veniceServerConfig.isDiskHealthCheckServiceEnabled(),
+                                                             veniceServerConfig.getDiskHealthCheckIntervalInMS(),
+                                                             veniceServerConfig.getDataBasePath());
+    services.add(diskHealthCheckService);
+
+    // create stats for disk health check service
+    new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
+
     //HelixParticipationService below creates a Helix manager and connects asynchronously below.  The listener service
     //needs a routing data repository that relies on a connected helix manager.  So we pass the listener service a future
     //that will be completed with a routing data repository once the manager connects.
@@ -151,7 +163,8 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService = new ListenerService(storageService.getStoreRepository(), metadataRepo, schemaRepo,
-        routingRepositoryFuture, kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory, accessController);
+        routingRepositoryFuture, kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory,
+        accessController, diskHealthCheckService);
     services.add(listenerService);
 
     /**
@@ -173,7 +186,6 @@ public class VeniceServer {
      * Create and add storage resource clean up service;
      * the cleanup service can be extended to clean up any resources, but for now, we only use it to do BDB clean up.
      */
-    VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
     if (veniceServerConfig.getBdbServerConfig().isBdbDroppedDbCleanUpEnabled()) {
       this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStoreRepository(), veniceServerConfig.getStorageLeakedResourceCleanUpIntervalInMS());
       services.add(leakedResourceCleaner);

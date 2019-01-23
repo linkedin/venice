@@ -1,8 +1,11 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.request.HealthCheckRequest;
+import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -12,6 +15,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -70,15 +74,7 @@ public class StorageExecutionHandlerTest {
         mockMetadataRetriever, null);
     testHandler.channelRead(mockCtx, testRequest);
 
-    //Wait for async stuff to finish
-    int count = 1;
-    while (outputArray.size()<1) {
-      Thread.sleep(10); //on my machine, consistently fails with only 10ms, intermittent at 15ms, success at 20ms
-      count +=1;
-      if (count > 200){ // two seconds
-        throw new RuntimeException("Timeout waiting for StorageExecutionHandler output to appear");
-      }
-    }
+    waitUntilStorageExecutionHandlerRespond(outputArray);
 
     //parsing of response
     Assert.assertEquals(outputArray.size(), 1);
@@ -92,4 +88,46 @@ public class StorageExecutionHandlerTest {
     Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
   }
 
+  @Test
+  public void testDiskHealthCheckService() throws Exception {
+    DiskHealthCheckService healthCheckService = mock(DiskHealthCheckService.class);
+    doReturn(true).when(healthCheckService).isDiskHealthy();
+
+    ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
+        new LinkedBlockingQueue<>(2));
+    StoreRepository testRepository = mock(StoreRepository.class);
+    ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
+    MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
+        mockMetadataRetriever, healthCheckService);
+
+    ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
+    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
+    List<Object> outputs = new ArrayList<Object>();
+    when(mockCtx.writeAndFlush(any())).then(i -> {
+      outputs.add(i.getArguments()[0]);
+      return null;
+    });
+    HealthCheckRequest healthCheckRequest = new HealthCheckRequest();
+
+    testHandler.channelRead(mockCtx, healthCheckRequest);
+    waitUntilStorageExecutionHandlerRespond(outputs);
+
+    Assert.assertTrue(outputs.get(0) instanceof HttpShortcutResponse);
+    HttpShortcutResponse healthCheckResponse = (HttpShortcutResponse) outputs.get(0);
+    Assert.assertEquals(healthCheckResponse.getStatus(), HttpResponseStatus.OK);
+  }
+
+  private static void waitUntilStorageExecutionHandlerRespond(List<Object> outputs) throws Exception {
+    //Wait for async stuff to finish
+    int count = 1;
+    while (outputs.size()<1) {
+      Thread.sleep(10); //on my machine, consistently fails with only 10ms, intermittent at 15ms, success at 20ms
+      count +=1;
+      if (count > 200){ // two seconds
+        throw new RuntimeException("Timeout waiting for StorageExecutionHandler output to appear");
+      }
+    }
+  }
 }
