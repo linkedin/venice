@@ -168,10 +168,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
       }
 
-      if (venicePath.getRequestType().equals(RequestType.MULTI_GET) && !venicePath.isRetryRequest()) {
+      if (!venicePath.getRequestType().equals(RequestType.SINGLE_GET) && !venicePath.isRetryRequest()) {
         /**
-         * Here is the only suitable place to throttle multi-get request since we want to fail the whole request if
-         * some scatter request gets throttled.
+         * Here is the only suitable place to throttle multi-get/compute request since we want to fail the whole request
+         * if some scatter request gets throttled.
          *
          * Venice doesn't apply quota enforcement for retry request since retry is a way for latency guarantee,
          * which should be transparent to customers.

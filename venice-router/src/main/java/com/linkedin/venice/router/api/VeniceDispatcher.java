@@ -549,7 +549,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   protected boolean handleCacheLookupAndThrottling(VenicePath path, Instance selectedHost,
       AsyncPromise<List<FullHttpResponse>> responseFuture, Executor contextExecutor,
       List<MultiGetResponseRecordV1> cacheResultForMultiGet) throws RouterException {
-    if (!routerCache.isPresent() || path.getRequestType().equals(RequestType.COMPUTE)) {
+    if (path.getRequestType().equals(RequestType.COMPUTE)) {
       /**
        * Router cache is not supported for read compute yet;
        * the feature vector to compute against could change, so even though the key is the same, the compute result
@@ -562,11 +562,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     RequestType requestType = path.getRequestType();
 
     try {
-      boolean cacheEnabledForStore = requestType.equals(RequestType.SINGLE_GET) ?
+      boolean cacheEnabledForStore = routerCache.isPresent();
+      cacheEnabledForStore &= requestType.equals(RequestType.SINGLE_GET) ?
           storeRepository.isSingleGetRouterCacheEnabled(storeName) : storeRepository.isBatchGetRouterCacheEnabled(storeName);
       if (!cacheEnabledForStore) {
         // Caching is not enabled
-        if (!path.isRetryRequest()) {
+        if (!path.isRetryRequest() && requestType.equals(RequestType.SINGLE_GET)) {
           readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
         }
         return false;
@@ -627,17 +628,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           break;
         case MULTI_GET:
           /**
-           * Cache throttling first;
-           * for multi-get, multiply the throttle weight with the number of keys in the request
-           * and only throttle once
+           * Don't throttle because the throttling for multi-key request is already done in {@link VeniceDelegateMode}.
            */
-          if (!path.isRetryRequest()) {
-            readRequestThrottler.mayThrottleRead(storeName,
-                cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity() * ((VeniceMultiGetPath)path).getCurrentKeyNum(), Optional.empty());
-          }
 
           int valueSchemaId = 0;
-          int cacheMissTimes = 0;
+          int cacheHitTimes = 0;
           for (Map.Entry<Integer, RouterKey> routerKeyEntry : ((VeniceMultiGetPath)path).getKeyIdxToRouterKeySet()) {
             statsForMultiGet.recordCacheLookupRequest(storeName);
             long cacheLookupStartTimeInNS = System.nanoTime();
@@ -647,6 +642,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             if (cacheValueForOneKey != null) {
               // cache hit for this key
               statsForMultiGet.recordCacheHitRequest(storeName);
+              cacheHitTimes++;
               if (cacheValueForOneKey.isPresent()) {
                 MultiGetResponseRecordV1 multiGetResponseRecordV1 = new MultiGetResponseRecordV1();
                 multiGetResponseRecordV1.value = cacheValueForOneKey.get().getByteBuffer();
@@ -660,15 +656,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
               // remove this key request in MultiGetPath
               ((VeniceMultiGetPath)path).removeFromRequest(routerKeyEntry.getValue());
-            } else {
-              // cache miss for this key
-              cacheMissTimes++;
             }
           }
-          // Do throttling discount for all the keys that are not found in the cache
+          // Do throttling discount for all the keys that are found in the cache
           if (!path.isRetryRequest()) {
             readRequestThrottler.mayThrottleRead(storeName,
-                -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity() * cacheMissTimes, Optional.empty());
+                -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity() * cacheHitTimes, Optional.empty());
           }
           statsForMultiGet.recordCacheLookupLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
 
