@@ -329,4 +329,12 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       }
     }
   }
+
+  // This function is for testing
+  protected void restoreAllThrottlers() {
+    synchronized (storesThrottlers) {
+        // Restore all throttlers.
+        storesThrottlers.set(buildAllStoreReadThrottlers());
+    }
+  }
 }
