@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
@@ -309,6 +310,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public boolean isClusterValid(String clusterName) {
         return admin.getClusters().contains(clusterName);
+    }
+
+    /**
+     * This function is used to determine whether the requested cluster is in maintenance mode or not.
+     * Right now, this class is using {@link #zkClient} to access the zookeeper node of controller
+     * maintenance since this info couldn't be retrieved through {@link HelixAdmin}.
+     * TODO: Once Helix provides the right API, we should switch to the formal way since we shouldn't
+     * touch the implementation details of Helix.
+     *
+     * @param clusterName
+     * @return
+     */
+    private boolean isClusterInMaintenanceMode(String clusterName) {
+        // Construct the path to maintenance mode ZNode
+        String maintenanceZNodePath = "/" + clusterName + "/CONTROLLER/MAINTENANCE";
+        return zkClient.exists(maintenanceZNodePath);
+    }
+
+    protected HelixAdmin getHelixAdmin() {
+        return this.admin;
     }
 
     @Override
@@ -743,6 +764,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush, boolean sendStartOfPush) {
+        if (isClusterInMaintenanceMode(clusterName)) {
+            throw new HelixClusterMaintenanceModeException(clusterName);
+        }
 
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);

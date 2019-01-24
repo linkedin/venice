@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.stats.TopicMonitorStats;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -14,6 +15,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
@@ -154,6 +156,13 @@ public class TopicMonitor extends AbstractVeniceService {
                   } catch (Exception e) {
                     topicMonitorStats.recordClusterSkippedByException();
                     logger.error(e.getMessage());
+                    if (e instanceof HelixClusterMaintenanceModeException) {
+                      /**
+                       * Helix maintenance status is recoverable, but it will take some time.
+                       * Here will sleep for some time, and continue retrying.
+                       */
+                      Utils.sleep(500); //500ms
+                    }
                     continue;
                   }
                 }
