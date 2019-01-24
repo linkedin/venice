@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -555,6 +556,38 @@ public class TestVeniceHelixAdmin {
             .setHybridRewindSeconds(hybridConfig.getRewindTimeInSeconds())
             .setHybridOffsetLagThreshold(hybridConfig.getOffsetLagThresholdToGoOnline()));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
+  }
+
+  @Test
+  public void testAddVersionWhenClusterInMaintenanceMode() throws Exception {
+    stopParticipants();
+    startParticipant(true, nodeId); //because we need the new version NOT to transition directly to "online" for the
+    String storeName = TestUtils.getUniqueString("test");
+
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
+
+    // enable maintenance mode
+    veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, true);
+    try {
+      try {
+        veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
+        Assert.fail("HelixClusterMaintenanceModeException is expected since cluster is in maintenance mode");
+      } catch (Exception e) {
+        if (! (e instanceof HelixClusterMaintenanceModeException)) {
+          Assert.fail("Only HelixClusterMaintenanceModeException is expected when cluster is in maintenance"
+              + " mode, but received: " + e);
+        }
+      }
+      // disable maintenance mode
+      veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
+      // try to add same version again
+      veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
+      Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
+    } finally {
+      veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
+    }
   }
 
   public void testAddVersion() throws Exception {
