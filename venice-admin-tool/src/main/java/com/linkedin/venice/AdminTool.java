@@ -43,6 +43,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.Console;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -1008,10 +1009,20 @@ public class AdminTool {
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
 
     // Check arguments
+    if (srcControllerClient.getStore(storeName).getStore() == null) {
+      System.err.println("ERROR: Store " + storeName + " does not exist in src cluster " + srcClusterName);
+      return;
+    } else if (!srcControllerClient.getStore(storeName).getStore().isMigrating()) {
+      System.err.println("WARNING: Store " + storeName + " is not in migration state in src cluster " + srcClusterName);
+      if (!userGivesPermission("Do you still want to proceed?")) {
+        return;
+      }
+    }
+
     ControllerResponse discoveryResponse = srcControllerClient.discoverCluster(storeName);
     if (!discoveryResponse.getCluster().equals(srcClusterName)) {
       if (!force) {
-        System.err.println("WARN: Either store migration has complete, or the internal states are messed up.\n"
+        System.err.println("WARNING: Either store migration has completed, or the internal states are messed up.\n"
             + "You can force execute this command with --" + Arg.FORCE.toString() + " / -" + Arg.FORCE.first()
             + ", but make sure your src and dest cluster names are correct.");
         return;
@@ -1019,6 +1030,10 @@ public class AdminTool {
     }
 
     // Reset original store, storeConfig, and cluster discovery
+    if (!userGivesPermission("Next step is to reset store migration flag, storeConfig and cluster discovery mapping."
+        + " Do you want to proceed?")) {
+      return;
+    }
     StoreMigrationResponse abortMigrationResponse = srcControllerClient.abortMigration(storeName, destClusterName);
     if (abortMigrationResponse.isError()) {
       throw new VeniceException(abortMigrationResponse.getError());
@@ -1027,6 +1042,10 @@ public class AdminTool {
     }
 
     // Delete cloned store
+    if (!userGivesPermission("Next step is to delete the cloned store in dest cluster " + destClusterName + ". "
+        + storeName + " in " + destClusterName + " will be deleted irreversibly. Do you want to proceed?")) {
+      return;
+    }
     if (destControllerClient.getStore(storeName).getStore() == null) {
       // Cloned store has not been created
       // Directly delete cloned stores in children datacenters if two layer setup, otherwise skip
@@ -1044,18 +1063,20 @@ public class AdminTool {
           for (int i = 0; i < numChildDatacenters; i++) {
             ControllerClient destChildController = destChildControllerClients[i];
             if (destChildController.getStore(storeName).getStore() != null) {
+              System.err.println("Deleting cloned store " + storeName + " in " + destChildController.getMasterControllerUrl() + " ...");
               destChildController.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
               TrackableControllerResponse deleteResponse = destChildController.deleteStore(storeName);
               printObject(deleteResponse);
               deletedStoreCount++;
             }
           }
-          System.err.println("Deleted cloned store in " + deletedStoreCount + "/" + numChildDatacenters + " clusters.");
+          System.err.println("Deleted cloned store in " + deletedStoreCount + "/" + numChildDatacenters + " child datacenters.");
           Utils.sleep(3000);
         }
       }
     } else {
-      // Delete cloned store in parent dest controller
+      // Delete cloned store in (parent) dest controller
+      System.err.println("Deleting cloned store " + storeName + " in " + destControllerClient.getMasterControllerUrl() + " ...");
       destControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setEnableReads(false).setEnableWrites(false));
       TrackableControllerResponse deleteResponse = destControllerClient.deleteStore(storeName);
       printObject(deleteResponse);
@@ -1066,6 +1087,32 @@ public class AdminTool {
     discoveryResponse = srcControllerClient.discoverCluster(storeName);
     if (!discoveryResponse.getCluster().equals(srcClusterName)) {
       System.err.println("ERROR: Incorrect cluster discovery result");
+    }
+
+    // Dest cluster(s) should not contain the cloned store
+    // This should not happen but in case it does, migration monitor probably has just created the cloned store in parent
+    // while the admin-tool trying to delete the cloned store in child datacenters.
+    if (destControllerClient.getStore(storeName).getStore() != null) {
+      System.err.println("ERROR: Dest cluster " + destClusterName + " " + destControllerClient.getMasterControllerUrl()
+          + " still contains store " + storeName + ". Possibly caused by some race condition.\n"
+          + " Use --migration-status to check the current status and delete the cloned store in dest cluster when safe.\n"
+          + " Make sure admin channels don't get stuck.");
+    }
+  }
+
+  private static boolean userGivesPermission(String prompt) {
+    Console console = System.console();
+    String response = console.readLine(prompt + " (y/n): ").toLowerCase();
+    while (!response.equals("y") && !response.equals("n")) {
+      response = console.readLine("Enter y or n: ").toLowerCase();
+    }
+
+    if (response.equals("y")) {
+      return true;
+    } else if (response.equals("n")) {
+      return false;
+    } else {
+      throw new VeniceException("Cannot interpret user response \"" + response + "\" for question " + prompt);
     }
   }
 
