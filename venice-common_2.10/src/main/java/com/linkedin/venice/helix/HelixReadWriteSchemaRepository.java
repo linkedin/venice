@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.AvroSchemaUtils;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -9,6 +10,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.helix.AccessOption;
@@ -109,7 +111,8 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   /**
-   * This function is used to retrieve value schema id for the given store and schema.
+   * This function is used to retrieve value schema id for the given store and schema. Attempts to get the schema that
+   * matches exactly. If multiple matching schemas are found then the id of the latest added schema is returned.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    * @throws {@link org.apache.avro.SchemaParseException} if the schema is invalid;
@@ -127,20 +130,31 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     }
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
-    for (SchemaEntry entry : valueSchemas) {
-      if (entry.equals(valueSchemaEntry)) {
-        return entry.getId();
+    List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(valueSchemaEntry, valueSchemas);
+    int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+    if (!canonicalizedMatches.isEmpty()) {
+      if (canonicalizedMatches.size() == 1) {
+        schemaId = canonicalizedMatches.iterator().next().getId();
       } else {
-        // try the schema that filters out unknown fields
-        String canonicalizedRequestSchema = LinkedinAvroMigrationHelper.toParsingForm(Schema.parse(valueSchemaStr));
-        String canonicalizedServerSchema = LinkedinAvroMigrationHelper.toParsingForm(entry.getSchema());
-        if (canonicalizedServerSchema.equals(canonicalizedRequestSchema)) {
-          return entry.getId();
+        List<SchemaEntry> exactMatches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, canonicalizedMatches);
+        if (exactMatches.isEmpty()) {
+          schemaId = getSchemaEntryWithLargestId(canonicalizedMatches).getId();
+        } else {
+          schemaId = getSchemaEntryWithLargestId(exactMatches).getId();
         }
       }
     }
+    return schemaId;
+  }
 
-    return SchemaData.INVALID_VALUE_SCHEMA_ID;
+  private SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {
+    SchemaEntry largestIdSchema = schemas.iterator().next();
+    for (SchemaEntry schema : schemas) {
+      if (schema.getId() > largestIdSchema.getId()) {
+        largestIdSchema = schema;
+      }
+    }
+    return largestIdSchema;
   }
 
   /**
