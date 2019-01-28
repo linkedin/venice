@@ -311,4 +311,29 @@ public class TestHelixReadWriteSchemaRepository {
     valueSchemaEntry = schemaRepo.getValueSchema(storeName, newValueSchemaId);
     Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
   }
+
+  @Test
+  public void testGetValueSchemaIdWithSimilarSchema() {
+    String storeName = "test_store1";
+    String valueSchemaStr1 = "{"
+        + "\"fields\": ["
+        + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+        + "   {\"default\": 0, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
+        + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\""
+        +"}";
+
+    String valueSchemaStr2 = "{"
+        + "\"fields\": ["
+        + "   {\"default\": \"\", \"doc\": \"test field\", \"name\": \"testField1\", \"type\": \"string\"},"
+        + "   {\"default\": -1, \"doc\": \"test field two\", \"name\": \"testField2\", \"type\": \"float\"}"
+        + "   ],"
+        + " \"name\": \"testObject\", \"type\": \"record\""
+        +"}";
+    createStore(storeName);
+    schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    schemaRepo.addValueSchema(storeName,valueSchemaStr2);
+    int schemaId = schemaRepo.getValueSchemaId(storeName, valueSchemaStr2);
+    Assert.assertEquals(schemaId, 2,"getValueSchemaId did not get the correct schema which is an exact match");
+  }
 }
