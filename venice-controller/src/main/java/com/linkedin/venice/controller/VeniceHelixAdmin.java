@@ -847,6 +847,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return version;
         } catch (Throwable e) {
             int failedVersionNumber = versionNumber;
+            String errorMessage = "version " + failedVersionNumber + " to store " + storeName + " in cluster " + clusterName;
+            logger.error(errorMessage, e);
             try {
                 if (version != null) {
                     failedVersionNumber = version.getNumber();
@@ -854,12 +856,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     handleVersionCreationFailure(clusterName, storeName, failedVersionNumber, statusDetails);
                 }
             } catch (Throwable e1) {
-                logger.error("Exception occured while handling version creation failure!", e1);
-            } finally {
-                throw new VeniceException(
-                    "Failed to add a version: " + failedVersionNumber + " to store: " + storeName + " in cluster:"
-                        + clusterName, e);
+                String handlingErrorMsg = "Exception occurred while handling version " + versionNumber
+                    + " creation failure for store " + storeName + " in cluster " + clusterName;
+                logger.error(handlingErrorMsg, e1);
+                errorMessage += "\n" + handlingErrorMsg + ". Error message: " + e1.getMessage();
             }
+            throw new VeniceException(errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(e), e);
         }
     }
 
