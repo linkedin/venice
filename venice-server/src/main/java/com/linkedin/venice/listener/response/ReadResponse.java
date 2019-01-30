@@ -9,7 +9,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * This class is used to store common fields shared by various read responses.
  */
 public abstract class ReadResponse {
-  private double bdbQueryLatency = -1;
+  private double databaseLookupLatency = -1;
   private double readComputeLatency = -1;
   private double readComputeDeserializationLatency = -1;
   private double readComputeSerializationLatency = -1;
@@ -25,12 +25,16 @@ public abstract class ReadResponse {
     return compressionStrategy;
   }
 
-  public void setBdbQueryLatency(double latency) {
-    this.bdbQueryLatency = latency;
+  public void setDatabaseLookupLatency(double latency) {
+    this.databaseLookupLatency = latency;
   }
 
-  public double getBdbQueryLatency() {
-    return this.bdbQueryLatency;
+  public void addDatabaseLookupLatency(double latency) {
+    this.databaseLookupLatency += latency;
+  }
+
+  public double getDatabaseLookupLatency() {
+    return this.databaseLookupLatency;
   }
 
   public void setReadComputeLatency(double latency) {

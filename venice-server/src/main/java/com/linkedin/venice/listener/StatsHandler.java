@@ -21,7 +21,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private HttpResponseStatus responseStatus;
   private String storeName = null;
   private boolean isHealthCheck;
-  private double bdbQueryLatency = -1;
+  private double databaseLookupLatency = -1;
   private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
   private int successRequestKeyCount = -1;
@@ -112,8 +112,8 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.successRequestKeyCount = successKeyCount;
   }
 
-  public void setBdbQueryLatency(double latency) {
-    this.bdbQueryLatency = latency;
+  public void setDatabaseLookupLatency(double latency) {
+    this.databaseLookupLatency = latency;
   }
 
   public void setReadComputeLatency(double latency) {
@@ -160,7 +160,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       isHealthCheck = false;
       responseStatus = null;
       statCallbackExecuted = false;
-      bdbQueryLatency = -1;
+      databaseLookupLatency = -1;
       storageExecutionSubmissionWaitTime = -1;
       requestKeyCount = -1;
       successRequestKeyCount = -1;
@@ -225,8 +225,8 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   private void recordBasicMetrics() {
     if (null != storeName) {
-      if (bdbQueryLatency >= 0) {
-        currentStats.recordBdbQueryLatency(storeName, bdbQueryLatency, isAssembledMultiChunkLargeValue());
+      if (databaseLookupLatency >= 0) {
+        currentStats.recordDatabaseLookupLatency(storeName, databaseLookupLatency, isAssembledMultiChunkLargeValue());
       }
       if (storageExecutionSubmissionWaitTime >= 0) {
         currentStats.recordStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);

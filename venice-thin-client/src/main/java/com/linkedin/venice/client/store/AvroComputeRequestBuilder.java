@@ -74,7 +74,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   }
 
   @Override
-  public ComputeRequestBuilder project(String... fieldNames) throws VeniceClientException {
+  public ComputeRequestBuilder<K> project(String... fieldNames) throws VeniceClientException {
     for (String fieldName : fieldNames) {
       projectFields.add(fieldName);
     }
@@ -83,7 +83,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   }
 
   @Override
-  public ComputeRequestBuilder project(Collection<String> fieldNames) throws VeniceClientException {
+  public ComputeRequestBuilder<K> project(Collection<String> fieldNames) throws VeniceClientException {
     for (String fieldName : fieldNames) {
       projectFields.add(fieldName);
     }
@@ -92,7 +92,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   }
 
   @Override
-  public ComputeRequestBuilder dotProduct(String inputFieldName, List<Float> dotProductParam, String resultFieldName)
+  public ComputeRequestBuilder<K> dotProduct(String inputFieldName, List<Float> dotProductParam, String resultFieldName)
       throws VeniceClientException {
     DotProduct dotProduct = (DotProduct) DOT_PRODUCT.getNewInstance();
     dotProduct.field = inputFieldName;
@@ -104,7 +104,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   }
 
   @Override
-  public ComputeRequestBuilder cosineSimilarity(String inputFieldName, List<Float> cosSimilarityParam, String resultFieldName)
+  public ComputeRequestBuilder<K> cosineSimilarity(String inputFieldName, List<Float> cosSimilarityParam, String resultFieldName)
       throws VeniceClientException {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) COSINE_SIMILARITY.getNewInstance();
     cosineSimilarity.field = inputFieldName;

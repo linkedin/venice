@@ -17,9 +17,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor errorRequestSensor;
   private final Sensor successRequestLatencySensor;
   private final Sensor errorRequestLatencySensor;
-  private final Sensor bdbQueryLatencySensor;
-  private final Sensor bdbQueryLatencyForSmallValueSensor;
-  private final Sensor bdbQueryLatencyForLargeValueSensor;
+  private final Sensor databaseLookupLatencySensor;
+  private final Sensor databaseLookupLatencyForSmallValueSensor;
+  private final Sensor databaseLookupLatencyForLargeValueSensor;
   private final Sensor multiChunkLargeValueCountSensor;
   private final Sensor requestKeyCountSensor;
   private final Sensor successRequestKeyCountSensor;
@@ -62,9 +62,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.RatioStat(successRequest, errorRequest));
 
-    bdbQueryLatencySensor = getPercentileStatSensor("storage_engine_query_latency");
-    bdbQueryLatencyForSmallValueSensor = getPercentileStatSensor("storage_engine_query_latency_for_small_value");
-    bdbQueryLatencyForLargeValueSensor = getPercentileStatSensor("storage_engine_query_latency_for_large_value");
+    databaseLookupLatencySensor = getPercentileStatSensor("storage_engine_query_latency");
+    databaseLookupLatencyForSmallValueSensor = getPercentileStatSensor("storage_engine_query_latency_for_small_value");
+    databaseLookupLatencyForLargeValueSensor = getPercentileStatSensor("storage_engine_query_latency_for_large_value");
 
     storageExecutionHandlerSubmissionWaitTime = registerSensor("storage_execution_handler_submission_wait_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_execution_handler_submission_wait_time")),
@@ -149,12 +149,12 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     errorRequestLatencySensor.record(latency);
   }
 
-  public void recordBdbQueryLatency(double latency, boolean assembledMultiChunkLargeValue) {
-    bdbQueryLatencySensor.record(latency);
+  public void recordDatabaseLookupLatency(double latency, boolean assembledMultiChunkLargeValue) {
+    databaseLookupLatencySensor.record(latency);
     if (assembledMultiChunkLargeValue) {
-      bdbQueryLatencyForLargeValueSensor.record(latency);
+      databaseLookupLatencyForLargeValueSensor.record(latency);
     } else {
-      bdbQueryLatencyForSmallValueSensor.record(latency);
+      databaseLookupLatencyForSmallValueSensor.record(latency);
     }
   }
 
