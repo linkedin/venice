@@ -227,7 +227,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     ValueRecord valueRecord = getValueRecord(store, partition, key, isChunked, response);
     response.setValueRecord(valueRecord);
     response.setOffset(offset);
-    response.setBdbQueryLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
+    response.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
     return response;
   }
 
@@ -249,7 +249,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       }
     }
 
-    responseWrapper.setBdbQueryLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
+    responseWrapper.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
 
     // Offset data
     Set<Integer> partitionIdSet = new HashSet<>();
@@ -285,6 +285,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // The following metrics will get incremented for each record processed in computeResult()
     responseWrapper.setReadComputeDeserializationLatency(0.0);
+    responseWrapper.setDatabaseLookupLatency(0.0);
     responseWrapper.setReadComputeSerializationLatency(0.0);
     responseWrapper.setReadComputeLatency(0.0);
 
@@ -292,7 +293,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
     GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
     for (ComputeRouterRequestKeyV1 key : keys) {
-      clearFieldsInReusedRecord(valueRecord, latestValueSchema);
       clearFieldsInReusedRecord(resultRecord, computeResultSchema);
       ComputeResponseRecordV1 record = computeResult(store,
                                                      storeName,
@@ -360,6 +360,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
      * Reuse MultiGetResponseRecordV1 while getting data from storage engine; MultiGetResponseRecordV1 contains
      * useful information like schemaId of this record.
      */
+    long databaseLookupStartTimeInNS = System.nanoTime();
     MultiGetResponseRecordV1 record = getFromStorage(
         store,
         partition,
@@ -370,6 +371,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         addChunkIntoNioByteBuffer,
         getSizeOfNioByteBuffer,
         containerToMultiGetResponseRecord);
+    response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
     if (null == record) {
       return null;
     }
