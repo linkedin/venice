@@ -78,6 +78,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
   private OffsetRecord lastOffset;
+  private long lastPersistedOffset = UNASSIGNED_VALUE;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
   /**
    * The smallest or first failing offset.
@@ -493,10 +494,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void persistLastOffset() {
+    if (lastPersistedOffset >= lastOffset.getOffset()) {
+      // offset did not change from previously persisted value
+      return;
+    }
     if (offsetRecordTransformer.isPresent()) {
       lastOffset = offsetRecordTransformer.get().transform(lastOffset);
     }
     offsetManager.put(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+    lastPersistedOffset = lastOffset.getOffset();
   }
 
   public void skipMessageWithOffset(long offset) {
