@@ -148,7 +148,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     if (storageEngineMap.containsKey(storeName)) {
       LOGGER.info("Started removing RocksDB storage engine for store: " + storeName);
       storageEngineMap.get(storeName).drop();
+      storageEngineMap.remove(storeName);
       getOptionsForStore(storeName).close();
+      storageEngineOptions.remove(storeName);
       LOGGER.info("Finished removing RocksDB storage engine for store: " + storeName);
     } else {
       LOGGER.info("RocksDB store: " + storeName + " doesn't exist");
