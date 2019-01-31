@@ -68,4 +68,23 @@ public class RocksDBStorageEngineFactoryTest {
     Set<String> storeNameSet = factory.getPersistedStoreNames();
     Assert.assertEquals(storeNameSet.size(), 0);
   }
+
+  @Test
+  public void testAddNewPartitionAfterRemoving() {
+    VeniceProperties veniceServerProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(veniceServerProperties);
+    RocksDBStorageEngineFactory factory = new RocksDBStorageEngineFactory(serverConfig);
+
+    final String testStore = TestUtils.getUniqueString("test_store_");
+    VeniceStoreConfig testStoreConfig = new VeniceStoreConfig(testStore, veniceServerProperties, PersistenceType.ROCKS_DB);
+    AbstractStorageEngine storeEngine = factory.getStore(testStoreConfig);
+    storeEngine.addStoragePartition(1);
+    storeEngine.dropPartition(1);
+    factory.removeStorageEngine(storeEngine);
+    // This could happen when re-balance happens or the pre-created partitions get moved/removed.
+    storeEngine = factory.getStore(testStoreConfig);
+    storeEngine.addStoragePartition(1);
+
+    factory.removeStorageEngine(storeEngine);
+  }
 }
