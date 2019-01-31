@@ -1,7 +1,9 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.base.misc.Metrics;
+import com.linkedin.ddsstorage.base.misc.TimeValue;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.ddsstorage.router.api.MetricNames;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -26,6 +28,7 @@ import io.netty.handler.codec.http.HttpVersion;
 
 import java.util.*;
 
+import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
@@ -167,5 +170,12 @@ public class TestVeniceResponseAggregator {
     } catch (Exception e) {
       Assert.assertTrue(e instanceof VeniceException);
     }
+
+    //test aggregator is able to identify quota exceeded response and
+    //record it properly
+    FullHttpResponse response5 = buildFullHttpResponse(TOO_MANY_REQUESTS, new byte[0], headers);
+    metrics.setMetric(MetricNames.ROUTER_SERVER_TIME.name(), new TimeValue(1, TimeUnit.MILLISECONDS));
+    responseAggregator.buildResponse(request, metrics, Arrays.asList(response5));
+    verify(mockStatsForMultiGet).recordThrottledRequest(storeName);
   }
 }
