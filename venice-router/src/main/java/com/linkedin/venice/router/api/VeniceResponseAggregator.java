@@ -155,6 +155,9 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         stats.recordHealthyRequest(storeName);
       } else if (HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordTardyRequest(storeName);
+      } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
+        LOGGER.debug("request is rejected by storage node because quota is exceeded");
+        stats.recordThrottledRequest(storeName);
       } else {
         LOGGER.debug("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
         stats.recordUnhealthyRequest(storeName);
