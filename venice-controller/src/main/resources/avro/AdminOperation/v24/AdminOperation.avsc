@@ -422,7 +422,15 @@
               "type": "string"
             },
             {
+              "name": "pushJobId",
+              "type": "string"
+            },
+            {
               "name": "versionNum",
+              "type": "int"
+            },
+            {
+              "name": "numberOfPartitions",
               "type": "int"
             }
           ]
