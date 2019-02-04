@@ -69,6 +69,27 @@ public class OfflinePushMonitorTest {
   }
 
   @Test
+  public void testStartMonitorOfflinePushWhenThereIsAnExistingErrorPush() {
+    String topic = TestUtils.getUniqueString("testStartMonitorOfflinePush") + "_v1";
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+    Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
+    Assert.assertEquals(pushStatus.getKafkaTopic(), topic);
+    Assert.assertEquals(pushStatus.getNumberOfPartition(), numberOfPartition);
+    Assert.assertEquals(pushStatus.getReplicationFactor(), replicationFactor);
+    Mockito.verify(mockAccessor, Mockito.atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
+    Mockito.verify(mockAccessor, Mockito.atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
+    Mockito.verify(mockRoutingDataRepo, Mockito.atLeastOnce()).subscribeRoutingDataChange(topic, monitor);
+    monitor.markOfflinePushAsError(topic, "mocked_error_push");
+    Assert.assertEquals(monitor.getPushStatus(topic), ExecutionStatus.ERROR);
+
+    // Existing error push will be cleaned up to start a new push
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+  }
+
+  @Test
   public void testStopMonitorOfflinePush() {
     String topic = "testStopMonitorOfflinePush";
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,

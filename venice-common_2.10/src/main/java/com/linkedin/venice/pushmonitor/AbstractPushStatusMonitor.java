@@ -89,8 +89,16 @@ public abstract class AbstractPushStatusMonitor
   public void startMonitorOfflinePush(String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy) {
     synchronized (lock) {
       if (topicToPushMap.containsKey(kafkaTopic)) {
-        throw new VeniceException("Push status has already been created for topic:" + kafkaTopic + " in cluster:" + clusterName);
+        ExecutionStatus existingStatus = getPushStatus(kafkaTopic);
+        if (existingStatus.equals(ExecutionStatus.ERROR)) {
+          logger.info("The previous push status for topic: " + kafkaTopic + " is 'ERROR',"
+              + " and the new push will clean up the previous 'ERROR' push status");
+          cleanupPushStatus(topicToPushMap.get(kafkaTopic));
+        } else {
+          throw new VeniceException("Push status has already been created for topic:" + kafkaTopic + " in cluster:" + clusterName);
+        }
       }
+
       OfflinePushStatus pushStatus = new OfflinePushStatus(kafkaTopic, numberOfPartition, replicaFactor, strategy);
       offlinePushAccessor.createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
       topicToPushMap.put(kafkaTopic, pushStatus);
