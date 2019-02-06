@@ -34,6 +34,18 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES = "rocksdb.block.cache.compressed.size.in.bytes";
 
+  public static final String ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES = "rocksdb.block.cache.size.in.bytes";
+  /**
+   * Shared block cache for compressed data.
+   */
+
+  public static final String ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT = "rocksdb.block.cache.strict.capacity.limit";
+  /**
+   * if set to True, Cache size will strictly stay within set bounds, by
+   * allocating space for indexes and metadata within cache size.
+   * This needs to be set to true to make OHC behavior and memory sizing predictable.
+   */
+
   /**
    * File block size, and this config has impact to the index size and read performance.
    */
@@ -77,6 +89,8 @@ public class RocksDBServerConfig {
 
   private final long rocksDBBlockCacheSizeInBytes;
   private final long rocksDBBlockCacheCompressedSizeInBytes;
+  private final boolean rocksDBBlockCacheStrictCapacityLimit;
+  private final int rocksDBBlockCacheShardBits;
 
   private final long rocksDBSSTFileBlockSizeInBytes;
 
@@ -107,6 +121,11 @@ public class RocksDBServerConfig {
 
     this.rocksDBBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024l); // 16GB
     this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0l); // disable compressed cache
+
+    this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, True); // make sure indexes stay within cache size limits.
+    this.rocksDBBlockCacheShardBits = props.getInt(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 4); // 16 shards
+    // TODO : add and tune high_pri_pool_ratio to make sure most indexes stay in memory.
+    // This only works properly if "cache_index_and_filter_blocks_with_high_priority" is implemented in table configs
 
     this.rocksDBSSTFileBlockSizeInBytes = props.getSizeInBytes(ROCKSDB_SST_FILE_BLOCK_SIZE_IN_BYTES, 16 * 1024l); // 16KB
 
@@ -148,6 +167,14 @@ public class RocksDBServerConfig {
 
   public long getRocksDBBlockCacheSizeInBytes() {
     return rocksDBBlockCacheSizeInBytes;
+  }
+
+  public Boolean getRocksDBBlockCacheStrictCapacityLimit() {
+    return rocksDBBlockCacheStrictCapacityLimit;
+  }
+
+  public int getRocksDBBlockCacheShardBits() {
+    return rocksDBBlockCacheShardBits;
   }
 
   public long getRocksDBBlockCacheCompressedSizeInBytes() {
