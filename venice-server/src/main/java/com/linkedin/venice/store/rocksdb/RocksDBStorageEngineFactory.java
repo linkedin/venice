@@ -61,7 +61,10 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), COMPACTION_POOL);
 
     // Shared cache across all the RocksDB databases
-    sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes());
+    sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+                               rocksDBServerConfig.getRocksDBBlockCacheShardBits()
+                               rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimits()
+                               );
   }
 
   private synchronized Options getOptionsForStore(String storeName) {
@@ -81,6 +84,11 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
     tableConfig.setBlockCache(sharedCache);
     tableConfig.setCacheIndexAndFilterBlocks(true);
+
+    // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
+    // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
+    // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
+
     tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
     tableConfig.setFormatVersion(2); // Latest version
 
