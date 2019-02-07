@@ -212,6 +212,8 @@ public abstract class TestRead {
     double totalLocalhostPendingConnectionCount = 0;
     double totalLocalhostMaxConnectionCount = 0;
 
+    double totalRequestUsage = 0;
+
     double localhostResponseWaitingTimeForSingleGet = 0;
     double localhostResponseWaitingTimeForMultiGet = 0;
     double localhostRequestCount = 0;
@@ -260,6 +262,9 @@ public abstract class TestRead {
       if (metrics.containsKey(".localhost--multiget_request.Count")) {
         localhostRequestCountForMultiGet += metrics.get(".localhost--multiget_request.Count").value();
       }
+      if (metrics.containsKey(".total--request_usage.Total")) {
+        totalRequestUsage += metrics.get(".total--request_usage.Total").value();
+      }
     }
 
     if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
@@ -281,6 +286,8 @@ public abstract class TestRead {
 
     Assert.assertTrue(localhostRequestCount > 0);
     Assert.assertTrue(localhostRequestCountForMultiGet > 0);
+
+    Assert.assertEquals(totalRequestUsage, rounds * (MAX_KEY_LIMIT + 1.0));
 
     // Verify storage node metrics
     double maxMultiGetRequestPartCount = Double.MIN_VALUE;

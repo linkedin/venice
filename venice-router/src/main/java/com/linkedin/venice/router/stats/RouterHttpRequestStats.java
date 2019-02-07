@@ -13,6 +13,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
@@ -79,7 +80,6 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     throttleSensor = registerSensor("throttled_request", new Count());
     badRequestSensor = registerSensor("bad_request", new Count());
     fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max());
-    
     latencySensor = registerSensorWithDetailedPercentiles("latency", new Max());
     routerResponseWaitingTimeSensor = registerSensor("response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
@@ -119,7 +119,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max());
-    requestUsageSensor = registerSensor("request_usage", new Count(), new OccurrenceRate());
+    requestUsageSensor = registerSensor("request_usage", new Total());
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());
