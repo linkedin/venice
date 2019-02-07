@@ -37,6 +37,7 @@ import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.AvroVersion;
+import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
@@ -287,7 +288,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           int responseSchemaId = clientResponse.getSchemaId();
           long preResponseEnvelopeDeserialization = System.nanoTime();
           RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(responseSchemaId);
-          Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(clientResponse.getBody());
+          Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
 
           try {
             batchGetDeserializer.deserialize(
@@ -434,7 +435,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
           int responseSchemaId = clientResponse.getSchemaId();
           RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
-          Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(clientResponse.getBody());
+          Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
           RecordDeserializer<GenericRecord> dataDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(resultSchema);
           /** TODO: Integrate with {@link BatchGetDeserializer}. Might need to make it generic to deal with both envelopes. */
           Map<K, GenericRecord> resultMap = new HashMap<>();
@@ -443,8 +444,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             if (keyIdx >= keyList.size() || keyIdx < 0) {
               throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
             }
-            byte[] serializedData = record.value.array();
-            GenericRecord value = dataDeserializer.deserialize(serializedData);
+            GenericRecord value = dataDeserializer.deserialize(record.value);
             /**
              * Wrap up the returned {@link GenericRecord} to throw exception when retrieving some failed
              * computation.

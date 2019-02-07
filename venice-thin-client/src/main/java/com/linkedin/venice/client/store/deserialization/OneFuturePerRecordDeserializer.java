@@ -49,9 +49,8 @@ public class OneFuturePerRecordDeserializer<K, V> extends BatchGetDeserializer<K
           valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key"));
         }
         int recordSchemaId = record.schemaId;
-        byte[] serializedData = record.value.array();
         RecordDeserializer<V> dataDeserializer = recordDeserializerGetter.apply(recordSchemaId);
-        V value = dataDeserializer.deserialize(serializedData);
+        V value = dataDeserializer.deserialize(record.value);
         resultMap.put(keyList.get(keyIdx), value);
         earliestPreResponseRecordsDeserialization.accumulateAndGet(preResponseRecordsDeserialization,
             (left, right) -> Math.min(left, right));
