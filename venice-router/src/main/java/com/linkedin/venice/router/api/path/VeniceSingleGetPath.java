@@ -87,10 +87,8 @@ public class VeniceSingleGetPath extends VenicePath {
   }
 
   @Override
-  public HttpUriRequest composeRouterRequest(String storageNodeUri) {
+  public HttpUriRequest composeRouterRequestInternal(String storageNodeUri) {
     HttpGet routerRequest = new HttpGet(storageNodeUri + getLocation());
-    // Setup API version header
-    routerRequest.addHeader(HttpConstants.VENICE_API_VERSION, ROUTER_REQUEST_VERSION);
 
     return routerRequest;
   }

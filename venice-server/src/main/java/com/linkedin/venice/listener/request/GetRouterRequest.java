@@ -16,8 +16,8 @@ public class GetRouterRequest extends RouterRequest {
   private final int partition;
   private final byte[] keyBytes;
 
-  private GetRouterRequest(String resourceName, int partition, byte[] keyBytes) {
-    super(resourceName);
+  private GetRouterRequest(String resourceName, int partition, byte[] keyBytes, HttpRequest request) {
+    super(resourceName, request);
 
     this.partition = partition;
     this.keyBytes = keyBytes;
@@ -56,7 +56,7 @@ public class GetRouterRequest extends RouterRequest {
       int partition = Integer.parseInt(requestParts[3]);
       byte[] keyBytes = getKeyBytesFromUrlKeyString(requestParts[4]);
 
-      return new GetRouterRequest(topicName, partition, keyBytes);
+      return new GetRouterRequest(topicName, partition, keyBytes, request);
     } else {
       throw new VeniceException("Not a valid request for a STORAGE action: " + uri);
     }

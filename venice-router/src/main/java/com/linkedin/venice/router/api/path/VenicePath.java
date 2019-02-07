@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterKey;
@@ -11,6 +12,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 
@@ -178,6 +180,22 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return false;
   }
 
+  public void setRetryHeader(BiConsumer<String, String> setupRetryHeaderFunc) {
+    if (isRetryRequest()) {
+      setupRetryHeaderFunc.accept(HttpConstants.VENICE_RETRY, "1");
+    }
+  }
+
+  public HttpUriRequest composeRouterRequest(String storageNodeUri) {
+    HttpUriRequest request = composeRouterRequestInternal(storageNodeUri);
+
+    // Setup API version header
+    request.setHeader(HttpConstants.VENICE_API_VERSION, getVeniceApiVersionHeader());
+    setRetryHeader((k, v) -> request.addHeader(k, v));
+
+    return request;
+  }
+
   public void markStorageNodeAsFast(String fastStorageNode) {
     slowStorageNodeSet.remove(fastStorageNode);
   }
@@ -188,7 +206,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public abstract VenicePath substitutePartitionKey(@Nonnull Collection<RouterKey> s);
 
-  public abstract HttpUriRequest composeRouterRequest(String storageNodeUri);
+  public abstract HttpUriRequest composeRouterRequestInternal(String storageNodeUri);
 
   public abstract HttpMethod getHttpMethod();
 

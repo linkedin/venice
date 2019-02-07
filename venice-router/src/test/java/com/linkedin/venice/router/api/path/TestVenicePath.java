@@ -45,7 +45,7 @@ public class TestVenicePath {
     }
 
     @Override
-    public HttpUriRequest composeRouterRequest(String storageNodeUri) {
+    public HttpUriRequest composeRouterRequestInternal(String storageNodeUri) {
       return null;
     }
 

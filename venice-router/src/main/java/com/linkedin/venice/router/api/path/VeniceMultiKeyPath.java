@@ -163,7 +163,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   }
 
   @Override
-  public HttpUriRequest composeRouterRequest(String storageNodeUri) {
+  public HttpUriRequest composeRouterRequestInternal(String storageNodeUri) {
     HttpPost routerRequest = new HttpPost(storageNodeUri + getLocation());
     /**
      * Use {@link ByteArrayEntity} here instead of {@link BasicHttpEntity} to explicitly disable
@@ -172,9 +172,6 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
      */
     ByteArrayEntity entity = new ByteArrayEntity(serializeRouterRequest());
     routerRequest.setEntity(entity);
-
-    // Setup API version header
-    routerRequest.setHeader(HttpConstants.VENICE_API_VERSION, getVeniceApiVersionHeader());
 
     return routerRequest;
   }

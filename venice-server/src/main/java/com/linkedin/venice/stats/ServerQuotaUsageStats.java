@@ -2,7 +2,8 @@ package com.linkedin.venice.stats;
 
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.OccurrenceRate;
+import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Total;
 
 
 /**
@@ -10,20 +11,25 @@ import io.tehuti.metrics.stats.OccurrenceRate;
  */
 public class ServerQuotaUsageStats extends AbstractVeniceStats {
 
-  private final Sensor requested;
-  private final Sensor rejected;
+  private final Sensor requestedQPS; // requested query per second
+  private final Sensor requestedKPS; // requested key per second
+  private final Sensor rejectedQPS; // rejected query per second
+  private final Sensor rejectedKPS; // rejected key per second
 
   public ServerQuotaUsageStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    requested = registerSensor("QuotaRcuRequested", new OccurrenceRate());
-    rejected = registerSensor("QuotaRcuRejected", new OccurrenceRate());
+    requestedQPS = registerSensor("quota_rcu_requested", new Count());
+    requestedKPS = registerSensor("quota_rcu_requested_key", new Total());
+    rejectedQPS = registerSensor("quota_rcu_rejected", new Count());
+    rejectedKPS = registerSensor("quota_rcu_rejected_key", new Total());
   }
 
   /**
    * @param rcu The number of Read Capacity Units that the allowed request cost
    */
   public void recordAllowed(long rcu){
-    requested.record(rcu);
+    requestedQPS.record(rcu);
+    requestedKPS.record(rcu);
   }
 
   /**
@@ -31,7 +37,9 @@ public class ServerQuotaUsageStats extends AbstractVeniceStats {
    * @param rcu The number of Read Capacity Units tha the rejected request would have cost
    */
   public void recordRejected(long rcu){
-    requested.record(rcu);
-    rejected.record(rcu);
+    requestedQPS.record(rcu);
+    requestedKPS.record(rcu);
+    rejectedQPS.record(rcu);
+    rejectedKPS.record(rcu);
   }
 }
