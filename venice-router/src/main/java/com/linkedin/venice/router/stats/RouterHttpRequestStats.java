@@ -119,7 +119,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max());
-    requestUsageSensor = registerSensor("request_usage", new Total());
+    /**
+     * request_usage.Total is KPS while request_usage.OccurrenceRate is QPS
+     */
+    requestUsageSensor = registerSensor("request_usage", new Total(), new OccurrenceRate());
 
     requestParsingLatencySensor = registerSensor("request_parse_latency", new Avg());
     requestRoutingLatencySensor = registerSensor("request_route_latency", new Avg());

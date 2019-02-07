@@ -171,6 +171,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
         .set(HttpHeaderNames.HOST, hostAndPort)
         .set(HttpConstants.VENICE_API_VERSION, path.getVeniceApiVersionHeader())
         .set(HttpHeaderNames.CONTENT_LENGTH, request.content().readableBytes());
+    path.setRetryHeader((k, v) -> request.headers().set(k, v));
     String queueName = request.headers().get(X_QUEUE_NAME, "DEFAULT");
     QOS qos = Optional.ofNullable(request.headers().get(X_QOS)).map(QOS::valueOf).orElse(QOS.NORMAL);
     Promise<FullHttpResponse> responsePromise = ImmediateEventExecutor.INSTANCE.newPromise();

@@ -10,6 +10,7 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import org.apache.avro.io.BinaryDecoder;
@@ -19,8 +20,9 @@ import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1>{
   private final ComputeRequestV1 computeRequest;
 
-  private ComputeRouterRequestWrapper(String resourceName, ComputeRequestV1 computeRequest, Iterable<ComputeRouterRequestKeyV1> keys) {
-    super(resourceName, keys);
+  private ComputeRouterRequestWrapper(String resourceName, ComputeRequestV1 computeRequest,
+                                      Iterable<ComputeRouterRequestKeyV1> keys, HttpRequest request) {
+    super(resourceName, keys, request);
     this.computeRequest = computeRequest;
   }
 
@@ -55,7 +57,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
 
-    return new ComputeRouterRequestWrapper(resourceName, computeRequest, keys);
+    return new ComputeRouterRequestWrapper(resourceName, computeRequest, keys, httpRequest);
   }
 
   private static Iterable<ComputeRouterRequestKeyV1> parseKeys(BinaryDecoder decoder) {

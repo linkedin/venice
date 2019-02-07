@@ -9,13 +9,14 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.handler.codec.http.FullHttpRequest;
 
+import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
 
 public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<MultiGetRouterRequestKeyV1> {
-  private MultiGetRouterRequestWrapper(String resourceName, Iterable<MultiGetRouterRequestKeyV1> keys) {
-    super(resourceName, keys);
+  private MultiGetRouterRequestWrapper(String resourceName, Iterable<MultiGetRouterRequestKeyV1> keys, HttpRequest request) {
+    super(resourceName, keys, request);
   }
 
   public static MultiGetRouterRequestWrapper parseMultiGetHttpRequest(FullHttpRequest httpRequest) {
@@ -36,14 +37,13 @@ public class MultiGetRouterRequestWrapper extends MultiKeyRouterRequestWrapper<M
     if (Integer.parseInt(apiVersion) != expectedApiVersion) {
       throw new VeniceException("Expected API version: " + expectedApiVersion + ", but received: " + apiVersion);
     }
+
     Iterable<MultiGetRouterRequestKeyV1> keys;
-
-
     byte[] content = new byte[httpRequest.content().readableBytes()];
     httpRequest.content().readBytes(content);
     keys = parseKeys(content);
 
-    return new MultiGetRouterRequestWrapper(resourceName, keys);
+    return new MultiGetRouterRequestWrapper(resourceName, keys, httpRequest);
   }
 
   private static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {

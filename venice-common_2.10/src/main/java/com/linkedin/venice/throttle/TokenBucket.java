@@ -96,6 +96,7 @@ public class TokenBucket {
    * @return number of tokens remaining in the bucket
    */
   public long getStaleTokenCount(){
+    // TODO: maybe update the token after getting the stale token count
     return tokens.get();
   }
 

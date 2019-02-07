@@ -123,8 +123,10 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
     int rcu = getRcu(request); //read capacity units
     String storeName = Version.parseStoreFromKafkaTopicName(request.getResourceName());
 
-    //First check store bucket for capacity
-    if (storeVersionBuckets.containsKey(request.getResourceName())) {
+    /**
+     * First check store bucket for capacity; don't throttle retried request at store version level
+     */
+    if (storeVersionBuckets.containsKey(request.getResourceName()) && !request.isRetryRequest()) {
       if (!storeVersionBuckets.get(request.getResourceName()).tryConsume(rcu)) {
         // TODO: check if extra node capacity and can still process this request out of quota
         stats.recordRejected(storeName, rcu);
@@ -134,7 +136,6 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
           String errorMessage = "Total quota for store " + storeName + " is " + storeQuota + " RCU per second. Storage Node "
               + thisNodeId + " is allocated " + thisNodeRcuPerSecond + " RCU per second which has been exceeded.";
           ctx.writeAndFlush(new HttpShortcutResponse(errorMessage, HttpResponseStatus.TOO_MANY_REQUESTS));
-          ctx.close();
           return;
         }
       }
@@ -148,12 +149,14 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
 
     }
 
-    //Once we know store bucket has capacity, check node bucket for capacity
+    /**
+     * Once we know store bucket has capacity, check node bucket for capacity;
+     * retried requests need to be throttled at node capacity level
+     */
     if (!storageNodeBucket.tryConsume(rcu)) {
       stats.recordRejected(storeName, rcu);
       if (enforcing) {
         ctx.writeAndFlush(new HttpShortcutResponse("Server over capacity", HttpResponseStatus.SERVICE_UNAVAILABLE));
-        ctx.close();
         return;
       }
     }
