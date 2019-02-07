@@ -2,12 +2,14 @@ package com.linkedin.venice.serializer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
 
@@ -82,6 +84,13 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   @Override
   public V deserialize(byte[] bytes) throws VeniceException {
     return deserialize(null, bytes);
+  }
+
+  @Override
+  public V deserialize(ByteBuffer byteBuffer) throws VeniceException {
+    BinaryDecoder decoder = DecoderFactory.defaultFactory()
+        .createBinaryDecoder(byteBuffer.array(), byteBuffer.position(), byteBuffer.remaining(), null);
+    return deserialize(null, decoder);
   }
 
   @Override

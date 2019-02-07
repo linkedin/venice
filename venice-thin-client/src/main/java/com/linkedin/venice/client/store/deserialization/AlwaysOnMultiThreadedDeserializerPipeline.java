@@ -66,9 +66,8 @@ public class AlwaysOnMultiThreadedDeserializerPipeline<K, V> extends BatchGetDes
                       new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key"));
                 }
                 int recordSchemaId = record.schemaId;
-                byte[] serializedData = record.value.array();
                 RecordDeserializer<V> dataDeserializer = recordContainer.recordDeserializerGetter.apply(recordSchemaId);
-                V value = dataDeserializer.deserialize(serializedData);
+                V value = dataDeserializer.deserialize(record.value);
                 recordContainer.resultsMap.put(recordContainer.keyList.get(keyIdx), value);
               } catch (Exception e) {
                 recordContainer.resultsMap.valueFuture.completeExceptionally(
