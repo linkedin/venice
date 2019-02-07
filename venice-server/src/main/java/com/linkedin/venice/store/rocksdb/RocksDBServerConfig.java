@@ -34,17 +34,16 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES = "rocksdb.block.cache.compressed.size.in.bytes";
 
-  public static final String ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES = "rocksdb.block.cache.size.in.bytes";
   /**
-   * Shared block cache for compressed data.
+   * number of bits to count cache shards, total shard count would be 2 to the power of this number.
    */
-
-  public static final String ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT = "rocksdb.block.cache.strict.capacity.limit";
+  public static final String ROCKSDB_BLOCK_CACHE_SHARD_BITS = "rocksdb.block.cache.shard.bits";
   /**
    * if set to True, Cache size will strictly stay within set bounds, by
    * allocating space for indexes and metadata within cache size.
    * This needs to be set to true to make OHC behavior and memory sizing predictable.
    */
+  public static final String ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT = "rocksdb.block.cache.strict.capacity.limit";
 
   /**
    * File block size, and this config has impact to the index size and read performance.
@@ -122,7 +121,7 @@ public class RocksDBServerConfig {
     this.rocksDBBlockCacheSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_SIZE_IN_BYTES, 16 * 1024 * 1024 * 1024l); // 16GB
     this.rocksDBBlockCacheCompressedSizeInBytes = props.getSizeInBytes(ROCKSDB_BLOCK_CACHE_COMPRESSED_SIZE_IN_BYTES, 0l); // disable compressed cache
 
-    this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, True); // make sure indexes stay within cache size limits.
+    this.rocksDBBlockCacheStrictCapacityLimit = props.getBoolean(ROCKSDB_BLOCK_CACHE_STRICT_CAPACITY_LIMIT, true); // make sure indexes stay within cache size limits.
     this.rocksDBBlockCacheShardBits = props.getInt(ROCKSDB_BLOCK_CACHE_SHARD_BITS, 4); // 16 shards
     // TODO : add and tune high_pri_pool_ratio to make sure most indexes stay in memory.
     // This only works properly if "cache_index_and_filter_blocks_with_high_priority" is implemented in table configs
@@ -169,7 +168,7 @@ public class RocksDBServerConfig {
     return rocksDBBlockCacheSizeInBytes;
   }
 
-  public Boolean getRocksDBBlockCacheStrictCapacityLimit() {
+  public boolean getRocksDBBlockCacheStrictCapacityLimit() {
     return rocksDBBlockCacheStrictCapacityLimit;
   }
 

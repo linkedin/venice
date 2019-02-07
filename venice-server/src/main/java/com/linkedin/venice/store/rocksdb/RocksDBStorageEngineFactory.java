@@ -62,9 +62,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Shared cache across all the RocksDB databases
     sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
-                               rocksDBServerConfig.getRocksDBBlockCacheShardBits()
-                               rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimits()
-                               );
+                               rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
+                               rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
   }
 
   private synchronized Options getOptionsForStore(String storeName) {
