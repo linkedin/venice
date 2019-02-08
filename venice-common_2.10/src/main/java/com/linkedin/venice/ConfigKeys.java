@@ -709,4 +709,9 @@ public class ConfigKeys {
    * For some scenario, buffer replay might not be necessary since the store version topic has already included all the data.
    */
   public static final String CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID = "controller.skip.buffer.replay.for.hybrid";
+
+  /**
+   * Flag to indicate which push monitor controller will pick up for an upcoming push
+   */
+  public static final String PUSH_MONITOR_TYPE = "push.monitor.type";
 }

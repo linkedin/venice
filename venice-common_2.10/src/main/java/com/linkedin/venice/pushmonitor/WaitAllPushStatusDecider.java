@@ -2,6 +2,8 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.meta.OfflinePushStrategy;
 
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
+
 
 /**
  * Wait all strategy stands for Venice do not allow one replica to be failed. In case of failure, Venice fail the whole
@@ -15,6 +17,11 @@ public class WaitAllPushStatusDecider extends PushStatusDecider {
 
   @Override
   public boolean hasEnoughReplicasForOnePartition(int actual, int expected) {
-    return actual < expected ? false : true;
+    return actual >= expected;
+  }
+
+  @Override
+  protected int getNumberOfToleratedErrors() {
+    return 0;
   }
 }

@@ -7,7 +7,6 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
@@ -49,7 +48,7 @@ public class TestInstanceStatusDecider {
     accessor = Mockito.mock(SafeHelixDataAccessor.class);
     Mockito.doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
     Mockito.doReturn(readWriteStoreRepository).when(resources).getMetadataRepository();
-    Mockito.doReturn(mockMontior).when(resources).getOfflinePushMonitor();
+    Mockito.doReturn(mockMontior).when(resources).getPushMonitor();
     Mockito.doReturn(manager).when(resources).getController();
     Mockito.doReturn(accessor).when(manager).getHelixDataAccessor();
     Mockito.doReturn(new LiveInstance("test")).when(accessor).getProperty(Mockito.any(PropertyKey.class));

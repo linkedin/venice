@@ -11,7 +11,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
@@ -74,7 +74,7 @@ public class InstanceStatusDecider {
       }
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-      OfflinePushMonitor monitor = resources.getOfflinePushMonitor();
+      PushMonitor monitor = resources.getPushMonitor();
 
       // Get all of replicas hold by given instance
       List<Replica> replicas = getReplicasForInstance(resources, instanceId);
@@ -119,6 +119,7 @@ public class InstanceStatusDecider {
           } else if (versionStatus.equals(VersionStatus.STARTED)) {
             // Push is still running
             // Venice can not remove the given instance once job would fail due to removing.
+            //TODO: can we remove this check? Would re-balance nodes fail a running push by any means?
             if (monitor.wouldJobFail(resourceName, partitionAssignmentAfterRemoving)) {
               logger.info(
                   "Instance:" + instanceId + " is not removable because the offline push for topic:" + resourceName
@@ -133,7 +134,6 @@ public class InstanceStatusDecider {
                   "Version status: " + versionStatus.toString() + ", ignore it while judging whether instance: "
                       + instanceId + " is removable.");
             }
-            continue;
           }
         }
       }

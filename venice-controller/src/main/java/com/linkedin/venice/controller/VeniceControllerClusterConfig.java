@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.pushmonitor.PushMonitorType;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ public class VeniceControllerClusterConfig {
   private boolean sslToKafka;
   private int helixSendMessageTimeoutMilliseconds;
   private int adminTopicReplicationFactor;
+  private PushMonitorType pushMonitorType;
 
   private String kafkaSecurityProtocol;
   // SSL related config
@@ -172,6 +174,8 @@ public class VeniceControllerClusterConfig {
     pushSSLWhitelist = props.getList(PUSH_SSL_WHITELIST, new ArrayList<>());
     helixRebalanceAlg = props.getString(HELIX_REBALANCE_ALG, CrushRebalanceStrategy.class.getName());
     adminTopicReplicationFactor = props.getInt(ADMIN_TOPIC_REPLICATION_FACTOR, 3);
+    this.pushMonitorType = PushMonitorType
+        .valueOf(props.getString(PUSH_MONITOR_TYPE, PushMonitorType.WRITE_COMPUTE_STORE.name()));
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
@@ -302,6 +306,10 @@ public class VeniceControllerClusterConfig {
 
   public int getAdminTopicReplicationFactor() {
     return adminTopicReplicationFactor;
+  }
+
+  public PushMonitorType getPushMonitorType() {
+    return pushMonitorType;
   }
 
   public Optional<Integer> getMinIsr() {

@@ -9,16 +9,16 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
-public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
+public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest {
   @Override
   protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid) {
-    return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(),
-        getMockStoreCleaner(), getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid);
+    return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
+        getMockStoreCleaner(), getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
+        skipBufferReplayForHybrid);
   }
 
   @Test
@@ -35,7 +35,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
     PushStatusDecider decider = mock(PushStatusDecider.class);
     Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.COMPLETED, Optional.empty());
-    doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
+    doReturn(statusAndDetails).when(decider).checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
 
     getMonitor().loadAllPushes();
@@ -64,7 +64,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     doReturn(partitionAssignment).when(getMockRoutingDataRepo()).getPartitionAssignments(topic);
     PushStatusDecider decider = mock(PushStatusDecider.class);
     Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.ERROR, Optional.empty());
-    doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
+    doReturn(statusAndDetails).when(decider).checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
     doThrow(new VeniceException("Could not delete.")).when(getMockStoreCleaner())
         .deleteOneStoreVersion(anyString(), anyString(), anyInt());
@@ -74,36 +74,6 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     verify(getMockStoreCleaner(), atLeastOnce())
         .deleteOneStoreVersion(anyString(), anyString(), anyInt());
     Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
-
-    //set the push status decider back
-    PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
-  }
-
-  @DataProvider(name = "pushStatues")
-  public static Object[][] pushStatues() {
-    return new Object[][]{{ExecutionStatus.COMPLETED}, {ExecutionStatus.STARTED}, {ExecutionStatus.ERROR}};
-  }
-
-  @Test(dataProvider = "pushStatues")
-  public void testOnRoutingDataChanged(ExecutionStatus expectedStatus) {
-    String topic = getTopic();
-    prepareMockStore(topic);
-
-    getMonitor().startMonitorOfflinePush(topic, getNumberOfPartition(), getReplicationFactor(),
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, getNumberOfPartition());
-    OfflinePushStatus pushStatus = getMonitor().getOfflinePush(topic);
-    PushStatusDecider decider = mock(PushStatusDecider.class);
-    Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(expectedStatus, Optional.empty());
-    doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
-    PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
-    ((OfflinePushMonitor) getMonitor()).onRoutingDataChanged(partitionAssignment);
-    Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), expectedStatus);
-    if (expectedStatus.equals(ExecutionStatus.COMPLETED)) {
-      verify(getMockPushHealthStats(), times(1)).recordSuccessfulPush(eq(getStoreName()), anyLong());
-    } else if (expectedStatus.equals(ExecutionStatus.ERROR)) {
-      verify(getMockPushHealthStats(), times(1)).recordFailedPush(eq(getStoreName()), anyLong());
-    }
 
     //set the push status decider back
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
