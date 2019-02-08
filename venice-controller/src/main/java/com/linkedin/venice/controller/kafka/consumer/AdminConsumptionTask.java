@@ -207,7 +207,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             delegateMessage(undelegatedRecords.peek());
           } catch (DataValidationException e) {
             // Very unlikely but exceptions like DataValidationException could be thrown here.
-            logger.error("Admin consumption task is blocked due to DataValidationException", e);
+            logger.error("Admin consumption task is blocked due to DataValidationException with offset "
+                + undelegatedRecords.peek().offset(), e);
             failingOffset = undelegatedRecords.peek().offset();
             break;
           }
@@ -510,7 +511,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       offsetToSkip = offset;
     } else {
       throw new VeniceException(
-          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: " + offset);
+          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: " + failingOffset);
     }
   }
 
