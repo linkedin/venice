@@ -10,11 +10,11 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
@@ -24,6 +24,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
+import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Supplier;
 import org.apache.helix.HelixManagerFactory;
@@ -47,7 +48,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
-  private final OfflinePushMonitor OfflinePushMonitor;
+  private final PushMonitor pushMonitor;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
@@ -86,7 +87,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
-    this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
+    this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
         metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid());
@@ -108,7 +109,7 @@ public class VeniceHelixResources implements VeniceResource {
     metadataRepository.refresh();
     schemaRepository.refresh();
     routingDataRepository.refresh();
-    OfflinePushMonitor.loadAllPushes();
+    pushMonitor.loadAllPushes();
     routersClusterManager.refresh();
     repairStoreConfigs();
   }
@@ -145,8 +146,8 @@ public class VeniceHelixResources implements VeniceResource {
     return config;
   }
 
-  public OfflinePushMonitor getOfflinePushMonitor() {
-    return OfflinePushMonitor;
+  public PushMonitor getPushMonitor() {
+    return pushMonitor;
   }
 
   public ZkRoutersClusterManager getRoutersClusterManager() {

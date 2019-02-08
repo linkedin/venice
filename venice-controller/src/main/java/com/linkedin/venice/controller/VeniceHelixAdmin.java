@@ -33,7 +33,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
@@ -907,7 +907,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails){
         // Mark offline push job as Error and clean up resources because add version failed.
-        OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        PushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
         offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber), statusDetails);
         deleteOneStoreVersion(clusterName, storeName, versionNumber);
     }
@@ -1191,6 +1191,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
                 }
             }
+
+            stopMonitorOfflinePush(clusterName, resourceName);
             Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
             if (deletedVersion.isPresent()) {
                 // Do not delete topic during store migration
@@ -1199,7 +1201,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
                 }
             }
-            stopMonitorOfflinePush(clusterName, resourceName);
         } finally {
             resources.unlockForMetadataOperation();
         }
@@ -1933,7 +1934,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private void waitUntilNodesAreAssignedForResource(String clusterName, String topic, OfflinePushStrategy offlinePushStrategy,
         long offlinePushWaitTimeInMilliseconds, int replicationFactor) {
-      OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+      PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
       RoutingDataRepository routingDataRepository = getVeniceHelixResource(clusterName).getRoutingDataRepository();
       PushStatusDecider decider = PushStatusDecider.getDecider(offlinePushStrategy);
       ResourceAssignment resourceAssignment;
@@ -1953,7 +1954,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           monitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
           logger.info(
               "After waiting: " + elapsedTime + "ms, resource allocation is completed for '" + topic + "'.");
-          monitor.recordPushPreparationDuration(Version.parseStoreFromKafkaTopicName(topic), elapsedTime / Time.MS_PER_SECOND);
+          monitor.recordPushPreparationDuration(topic, elapsedTime / Time.MS_PER_SECOND);
           return;
         } else {
           logger.info("Resource '" + topic + "' does not have enough nodes, start waiting: "+ elapsedTime + "ms");
@@ -2133,7 +2134,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion) {
         checkControllerMastership(clusterName);
-        OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
         Pair<ExecutionStatus, Optional<String>> statusAndDetails =
             monitor.getPushStatusAndDetails(kafkaTopic, incrementalPushVersion);
         return new OfflinePushStatusInfo(statusAndDetails.getFirst(), statusAndDetails.getSecond());
@@ -2142,7 +2143,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic){
         checkControllerMastership(clusterName);
-        OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
         return monitor.getOfflinePushProgress(kafkaTopic);
     }
 
@@ -2653,7 +2654,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         Map<String, String> result = new HashMap<>();
         // Find all ongoing offline pushes at first.
-        OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
         monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, VersionStatus.STARTED.toString()));
         // Find the versions which had been ONLINE, but some of replicas are still bootstrapping due to:
         // 1. As we use N-1 strategy, so there might be some slow replicas caused by kafka or other issues.
@@ -2696,7 +2697,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
-        OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        PushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
         offlinePushMonitor.setTopicReplicator(topicReplicator);
         offlinePushMonitor.startMonitorOfflinePush(
             kafkaTopic,
@@ -2706,7 +2707,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     protected void stopMonitorOfflinePush(String clusterName, String topic) {
-        OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        PushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
         offlinePushMonitor.stopMonitorOfflinePush(topic);
     }
 

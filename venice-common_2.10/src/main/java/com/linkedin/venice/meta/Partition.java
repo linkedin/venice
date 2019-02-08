@@ -7,7 +7,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-
 /**
  * Class defines the partition in Venice.
  * <p>
@@ -61,8 +60,18 @@ public class Partition {
   public List<Instance> getOfflineInstances(){
     return getInstancesInState(HelixState.OFFLINE_STATE);
   }
+
   public Map<String, List<Instance>> getAllInstances() {
     return Collections.unmodifiableMap(stateToInstancesMap);
+  }
+
+  public Map<Instance, String> getInstanceToStateMap() {
+    Map<Instance, String> instanceToStateMap = new HashMap<>();
+    stateToInstancesMap.forEach((helixState, instanceList) -> {
+      instanceList.forEach(instance -> instanceToStateMap.put(instance, helixState));
+    });
+
+    return instanceToStateMap;
   }
 
   /**

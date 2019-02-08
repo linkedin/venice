@@ -31,8 +31,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.HelixUtils;
@@ -51,6 +51,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
@@ -159,8 +160,7 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
-  public void testStartClusterAndCreatePush()
-      throws Exception {
+  public void testStartClusterAndCreatePush() {
     try {
       String storeName = TestUtils.getUniqueString("test-store");
       veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
@@ -398,12 +398,7 @@ public class TestVeniceHelixAdmin {
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
     HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), helixMessageChannelStats);
-    channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
-      @Override
-      public void handleMessage(KillOfflinePushMessage message) {
-        //ignore.
-      }
-    });
+    channel.registerHandler(KillOfflinePushMessage.class, message -> {/*ignore*/});
 
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),1, 1, true);
@@ -947,10 +942,10 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(store.getVersions().size(), 2);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     // two offline jobs are running.
-    OfflinePushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+    PushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getPushMonitor();
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
-        () -> monitor.getPushStatus(Version.composeKafkaTopic(storeName, 1)).equals(ExecutionStatus.COMPLETED)
-            && monitor.getPushStatus(Version.composeKafkaTopic(storeName, 2)).equals(ExecutionStatus.COMPLETED)
+        () -> monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 1), Optional.empty()).getFirst().equals(ExecutionStatus.COMPLETED)
+            && monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 2), Optional.empty()).getFirst().equals(ExecutionStatus.COMPLETED)
     );
   }
 

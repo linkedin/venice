@@ -1,13 +1,13 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.OfflinePushStrategy;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -74,8 +74,16 @@ public class PartitionStatus {
     if (replicaStatusMap.containsKey(instanceId)) {
       return replicaStatusMap.get(instanceId).getCurrentStatus();
     } else {
-      return ExecutionStatus.NOT_CREATED;
+      return NOT_CREATED;
     }
+  }
+
+  public List<StatusSnapshot> getReplicaHistoricStatusList(String instanceId) {
+    if (replicaStatusMap.containsKey(instanceId)) {
+      return replicaStatusMap.get(instanceId).getStatusHistory();
+    }
+
+    return Collections.emptyList();
   }
 
   @Override

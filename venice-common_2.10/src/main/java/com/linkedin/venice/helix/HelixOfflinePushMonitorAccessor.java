@@ -134,13 +134,13 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
     HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     logger.info("Created offline push status ZNode. Start creating partition statuses.");
-    List<String> partitionPathes = new ArrayList<>(pushStatus.getNumberOfPartition());
+    List<String> partitionPaths = new ArrayList<>(pushStatus.getNumberOfPartition());
     List<PartitionStatus> partitionStatuses = new ArrayList<>(pushStatus.getNumberOfPartition());
     for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartition(); partitionId++) {
-      partitionPathes.add(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId));
+      partitionPaths.add(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId));
       partitionStatuses.add(new PartitionStatus(partitionId));
     }
-    HelixUtils.updateChildren(partitionStatusAccessor, partitionPathes, partitionStatuses);
+    HelixUtils.updateChildren(partitionStatusAccessor, partitionPaths, partitionStatuses);
     logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes.");
   }
 

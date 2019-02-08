@@ -155,8 +155,6 @@ public class OfflinePushStatus {
     }
   }
 
-
-
   /**
    * Check the status of the given incremental push version
    */

@@ -1,16 +1,23 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -57,7 +64,7 @@ public abstract class PushStatusDecider {
         String statusDetails = "too many ERROR replicas (" + errorReplicasCount + "/" + replicationFactor
             + ") in partition " + partition.getId() + " for OfflinePushStrategy:" + getStrategy();
         logger.warn("Push for topic:" + pushStatus.getKafkaTopic() + " should fail because of " + statusDetails);
-        return new Pair<>(ExecutionStatus.ERROR, Optional.of(statusDetails));
+        return new Pair<>(ERROR, Optional.of(statusDetails));
       }
 
       // Is the partition has enough number of completed replicas.
@@ -72,9 +79,41 @@ public abstract class PushStatusDecider {
       }
     }
     if (isAllPartitionCompleted) {
-      return new Pair<>(ExecutionStatus.COMPLETED, Optional.empty());
+      return new Pair<>(COMPLETED, Optional.empty());
     } else {
-      return new Pair<>(ExecutionStatus.STARTED, Optional.empty());
+      return new Pair<>(STARTED, Optional.empty());
+    }
+  }
+
+  /**
+   * Check the current status based on {@link PartitionStatus}
+   */
+  public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(OfflinePushStatus pushStatus,
+      PartitionAssignment partitionAssignment) {
+    if (partitionAssignment == null) {
+      return new Pair<>(NOT_CREATED, Optional.empty());
+    }
+
+    boolean isAllPartitionCompleted = true;
+
+    for (PartitionStatus partitionStatus : pushStatus.getPartitionStatuses()) {
+      ExecutionStatus executionStatus = getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(),
+          partitionAssignment.getPartition(partitionStatus.getPartitionId()).getInstanceToStateMap());
+
+      if (executionStatus == ERROR) {
+        return new Pair<>(executionStatus, Optional.of("too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
+            + " for offlinePushStrategy: " + getStrategy().name()));
+      }
+
+      if (!executionStatus.equals(COMPLETED)) {
+        isAllPartitionCompleted = false;
+      }
+    }
+
+    if (isAllPartitionCompleted) {
+      return new Pair<>(COMPLETED, Optional.empty());
+    } else {
+      return new Pair<>(STARTED, Optional.empty());
     }
   }
 
@@ -115,6 +154,75 @@ public abstract class PushStatusDecider {
   public abstract OfflinePushStrategy getStrategy();
 
   protected abstract boolean hasEnoughReplicasForOnePartition(int actual, int expected);
+
+  protected abstract int getNumberOfToleratedErrors();
+
+  protected ExecutionStatus getPartitionStatus(PartitionStatus partitionStatus, int replicationFactor, Map<Instance, String> instanceToStateMap) {
+    return getPartitionStatus(partitionStatus, replicationFactor, instanceToStateMap, getNumberOfToleratedErrors());
+  }
+
+  protected ExecutionStatus getPartitionStatus(PartitionStatus partitionStatus, int replicationFactor,
+      Map<Instance, String> instanceToStateMap, int numberOfToleratedErrors) {
+    Map<ExecutionStatus, Integer> executionStatusMap = new HashMap<>();
+
+    //when resources are running under L/F model, leader is usually taking more critical work and
+    //are more important than followers. Therefore, we strictly require leaders to be completed before
+    //partitions can be completed. Vice versa, partitions will be in error state if leader is in error
+    //state.
+    boolean isLeaderCompleted = true;
+    boolean isLeaderInError = false;
+
+    for (Map.Entry<Instance, String> entry : instanceToStateMap.entrySet()) {
+      ExecutionStatus currentStatus =
+          getReplicaCurrentStatus(partitionStatus.getReplicaHistoricStatusList(entry.getKey().getNodeId()));
+      if (entry.getValue().equals(HelixState.LEADER_STATE)) {
+        if (!currentStatus.equals(COMPLETED)) {
+          isLeaderCompleted = false;
+        }
+
+        if (currentStatus.equals(ERROR)) {
+          isLeaderInError = true;
+        }
+
+      }
+
+      executionStatusMap.merge(currentStatus, 1, Integer::sum);
+    }
+
+    if (executionStatusMap.containsKey(COMPLETED) &&
+        executionStatusMap.get(COMPLETED) >= replicationFactor - numberOfToleratedErrors &&
+        isLeaderCompleted) {
+      return COMPLETED;
+    }
+
+    if (isLeaderInError) {
+      return ERROR;
+    }
+
+    if (executionStatusMap.containsKey(ERROR) &&
+        executionStatusMap.get(ERROR) > instanceToStateMap.size() - replicationFactor + numberOfToleratedErrors) {
+      return ERROR;
+    }
+
+    return STARTED;
+  }
+
+  protected ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
+    List<ExecutionStatus> statusList = historicStatusList.stream()
+        .map(statusSnapshot -> statusSnapshot.getStatus())
+        .sorted(Collections.reverseOrder())
+        .collect(Collectors.toList());
+
+    ExecutionStatus status = STARTED;
+    for (ExecutionStatus executionStatus : statusList) {
+      if (isDeterminedStatus(executionStatus)) {
+        status = executionStatus;
+        break;
+      }
+    }
+
+    return status;
+  }
 
   public static PushStatusDecider getDecider(OfflinePushStrategy strategy) {
     if (!decidersMap.containsKey(strategy)) {

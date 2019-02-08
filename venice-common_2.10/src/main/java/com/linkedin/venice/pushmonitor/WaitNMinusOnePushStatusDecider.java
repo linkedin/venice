@@ -16,9 +16,14 @@ public class WaitNMinusOnePushStatusDecider extends PushStatusDecider {
   @Override
   public boolean hasEnoughReplicasForOnePartition(int actual, int expected) {
     if (expected == 1) {
-      return actual < expected ? false : true;
+      return actual >= expected;
     } else {
-      return actual < expected - 1 ? false : true;
+      return actual >= expected - 1;
     }
+  }
+
+  @Override
+  protected int getNumberOfToleratedErrors() {
+    return 1;
   }
 }

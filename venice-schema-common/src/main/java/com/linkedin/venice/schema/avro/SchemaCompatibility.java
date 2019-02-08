@@ -38,19 +38,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-import org.apache.avro.Schema.Field;
-import org.apache.avro.Schema.Type;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Evaluate the compatibility between a reader schema and a writer schema.
  * A reader and a writer schema are declared compatible if all datum instances of the writer

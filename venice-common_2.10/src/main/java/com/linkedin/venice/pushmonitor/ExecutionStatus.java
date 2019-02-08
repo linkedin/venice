@@ -57,6 +57,7 @@ public enum ExecutionStatus {
   /**
    * Job is terminated and be removed from repository. Should be archived to historic data storage.
    * Only be used for Job
+   * TODO: remove ARCHIVED as it's not been used anymore
    */
   ARCHIVED(true, false, false, true),
 
@@ -73,6 +74,15 @@ public enum ExecutionStatus {
     this.isTaskStatus = isTaskStatus;
     this.isUsedByHybridStoresOnly = isUsedByHybridStoresOnly;
     this.isTerminal = isTerminal;
+  }
+
+  /**
+   * Some of the statuses are like watermark. These statuses are used in {@link PushMonitor} and
+   * {@link com.linkedin.venice.router.api.VeniceVersionFinder} to determine whether a job is finished
+   * and whether a host is ready to serve read requests.
+   */
+  public static boolean isDeterminedStatus(ExecutionStatus status) {
+    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED;
   }
 
   public boolean isJobStatus() {
