@@ -1,0 +1,21 @@
+{
+  "name": "NamespaceTest",
+  "type": "record",
+  "fields": [
+    {
+      "name": "foo",
+      "type": {
+        "name": "EnumType",
+        "type": "enum",
+        "symbols": [
+          "A",
+          "B"
+        ]
+      }
+    },
+    {
+      "name": "boo",
+      "type": "string"
+    }
+  ]
+}

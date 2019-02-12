@@ -13,7 +13,11 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.utils.Utils;
+import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.io.LinkedinAvroMigrationHelper;
+import org.apache.avro.specific.SpecificData;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
@@ -141,5 +145,38 @@ public class TestAvroStoreClient {
     Assert.assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecord);
 
     specificStoreClient.close();
+  }
+
+  @Test
+  public void testDeserializeWriterSchemaMissingReaderNamespace()
+      throws IOException, ExecutionException, InterruptedException {
+    Schema schemaWithoutNamespace = Utils.getSchemaFromResource("testSchemaWithoutNamespace.avsc");
+    byte[] schemaResponseInBytes =
+        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, schemaWithoutNamespace.toString());
+    CompletableFuture<TransportClientResponse> mockTransportFuture = mock(CompletableFuture.class);
+    CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
+    mockTransportFuture = mock(CompletableFuture.class);
+    doReturn(mockTransportFuture).when(mockTransportClient)
+        .get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "1");
+    mockValueFuture = mock(CompletableFuture.class);
+    doReturn(schemaResponseInBytes).when(mockValueFuture).get();
+    doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
+
+    AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
+        ClientConfig.defaultSpecificClientConfig(STORE_NAME, NamespaceTest.class));
+    specificStoreClient.start();
+
+    RecordDeserializer<NamespaceTest> deserializer = specificStoreClient.getDataRecordDeserializer(1);
+    SpecificData.Record record = new SpecificData.Record(schemaWithoutNamespace);
+    record.put("foo", LinkedinAvroMigrationHelper.newEnumSymbol(
+        schemaWithoutNamespace.getField("foo").schema(), "B"));
+    String testString = "test";
+    record.put("boo", testString);
+    byte[] bytes = StoreClientTestUtils.serializeRecord(record, schemaWithoutNamespace);
+    NamespaceTest result = deserializer.deserialize(bytes);
+    Assert.assertEquals(result.getFoo(), EnumType.B,
+        "Deserialized object field value should match with the value that was originally set");
+    Assert.assertEquals(result.getBoo().toString(), testString,
+        "Deserialized object field value should match with the value that was originally set");
   }
 }

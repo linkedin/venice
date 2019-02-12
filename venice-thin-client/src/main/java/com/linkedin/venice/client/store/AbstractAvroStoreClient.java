@@ -470,9 +470,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (needSchemaReader) {
       //TODO: remove the 'instanceof' statement once HttpClient got refactored.
       if (transportClient instanceof D2TransportClient) {
-        this.schemaReader = new SchemaReader(this);
+        this.schemaReader = new SchemaReader(this, this.getReaderSchema());
       } else {
-        this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader());
+        this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader(), this.getReaderSchema());
       }
     } else {
       this.schemaReader = null;
@@ -486,6 +486,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (isHttp) { // TODO make d2client close method idempotent.  d2client re-uses the transport client for the schema reader
       IOUtils.closeQuietly(schemaReader);
     }
+  }
+
+  protected Optional<Schema> getReaderSchema() {
+    return Optional.empty();
   }
 
   protected abstract AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader();
