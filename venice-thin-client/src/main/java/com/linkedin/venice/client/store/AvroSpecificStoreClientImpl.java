@@ -2,12 +2,12 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import java.util.concurrent.Executor;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import java.util.Optional;
 import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
 
 /**
@@ -26,7 +26,12 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
                                      boolean needSchemaReader,
                                      ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
-    this.valueClass = clientConfig.getSpecificValueClass();
+    valueClass = clientConfig.getSpecificValueClass();
+  }
+
+  @Override
+  public void start() {
+    super.start();
   }
 
   @Override
@@ -48,5 +53,10 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
   protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
     return new AvroSpecificStoreClientImpl<K, V>(getTransportClient().getCopyIfNotUsableInCallback(),
         false, ClientConfig.defaultSpecificClientConfig(getStoreName(), valueClass));
+  }
+
+  @Override
+  protected Optional<Schema> getReaderSchema() {
+    return Optional.of(SpecificData.get().getSchema(valueClass));
   }
 }
