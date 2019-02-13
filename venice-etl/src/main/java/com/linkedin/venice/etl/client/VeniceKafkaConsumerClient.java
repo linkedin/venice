@@ -1,11 +1,11 @@
 package com.linkedin.venice.etl.client;
 
-import com.linkedin.kafka.liclients.consumer.LiKafkaConsumer;
-import com.linkedin.kafka.liclients.consumer.LiKafkaConsumerImpl;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.source.VeniceKafkaSource;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -28,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
 import org.apache.gobblin.kafka.client.AbstractBaseKafkaConsumerClient;
 import org.apache.gobblin.kafka.client.ByteArrayBasedKafkaRecord;
@@ -49,8 +52,6 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
-import com.google.common.base.Function;
-import com.google.common.collect.Lists;
 import com.typesafe.config.Config;
 
 import lombok.ToString;
@@ -94,7 +95,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   private String[] veniceStoreNames;
 
   private final ControllerClient controllerClient;
-  private final LiKafkaConsumer<KafkaKey, KafkaMessageEnvelope> veniceKafkaConsumer;
+  private final KafkaConsumerWrapper veniceKafkaConsumer;
 
   public VeniceKafkaConsumerClient(Config baseConfig) {
     super(baseConfig);
@@ -151,7 +152,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
       logger.error("error reading or writing to temp file on Azkaban: ", e);
     }
 
-    veniceKafkaConsumer = new LiKafkaConsumerImpl<KafkaKey, KafkaMessageEnvelope>(veniceKafkaProp);
+    veniceKafkaConsumer = new ApacheKafkaConsumer(veniceKafkaProp);
   }
 
   private static Properties getKafkaConsumerProperties(String kafkaBoostrapServers) {
@@ -189,7 +190,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
       // filter out all topics that don't match the topic name
       if (topicNames.contains(topicEntry.getKey())) {
         filteredTopics.add(new KafkaTopic(topicEntry.getKey(),
-            Lists.transform(topicEntry.getValue(), PARTITION_INFO_TO_KAFKA_PARTITION)));
+            topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList())));
 
         topicNames.remove(topicEntry.getKey());
       }
@@ -206,7 +207,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   @Override
   public long getEarliestOffset(KafkaPartition partition) throws KafkaOffsetRetrievalFailureException {
     TopicPartition topicPartition = new TopicPartition(partition.getTopicName(), partition.getId());
-    Map<TopicPartition, Long> offsets = this.veniceKafkaConsumer.beginningOffsets(Lists.newArrayList(topicPartition));
+    Map<TopicPartition, Long> offsets = this.veniceKafkaConsumer.beginningOffsets(Arrays.asList(topicPartition));
 
     if (!offsets.containsKey(topicPartition)) {
       throw new KafkaOffsetRetrievalFailureException(String.format("Failed to get earliest offset for %s", partition));
@@ -217,7 +218,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   @Override
   public long getLatestOffset(KafkaPartition partition) throws KafkaOffsetRetrievalFailureException {
     TopicPartition topicPartition = new TopicPartition(partition.getTopicName(), partition.getId());
-    Map<TopicPartition, Long> offsets = this.veniceKafkaConsumer.endOffsets(Lists.newArrayList(topicPartition));
+    Map<TopicPartition, Long> offsets = this.veniceKafkaConsumer.endOffsets(Arrays.asList(topicPartition));
     if (!offsets.containsKey(topicPartition)) {
       throw new KafkaOffsetRetrievalFailureException(String.format("Failed to get latest offset for %s", partition));
     }
@@ -231,7 +232,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
       return null;
     }
 
-    this.veniceKafkaConsumer.assign(Lists.newArrayList(new TopicPartition(partition.getTopicName(), partition.getId())));
+    this.veniceKafkaConsumer.assign(Arrays.asList(new TopicPartition(partition.getTopicName(), partition.getId())));
     this.veniceKafkaConsumer.seek(new TopicPartition(partition.getTopicName(), partition.getId()), nextOffset);
 
     try {

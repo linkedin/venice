@@ -4,22 +4,22 @@ task buildJar(type: Jar) {
             'Implementation-Version': version
   }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }
 
 dependencies {
 
   // Schema related dependencies
-  compile project(':venice-schema-common')
-  compile project(':venice-common_2.10') //TODO, pull venice writer out of venice common so this is a smaller dependency
+  implementation project(':venice-schema-common')
+  implementation project(':venice-common_2.10') //TODO, pull venice writer out of venice common so this is a smaller dependency
 
-  compile (libraries.brooklinKafkaTransport) {
+  implementation (libraries.brooklinKafkaTransport) {
     exclude group: 'org.apache.kafka'
   }
-  compile (libraries.brooklinKafka) {
+  implementation (libraries.brooklinKafka) {
     exclude group: 'org.apache.kafka'
   }
-  compile libraries.brooklinCommon
-  compile libraries.restliDocgen  // Added during dds-storage-core v2 => v3
+  implementation libraries.brooklinCommon
+  implementation libraries.restliDocgen  // Added during dds-storage-core v2 => v3
 }

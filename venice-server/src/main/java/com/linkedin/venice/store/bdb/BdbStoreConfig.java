@@ -1,6 +1,5 @@
 package com.linkedin.venice.store.bdb;
 
-import com.google.common.base.Objects;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.Serializable;
@@ -45,13 +44,14 @@ public class BdbStoreConfig implements Serializable {
 
     BdbStoreConfig config = (BdbStoreConfig) o;
     return getName().equals(config.getName())
-      && Objects.equal(getMemoryFootprintMB(), config.getMemoryFootprintMB());
+      && getMemoryFootprintMB() == config.getMemoryFootprintMB();
   }
 
   @Override
   public int hashCode() {
-    return Objects.hashCode(getName(),
-      getMemoryFootprintMB());
+    int result = storeName != null ? storeName.hashCode() : 0;
+    result = 31 * result + (int) (memoryFootprintMB ^ (memoryFootprintMB >>> 32));
+    return result;
   }
 
   @Override

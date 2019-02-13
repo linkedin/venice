@@ -1,10 +1,12 @@
+apply plugin: 'java-library'
+
 task buildJar(type: Jar) {
     manifest {
         attributes 'Implementation-Title': 'Venice Schema Common',
                 'Implementation-Version': version
     }
     baseName = project.name
-    from { configurations.compile
+    from { configurations.implementation
             .filter {!it.absolutePath.endsWith(".xml")}
             .collect { it.isDirectory() ? it : zipTree(it) }
     }
@@ -20,15 +22,18 @@ jar {
 
 dependencies {
     // Let's try to keep it clean! (i.e.: alphabetical)
-    compile (libraries.avro) {
+
+    // Avro, for better and for worse, is part of our API, so it should leak through to our users as a transitive dependency
+    api (libraries.avro) {
         exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
         exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
         exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
     }
 
-    compile libraries.avroMigrationHelper
+    api libraries.avroMigrationHelper
+    api libraries.commonsIo
 
-    compile (libraries.d2Client) {
+    api (libraries.d2Client) {
         exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */
         exclude group: 'org.mockito', module: 'mockito-all'
         exclude group: 'xerces', module: 'xerces'
@@ -36,14 +41,14 @@ dependencies {
         exclude module: 'httpcore'
         exclude module: 'httpclient'
         exclude group: 'kafka'
-        exclude group: 'com.linkedin.linkedin-kafka-clients'
     }
 
-    compile libraries.jacksonMapper
-    compile libraries.httpClient //d2Client brings in an old version of httpClient
-    compile libraries.httpCore  //d2Client brings in an old version of httpCore
-    compile libraries.tehuti
-    compile libraries.xerces // d2Client brings in an old version of xerces
+    api libraries.jacksonMapper
+    api libraries.httpClient //d2Client brings in an old version of httpClient
+    api libraries.httpCore  //d2Client brings in an old version of httpCore
+    api libraries.tehuti
+    api libraries.xerces // d2Client brings in an old version of xerces
 
-    testCompile project(':venice-test-common_2.10')
+    testImplementation project(':venice-test-common_2.10')
+    testImplementation project(':venice-thin-client')
 }

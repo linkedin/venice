@@ -1,14 +1,14 @@
-apply plugin: 'java'
+apply plugin: 'java-library'
 
 dependencies {
-    compile project(':venice-common_2.10')
+    implementation project(':venice-common_2.10')
 
-    compile (libraries.avro) {
+    implementation (libraries.avro) {
         exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     }
-    compile libraries.gobblinCoreBase
-    compile libraries.gobblinKafkaCommon
-    compile libraries.guava
+    implementation libraries.gobblinCoreBase
+    implementation libraries.gobblinKafkaCommon
+    implementation libraries.kafka
 }
 
 configurations {
@@ -36,7 +36,7 @@ jar {
     // including all jar runtime dependency jars (fat jar)
     // from configurations.jarRuntime.collect {
     from configurations.jarRuntime
-    // from configurations.compile
+    // from configurations.implementation
         .filter {!it.absolutePath.endsWith(".xml")}
         .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
         .collect {

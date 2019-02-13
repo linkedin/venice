@@ -1,3 +1,4 @@
+apply plugin: 'java-library'
 
 task buildJar(type: Jar) {
   zip64 true
@@ -26,35 +27,34 @@ dependencies {
 
   // Let's try to keep it clean! (i.e.: alphabetical)
 
-  compile (libraries.avro) {
+  implementation (libraries.avro) {
     exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
-  compile libraries.asyncHttpClient
+  implementation libraries.avroMigrationHelper
+  implementation libraries.asyncHttpClient
 
-  compile libraries.bouncyCastle
+  implementation libraries.bouncyCastle
 
-  compile libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
-  compile libraries.commonsCodec
+  implementation libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
+  implementation libraries.commonsCodec
 
-  compile libraries.guava
-
-  compile (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
+  implementation (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
     // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
     exclude group: 'com.github.sgroschupf'
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module:'zookeeper'
   }
 
-  compile libraries.jacksonMapper
+  implementation libraries.jacksonMapper
 
-  compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
-  compile libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
+  implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
 
-  compile libraries.oss
+  implementation libraries.oss
 
-  compile (libraries.routerLnkd){ // for SSL Initializer
+  implementation (libraries.routerLnkd){ // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
@@ -63,16 +63,19 @@ dependencies {
     exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keepin' it clean.
   }
 
-  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
+  implementation libraries.tehuti
 
-  compile project(':venice-schema-common')
+  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
+
+  api project(':venice-schema-common')
 
   // Test dependencies are allowed to be bulkier.
-  // testCompile libraries.kafka //restore this if we remove it from the compile dependencies
-  testCompile libraries.zookeeper
-  testCompile project(':venice-controller')
-  testCompile project(':venice-server')
-  testCompile project(':venice-router')
-  testCompile libraries.tehuti
+  testImplementation libraries.kafkaTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  testImplementation libraries.zookeeper
+  testImplementation project(':venice-controller')
+  testImplementation project(':venice-server')
+  testImplementation project(':venice-router')
+  testImplementation libraries.tehuti
 }

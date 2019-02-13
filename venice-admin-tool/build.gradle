@@ -1,4 +1,4 @@
-apply plugin: 'java'
+apply plugin: 'java-library'
 
 jar {
     zip64 true
@@ -18,16 +18,17 @@ jar {
 
 
 dependencies {
-    compile project(':venice-common_2.10')
-    compile(project(':venice-test-common_2.10')) {
+    implementation (libraries.avro) {
+      exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+    }
+    implementation libraries.kafka
+
+    implementation project(':venice-common_2.10')
+    implementation (project(':venice-test-common_2.10')) {
       // Used by the command that spins up a MirrorMaker
       transitive = false
     }
 
-    compile project(':venice-thin-client')
-    compile (libraries.avro) {
-      exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
-    }
-
-    compile project(':venice-controller')
+    implementation project(':venice-thin-client')
+    implementation project(':venice-controller')
 }

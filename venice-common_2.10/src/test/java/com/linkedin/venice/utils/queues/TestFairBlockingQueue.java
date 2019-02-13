@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import org.apache.commons.math3.stat.StatUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -57,9 +56,17 @@ public class TestFairBlockingQueue {
       linkedData[i] = testThroughput(new LinkedBlockingQueue<>());
     }
 
-    System.out.println("linked mean: " + StatUtils.mean(linkedData));
-    System.out.println("fair mean: " + StatUtils.mean(fairData));
+    System.out.println("linked mean: " + mean(linkedData));
+    System.out.println("fair mean: " + mean(fairData));
 
+  }
+
+  private double mean(double[] values) {
+    double sum = 0;
+    for (double value: values) {
+      sum += value;
+    }
+    return sum / values.length;
   }
 
   public double testThroughput(BlockingQueue<Runnable> queue) throws InterruptedException {

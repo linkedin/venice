@@ -1,40 +1,40 @@
 dependencies {
-    compile project(':venice-common_2.10')
-    compile project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
+    implementation project(':venice-common_2.10')
+    implementation project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
 
-    compile libraries.commonsIo
-    compile libraries.kafkaClients
-    compile libraries.kafka
-    compile (libraries.avro) {
+    implementation libraries.commonsIo
+    implementation libraries.kafkaClients
+    implementation libraries.kafka
+    implementation (libraries.avro) {
       exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     }
-    compile (libraries.avroMapred) {
+    implementation (libraries.avroMapred) {
       exclude group: 'org.mortbay.jetty'
     }
 
-    compile (libraries.mapreduceClientCore) {
+    implementation (libraries.mapreduceClientCore) {
         exclude group: 'org.apache.avro'
         exclude group: 'javax.servlet'
     }
 
     // gradle dependencyInsight is not showing any dependency on the slf4j-simple
     // But if this version is not forced, it causes the slf4j to fail with NoSuchMethodError
-    compile 'org.slf4j:slf4j-simple:1.6.2'
+    implementation 'org.slf4j:slf4j-simple:1.6.2'
 
-    compile libraries.log4j
-    compile(libraries.hadoopCommon) {
+    implementation libraries.log4j
+    implementation (libraries.hadoopCommon) {
       // Exclude transitive dependency
       exclude group: 'org.apache.avro'
       exclude group: 'javax.servlet'
     }
-    compile libraries.joptSimple
-    compile libraries.jdom
-    compile libraries.jacksonCore
+    implementation libraries.joptSimple
+    implementation libraries.jdom
+    implementation libraries.jacksonCore
 
-    compile libraries.xerces
-    compile libraries.xalan
+    implementation libraries.xerces
+    implementation libraries.xalan
 
-    compile libraries.azkaban
+    implementation libraries.azkaban
 
     testCompile project(':venice-controller')
     testCompile project(':venice-server')
@@ -77,7 +77,7 @@ jar {
   // including all jar runtime dependency jars (fat jar)
   // from configurations.jarRuntime.collect {
   from configurations.jarRuntime
-  // from configurations.compile
+  // from configurations.implementation
       .filter {!it.absolutePath.endsWith(".xml")}
       .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
       .collect {

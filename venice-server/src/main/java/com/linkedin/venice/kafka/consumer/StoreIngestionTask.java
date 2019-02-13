@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.google.common.collect.Lists;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -45,6 +44,7 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -863,7 +863,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       } else {
         errorMessage += ". Because " + topic + " is the current version, consumption will continue.";
       }
-      notificationDispatcher.reportError(Lists.newArrayList(partitionConsumptionState), errorMessage, e);
+      notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
       if (needToUnsub) {
         unSubscribePartition(topic, faultyPartition);
       }

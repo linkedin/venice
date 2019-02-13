@@ -1,6 +1,5 @@
 package com.linkedin.venice.server;
 
-import com.google.common.collect.ImmutableList;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
@@ -34,6 +33,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -203,7 +203,7 @@ public class VeniceServer {
      * 4. call KafkaSimpleConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
      */
 
-    return ImmutableList.copyOf(services);
+    return Collections.unmodifiableList(services);
   }
 
   private void createHelixStoreAndSchemaRepository(VeniceClusterConfig clusterConfig, MetricsRepository metricsRepository) {

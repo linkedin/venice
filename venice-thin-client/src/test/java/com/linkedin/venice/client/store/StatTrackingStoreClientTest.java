@@ -11,12 +11,13 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.TestUtils;
-import edu.emory.mathcs.backport.java.util.Collections;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -25,7 +26,6 @@ import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.eclipse.jetty.http.HttpStatus;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
@@ -132,7 +132,7 @@ public class StatTrackingStoreClientTest {
   @Test
   public void testGetWithException() throws ExecutionException, InterruptedException {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
-    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpStatus.BAD_REQUEST_400));
+    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
     mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
       try {
         Thread.sleep(50);

@@ -383,7 +383,7 @@ public class TestPushUtils {
   public static Properties defaultH2VProps(String veniceUrl, String inputDirPath, String storeName) {
     Properties props = new Properties();
     props.put(KafkaPushJob.VENICE_URL_PROP, veniceUrl);
-    props.put(VENICE_STORE_NAME_PROP, storeName);
+    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
@@ -419,7 +419,7 @@ public class TestPushUtils {
     props.put(KafkaPushJob.VENICE_URL_PROP, veniceMultiClusterWrapper.getControllerConnectString());
     props.put(KafkaPushJob.KAFKA_URL_PROP, veniceMultiClusterWrapper.getKafkaBrokerWrapper().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, clusterName);
-    props.put(VENICE_STORE_NAME_PROP, storeName);
+    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
@@ -467,13 +467,13 @@ public class TestPushUtils {
 
     ControllerClient controllerClient =
         new ControllerClient(veniceClusterName, props.getProperty(KafkaPushJob.VENICE_URL_PROP));
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchemaStr, valueSchemaStr);
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
     ControllerResponse controllerResponse = controllerClient.updateStore(
-        props.getProperty(VENICE_STORE_NAME_PROP),
+        props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
         new UpdateStoreQueryParams()
             .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
