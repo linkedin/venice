@@ -5,7 +5,7 @@ mainClassName = "com.linkedin.venice.controller.VeniceController"
 installDist.dependsOn test
 
 //the mortbay jetty will introduce servlet 2.5 which will cause the NoSuchMethodException while admin spark server is trying to read head from request.
-configurations.compile {
+configurations.implementation {
   exclude group: 'org.mortbay.jetty', module:'servlet-api'
 }
 
@@ -17,7 +17,7 @@ task buildJar(type: Jar) {
         'Implementation-Version': version
   }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }
 
@@ -31,33 +31,41 @@ jar {
 
 dependencies {
 
-  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  compile libraries.kafka
+  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.kafka
 
-  compile (libraries.brooklinKafkaTransport) {
+  implementation (libraries.brooklinKafkaTransport) {
     exclude group: 'org.apache.kafka'
   }
-  compile (libraries.brooklinKafka) {
+  implementation (libraries.brooklinKafka) {
     exclude group : 'org.apache.kafka'
   }
-  compile libraries.brooklinCommon
+  implementation libraries.brooklinCommon
 
-  compile project(':venice-common_2.10')
+  implementation project(':venice-common_2.10')
 
-  compile 'commons-io:commons-io:2.4'
-  compile 'com.sleepycat:je:5.0.104'
-  compile 'com.sparkjava:spark-core:2.5.5'
+  // implementation libraries.bdbJe
+  implementation libraries.commonsIo
+  implementation libraries.spark
 
-  compile (libraries.d2){
+  implementation (libraries.d2){
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
     // this will introduce another different mockito-all version
     exclude group: 'org.mockito', module: 'mockito-all'
+  }
+
+  implementation (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
+    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
+    exclude group: 'com.github.sgroschupf'
+    // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
+    exclude module:'zookeeper'
   }
 
   testCompile project(':venice-server')
   testCompile project(':venice-router')
   testCompile project(':venice-brooklin')
   testCompile 'commons-io:commons-io:2.4'
-
+  testImplementation libraries.kafkaTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
 }
 

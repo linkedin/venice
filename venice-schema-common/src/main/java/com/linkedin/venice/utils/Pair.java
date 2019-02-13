@@ -1,16 +1,14 @@
 package com.linkedin.venice.utils;
 
 import java.io.Serializable;
-import com.google.common.base.Function;
-import com.google.common.base.Objects;
-
+import java.util.Objects;
 
 /**
  * Represents a pair of items
  * @param <F> The type of the first item
  * @param <S> The type of the second item
  */
-public class Pair<F, S> implements Serializable, Function<F, S> {
+public class Pair<F, S> implements Serializable {
   private static final long serialVersionUID = 1L;
 
   private final F first;
@@ -49,20 +47,6 @@ public class Pair<F, S> implements Serializable, Function<F, S> {
     this.second = second;
   }
 
-  /**
-   *
-   * @param from
-   * @return {@code this.second} if {@code from == this.first} even if
-   *         {@code from} and {@code this.first} are both null
-   */
-  @Override
-  public S apply(F from) {
-    if (from == null ? first == null : from.equals(first)) {
-      return second;
-    }
-    return null;
-  }
-
   public final F getFirst() {
     return first;
   }
@@ -90,7 +74,7 @@ public class Pair<F, S> implements Serializable, Function<F, S> {
     }
 
     final Pair<?, ?> other = (Pair<?, ?>) (obj);
-    return Objects.equal(first, other.first) && Objects.equal(second, other.second);
+    return Objects.equals(first, other.first) && Objects.equals(second, other.second);
   }
 
   @Override

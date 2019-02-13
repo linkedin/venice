@@ -15,8 +15,6 @@ import org.apache.avro.io.DecoderFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
-import org.jetbrains.annotations.NotNull;
 
 
 public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
@@ -160,7 +158,6 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
       this.lazyIterator = new LazyCollectionDeserializerIterator(decoder, datumReader, enableReplay ? new ArrayList() : null);
     }
 
-    @NotNull
     @Override
     public synchronized Iterator<T> iterator() {
       // We introspect the state of the instance, in order to understand what mode it is operating in (with replay

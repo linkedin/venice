@@ -5,9 +5,12 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 
 /**
@@ -69,6 +72,31 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   @Override
   public boolean hasSubscription() {
     return !offsets.isEmpty();
+  }
+
+  @Override
+  public Map<String, List<PartitionInfo>> listTopics() {
+    return delegate.listTopics();
+  }
+
+  @Override
+  public Map<TopicPartition, Long> beginningOffsets(List<TopicPartition> topicPartitions) {
+    return delegate.beginningOffsets(topicPartitions);
+  }
+
+  @Override
+  public Map<TopicPartition, Long> endOffsets(List<TopicPartition> topicPartitions) {
+    return delegate.endOffsets(topicPartitions);
+  }
+
+  @Override
+  public void assign(List<TopicPartition> topicPartitions) {
+    delegate.assign(topicPartitions);
+  }
+
+  @Override
+  public void seek(TopicPartition topicPartition, long nextOffset) {
+    delegate.seek(topicPartition, nextOffset);
   }
 
   public Map<TopicPartition, OffsetRecord> getOffsets() {

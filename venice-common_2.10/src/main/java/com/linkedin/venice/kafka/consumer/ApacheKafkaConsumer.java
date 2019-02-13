@@ -8,11 +8,13 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
 import org.apache.log4j.Logger;
@@ -147,6 +149,31 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public boolean hasSubscription() {
     return !kafkaConsumer.assignment().isEmpty();
+  }
+
+  @Override
+  public Map<String, List<PartitionInfo>> listTopics() {
+    return kafkaConsumer.listTopics();
+  }
+
+  @Override
+  public Map<TopicPartition, Long> beginningOffsets(List<TopicPartition> topicPartitions) {
+    return kafkaConsumer.beginningOffsets(topicPartitions);
+  }
+
+  @Override
+  public Map<TopicPartition, Long> endOffsets(List<TopicPartition> topicPartitions) {
+    return kafkaConsumer.endOffsets(topicPartitions);
+  }
+
+  @Override
+  public void assign(List<TopicPartition> topicPartitions) {
+    kafkaConsumer.assign(topicPartitions);
+  }
+
+  @Override
+  public void seek(TopicPartition topicPartition, long nextOffset) {
+    kafkaConsumer.seek(topicPartition, nextOffset);
   }
 
   @Override

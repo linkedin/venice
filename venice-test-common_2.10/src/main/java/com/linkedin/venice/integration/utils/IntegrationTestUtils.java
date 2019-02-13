@@ -79,7 +79,7 @@ class IntegrationTestUtils {
     .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
     .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
     .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString())
-    .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true).build();
+    .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false).build();
 
     return clusterProperties;
   }

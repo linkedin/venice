@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -95,7 +96,7 @@ public class VeniceServerTest {
     Assert.assertFalse(VeniceServer.directoryExists(pathDoesNotExist), "Path that doesn't exist should not exist");
   }
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testCheckBeforeJoinCluster()
       throws IOException {
     VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster();

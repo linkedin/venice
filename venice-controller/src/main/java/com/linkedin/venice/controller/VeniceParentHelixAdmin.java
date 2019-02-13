@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.google.common.collect.Ordering;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -61,6 +60,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 
 import java.util.Optional;
@@ -1303,7 +1303,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // Edge case example: if one cluster is stuck in NOT_CREATED, then
     //   as another cluster goes from PROGRESS to COMPLETED
     //   the aggregate status will go from PROGRESS back down to NOT_CREATED.
-    Ordering<ExecutionStatus> priorityOrder = Ordering.explicit(Arrays.asList(
+    List<ExecutionStatus> priorityOrderList = Arrays.asList(
         ExecutionStatus.PROGRESS,
         ExecutionStatus.STARTED,
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
@@ -1314,8 +1314,8 @@ public class VeniceParentHelixAdmin implements Admin {
         ExecutionStatus.WARNING,
         ExecutionStatus.COMPLETED,
         ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
-        ExecutionStatus.ARCHIVED));
-    Collections.sort(statuses, priorityOrder::compare);
+        ExecutionStatus.ARCHIVED);
+    Collections.sort(statuses, Comparator.comparingInt(priorityOrderList::indexOf));
     if (statuses.size() > 0){
       currentReturnStatus = statuses.get(0);
     }

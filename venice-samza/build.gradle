@@ -1,20 +1,24 @@
+apply plugin: 'java-library'
+
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Samza',
             'Implementation-Version': version
   }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }
 
-configurations.compile.exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+configurations.implementation.exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
 
 dependencies {
-  compile libraries.samzaApi
+  implementation libraries.samzaApi
+  implementation libraries.kafka
 
   // Schema related dependencies
-  compile project(':venice-schema-common')
-  compile project(':venice-common_2.10') //TODO, pull venice writer out of venice common so this is a smaller dependency
+  implementation project(':venice-common_2.10') //TODO, pull venice writer out of venice common so this is a smaller dependency
+  implementation project(':venice-schema-common')
+  implementation project(':venice-thin-client')
   testCompile project(':venice-brooklin')
 }

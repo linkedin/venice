@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.server;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -8,6 +7,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +31,11 @@ public class JobRoutesTest {
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     // 3 partitions, with latest offsets 100, 110, and 120
-    doReturn(ImmutableMap.of(0, 100L, 1, 110L, 2, 120L)).when(mockTopicManager).getLatestOffsets(anyString());
+    Map map = new HashMap();
+    map.put(0, 100L);
+    map.put(1, 110L);
+    map.put(2, 120L);
+    doReturn(Collections.unmodifiableMap(map)).when(mockTopicManager).getLatestOffsets(anyString());
     doReturn(mockTopicManager).when(mockAdmin).getTopicManager();
 
     doReturn(2).when(mockAdmin).getReplicationFactor(anyString(), anyString());

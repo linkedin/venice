@@ -1,6 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import com.google.common.net.HttpHeaders;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -15,6 +14,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -129,11 +129,11 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
       this.uriPatternToResponseMap = uriPatternToResponseMap;
 
       this.notFoundResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, Unpooled.buffer(1));
-      this.notFoundResponse.headers().add(HttpHeaders.CONTENT_TYPE, "text/plain");
-      this.notFoundResponse.headers().add(HttpHeaders.CONTENT_LENGTH, notFoundResponse.content().readableBytes());
+      this.notFoundResponse.headers().add(HttpHeaderNames.CONTENT_TYPE, "text/plain");
+      this.notFoundResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, notFoundResponse.content().readableBytes());
       this.internalErrorResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR, Unpooled.buffer(1));
-      this.internalErrorResponse.headers().add(HttpHeaders.CONTENT_TYPE, "text/plain");
-      this.internalErrorResponse.headers().add(HttpHeaders.CONTENT_LENGTH, internalErrorResponse.content().readableBytes());
+      this.internalErrorResponse.headers().add(HttpHeaderNames.CONTENT_TYPE, "text/plain");
+      this.internalErrorResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, internalErrorResponse.content().readableBytes());
     }
 
     @Override

@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.utils;
 
-import com.google.common.net.HttpHeaders;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -10,11 +9,13 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
-import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.log4j.Logger;
@@ -31,10 +32,10 @@ public class StoreClientTestUtils {
   throws IOException {
     ByteBuf body = Unpooled.wrappedBuffer(constructSchemaResponseInBytes(storeName, schemaId, schemaStr));
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-    response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
     // We must specify content_length header, otherwise netty will keep polling, since it
     // doesn't know when to finish writing the response.
-    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
     return response;
   }
@@ -49,10 +50,10 @@ public class StoreClientTestUtils {
     byte[] bytes = mapper.writeValueAsBytes(responseObject);
     ByteBuf body = Unpooled.wrappedBuffer(bytes);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-    response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
     // We must specify content_length header, otherwise netty will keep polling, since it
     // doesn't know when to finish writing the response.
-    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
     return response;
   }
@@ -72,10 +73,10 @@ public class StoreClientTestUtils {
       throws IOException {
     ByteBuf body = Unpooled.wrappedBuffer(constructMultiSchemaResponseInBytes(storeName, valueSchemaEntries));
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-    response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
     // We must specify content_length header, otherwise netty will keep polling, since it
     // doesn't know when to finish writing the response.
-    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
     return response;
   }
@@ -103,11 +104,11 @@ public class StoreClientTestUtils {
   public static FullHttpResponse constructStoreResponse(int schemaId, byte[] value) throws IOException {
     ByteBuf body = Unpooled.wrappedBuffer(value);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-    response.headers().set(HttpHeaders.CONTENT_TYPE, "text/plain");
+    response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
     response.headers().set(TransportClientCallback.HEADER_VENICE_SCHEMA_ID, Integer.toString(schemaId));
     // We must specify content_length header, otherwise netty will keep polling, since it
     // doesn't know when to finish writing the response.
-    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+    response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
 
     return response;
   }

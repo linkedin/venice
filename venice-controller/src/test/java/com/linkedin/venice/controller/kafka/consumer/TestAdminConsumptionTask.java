@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.google.common.collect.Sets;
 import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
-import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -55,12 +53,14 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -517,14 +517,12 @@ public class TestAdminConsumptionTask {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(offsetToSkip - 1);
-    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false),
-        Sets.newHashSet(
-            new Pair(
-                new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-                offsetRecord
-            )
-        )
-    );
+    Set<Pair<TopicPartition, OffsetRecord>> set = new HashSet<>();
+    set.add(new Pair(
+        new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+        offsetRecord
+    ));
+    PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
 
     // The stores don't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);

@@ -1,7 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-import com.google.common.net.HttpHeaders;
-
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -13,6 +11,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -67,10 +66,10 @@ public class TestControllerClient {
       ObjectMapper objectMapper = new ObjectMapper();
       ByteBuf body = Unpooled.wrappedBuffer(objectMapper.writeValueAsBytes(controllerResponse));
       FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-      response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
+      response.headers().set(HttpHeaderNames.CONTENT_TYPE, "application/json");
       // We must specify content_length header, otherwise netty will keep polling, since it
       // doesn't know when to finish writing the response.
-      response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+      response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
       mockController.addResponseForUriPattern(ControllerRoute.MASTER_CONTROLLER.getPath() + ".*", response);
 
       String controllerUrlWithSpaceAtBeginning = "   http://" + mockController.getAddress();
@@ -132,7 +131,7 @@ public class TestControllerClient {
 
     ByteBuf body = Unpooled.wrappedBuffer(new ObjectMapper().writeValueAsBytes(response));
     FullHttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-    httpResponse.headers().set(HttpHeaders.CONTENT_LENGTH, httpResponse.content().readableBytes());
+    httpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, httpResponse.content().readableBytes());
 
     return httpResponse;
   }

@@ -12,7 +12,7 @@ task buildJar(type: Jar) {
         'Implementation-Version': version
   }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  from { configurations.implementation.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }
 
@@ -25,20 +25,26 @@ jar {
 }
 
 dependencies {
-  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  compile libraries.bdbJe
-  compile libraries.netty
-  compile libraries.asyncHttpClient
-  compile libraries.tehuti
-  compile libraries.commonsIo
-  compile (libraries.netty4Lnkd){
+  implementation (libraries.routerLnkd){ // for SSL Initializer
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
+    exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
+    exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
+  }
+  implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  implementation libraries.bdbJe
+  implementation libraries.helix
+  implementation libraries.netty
+  implementation libraries.asyncHttpClient
+  implementation libraries.tehuti
+  implementation libraries.commonsIo
+  implementation (libraries.netty4Lnkd){
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'
   }
-  compile libraries.rocksdbjni
+  implementation libraries.rocksdbjni
 
-  compile project(':venice-common_2.10')
-  compile project(':venice-controller')
+  implementation project(':venice-common_2.10')
+  implementation project(':venice-controller')
 
   testCompile (project(':venice-thin-client')){
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
