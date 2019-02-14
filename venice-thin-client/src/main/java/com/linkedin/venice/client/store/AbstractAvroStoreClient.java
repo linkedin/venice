@@ -92,7 +92,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
    * 1. A bunch of regular get requests are sent to Venice backend at the same time;
    * 2. All those requests return almost at the same time;
-   * 3. All those requests will be blocked by the {@link SchemaReader#fetchValueSchema(int)}
+   * 3. All those requests will be blocked by the SchemaReader#fetchValueSchema(int)
    *    if the value schema is not in local cache;
    * 4. At this moment, each request will occupy one internal R2 callback thread, and the R2 callback threads will be
    *    exhausted if there are a lot of simultaneous regular get requests;
@@ -103,7 +103,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * Loading all the value schemas during start won't solve this problem since the value schema could involve when store
    * client is running.
    * So we have to use a different set of threads in {@link SchemaReader} to avoid this issue.
-   * Also, we don't want to use the default thread pool: {@link CompletableFuture#useCommonPool} since it is being shared,
+   * Also, we don't want to use the default thread pool: CompletableFuture#useCommonPool since it is being shared,
    * and the deserialization could be blocked by the logic not belonging to Venice Client.
    **/
   private static Executor DESERIALIZATION_EXECUTOR = null;
@@ -289,13 +289,20 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           long preResponseEnvelopeDeserialization = System.nanoTime();
           RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(responseSchemaId);
           Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
-
+          /**
+           * Caching the deserializers per batch-get request since in most scenario, there should be only a small
+           * amount of unique schema ids even the response contains thousands of records.
+           * This optimization is trying to avoid the unnecessary lookup in {@link SerializerDeserializerFactory},
+           * which introduces small performance issue with {@link Schema#hashCode} in avro-1.4, which is doing
+           * hash code calculation every time.
+           */
+          Map<Integer, RecordDeserializer<V>> deserializerCache = new HashMap<>();
           try {
             batchGetDeserializer.deserialize(
                 valueFuture,
                 records,
                 keyList,
-                recordSchemaId -> getDataRecordDeserializer((Integer) recordSchemaId),
+                recordSchemaId -> deserializerCache.computeIfAbsent((Integer)recordSchemaId, id -> getDataRecordDeserializer((Integer) recordSchemaId)),
                 responseDeserializationComplete,
                 stats,
                 preResponseEnvelopeDeserialization
