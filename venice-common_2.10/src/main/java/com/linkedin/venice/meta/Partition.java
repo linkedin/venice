@@ -40,10 +40,13 @@ public class Partition {
     return getInstancesInState(HelixState.ONLINE_STATE);
   }
 
-  public List<Instance> getBootstrapAndReadyToServeInstances() {
+  public List<Instance> getWorkingInstances() {
     List<Instance> instances = new ArrayList<>();
     instances.addAll(getInstancesInState(HelixState.ONLINE_STATE));
     instances.addAll(getInstancesInState(HelixState.BOOTSTRAP_STATE));
+
+    instances.addAll(getInstancesInState(HelixState.STANDBY_STATE));
+    instances.addAll(getInstancesInState(HelixState.LEADER_STATE));
     return Collections.unmodifiableList(instances);
   }
 

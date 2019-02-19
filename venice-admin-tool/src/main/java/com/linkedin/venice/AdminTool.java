@@ -510,6 +510,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p));
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p));
     integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT, p -> params.setBootstrapToOnlineTimeoutInHours(p));
+    booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p));
 
     ControllerResponse response = controllerClient.updateStore(storeName, params);
 

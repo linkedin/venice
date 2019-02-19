@@ -40,6 +40,7 @@ public class StoreInfo {
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
     storeInfo.setReadComputationEnabled(store.isReadComputationEnabled());
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
+    storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
 
     return storeInfo;
   }
@@ -163,6 +164,11 @@ public class StoreInfo {
    * Maximum number of hours allowed for the store to transition from bootstrap to online state.
    */
   private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
+
+  /** Whether or not to use leader follower state transition model
+   * for upcoming version.
+   */
+  private boolean leaderFollowerModelEnabled = false;
 
   public StoreInfo() {
   }
@@ -394,5 +400,13 @@ public class StoreInfo {
 
   public void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
     this.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
+  }
+
+  public boolean isLeaderFollowerModelEnabled() {
+    return leaderFollowerModelEnabled;
+  }
+
+  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+    this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 }

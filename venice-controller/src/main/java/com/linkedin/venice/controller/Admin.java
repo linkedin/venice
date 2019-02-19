@@ -199,8 +199,8 @@ public interface Admin {
                      Optional<Boolean> storeMigration,
                      Optional<Boolean> writeComputationEnabled,
                      Optional<Boolean> readComputationEnabled,
-                     Optional<Integer> bootstrapToOnlineTimeoutInHours);
-
+                     Optional<Integer> bootstrapToOnlineTimeoutInHours,
+                     Optional<Boolean> leaderFollowerModelEnabled);
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         updateStore(
@@ -227,7 +227,8 @@ public interface Admin {
             params.getStoreMigration(),
             params.getWriteComputationEnabled(),
             params.getReadComputationEnabled(),
-            params.getBootstrapToOnlineTimeoutInHours());
+            params.getBootstrapToOnlineTimeoutInHours(),
+            params.getLeaderFollowerModelEnabled());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);

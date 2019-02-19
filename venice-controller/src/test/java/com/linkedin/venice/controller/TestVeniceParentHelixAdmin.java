@@ -218,7 +218,8 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> storeMigration,
         Optional<Boolean> writeComputationEnabled,
         Optional<Boolean> readComputationEnabled,
-        Optional<Integer> bootstrapToOnlineTimeoutInHours){
+        Optional<Integer> bootstrapToOnlineTimeoutInHours,
+        Optional<Boolean> leaderFollowerModelEnabled) {
       doReturn(true).when(store).isHybrid();
     }
 
@@ -1040,6 +1041,18 @@ public class TestVeniceParentHelixAdmin {
       Assert.assertTrue(childStoreResponse.getStore().isReadComputationEnabled());
     });
 
+    // Update store leader follower state model
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.getStore().isLeaderFollowerModelEnabled());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isLeaderFollowerModelEnabled());
+    // Child controller will be updated asynchronously
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
+      Assert.assertTrue(childStoreResponse.getStore().isLeaderFollowerModelEnabled());
+    });
+
     controllerWrapper.close();
     childControllerWrapper.close();
     kafkaBrokerWrapper.close();
@@ -1681,7 +1694,7 @@ public class TestVeniceParentHelixAdmin {
     verify(accessor).updateOfflinePushStatus(eq(clusterName), eq(status1));
   }
 
-  /*@Test
+  @Test
   public void testAdminCanCleanupLeakingTopics() {
     String storeName = "test_store";
     doReturn(new HashSet(Arrays.asList(storeName + "_v1", storeName + "_v2", storeName + "_v3"))).when(topicManager)
@@ -1691,5 +1704,5 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v1");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v2");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
-  }*/
+  }
 }

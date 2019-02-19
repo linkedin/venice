@@ -1,11 +1,12 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -155,7 +156,7 @@ public abstract class TestBatch {
           Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
         }
       }
-    }, true);
+    }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
   }
 
   @Test
@@ -168,7 +169,7 @@ public abstract class TestBatch {
       for (int i = 1; i <= 100; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
-    }, false, false, null, true);
+    }, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
     testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
@@ -179,19 +180,51 @@ public abstract class TestBatch {
       for (int i = 51; i <= 150; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
       }
-    }, false, false, storeName, true);
+    }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+  }
+
+  //This method will be enabled once offline push monitor's changes get merged.
+  //@Test //(timeOut = TEST_TIMEOUT)
+  public void testLeaderFollowerStateModel() throws Exception {
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
+      //this section will be enabled once VersionFinder's changes get merged
+      /*//test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+
+      //test batch get
+      for (int i = 0; i < 10; i ++) {
+        Set<String> keys = new HashSet<>();
+        for (int j = 1; j <= 10; j ++) {
+          keys.add(Integer.toString(i * 10 + j));
+        }
+
+        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+        Assert.assertEquals(values.size(), 10);
+
+        for (int j = 1; j <= 10; j ++) {
+          Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+        }
+      }*/
+    }, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
   }
 
   protected String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
-    return testBatchStore(inputFileWriter, extraProps, dataValidator, false);
-  }
-
-  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed) throws Exception {
-    return testBatchStore(inputFileWriter, extraProps, dataValidator, isCompressed, false, null, false);
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams());
   }
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
-      boolean isCompressed, boolean chunkingEnabled, String existingStore, boolean incrementalPushEnabled) throws Exception {
+      UpdateStoreQueryParams storeParms) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms);
+  }
+
+  private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      String existingStore, UpdateStoreQueryParams storeParms) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = Utils.isNullOrEmpty(existingStore) ? TestUtils.getUniqueString("store") : existingStore;
@@ -202,7 +235,7 @@ public abstract class TestBatch {
 
     if (Utils.isNullOrEmpty(existingStore)) {
       createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props,
-          isCompressed, chunkingEnabled, incrementalPushEnabled);
+          storeParms);
     }
 
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
@@ -303,11 +336,7 @@ public abstract class TestBatch {
             Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
             Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
           }
-        },
-        false,
-        isChunkingAllowed,
-        null,
-        false);
+        }, new UpdateStoreQueryParams().setChunkingEnabled(isChunkingAllowed));
   }
 
   @Test(timeOut =  TEST_TIMEOUT)
@@ -504,11 +533,7 @@ public abstract class TestBatch {
                 + Utils.round(latencyMetric99.value(), 1) + " ms.");
 
           }).get();
-        },
-        false,
-        false,
-        null,
-        false);
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)

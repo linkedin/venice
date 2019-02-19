@@ -40,6 +40,12 @@ public class Version implements Comparable<Version> {
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
   /**
+   * Whether or not to use leader follower state transition model
+   * for upcoming version.
+   */
+  private boolean leaderFollowerModelEnabled = false;
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
@@ -86,6 +92,14 @@ public class Version implements Comparable<Version> {
     this.compressionStrategy = compressionStrategy;
   }
 
+  public boolean isLeaderFollowerModelEnabled() {
+    return leaderFollowerModelEnabled;
+  }
+
+  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+    this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+  }
+
   public String getStoreName() {
     return storeName;
   }
@@ -129,18 +143,27 @@ public class Version implements Comparable<Version> {
     if (number != version.number) {
       return false;
     }
+
     if (createdTime != version.createdTime) {
       return false;
     }
+
     if (!storeName.equals(version.storeName)) {
       return false;
     }
+
     if (status != version.status) {
       return false;
     }
+
     if (compressionStrategy != version.compressionStrategy) {
       return false;
     }
+
+    if (leaderFollowerModelEnabled != version.leaderFollowerModelEnabled) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -152,6 +175,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + status.hashCode();
     result = 31 * result + pushJobId.hashCode();
     result = 31 * result + compressionStrategy.hashCode();
+    result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
     return result;
   }
 
@@ -167,6 +191,7 @@ public class Version implements Comparable<Version> {
     Version clonedVersion = new Version(storeName, number, createdTime, pushJobId);
     clonedVersion.setStatus(status);
     clonedVersion.setCompressionStrategy(compressionStrategy);
+    clonedVersion.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
     return clonedVersion;
   }
 

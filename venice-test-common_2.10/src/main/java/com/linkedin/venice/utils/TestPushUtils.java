@@ -464,6 +464,21 @@ public class TestPushUtils {
                                                    String keySchemaStr, String valueSchemaStr, Properties props,
                                                    boolean isCompressed, boolean chunkingEnabled, boolean incrementalPushEnabled) {
 
+    UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
+        .setBatchGetLimit(2000)
+        .setReadQuotaInCU(1000000000)
+        .setChunkingEnabled(chunkingEnabled)
+        .setIncrementalPushEnabled(incrementalPushEnabled);
+
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, storeParams);
+  }
+
+  public static ControllerClient createStoreForJob(String veniceClusterName,
+      String keySchemaStr, String valueSchemaStr, Properties props,
+      UpdateStoreQueryParams storeParams) {
+
 
     ControllerClient controllerClient =
         new ControllerClient(veniceClusterName, props.getProperty(KafkaPushJob.VENICE_URL_PROP));
@@ -473,14 +488,7 @@ public class TestPushUtils {
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
     ControllerResponse controllerResponse = controllerClient.updateStore(
-        props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
-        new UpdateStoreQueryParams()
-            .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-            .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
-            .setBatchGetLimit(2000)
-            .setReadQuotaInCU(1000000000)
-            .setChunkingEnabled(chunkingEnabled)
-            .setIncrementalPushEnabled(incrementalPushEnabled));
+        props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP), storeParams.setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 

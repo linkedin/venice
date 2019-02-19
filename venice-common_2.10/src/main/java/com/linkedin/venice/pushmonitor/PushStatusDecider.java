@@ -5,13 +5,11 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.StringJoiner;
 import org.apache.log4j.Logger;
 
 
@@ -99,7 +97,7 @@ public abstract class PushStatusDecider {
     }
     ArrayList<Integer> underReplicatedPartition = new ArrayList<>();
     for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if (!this.hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(), replicationFactor)) {
+      if (!this.hasEnoughReplicasForOnePartition(partition.getWorkingInstances().size(), replicationFactor)) {
         underReplicatedPartition.add(partition.getId());
         logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + kafkaTopic);
       }

@@ -62,6 +62,7 @@ public enum Arg {
   WRITE_COMPUTATION_ENABLED("write-computation-enabled", "wc", true, "Whether or not write computation is enabled for a store"),
   READ_COMPUTATION_ENABLED("read-computation-enabled", "rc", true, "Enable/Disable read computation for a store"),
   BOOTSTRAP_TO_ONLINE_TIMEOUT("bootstrap-to-online-timeout", "btot", true, "Set the maximum number of hours allowed for the store to transition from bootstrap to online"),
+  LEADER_FOLLOWER_MODEL_ENABLED("leader-follower-model-enabled", "lf", true, "whether or not to use L/F Helix transition model for upcoming version"),
 
   FILTER_JSON("filter-json", "ftj", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),

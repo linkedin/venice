@@ -156,7 +156,8 @@ public class ConfigKeys {
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
-  public static final String MAX_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
+  public static final String MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
+  public static final String MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER = "max.leader.follower.state.transition.thread.number";
   public static final String STORE_WRITER_NUMBER = "store.writer.number";
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
