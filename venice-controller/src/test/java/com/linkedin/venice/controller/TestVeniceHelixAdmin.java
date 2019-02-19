@@ -559,6 +559,8 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, 48);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getBootstrapToOnlineTimeoutInHours(), 48);
+    veniceAdmin.setLeaderFollowerModelEnabled(clusterName, storeName, true);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isLeaderFollowerModelEnabled(), true);
 
     // test hybrid config
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
@@ -726,7 +728,7 @@ public class TestVeniceHelixAdmin {
         return false;
       }
       for (int i = 0; i < partitionCount; i++) {
-        if (partitionAssignment.getPartition(i).getBootstrapAndReadyToServeInstances().size() != replicas) {
+        if (partitionAssignment.getPartition(i).getWorkingInstances().size() != replicas) {
           return false;
         }
       }
@@ -743,7 +745,7 @@ public class TestVeniceHelixAdmin {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
-      return partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().size() == 1;
+      return partitionAssignment.getPartition(0).getWorkingInstances().size() == 1;
     });
 
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1, false).isRemovable(),

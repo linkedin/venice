@@ -12,23 +12,15 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import org.apache.helix.participant.statemachine.StateModel;
-import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 
 
 /**
  * State Transition Handler factory to create transition handler for all stores on the current node.
  */
-public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
-
-  private static final Logger logger = Logger.getLogger(VeniceStateModelFactory.class);
-
-  private final StoreIngestionService storeIngestionService;
-  private final StorageService storageService;
-  private final VeniceConfigLoader configService;
+public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
   private final StateModelNotifier stateModelNotifier = new StateModelNotifier();
-  private final ExecutorService executorService;
+
   private final ReadOnlyStoreRepository readOnlyStoreRepository;
   // TODO We should use the same value as Helix used for state transition timeout.
 
@@ -37,39 +29,21 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
           VeniceConfigLoader configService,
           ExecutorService executorService,
           ReadOnlyStoreRepository readOnlyStoreRepository) {
-    logger.info("Creating VenicePartitionStateTransitionHandlerFactory ");
-    this.storeIngestionService = storeIngestionService;
-    this.storageService = storageService;
-    this.configService = configService;
-    this.executorService = executorService;
+    super(storeIngestionService, storageService, configService, executorService);
     this.readOnlyStoreRepository = readOnlyStoreRepository;
+
     // Add a new notifier to let state model knows the end of consumption so that it can complete the bootstrap to
     // online state transition.
     storeIngestionService.addNotifier(stateModelNotifier);
+    logger.info("VenicePartitionStateTransitionHandlerFactory created");
   }
 
-  /**
-   * All state transitions would share this thread pool.
-   * @param resourceName
-   * @return
-   */
-  @Override
-  public ExecutorService getExecutorService(String resourceName) {
-    return executorService;
-  }
-
-  /**
-   * This method will be invoked only once per partition per session
-   * @param  resourceName cluster where state transition is happening
-   * @param partitionName for which the State Transition Handler is required.
-   * @return VenicePartitionStateModel for the partition.
-   */
   @Override
   public VenicePartitionStateModel createNewStateModel(String resourceName, String partitionName) {
-    logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName + " for Store " + resourceName);
-    return new VenicePartitionStateModel(storeIngestionService, storageService
-        , configService.getStoreConfig(HelixUtils.getResourceName(partitionName))
-        , HelixUtils.getPartitionId(partitionName), stateModelNotifier, readOnlyStoreRepository);
+    logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName);
+    return new VenicePartitionStateModel(getStoreIngestionService(), getStorageService(),
+        getConfigService().getStoreConfig(HelixUtils.getResourceName(partitionName)),
+        HelixUtils.getPartitionId(partitionName), stateModelNotifier, readOnlyStoreRepository);
   }
 
   StateModelNotifier getNotifier() {
@@ -79,6 +53,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
    * Notifier used to get completed notification from consumer service and let state model knows the end of consumption
    */
   public static class StateModelNotifier implements VeniceNotifier {
+    private final Logger logger = Logger.getLogger(this.getClass().getSimpleName());
     private ConcurrentMap<String, CountDownLatch> stateModelToLatchMap = new ConcurrentHashMap<>();
 
     private ConcurrentMap<String, Boolean> stateModelToSuccessMap = new ConcurrentHashMap<>();

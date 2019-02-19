@@ -807,6 +807,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         Version version = null;
         OfflinePushStrategy strategy;
+        boolean isLeaderFollowerStateModel = false;
         VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
         boolean logCompaction = false;
 
@@ -836,6 +837,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                         version = new Version(storeName, versionNumber, pushJobId);
                         store.addVersion(version);
+                    }
+                    if (version.isLeaderFollowerModelEnabled()) {
+                        isLeaderFollowerStateModel = true;
                     }
                     // Update default partition count if it have not been assigned.
                     if (store.getPartitionCount() == 0) {
@@ -872,7 +876,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     // We need to prepare to monitor before creating helix resource.
                     startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor,
                         strategy);
-                    createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor);
+                    createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
                     waitUntilNodesAreAssignedForResource(clusterName, version.kafkaTopicName(), strategy,
                         getVeniceHelixResource(clusterName).getConfig().getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
                 }
@@ -1635,6 +1639,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setLeaderFollowerModelEnabled(String clusterName, String storeName,
+        boolean leaderFollowerModelEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1695,7 +1707,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> storeMigration,
         Optional<Boolean> writeComputationEnabled,
         Optional<Boolean> readComputationEnabled,
-        Optional<Integer> bootstrapToOnlineTimeoutInHours) {
+        Optional<Integer> bootstrapToOnlineTimeoutInHours,
+        Optional<Boolean> leaderFollowerModelEnabled) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -1814,6 +1827,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
             }
 
+            if (leaderFollowerModelEnabled.isPresent()) {
+                setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled.get());
+            }
+
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
             logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName
@@ -1892,15 +1909,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return multiClusterConfigs.getConfigForCluster(clusterName).getStorageEngineOverheadRatio();
     }
 
-    private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor) {
+    private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor, boolean isLeaderFollowerStateModel) {
         if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
             admin.addResource(clusterName, kafkaTopic, numberOfPartition,
-                VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString(),
+                isLeaderFollowerStateModel ? LeaderStandbySMD.name : VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
+                IdealState.RebalanceMode.FULL_AUTO.toString(),
                 AutoRebalanceStrategy.class.getName());
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             IdealState idealState = admin.getResourceIdealState(clusterName, kafkaTopic);
-            // We don't set the delayed time per resoruce, we will use the cluster level helix config to decide
-            // the delayed reblance time
+            // We don't set the delayed time per resource, we will use the cluster level helix config to decide
+            // the delayed rebalance time
             idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
             idealState.setMinActiveReplicas(config.getMinActiveReplica());
             idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
@@ -2218,6 +2236,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         admin.addStateModelDef(clusterName, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
             VeniceStateModel.getDefinition());
+        admin.addStateModelDef(clusterName, LeaderStandbySMD.name,
+            LeaderStandbySMD.build());
 
         admin
             .addResource(controllerClusterName, clusterName, CONTROLLER_CLUSTER_NUMBER_OF_PARTITION, LeaderStandbySMD.name,

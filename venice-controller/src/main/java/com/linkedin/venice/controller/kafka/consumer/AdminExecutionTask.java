@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
@@ -307,8 +306,8 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.isMigrating),
         Optional.of(message.writeComputationEnabled),
         Optional.of(message.readComputationEnabled),
-        Optional.of(message.bootstrapToOnlineTimeoutInHours)
-    );
+        Optional.of(message.bootstrapToOnlineTimeoutInHours),
+        Optional.of(message.leaderFollowerModelEnabled));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

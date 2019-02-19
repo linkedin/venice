@@ -44,7 +44,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setStoreMigration(srcStore.isMigrating())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setReadComputationEnabled(srcStore.isReadComputationEnabled())
-            .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours());
+            .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
+            .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -208,6 +209,14 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Integer> getBootstrapToOnlineTimeoutInHours() {
     return getInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
+  }
+
+  public UpdateStoreQueryParams setLeaderFollowerModel(boolean leaderFollowerModelEnabled) {
+    return putBoolean(LEADER_FOLLOWER_MODEL_ENABLED, leaderFollowerModelEnabled);
+  }
+
+  public Optional<Boolean> getLeaderFollowerModelEnabled() {
+    return getBoolean(LEADER_FOLLOWER_MODEL_ENABLED);
   }
 
 

@@ -1075,7 +1075,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> storeMigration,
       Optional<Boolean> writeComputationEnabled,
       Optional<Boolean> readComputationEnabled,
-      Optional<Integer> bootstrapToOnlineTimeoutInHours) {
+      Optional<Integer> bootstrapToOnlineTimeoutInHours,
+      Optional<Boolean> leaderFollowerModelEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -1139,7 +1140,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.readComputationEnabled = readComputationEnabled.isPresent() ? readComputationEnabled.get() : store.isReadComputationEnabled();
       setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours.isPresent() ?
           bootstrapToOnlineTimeoutInHours.get() : store.getBootstrapToOnlineTimeoutInHours();
-
+      setStore.leaderFollowerModelEnabled = leaderFollowerModelEnabled.isPresent() ? leaderFollowerModelEnabled.get() : store.isLeaderFollowerModelEnabled();
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;

@@ -160,7 +160,7 @@ public class InstanceStatusDecider {
   private static Pair<Boolean, String> willTriggerRebalance(PartitionAssignment partitionAssignmentAfterRemoving,
       int minActiveReplicas) {
     for (Partition partitionAfterRemoving : partitionAssignmentAfterRemoving.getAllPartitions()) {
-      int activeReplicaCount = partitionAfterRemoving.getBootstrapAndReadyToServeInstances().size();
+      int activeReplicaCount = partitionAfterRemoving.getWorkingInstances().size();
       activeReplicaCount += partitionAfterRemoving.getErrorInstances().size();
       if (activeReplicaCount < minActiveReplicas) {
         // After removing the instance, Venice would not have enough active replicas so a rebalance would be triggered..

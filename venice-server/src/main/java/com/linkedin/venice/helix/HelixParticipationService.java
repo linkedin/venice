@@ -27,6 +27,7 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
@@ -39,7 +40,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
 
-  private static final String STATE_MODEL_REFERENCE_NAME = "PartitionOnlineOfflineModel";
+  private static final String ONLINE_OFFLINE_MODEL_NAME = "PartitionOnlineOfflineModel";
 
   private static final int MAX_RETRY = 30;
   private static final int RETRY_INTERVAL_SEC = 1;
@@ -48,7 +49,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final String clusterName;
   private final String participantName;
   private final String zkAddress;
-  private final StateModelFactory stateModelFactory;
+  private final StateModelFactory onlineOfflineParticipantModelFactory;
+  private final StateModelFactory leaderFollowerParticipantModelFactory;
   private final StoreIngestionService ingestionService;
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
@@ -57,8 +59,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private SafeHelixManager manager;
   private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
-
-  private ThreadPoolExecutor helixStateTransitionExecutorService;
 
   private HelixStatusMessageChannel messageChannel;
 
@@ -81,19 +81,32 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
     this.metricsRepository = metricsRepository;
     instance = new Instance(participantName, Utils.getHostName(), port);
-    // Create a thread pool used to execute incoming state transitions. Set corePoolSize and maxPoolSize as the same
-    // value, but enable allowCoreThreadTimeOut. So the expected behavior is pool will create a new thread if the number
-    // of running threads is fewer than corePoolSize, otherwise add this task into queue. If a thread is idle for more
-    // than 300 seconds, pool will collect this thread.
-    helixStateTransitionExecutorService =
-        new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(),
-            veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(), 300L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(), new DaemonThreadFactory("venice-state-transition"));
-    helixStateTransitionExecutorService.allowCoreThreadTimeOut(true);
-    new ThreadPoolStats(metricsRepository, helixStateTransitionExecutorService, "Venice_ST_thread_pool");
-    stateModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
-        helixStateTransitionExecutorService, helixReadOnlyStoreRepository);
+
+    //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
+    //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
+    //than O/O's. Thus, the size is supposed to be smaller.
+    onlineOfflineParticipantModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
+        initHelixStateTransitionThreadPool(veniceConfigLoader.getVeniceServerConfig().getMaxOnlineOfflineStateTransitionThreadNumber(),
+            "venice-O/O-state-transition", metricsRepository, "Venice_ST_thread_pool"), helixReadOnlyStoreRepository);
+    leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(storeIngestionService, storageService,
+        veniceConfigLoader, initHelixStateTransitionThreadPool(veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
+        "venice-L/F-state-transition", metricsRepository, "Venice_L/F_ST_thread_pool"));
     this.managerFuture = managerFuture;
+  }
+
+  //Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
+  //behavior is pool will create a new thread if the number of running threads is fewer than corePoolSize, otherwise
+  //add this task into queue. If a thread is idle for more than 300 seconds, pool will collect this thread.
+  private ThreadPoolExecutor initHelixStateTransitionThreadPool(int size, String threadName,
+      MetricsRepository metricsRepository, String statsName) {
+    ThreadPoolExecutor helixStateTransitionThreadPool = new ThreadPoolExecutor(size, size, 300L,
+        TimeUnit.SECONDS, new LinkedBlockingQueue<>(), new DaemonThreadFactory(threadName));
+    helixStateTransitionThreadPool.allowCoreThreadTimeOut(true);
+
+    //register stats that tracks the thread pool
+    new ThreadPoolStats(metricsRepository, helixStateTransitionThreadPool, statsName);
+
+    return helixStateTransitionThreadPool;
   }
 
   @Override
@@ -101,7 +114,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     logger.info("Attempting to start HelixParticipation service");
     manager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
-    manager.getStateMachineEngine().registerStateModelFactory(STATE_MODEL_REFERENCE_NAME, stateModelFactory);
+    manager.getStateMachineEngine().registerStateModelFactory(ONLINE_OFFLINE_MODEL_NAME, onlineOfflineParticipantModelFactory);
+    manager.getStateMachineEngine().registerStateModelFactory(LeaderStandbySMD.name, leaderFollowerParticipantModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
     // customize k-v data support soon. Then we don't need LiveInstanceInfoProvider here. Use the instance config
     // is a better way because it reduce the communication times to Helix. Other wise client need to get  thsi

@@ -4,7 +4,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
@@ -19,7 +18,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 26;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 27;
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */

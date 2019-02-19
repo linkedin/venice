@@ -22,10 +22,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableServerWhiteList;
   private final boolean autoCreateDataPath; // default true
   /**
-   * Maximum number of thread that the thread pool would keep to run the Helix state transition. The thread pool would
-   * create a thread for a state transition until the number of thread equals to this number.
+   * Maximum number of thread that the thread pool would keep to run the Helix online offline state transition.
+   * The thread pool would create a thread for a state transition until the number of thread equals to this number.
    */
-  private final int maxStateTransitionThreadNumber;
+  private final int maxOnlineOfflineStateTransitionThreadNumber;
+
+  /**
+   *  Maximum number of thread that the thread pool would keep to run the Helix leader follower state transition.
+   */
+  private final int maxLeaderFollowerStateTransitionThreadNumber;
 
   /**
    * Thread number of store writers, which will process all the incoming records from all the topics.
@@ -138,7 +143,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     bdbServerConfig = new BdbServerConfig(serverProperties);
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
-    maxStateTransitionThreadNumber = serverProperties.getInt(MAX_STATE_TRANSITION_THREAD_NUMBER, 100);
+    maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
+    maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 25 * 1024 * 1024); // 25MB
     storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 5 * 1024 * 1024); // 5MB
@@ -207,8 +213,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return enableServerWhiteList;
   }
 
-  public int getMaxStateTransitionThreadNumber() {
-    return maxStateTransitionThreadNumber;
+  public int getMaxOnlineOfflineStateTransitionThreadNumber() {
+    return maxOnlineOfflineStateTransitionThreadNumber;
+  }
+
+  public int getMaxLeaderFollowerStateTransitionThreadNumber() {
+    return maxLeaderFollowerStateTransitionThreadNumber;
   }
 
   public int getStoreWriterNumber() {

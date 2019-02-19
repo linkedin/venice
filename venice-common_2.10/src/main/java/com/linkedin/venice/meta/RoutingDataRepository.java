@@ -7,7 +7,7 @@ import java.util.Map;
 
 
 /**
- * Repository to accesss routing data like Partition and replica.
+ * Repository to access routing data like Partition and replica.
  * <p>
  * In Helix Full-auto model, Helix manage how to assign partitions to nodes. So here repository is read-only. In the
  * further, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.

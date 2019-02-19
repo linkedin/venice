@@ -187,7 +187,10 @@ public class Store {
    */
   private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 
-
+  /** Whether or not to use leader follower state transition model
+   * for upcoming version.
+   */
+  private boolean leaderFollowerModelEnabled = false;
 
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
@@ -480,6 +483,14 @@ public class Store {
     this.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
   }
 
+  public boolean isLeaderFollowerModelEnabled() {
+    return leaderFollowerModelEnabled;
+  }
+
+  public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
+    this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+  }
+
   /**
    * Add a version into store.
    *
@@ -517,6 +528,9 @@ public class Store {
 
     //update version compression type
     version.setCompressionStrategy(compressionStrategy);
+
+    //update version Helix state model
+    version.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
 
     versions.add(index, version);
     if (version.getNumber() > largestUsedVersionNumber) {
@@ -699,6 +713,8 @@ public class Store {
     result = 31 * result + (migrating ? 1 : 0);
     result = 31 * result + (writeComputationEnabled ? 1 : 0);
     result = 31 * result + (readComputationEnabled ? 1 : 0);
+    result = 31 * result + bootstrapToOnlineTimeoutInHours;
+    result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
     return result;
   }
 
@@ -735,6 +751,8 @@ public class Store {
     if (migrating != store.migrating) return false;
     if (writeComputationEnabled != store.writeComputationEnabled) return false;
     if (readComputationEnabled != store.readComputationEnabled) return false;
+    if (bootstrapToOnlineTimeoutInHours != store.bootstrapToOnlineTimeoutInHours) return false;
+    if (leaderFollowerModelEnabled != store.leaderFollowerModelEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -772,6 +790,7 @@ public class Store {
     clonedStore.setWriteComputationEnabled(writeComputationEnabled);
     clonedStore.setReadComputationEnabled(readComputationEnabled);
     clonedStore.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
+    clonedStore.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
@@ -792,5 +811,4 @@ public class Store {
       throw new StoreDisabledException(name, action, version);
     }
   }
-
 }
