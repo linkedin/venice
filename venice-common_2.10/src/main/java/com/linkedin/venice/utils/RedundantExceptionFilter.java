@@ -66,7 +66,7 @@ public class RedundantExceptionFilter {
     return isRedundant(index);
   }
 
-  public boolean isRedundantException(String storeName, Exception e) {
+  public boolean isRedundantException(String storeName, Throwable e) {
     // By default use exception's class as the type. For VeniceException and RouterException use http status code instead.
     String exceptionType = e.getClass().getName();
     if (e instanceof RouterException) {
