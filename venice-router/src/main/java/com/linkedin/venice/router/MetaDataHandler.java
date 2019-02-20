@@ -13,6 +13,7 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -53,6 +54,8 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final String clusterName;
   private final Map<String, String> clusterToD2Map;
+
+  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName, ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map){
     super();
@@ -198,7 +201,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) throws Exception {
     InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
-    logger.error("Got exception while handling meta data request from " + remoteAddr + ": " + e.getMessage(), e);
+    if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
+      logger.error("Got exception while handling meta data request from " + remoteAddr + ": ", e);
+    }
 
     try {
       if (ExceptionUtils.recursiveClassEquals(e, CertificateExpiredException.class)) {
