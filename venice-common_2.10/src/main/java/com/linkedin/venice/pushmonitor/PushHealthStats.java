@@ -6,7 +6,6 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
-import java.util.function.Supplier;
 
 
 public class PushHealthStats extends AbstractVeniceStats {
@@ -21,15 +20,15 @@ public class PushHealthStats extends AbstractVeniceStats {
     synchronized (PushHealthStats.class) {
 
       failedPushSensor =
-          registerSensorIfAbsent(metricsRepository, "failed_push", () -> registerSensor("failed_push", new Count()));
-      successfulPushSensor = registerSensorIfAbsent(metricsRepository, "successful_push",
+          getSensorIfPresent("failed_push", () -> registerSensor("failed_push", new Count()));
+      successfulPushSensor = getSensorIfPresent("successful_push",
           () -> registerSensor("successful_push", new Count()));
 
-      failedPushDurationSensor = registerSensorIfAbsent(metricsRepository, "failed_push_duration_sec",
+      failedPushDurationSensor = getSensorIfPresent("failed_push_duration_sec",
           () -> registerSensor("failed_push_duration_sec", new Avg(), new Max()));
-      successfulPushDurationSensor = registerSensorIfAbsent(metricsRepository, "successful_push_duration_sec",
+      successfulPushDurationSensor = getSensorIfPresent("successful_push_duration_sec",
           () -> registerSensor("successful_push_duration_sec", new Avg(), new Max()));
-      pushPreparationDurationSensor = registerSensorIfAbsent(metricsRepository, "push_preparation_duration_sec",
+      pushPreparationDurationSensor = getSensorIfPresent("push_preparation_duration_sec",
           () -> registerSensor("push_preparation_duration_sec", new Avg(), new Max()));
     }
   }
@@ -46,14 +45,5 @@ public class PushHealthStats extends AbstractVeniceStats {
 
   public void recordPushPreparationDuration(long durationInSec){
     pushPreparationDurationSensor.record(durationInSec);
-  }
-
-  private Sensor registerSensorIfAbsent(MetricsRepository metricsRepository, String name, Supplier<Sensor> supplier) {
-    Sensor sensor = metricsRepository.getSensor(getSensorFullName(name));
-    if (sensor == null) {
-      return supplier.get();
-    } else {
-      return sensor;
-    }
   }
 }

@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
@@ -52,6 +53,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
+  private final MetricsRepository metricsRepository;
 
   private SafeHelixManager manager;
   private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
@@ -77,6 +79,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
+    this.metricsRepository = metricsRepository;
     instance = new Instance(participantName, Utils.getHostName(), port);
     // Create a thread pool used to execute incoming state transitions. Set corePoolSize and maxPoolSize as the same
     // value, but enable allowCoreThreadTimeOut. So the expected behavior is pool will create a new thread if the number
@@ -110,7 +113,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
 
     // Create a message channel to receive messagte from controller.
-    messageChannel = new HelixStatusMessageChannel(manager);
+    messageChannel = new HelixStatusMessageChannel(manager, new HelixMessageChannelStats(metricsRepository, clusterName));
     messageChannel.registerHandler(KillOfflinePushMessage.class, this);
 
     //TODO Venice Listener should not be started, until the HelixService is started.

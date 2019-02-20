@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
+import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessage;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StatusMessageHandler;
@@ -46,12 +47,15 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
   private final int sendMessageTimeOut;
 
-  public HelixStatusMessageChannel(SafeHelixManager manager) {
-    this(manager, DEFAULT_SEND_MESSAGE_TIME_OUT);
+  private final HelixMessageChannelStats stats;
+
+  public HelixStatusMessageChannel(SafeHelixManager manager, HelixMessageChannelStats stats) {
+    this(manager, stats, DEFAULT_SEND_MESSAGE_TIME_OUT);
   }
 
-  public HelixStatusMessageChannel(SafeHelixManager manager, int timeOut) {
+  public HelixStatusMessageChannel(SafeHelixManager manager, HelixMessageChannelStats stats, int timeOut) {
     messageService = manager.getMessagingService();
+    this.stats = stats;
     this.sendMessageTimeOut = timeOut;
     messageService.registerMessageHandlerFactory(HELIX_MESSAGE_TYPE, new HelixStatusMessageHandleFactory());
   }
@@ -120,6 +124,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
   @Override
   public void sendToStorageNodes(String clusterName, StatusMessage message, String resourceName, int retryCount) {
+    stats.recordToStorageNodesInvokeCount();
     Message helixMessage = convertVeniceMessageToHelixMessage(message);
     helixMessage.setTgtSessionId("*");
     Criteria criteria = new Criteria();
@@ -140,8 +145,11 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       // this scenario could be introduced by two cases: wrong resource or no storage node.
       // TODO: need to think a better way to handle those two different scenarios.
     } else {
-      logger.info("Sending " + numMsgSent + " messages to storage nodes. Message:" + message.toString());
+      logger.info("Sent " + numMsgSent + " messages to storage nodes. Message:" + message.toString());
     }
+
+    stats.recordToStorageNodesMessageCount(numMsgSent);
+    stats.recordMissedStorageNodesReplyCount(numMsgSent - callBack.getMessageReplied().size());
 
     if (callBack.isTimeOut) {
       String errorMsg =
@@ -319,6 +327,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     @Override
     public void onReplyMessage(Message message) {
       //ignore
+      stats.recordOnReplyFromStorageNodesCount();
     }
   }
 }

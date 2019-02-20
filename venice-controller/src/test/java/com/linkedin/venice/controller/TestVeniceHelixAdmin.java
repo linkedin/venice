@@ -32,6 +32,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.HelixUtils;
@@ -91,6 +92,7 @@ public class TestVeniceHelixAdmin {
 
   private VeniceProperties controllerProps;
   private MockTestStateModelFactory stateModelFactory;
+  private HelixMessageChannelStats helixMessageChannelStats;
 
   public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
@@ -106,6 +108,7 @@ public class TestVeniceHelixAdmin {
     stateModelFactory = new MockTestStateModelFactory();
     clusterName = TestUtils.getUniqueString("test-cluster");
     controllerProps = new VeniceProperties(getControllerProperties(clusterName));
+    helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), clusterName);
 
     config = new VeniceControllerConfig(controllerProps);
     veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
@@ -397,7 +400,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
-    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId));
+    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), helixMessageChannelStats);
     channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
       @Override
       public void handleMessage(KillOfflinePushMessage message) {
@@ -424,7 +427,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
-    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId));
+    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), helixMessageChannelStats);
     channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
       @Override
       public void handleMessage(KillOfflinePushMessage message) {
@@ -1054,7 +1057,7 @@ public class TestVeniceHelixAdmin {
 
     final CopyOnWriteArrayList<KillOfflinePushMessage> processedMessage = new CopyOnWriteArrayList<>();
     for (SafeHelixManager manager : this.participants.values()) {
-      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
       channel.registerHandler(KillOfflinePushMessage.class, message -> {
         processedMessage.add(message);
         //make ST error to simulate kill consumption task.
@@ -1088,7 +1091,7 @@ public class TestVeniceHelixAdmin {
     String storeName = TestUtils.getUniqueString("testDeleteAllVersions");
     // register kill message handler for participants.
     for (SafeHelixManager manager : this.participants.values()) {
-      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
       channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
 
@@ -1178,7 +1181,7 @@ public class TestVeniceHelixAdmin {
   public void testDeleteOldVersionInStore() {
     String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
     for (SafeHelixManager manager : this.participants.values()) {
-      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
       channel.registerHandler(KillOfflinePushMessage.class, message -> {
       });
     }
@@ -1209,7 +1212,7 @@ public class TestVeniceHelixAdmin {
     String storeName = "testDeleteStore";
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     for (SafeHelixManager manager : this.participants.values()) {
-      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
       channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
         public void handleMessage(KillOfflinePushMessage message) {
@@ -1249,7 +1252,7 @@ public class TestVeniceHelixAdmin {
     int largestUsedVersionNumber = 1000;
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     for (SafeHelixManager manager : this.participants.values()) {
-      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
       channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
         public void handleMessage(KillOfflinePushMessage message) {
