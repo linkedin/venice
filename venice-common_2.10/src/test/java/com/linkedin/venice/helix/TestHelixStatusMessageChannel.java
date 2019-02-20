@@ -1,23 +1,22 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.status.StatusMessageHandler;
-import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.status.StatusMessageHandler;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
-import org.apache.helix.HelixManager;
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -44,6 +43,7 @@ public class TestHelixStatusMessageChannel {
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixStatusMessageChannel channel;
+  private HelixMessageChannelStats helixMessageChannelStats;
   private SafeHelixManager manager;
   private HelixAdmin admin;
   private SafeHelixManager controller;
@@ -76,7 +76,8 @@ public class TestHelixStatusMessageChannel {
     manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
-    channel = new HelixStatusMessageChannel(manager);
+    helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), cluster);
+    channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
     routingDataRepository = new HelixRoutingDataRepository(controller);
     routingDataRepository.refresh();
    }
@@ -158,7 +159,7 @@ public class TestHelixStatusMessageChannel {
   }
 
   private HelixStatusMessageChannel getControllerChannel(StatusMessageHandler<StoreStatusMessage> handler) {
-    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller, helixMessageChannelStats);
     controllerChannel.registerHandler(StoreStatusMessage.class, handler);
     return controllerChannel;
   }
@@ -242,7 +243,7 @@ public class TestHelixStatusMessageChannel {
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
-    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant);
+    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant, helixMessageChannelStats);
     newChannel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
     admin.rebalance(cluster, kafkaTopic, 2);
 
@@ -275,7 +276,7 @@ public class TestHelixStatusMessageChannel {
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
             MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
-    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant);
+    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant, helixMessageChannelStats);
     boolean [] received = new boolean[1];
     received[0] = false;
     newChannel.registerHandler(StoreStatusMessage.class, message -> received[0] = true);
@@ -378,7 +379,7 @@ public class TestHelixStatusMessageChannel {
     SafeHelixManager newClusterParticipant = TestUtils.getParticipant(newCluster, id, zkAddress, port+10,
         MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newClusterParticipant.connect();
-    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newClusterParticipant);
+    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newClusterParticipant, helixMessageChannelStats);
     StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     try {
       newChannel.sendToStorageNodes(cluster,  veniceMessage, kafkaTopic, timeoutCount);

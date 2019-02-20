@@ -16,6 +16,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.stats.HelixMessageChannelStats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -57,7 +58,8 @@ public class VeniceHelixResources implements VeniceResource {
     // Use the separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
     SafeHelixManager spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager);
-    this.messageChannel = new HelixStatusMessageChannel(helixManager, config.getHelixSendMessageTimeoutMs());
+    this.messageChannel = new HelixStatusMessageChannel(helixManager,
+        new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,

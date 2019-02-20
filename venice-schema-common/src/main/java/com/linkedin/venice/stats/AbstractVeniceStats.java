@@ -8,6 +8,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Percentiles;
 
 import java.util.Map;
+import java.util.function.Supplier;
 
 
 public class AbstractVeniceStats {
@@ -49,6 +50,15 @@ public class AbstractVeniceStats {
       }
       return sensor;
     });
+  }
+
+  protected Sensor getSensorIfPresent(String name, Supplier<Sensor> supplier) {
+    Sensor sensor = metricsRepository.getSensor(getSensorFullName(name));
+    if (sensor == null) {
+      return supplier.get();
+    } else {
+      return sensor;
+    }
   }
 
   protected String getSensorFullName(String sensorName) {

@@ -7,11 +7,13 @@ import com.linkedin.venice.integration.utils.DelayedZkClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -36,6 +38,7 @@ public class SendStatusMessageIntegrationTest {
   private String cluster = TestUtils.getUniqueString("sendStatusMessage");
   private SafeHelixManager controller;
   private ArrayList<SafeHelixManager> participants = new ArrayList<>();
+  private HelixMessageChannelStats helixMessageChannelStats;
 
   @BeforeClass
   public void setup()
@@ -51,6 +54,7 @@ public class SendStatusMessageIntegrationTest {
     admin.setConfig(configScope, helixClusterProperties);
     admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         MockTestStateModel.getDefinition());
+    helixMessageChannelStats = new HelixMessageChannelStats(new MetricsRepository(), cluster);
 
     controller = new SafeHelixManager(
         HelixControllerMain.startHelixController(
@@ -72,7 +76,7 @@ public class SendStatusMessageIntegrationTest {
     participant.connect();
     DelayedZkClientUtils.stopDelayingSocketIoForNewZkClients();
     participants.add(participant);
-    return new HelixStatusMessageChannel(participant);
+    return new HelixStatusMessageChannel(participant, helixMessageChannelStats);
   }
 
   private void cleanUpParticipants() {
@@ -98,7 +102,7 @@ public class SendStatusMessageIntegrationTest {
     final HelixStatusMessageChannel channel3 = getParticipantDelayedChannel(50323, 50, 50);
 
     try {
-      HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
+      HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller, helixMessageChannelStats);
       final LinkedList<StoreStatusMessage> receivedMessageList = new LinkedList<>();
       controllerChannel.registerHandler(StoreStatusMessage.class, new StatusMessageHandler<StoreStatusMessage>() {
         @Override
