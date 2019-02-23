@@ -306,7 +306,8 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.incrementalPushEnabled),
         Optional.of(message.isMigrating),
         Optional.of(message.writeComputationEnabled),
-        Optional.of(message.readComputationEnabled)
+        Optional.of(message.readComputationEnabled),
+        Optional.of(message.bootstrapToOnlineTimeoutInHours)
     );
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);

@@ -217,7 +217,8 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> incrementalPushEnabled,
         Optional<Boolean> storeMigration,
         Optional<Boolean> writeComputationEnabled,
-        Optional<Boolean> readComputationEnabled){
+        Optional<Boolean> readComputationEnabled,
+        Optional<Integer> bootstrapToOnlineTimeoutInHours){
       doReturn(true).when(store).isHybrid();
     }
 
@@ -1026,6 +1027,13 @@ public class TestVeniceParentHelixAdmin {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isReadComputationEnabled());
+    // Update bootstrapToOnlineTimeout
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getBootstrapToOnlineTimeoutInHours(), 24,
+        "Default bootstrapToOnlineTimeoutInHours should be 24");
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBootstrapToOnlineTimeoutInHours(48));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getBootstrapToOnlineTimeoutInHours(), 48);
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
       StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
@@ -1374,7 +1382,8 @@ public class TestVeniceParentHelixAdmin {
         .setAccessControlled(accessControlled)
         .setCompressionStrategy(CompressionStrategy.GZIP)
         .setHybridRewindSeconds(135l)
-        .setHybridOffsetLagThreshold(2000));
+        .setHybridOffsetLagThreshold(2000)
+        .setBootstrapToOnlineTimeoutInHours(48));
 
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
@@ -1395,6 +1404,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
+    Assert.assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
 
     // Disable Access Control
     accessControlled = false;

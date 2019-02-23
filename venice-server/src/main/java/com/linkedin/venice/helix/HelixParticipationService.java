@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Instance;
@@ -50,6 +51,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final StoreIngestionService ingestionService;
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
+  private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
 
   private SafeHelixManager manager;
   private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
@@ -61,6 +63,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   public HelixParticipationService(@NotNull StoreIngestionService storeIngestionService,
           @NotNull StorageService storageService,
           @NotNull VeniceConfigLoader veniceConfigLoader,
+          @NotNull ReadOnlyStoreRepository helixReadOnlyStoreRepository,
           @NotNull MetricsRepository metricsRepository,
           @NotNull String zkAddress,
           @NotNull String clusterName,
@@ -73,6 +76,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
+    this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
     instance = new Instance(participantName, Utils.getHostName(), port);
     // Create a thread pool used to execute incoming state transitions. Set corePoolSize and maxPoolSize as the same
     // value, but enable allowCoreThreadTimeOut. So the expected behavior is pool will create a new thread if the number
@@ -85,7 +89,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     helixStateTransitionExecutorService.allowCoreThreadTimeOut(true);
     new ThreadPoolStats(metricsRepository, helixStateTransitionExecutorService, "Venice_ST_thread_pool");
     stateModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
-        helixStateTransitionExecutorService);
+        helixStateTransitionExecutorService, helixReadOnlyStoreRepository);
     this.managerFuture = managerFuture;
   }
 

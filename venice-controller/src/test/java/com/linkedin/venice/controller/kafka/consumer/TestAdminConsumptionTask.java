@@ -689,6 +689,7 @@ public class TestAdminConsumptionTask {
     boolean storeMigration = true;
     boolean writeComputationEnabled = true;
     boolean computationEnabled = true;
+    int bootstrapToOnlineTimeoutInHours = 48;
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -702,7 +703,7 @@ public class TestAdminConsumptionTask {
     setStore.isMigrating = storeMigration;
     setStore.writeComputationEnabled = writeComputationEnabled;
     setStore.readComputationEnabled = computationEnabled;
-
+    setStore.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
@@ -729,7 +730,8 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any(), any(), any(),
         any(), any(), any(), any(), any(), eq(Optional.of(123L)), eq(Optional.of(1000L)),
         eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)),
-        eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)));
+        eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)),
+        eq(Optional.of(bootstrapToOnlineTimeoutInHours)));
   }
 
   @Test (timeOut = TIMEOUT)

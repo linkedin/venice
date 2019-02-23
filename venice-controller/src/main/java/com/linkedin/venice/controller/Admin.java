@@ -198,7 +198,8 @@ public interface Admin {
                      Optional<Boolean> incrementalPushEnabled,
                      Optional<Boolean> storeMigration,
                      Optional<Boolean> writeComputationEnabled,
-                     Optional<Boolean> readComputationEnabled);
+                     Optional<Boolean> readComputationEnabled,
+                     Optional<Integer> bootstrapToOnlineTimeoutInHours);
 
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
@@ -225,7 +226,8 @@ public interface Admin {
             params.getIncrementalPushEnabled(),
             params.getStoreMigration(),
             params.getWriteComputationEnabled(),
-            params.getReadComputationEnabled());
+            params.getReadComputationEnabled(),
+            params.getBootstrapToOnlineTimeoutInHours());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);

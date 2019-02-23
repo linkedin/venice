@@ -1627,6 +1627,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setBootstrapToOnlineTimeoutInHours(String clusterName, String storeName,
+        int bootstrapToOnlineTimeoutInHours) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1686,7 +1694,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> incrementalPushEnabled,
         Optional<Boolean> storeMigration,
         Optional<Boolean> writeComputationEnabled,
-        Optional<Boolean> readComputationEnabled) {
+        Optional<Boolean> readComputationEnabled,
+        Optional<Integer> bootstrapToOnlineTimeoutInHours) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -1799,6 +1808,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (readComputationEnabled.isPresent()) {
                 setReadComputationEnabled(clusterName, storeName, readComputationEnabled.get());
+            }
+
+            if (bootstrapToOnlineTimeoutInHours.isPresent()) {
+                setBootstrapToOnlineTimeoutInHours(clusterName, storeName, bootstrapToOnlineTimeoutInHours.get());
             }
 
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);

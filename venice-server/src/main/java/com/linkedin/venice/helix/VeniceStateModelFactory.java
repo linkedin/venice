@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
@@ -28,18 +29,20 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   private final VeniceConfigLoader configService;
   private final StateModelNotifier stateModelNotifier = new StateModelNotifier();
   private final ExecutorService executorService;
+  private final ReadOnlyStoreRepository readOnlyStoreRepository;
   // TODO We should use the same value as Helix used for state transition timeout.
-  private static final int bootstrapToOnlineTimeoutHours = 24;
 
   public VeniceStateModelFactory(StoreIngestionService storeIngestionService,
           StorageService storageService,
           VeniceConfigLoader configService,
-          ExecutorService executorService ) {
+          ExecutorService executorService,
+          ReadOnlyStoreRepository readOnlyStoreRepository) {
     logger.info("Creating VenicePartitionStateTransitionHandlerFactory ");
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
     this.configService = configService;
     this.executorService = executorService;
+    this.readOnlyStoreRepository = readOnlyStoreRepository;
     // Add a new notifier to let state model knows the end of consumption so that it can complete the bootstrap to
     // online state transition.
     storeIngestionService.addNotifier(stateModelNotifier);
@@ -66,7 +69,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
     logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName + " for Store " + resourceName);
     return new VenicePartitionStateModel(storeIngestionService, storageService
         , configService.getStoreConfig(HelixUtils.getResourceName(partitionName))
-        , HelixUtils.getPartitionId(partitionName), stateModelNotifier);
+        , HelixUtils.getPartitionId(partitionName), stateModelNotifier, readOnlyStoreRepository);
   }
 
   StateModelNotifier getNotifier() {
@@ -97,7 +100,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
      * @param partitionId
      * @throws InterruptedException
      */
-    void waitConsumptionCompleted(String resourceName, int partitionId)
+    void waitConsumptionCompleted(String resourceName, int partitionId, int bootstrapToOnlineTimeoutInHours)
         throws InterruptedException {
       String stateModeId = getStateModelIdentification(resourceName , partitionId);
       CountDownLatch latch = stateModelToLatchMap.get(stateModeId);
@@ -106,10 +109,10 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
         logger.error(errorMsg);
         throw new VeniceException(errorMsg);
       } else {
-        if(!latch.await(bootstrapToOnlineTimeoutHours, TimeUnit.HOURS)){
+        if(!latch.await(bootstrapToOnlineTimeoutInHours, TimeUnit.HOURS)){
           // Timeout
           String errorMsg =
-              "After waiting " + bootstrapToOnlineTimeoutHours + " hours, resource:" + resourceName + " partition:"
+              "After waiting " + bootstrapToOnlineTimeoutInHours + " hours, resource:" + resourceName + " partition:"
                   + partitionId + " still can not become online from bootstrap.";
           logger.error(errorMsg);
           throw new VeniceException(errorMsg);

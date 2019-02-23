@@ -554,6 +554,9 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled(), true);
 
+    veniceAdmin.setBootstrapToOnlineTimeoutInHours(clusterName, storeName, 48);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getBootstrapToOnlineTimeoutInHours(), 48);
+
     // test hybrid config
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);

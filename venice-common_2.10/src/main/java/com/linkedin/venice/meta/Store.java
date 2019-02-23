@@ -36,6 +36,8 @@ public class Store {
   public static final int NON_EXISTING_VERSION = 0;
 
   public static final int IGNORE_VERSION = -1;
+
+  public static final int BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = 24;
   /**
    * Default storage quota 20GB
    */
@@ -179,6 +181,11 @@ public class Store {
    * Whether read-path computation is enabled for this store.
    */
   private boolean readComputationEnabled = false;
+
+  /**
+   * Maximum number of hours allowed for the store to transition from bootstrap to online state.
+   */
+  private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 
 
 
@@ -463,6 +470,14 @@ public class Store {
 
   public void setReadComputationEnabled(boolean readComputationEnabled) {
     this.readComputationEnabled = readComputationEnabled;
+  }
+
+  public int getBootstrapToOnlineTimeoutInHours() {
+    return bootstrapToOnlineTimeoutInHours;
+  }
+
+  public void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
+    this.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
   }
 
   /**
@@ -756,6 +771,7 @@ public class Store {
     clonedStore.setMigrating(migrating);
     clonedStore.setWriteComputationEnabled(writeComputationEnabled);
     clonedStore.setReadComputationEnabled(readComputationEnabled);
+    clonedStore.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

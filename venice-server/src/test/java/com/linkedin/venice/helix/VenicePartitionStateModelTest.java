@@ -2,6 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 
 import java.util.concurrent.CountDownLatch;
@@ -29,6 +32,9 @@ public class VenicePartitionStateModelTest {
   private VenicePartitionStateModel testStateModel;
 
   private VeniceStateModelFactory.StateModelNotifier mockNotifier;
+  private ReadOnlyStoreRepository mockReadOnlyStoreRepository;
+  private Store mockStore;
+  private final String resourceName = "test_v1";
 
   @BeforeMethod
   public void setUp() throws Exception {
@@ -40,9 +46,16 @@ public class VenicePartitionStateModelTest {
     mockContext = Mockito.mock(NotificationContext.class);
 
     mockNotifier = Mockito.mock(VeniceStateModelFactory.StateModelNotifier.class);
+    mockReadOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    mockStore = Mockito.mock(Store.class);
+
+    Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
+    Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
+        .thenReturn(mockStore);
+    Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 
     testStateModel = new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig,
-        testPartition, mockNotifier);
+        testPartition, mockNotifier, mockReadOnlyStoreRepository);
   }
 
   /**
@@ -69,7 +82,8 @@ public class VenicePartitionStateModelTest {
       throws Exception {
     testStateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
     Mockito.verify(mockNotifier, Mockito.times(1))
-        .waitConsumptionCompleted(mockMessage.getResourceName(), testPartition);
+        .waitConsumptionCompleted(mockMessage.getResourceName(), testPartition,
+            Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
   }
 
   /**
@@ -80,7 +94,7 @@ public class VenicePartitionStateModelTest {
     VeniceStateModelFactory.StateModelNotifier notifier = new VeniceStateModelFactory.StateModelNotifier();
     testStateModel =
         new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig, testPartition,
-            notifier);
+            notifier, mockReadOnlyStoreRepository);
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     CountDownLatch latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
     Assert.assertEquals(latch.getCount(), 1);
