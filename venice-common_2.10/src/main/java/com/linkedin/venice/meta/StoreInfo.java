@@ -39,6 +39,7 @@ public class StoreInfo {
     storeInfo.setMigrating(store.isMigrating());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
     storeInfo.setReadComputationEnabled(store.isReadComputationEnabled());
+    storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
 
     return storeInfo;
   }
@@ -157,6 +158,11 @@ public class StoreInfo {
    * Whether read-path computation is enabled for this store.
    */
   private boolean readComputationEnabled = false;
+
+  /**
+   * Maximum number of hours allowed for the store to transition from bootstrap to online state.
+   */
+  private int bootstrapToOnlineTimeoutInHours = BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
 
   public StoreInfo() {
   }
@@ -380,5 +386,13 @@ public class StoreInfo {
 
   public void setReadComputationEnabled(boolean readComputationEnabled) {
     this.readComputationEnabled = readComputationEnabled;
+  }
+
+  public int getBootstrapToOnlineTimeoutInHours() {
+    return bootstrapToOnlineTimeoutInHours;
+  }
+
+  public void setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
+    this.bootstrapToOnlineTimeoutInHours = bootstrapToOnlineTimeoutInHours;
   }
 }

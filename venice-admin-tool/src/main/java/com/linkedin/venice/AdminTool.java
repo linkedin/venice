@@ -509,6 +509,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p));
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p));
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p));
+    integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT, p -> params.setBootstrapToOnlineTimeoutInHours(p));
 
     ControllerResponse response = controllerClient.updateStore(storeName, params);
 

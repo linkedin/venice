@@ -3,6 +3,9 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -48,16 +51,17 @@ public class VenicePartitionStateModel extends StateModel {
     private final String storePartitionDescription;
     private final VeniceStateModelFactory.StateModelNotifier notifier;
     private final Time time;
+    private final ReadOnlyStoreRepository readOnlyStoreRepository;
 
     public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
         @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
-        VeniceStateModelFactory.StateModelNotifier notifier) {
-        this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime());
+        VeniceStateModelFactory.StateModelNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository) {
+        this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime(), readOnlyStoreRepository);
     }
 
     public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
         @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
-        VeniceStateModelFactory.StateModelNotifier notifier, Time time) {
+        VeniceStateModelFactory.StateModelNotifier notifier, Time time, ReadOnlyStoreRepository readOnlyStoreRepository) {
         this.storeConfig = storeConfig;
         this.partition = partition;
         this.storageService = storageService;
@@ -66,6 +70,7 @@ public class VenicePartitionStateModel extends StateModel {
             .format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
         this.notifier = notifier;
         this.time = time;
+        this.readOnlyStoreRepository = readOnlyStoreRepository;
     }
 
     private void executeStateTransition(Message message, NotificationContext context,
@@ -89,7 +94,18 @@ public class VenicePartitionStateModel extends StateModel {
     public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context) {
         executeStateTransition(message, context, () -> {
             try {
-                notifier.waitConsumptionCompleted(message.getResourceName(), partition);
+                int bootstrapToOnlineTimeoutInHours;
+                try {
+                    bootstrapToOnlineTimeoutInHours = readOnlyStoreRepository
+                        .getStore(Version.parseStoreFromKafkaTopicName(message.getResourceName()))
+                        .getBootstrapToOnlineTimeoutInHours();
+                } catch (Exception e) {
+                    logger.warn("Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource "
+                        + message.getResourceName() + ", using the default value of "
+                        + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
+                    bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
+                }
+                notifier.waitConsumptionCompleted(message.getResourceName(), partition, bootstrapToOnlineTimeoutInHours);
             } catch (InterruptedException e) {
                 String errorMsg =
                     "Can not complete consumption for resource:" + message.getResourceName() + " partition:" + partition;

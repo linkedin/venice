@@ -43,7 +43,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
             .setStoreMigration(srcStore.isMigrating())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
-            .setReadComputationEnabled(srcStore.isReadComputationEnabled());
+            .setReadComputationEnabled(srcStore.isReadComputationEnabled())
+            .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -201,6 +202,12 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Boolean> getReadComputationEnabled() {
     return getBoolean(READ_COMPUTATION_ENABLED);
+  }
+  public UpdateStoreQueryParams setBootstrapToOnlineTimeoutInHours(int bootstrapToOnlineTimeoutInHours) {
+    return putInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS, bootstrapToOnlineTimeoutInHours);
+  }
+  public Optional<Integer> getBootstrapToOnlineTimeoutInHours() {
+    return getInteger(BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
   }
 
 

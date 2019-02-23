@@ -61,6 +61,7 @@ public class ControllerApiConstants {
 
   public static final String WRITE_COMPUTATION_ENABLED = "write_computation_enabled";
   public static final String READ_COMPUTATION_ENABLED = "read_computation_enabled";
+  public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS = "bootstrap_to_online_timeout_in_hours";
 
   private ControllerApiConstants(){}
 

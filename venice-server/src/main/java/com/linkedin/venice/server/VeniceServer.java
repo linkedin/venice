@@ -173,8 +173,8 @@ public class VeniceServer {
      */
     // start venice participant service if Helix is enabled.
     HelixParticipationService helixParticipationService =
-        new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader, metricsRepository,
-            clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
+        new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader, metadataRepo,
+            metricsRepository, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
             veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
     services.add(helixParticipationService);
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case

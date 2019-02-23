@@ -4,6 +4,9 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -32,8 +35,10 @@ public class VeniceStateModelFactoryTest {
   private VeniceConfigLoader mockConfigLoader;
   private VeniceServerConfig mockServerConfig;
   private VeniceStoreConfig mockStoreConfig;
+  private ReadOnlyStoreRepository mockReadOnlyStoreRepository;
+  private Store mockStore;
   private int testPartition = 0;
-  private String resourceName = "test";
+  private String resourceName = "test_v1";
 
   private Message mockMessage;
   private NotificationContext mockContext;
@@ -48,8 +53,13 @@ public class VeniceStateModelFactoryTest {
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
     mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
+    mockReadOnlyStoreRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    mockStore = Mockito.mock(Store.class);
     Mockito.when(mockConfigLoader.getVeniceServerConfig()).thenReturn(mockServerConfig);
     Mockito.when(mockConfigLoader.getStoreConfig(resourceName)).thenReturn(mockStoreConfig);
+    Mockito.when(mockReadOnlyStoreRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName)))
+        .thenReturn(mockStore);
+    Mockito.when(mockStore.getBootstrapToOnlineTimeoutInHours()).thenReturn(Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS);
 
     mockMessage = Mockito.mock(Message.class);
     Mockito.when(mockMessage.getResourceName()).thenReturn(resourceName);
@@ -57,7 +67,8 @@ public class VeniceStateModelFactoryTest {
     mockContext = Mockito.mock(NotificationContext.class);
 
     factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader,
-        Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest")));
+        Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest")),
+        mockReadOnlyStoreRepository);
     stateModel = factory.createNewStateModel(resourceName, resourceName + "_" + testPartition);
   }
 
@@ -128,7 +139,8 @@ public class VeniceStateModelFactoryTest {
     ThreadPoolExecutor executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
         new DaemonThreadFactory("venice-state-transition"));
     executor.allowCoreThreadTimeOut(true);
-    factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader, executor);
+    factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader, executor,
+        mockReadOnlyStoreRepository);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);
 
