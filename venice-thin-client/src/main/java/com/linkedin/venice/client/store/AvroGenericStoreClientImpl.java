@@ -4,6 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import java.util.concurrent.Executor;
@@ -47,7 +48,11 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
   }
 
   protected RecordDeserializer<V> getDeserializerFromFactory(Schema writer, Schema reader) {
-    return SerializerDeserializerFactory.getAvroGenericDeserializer(writer, reader);
+    if (isUseFastAvro()) {
+      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writer, reader);
+    } else {
+      return SerializerDeserializerFactory.getAvroGenericDeserializer(writer, reader);
+    }
   }
 
   public String toString() {

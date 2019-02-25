@@ -15,6 +15,7 @@ import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -88,6 +89,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final Executor deserializationExecutor;
   private final BatchGetDeserializer batchGetDeserializer;
   private final AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl;
+
+  private final boolean useFastAvro;
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
    * 1. A bunch of regular get requests are sent to Venice backend at the same time;
@@ -128,6 +131,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         .orElse(getDefaultDeserializationExecutor());
     this.batchGetDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.multiGetEnvelopeIterableImpl = clientConfig.getMultiGetEnvelopeIterableImpl();
+    this.useFastAvro = clientConfig.isUseFastAvro();
+  }
+
+  protected boolean isUseFastAvro() {
+    return useFastAvro;
   }
 
   @Override
@@ -502,7 +510,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (protocolVersion != schemaId) {
       throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
     }
-    return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class, multiGetEnvelopeIterableImpl);
+    if (useFastAvro) {
+      return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(MultiGetResponseRecordV1.SCHEMA$,
+          MultiGetResponseRecordV1.class, multiGetEnvelopeIterableImpl);
+    } else {
+      return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class,
+          multiGetEnvelopeIterableImpl);
+    }
   }
 
   private RecordDeserializer<ComputeResponseRecordV1> getComputeResponseRecordDeserializer(int schemaId) {
@@ -510,7 +524,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (protocolVersion != schemaId) {
       throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
     }
-    return SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
+    if (useFastAvro) {
+      return FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(ComputeResponseRecordV1.SCHEMA$,
+          ComputeResponseRecordV1.class);
+    } else {
+      return SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
+    }
   }
 
   public String toString() {
