@@ -37,6 +37,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private int onDemandDeserializerNumberOfRecordsPerThread = 250;
   private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
   private int alwaysOnDeserializerQueueCapacity = 10000;
+  private boolean useFastAvro = false;
 
   //https specific settings
   private boolean isHttps = false;
@@ -75,7 +76,8 @@ public class ClientConfig<T extends SpecificRecord> {
              .setMultiGetEnvelopeIterableImpl(config.multiGetEnvelopeIterableImpl)
              .setOnDemandDeserializerNumberOfRecordsPerThread(config.onDemandDeserializerNumberOfRecordsPerThread)
              .setAlwaysOnDeserializerNumberOfThreads(config.alwaysOnDeserializerNumberOfThreads)
-             .setAlwaysOnDeserializerQueueCapacity(config.alwaysOnDeserializerQueueCapacity);
+             .setAlwaysOnDeserializerQueueCapacity(config.alwaysOnDeserializerQueueCapacity)
+             .setUseFastAvro(config.useFastAvro);
 
     return newConfig;
   }
@@ -277,6 +279,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setAlwaysOnDeserializerQueueCapacity(int alwaysOnDeserializerQueueCapacity) {
     this.alwaysOnDeserializerQueueCapacity = alwaysOnDeserializerQueueCapacity;
+    return this;
+  }
+
+  public boolean isUseFastAvro() {
+    return useFastAvro;
+  }
+
+  public ClientConfig<T> setUseFastAvro(boolean useFastAvro) {
+    this.useFastAvro = useFastAvro;
     return this;
   }
 }

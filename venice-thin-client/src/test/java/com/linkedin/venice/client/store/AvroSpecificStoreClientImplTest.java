@@ -74,6 +74,11 @@ public class AvroSpecificStoreClientImplTest {
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
     storeClients.put(D2TransportClient.class.getSimpleName(),d2StoreClient);
 
+    // d2 based client with fast-avro support
+    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClientWithFastAvro =
+        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client).setUseFastAvro(true));
+    storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);
     DelegatingStoreClient<TestKeyRecord, TestValueRecord> delegatingStoreClient =
         (DelegatingStoreClient<TestKeyRecord, TestValueRecord>)httpStoreClient;
     someStoreClient = (AbstractAvroStoreClient<TestKeyRecord, TestValueRecord>)delegatingStoreClient.getInnerStoreClient();

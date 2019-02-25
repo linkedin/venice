@@ -115,6 +115,18 @@ public class AvroGenericStoreClientImplTest {
             .setBatchGetDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     storeClientMetricsRepositories.put(d2StoreClient, d2ClientMetricsRepository);
+    // test store client with fast avro
+    MetricsRepository d2ClientWithFastAvroMetricsRepository = new MetricsRepository();
+    AvroGenericStoreClient<String, Object> d2StoreClientWithFastAvro =
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig
+            .defaultGenericClientConfig(storeName)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+            .setD2Client(d2Client)
+            .setMetricsRepository(d2ClientWithFastAvroMetricsRepository)
+            .setBatchGetDeserializerType(BATCH_GET_DESERIALIZER_TYPE)
+            .setUseFastAvro(true));
+    storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);
+    storeClientMetricsRepositories.put(d2StoreClientWithFastAvro, d2ClientWithFastAvroMetricsRepository);
     DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
     someStoreClient = (AbstractAvroStoreClient<String, Object>)delegatingStoreClient.getInnerStoreClient();
   }

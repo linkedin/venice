@@ -49,6 +49,8 @@ dependencies {
     api libraries.tehuti
     api libraries.xerces // d2Client brings in an old version of xerces
 
+    implementation libraries.linkedinAvroFastserde
+
     testImplementation project(':venice-test-common_2.10')
     testImplementation project(':venice-thin-client')
 }
