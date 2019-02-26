@@ -132,6 +132,7 @@ public class JobRoutes {
         key.storeName = storeName;
         key.versionNumber = version;
         value.storeName = storeName;
+        value.clusterName = request.queryParams(CLUSTER);
         value.versionNumber = version;
         value.status = PushJobStatus.valueOf(request.queryParams(PUSH_JOB_STATUS));
         value.pushDuration = Utils.parseLongFromString(request.queryParams(PUSH_JOB_DURATION), PUSH_JOB_DURATION);

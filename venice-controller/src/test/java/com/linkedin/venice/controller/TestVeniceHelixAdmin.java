@@ -330,15 +330,12 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, "test", "dev", keySchema, valueSchema);
     long storeSize = partitionSize * (minPartitionNumber) + 1;
     int numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
-    Version v = veniceAdmin.incrementVersionIdempotent(clusterName, "test", Version.guidBasedDummyPushId(),
-        numberOfParition, 1, true);
-    veniceAdmin.setStoreCurrentVersion(clusterName, "test", v.getNumber());
     Store store = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().getStore("test");
     store.setPartitionCount(numberOfParition);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
-
-    v = veniceAdmin.incrementVersionIdempotent(clusterName, "test", Version.guidBasedDummyPushId(),
-        maxPartitionNumber, 1, true);
+    Version v = veniceAdmin.incrementVersionIdempotent(clusterName, "test", Version.guidBasedDummyPushId(),
+        numberOfParition, 1, true);
+    veniceAdmin.setStoreCurrentVersion(clusterName, "test", v.getNumber());
     veniceAdmin.setStoreCurrentVersion(clusterName, "test", v.getNumber());
     storeSize = partitionSize * (maxPartitionNumber - 2);
     numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);

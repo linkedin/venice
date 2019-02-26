@@ -220,7 +220,9 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> readComputationEnabled,
         Optional<Integer> bootstrapToOnlineTimeoutInHours,
         Optional<Boolean> leaderFollowerModelEnabled) {
-      doReturn(true).when(store).isHybrid();
+      if (hybridOffsetLagThreshold.isPresent() && hybridRewindSeconds.isPresent()) {
+        doReturn(true).when(store).isHybrid();
+      }
     }
 
     @Override
@@ -247,6 +249,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(true).when(internalAdmin).isMasterController(clusterName);
     doReturn(clusterName).when(config).getPushJobStatusStoreClusterName();
     doReturn(pushJobStatusStoreName).when(config).getPushJobStatusStoreName();
+    doReturn(Version.composeRealTimeTopic(pushJobStatusStoreName)).when(internalAdmin)
+        .getRealTimeTopic(clusterName, pushJobStatusStoreName);
     AsyncSetupMockVeniceParentHelixAdmin mockVeniceParentHelixAdmin =
         new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, config, store, pushJobStatusStoreName);
     mockVeniceParentHelixAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);

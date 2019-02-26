@@ -37,10 +37,9 @@ public class TestPushJobStatusUpload {
     VeniceControllerWrapper parentController =
         ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, new VeniceProperties(properties), false);
-    ControllerClient controllerClient = null;
+    final ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
     try {
-      // Upload some push job statuses via the endpoint
-      controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+      // Create some push job statuses.
       ArrayList<Pair<PushJobStatusRecordKey, PushJobStatusRecordValue>> keyValuePairs = new ArrayList();
       PushJobStatus[] statuses = new PushJobStatus[]{PushJobStatus.ERROR, PushJobStatus.KILLED, PushJobStatus.SUCCESS};
       for (int i = 0; i < 3; i++) {
@@ -49,12 +48,25 @@ public class TestPushJobStatusUpload {
         key.storeName = "dummy-store-" + i;
         key.versionNumber = i;
         value.storeName = key.storeName;
+        value.clusterName = venice.getClusterName();
         value.versionNumber = key.versionNumber;
         value.status = statuses[i];
         value.pushDuration = 1;
         value.pushId = System.currentTimeMillis() + "-test-push-id";
         value.message = "test message " + i;
         keyValuePairs.add(new Pair(key, value));
+      }
+      // Wait for the push job status store and topic to be created
+      PushJobStatusRecordKey testKey = keyValuePairs.get(0).getFirst();
+      PushJobStatusRecordValue testValue = keyValuePairs.get(0).getSecond();
+      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
+        assertFalse(controllerClient.uploadPushJobStatus(testKey.storeName.toString(), testKey.versionNumber,
+            testValue.status, testValue.pushDuration, testValue.pushId.toString(), testValue.message.toString()).isError());
+      });
+      // Upload more push job statuses via the endpoint
+      for (int i = 1; i < 3; i++) {
+        PushJobStatusRecordKey key = keyValuePairs.get(i).getFirst();
+        PushJobStatusRecordValue value = keyValuePairs.get(i).getSecond();
         controllerClient.uploadPushJobStatus(key.storeName.toString(), key.versionNumber, value.status,
             value.pushDuration, value.pushId.toString(), value.message.toString());
       }
@@ -75,6 +87,8 @@ public class TestPushJobStatusUpload {
           PushJobStatusRecordValue value = client.get(pair.getFirst()).get();
           assertEquals(value.storeName.toString(), pair.getSecond().storeName.toString(),
               "Push job store name mismatch");
+          assertEquals(value.clusterName.toString(), pair.getSecond().clusterName.toString(),
+              "Push job cluster name mismatch");
           assertEquals(value.versionNumber, pair.getSecond().versionNumber, "Push job store version number mismatch");
           assertEquals(value.status, pair.getSecond().status, "Push job status mismatch");
           assertEquals(value.pushId.toString(), pair.getSecond().pushId.toString(), "Push job pushId mismatch");
@@ -84,9 +98,7 @@ public class TestPushJobStatusUpload {
         client.close();
       }
     } finally {
-      if (controllerClient != null) {
-        controllerClient.close();
-      }
+      controllerClient.close();
       parentController.close();
       parentZk.close();
       venice.close();

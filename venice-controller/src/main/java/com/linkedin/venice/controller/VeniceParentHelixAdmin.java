@@ -91,12 +91,15 @@ import java.util.concurrent.locks.ReentrantLock;
  * then wait for the admin consumer to consume the message.
  */
 public class VeniceParentHelixAdmin implements Admin {
+  // Latest value schema id for push job status
+  public static final int LATEST_PUSH_JOB_STATUS_VALUE_SCHEMA_ID = 2;
+
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 1000;
   private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 5;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String PUSH_JOB_STATUS_STORE_OWNER = "venice-internal";
-  private static final int PUSH_JOB_STATUS_STORE_PARTITION_NUM = 32;
+  private static final int PUSH_JOB_STATUS_STORE_PARTITION_NUM = 3;
   private static final int VERSION_ID_UNSET = -1;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
@@ -242,9 +245,11 @@ public class VeniceParentHelixAdmin implements Admin {
           }
           pushJobStatusStoreReady = verifyAndCreatePushStatusStore(clusterName, storeName);
         } catch (VeniceException e) {
-          logger.info("VeniceException occurred during push job status store setup: " + e);
+          logger.info("VeniceException occurred during push job status store setup with store"
+              + storeName + " in cluster " + clusterName, e);
         } catch (Exception e) {
-          logger.warn("Exception occurred aborting push job status store setup: " + e);
+          logger.warn("Exception occurred aborting push job status store setup with store "
+              + storeName + " in cluster " + clusterName, e);
           break;
         } finally {
           retryCount++;
@@ -270,6 +275,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private boolean verifyAndCreatePushStatusStore(String clusterName, String storeName) {
     Store store = getStore(clusterName, storeName);
     boolean storeReady = false;
+    UpdateStoreQueryParams updateStoreQueryParams;
     if (isMasterController(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
       if (store == null) {
         addStore(clusterName, storeName, PUSH_JOB_STATUS_STORE_OWNER, PushJobStatusRecordKey.SCHEMA$.toString(),
@@ -279,8 +285,13 @@ public class VeniceParentHelixAdmin implements Admin {
           throw new VeniceException("Unable to create or fetch the push job status store");
         }
       }
+      if (store.getPartitionCount() == 0) {
+        updateStoreQueryParams = new UpdateStoreQueryParams();
+        updateStoreQueryParams.setPartitionCount(PUSH_JOB_STATUS_STORE_PARTITION_NUM);
+        updateStore(clusterName, storeName, updateStoreQueryParams);
+      }
       if (!store.isHybrid()) {
-        UpdateStoreQueryParams updateStoreQueryParams = new UpdateStoreQueryParams();
+        updateStoreQueryParams = new UpdateStoreQueryParams();
         updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
         updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
         updateStoreQueryParams.setOwner(PUSH_JOB_STATUS_STORE_OWNER);
@@ -300,6 +311,10 @@ public class VeniceParentHelixAdmin implements Admin {
         if (store.getVersions().isEmpty()) {
           throw new VeniceException("Unable to initialize a version for the push job status store");
         }
+      }
+      String pushJobStatusRtTopic = getRealTimeTopic(clusterName, storeName);
+      if (!pushJobStatusRtTopic.equals(Version.composeRealTimeTopic(storeName))) {
+        throw new VeniceException("Unexpected real time topic name for the push job status store");
       }
       storeReady = true;
     } else {
