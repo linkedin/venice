@@ -2,6 +2,9 @@ package com.linkedin.venice.utils;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -11,6 +14,7 @@ import java.lang.reflect.InvocationTargetException;
  * for reflections and need to be discarded then
  */
 public class ReflectUtils {
+  private static final Logger LOGGER = Logger.getLogger(ReflectUtils.class);
 
   /**
    * Load the given class using the default constructor
@@ -63,5 +67,35 @@ public class ReflectUtils {
     } else {
       throw new IllegalArgumentException(e.getCause());
     }
+  }
+
+  /**
+   * Print to the logs the entire classpath (one line per jar)
+   */
+  public static void printClasspath() {
+    ClassLoader cl = ClassLoader.getSystemClassLoader();
+
+    URL[] urls = ((URLClassLoader)cl).getURLs();
+
+    LOGGER.info("Classpath:");
+    for(URL url: urls){
+      LOGGER.info(url.getFile());
+    }
+  }
+
+  /**
+   * Given an exception about a class that doesn't have the expected API,
+   * print to the logs which jar is that class coming from.
+   */
+  public static void printJarContainingBadClass(NoSuchMethodError e) {
+    String rawMessage =  e.getMessage();
+    int methodBoundary = rawMessage.lastIndexOf('.');
+    if (methodBoundary == -1) {
+      throw new IllegalArgumentException("Unexpected exception message format. Could not find any dot.", e);
+    }
+    String className = rawMessage.substring(0, methodBoundary);
+    Class klass = loadClass(className);
+    LOGGER.info("Class '" + klass.getSimpleName() + "' is loaded from: " +
+        klass.getProtectionDomain().getCodeSource().getLocation().toString());
   }
 }

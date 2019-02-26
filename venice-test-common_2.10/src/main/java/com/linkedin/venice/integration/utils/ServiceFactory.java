@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -433,12 +434,23 @@ public class ServiceFactory {
           LOGGER.info("Started ProcessWrapper: " + serviceName);
         }
         return wrapper;
+      } catch (NoSuchMethodError e) {
+        LOGGER.error("Got a " + e.getClass().getSimpleName() + " while trying to start " + serviceName + ". Will print the jar containing the bad class and then bubble up.");
+        ReflectUtils.printJarContainingBadClass(e);
+        IOUtils.closeQuietly(wrapper);
+        throw e;
+      } catch (LinkageError e) {
+        LOGGER.error("Got a " + e.getClass().getSimpleName() + " while trying to start " + serviceName + ". Will print the classpath and then bubble up.");
+        ReflectUtils.printClasspath();
+        IOUtils.closeQuietly(wrapper);
+        throw e;
       } catch (Exception e) {
         lastException = e;
         errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName +
             " with given port number " + port + ". Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
         LOGGER.warn(errorMessage, e);
         IOUtils.closeQuietly(wrapper);
+        // We don't throw for other exception types, since we want to retry.
       }
     }
 
