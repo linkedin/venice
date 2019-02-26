@@ -111,10 +111,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public static final long CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS = 1000*300l; // 5min
     public static final long CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS = 500l;
     public static final long WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS = 500;
+    public static final int PUSH_JOB_STATUS_GET_TOPIC_ATTEMPTS = 3;
 
+    private static final long PUSH_JOB_STATUS_RTT_RETRY_BACKOFF_MS = 5000;
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
-    private static final int GET_PUSH_JOB_STATUS_RTT_MAX_RETRY_COUNT = 5;
-    private static final long GET_PUSH_JOB_STATUS_RTT_RETRY_PERIOD_MS = 1000;
 
     private final HelixAdmin admin;
     private TopicManager topicManager;
@@ -524,43 +524,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         logger.info("Completed cloning Store: " + storeName);
     }
 
-    public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
+    public synchronized void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
         if (multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
             || multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
             // Push job status upload store is not configured.
             throw new VeniceException("Unable to upload the push job status because corresponding store is not configured");
         }
         if (pushJobStatusTopicName == null) {
-            int attempts = 1;
-            while (attempts <= GET_PUSH_JOB_STATUS_RTT_MAX_RETRY_COUNT) {
-                // Since the push job status store is created asynchronously, it's possible that the store is not ready
-                // yet. Therefore multiple attempts might be needed.
-                try {
-                    configurePushJobStatusTopic();
+            int getTopicAttempts = 0;
+            String expectedTopicName = Version.composeRealTimeTopic(multiClusterConfigs.getPushJobStatusStoreName());
+            // Retry with backoff to allow the store and topic to be created when the config is changed.
+            while (getTopicAttempts < PUSH_JOB_STATUS_GET_TOPIC_ATTEMPTS) {
+                if (getTopicAttempts != 0)
+                    Utils.sleep(PUSH_JOB_STATUS_RTT_RETRY_BACKOFF_MS);
+                if (topicManager.containsTopic(expectedTopicName)) {
+                    pushJobStatusTopicName = expectedTopicName;
+                    logger.info("Push job status topic name set to " + expectedTopicName);
                     break;
-                } catch (VeniceException e) {
-                    logger.info("Get push job status rt topic attempts: "
-                        + attempts + "/" + GET_PUSH_JOB_STATUS_RTT_MAX_RETRY_COUNT);
                 }
-                Utils.sleep(GET_PUSH_JOB_STATUS_RTT_RETRY_PERIOD_MS,
-                    "The process of getting the push job status rt topic was interrupted");
-                attempts++;
+                getTopicAttempts++;
             }
             if (pushJobStatusTopicName == null) {
-              throw new VeniceException("Unable to get the push job status rt topic");
+                throw new VeniceException("Can't find the expected topic " + expectedTopicName
+                    + " for push job status. Either the topic hasn't been created yet or it's misconfigured.");
             }
         }
-      if (pushJobStatusWriter == null) {
-          configurePushJobStatusWriter(key, value);
-      }
-      pushJobStatusWriter.put(key, value, multiClusterConfigs.getPushJobStatusValueSchemaId(), null);
-    }
-
-    private synchronized void configurePushJobStatusTopic() {
-        if (pushJobStatusTopicName == null) {
-            pushJobStatusTopicName = getRealTimeTopic(multiClusterConfigs.getPushJobStatusStoreClusterName(),
-                multiClusterConfigs.getPushJobStatusStoreName());
+        if (pushJobStatusWriter == null) {
+            configurePushJobStatusWriter(key, value);
         }
+        pushJobStatusWriter.put(key, value, multiClusterConfigs.getPushJobStatusValueSchemaId(), null);
+        logger.info("Successfully sent push job status for store " + value.storeName.toString() + " in cluster ");
     }
 
     private synchronized void configurePushJobStatusWriter(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
@@ -851,6 +844,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
                 } finally {
                     repository.unLock();
+                }
+
+                // Check to catch any unexpected modification of the partition count, can be removed once partition
+                // count is moved to the version level.
+                if (newTopicPartitionCount != numberOfPartitions) {
+                    throwPartitionCountMismatch(clusterName, storeName, versionNumber, numberOfPartitions,
+                        newTopicPartitionCount);
                 }
 
                 checkControllerMastership(clusterName);
@@ -2271,6 +2271,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private void throwVersionAlreadyExists(String storeName, int version) {
         String errorMessage =
             "Version" + version + " already exists in Store:" + storeName + ". Can not add it to store.";
+        logAndThrow(errorMessage);
+    }
+
+    private void throwPartitionCountMismatch(String clusterName, String storeName, int version, int partitionCount,
+        int storePartitionCount) {
+        String errorMessage = "Partition mismatch for store " + storeName + " version " + version + " in cluster "
+            + clusterName + " Found partition count of " + partitionCount + " but partition count in store config is "
+            + storePartitionCount;
         logAndThrow(errorMessage);
     }
 

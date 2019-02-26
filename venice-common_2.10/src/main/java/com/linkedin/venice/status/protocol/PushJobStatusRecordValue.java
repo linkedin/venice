@@ -7,8 +7,9 @@ package com.linkedin.venice.status.protocol;
 
 @SuppressWarnings("all")
 public class PushJobStatusRecordValue extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobStatusRecordValue\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"versionNumber\",\"type\":\"int\"},{\"name\":\"status\",\"type\":{\"type\":\"enum\",\"name\":\"PushJobStatus\",\"namespace\":\"com.linkedin.venice.status.protocol.enums\",\"symbols\":[\"SUCCESS\",\"ERROR\",\"KILLED\"]}},{\"name\":\"pushId\",\"type\":\"string\"},{\"name\":\"pushDuration\",\"type\":\"long\"},{\"name\":\"message\",\"type\":\"string\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobStatusRecordValue\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"clusterName\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"versionNumber\",\"type\":\"int\"},{\"name\":\"status\",\"type\":{\"type\":\"enum\",\"name\":\"PushJobStatus\",\"namespace\":\"com.linkedin.venice.status.protocol.enums\",\"symbols\":[\"SUCCESS\",\"ERROR\",\"KILLED\"]}},{\"name\":\"pushId\",\"type\":\"string\"},{\"name\":\"pushDuration\",\"type\":\"long\"},{\"name\":\"message\",\"type\":\"string\"}]}");
   public java.lang.CharSequence storeName;
+  public java.lang.CharSequence clusterName;
   public int versionNumber;
   public com.linkedin.venice.status.protocol.enums.PushJobStatus status;
   public java.lang.CharSequence pushId;
@@ -19,11 +20,12 @@ public class PushJobStatusRecordValue extends org.apache.avro.specific.SpecificR
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return storeName;
-    case 1: return versionNumber;
-    case 2: return status;
-    case 3: return pushId;
-    case 4: return pushDuration;
-    case 5: return message;
+    case 1: return clusterName;
+    case 2: return versionNumber;
+    case 3: return status;
+    case 4: return pushId;
+    case 5: return pushDuration;
+    case 6: return message;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -32,11 +34,12 @@ public class PushJobStatusRecordValue extends org.apache.avro.specific.SpecificR
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
     case 0: storeName = (java.lang.CharSequence)value$; break;
-    case 1: versionNumber = (java.lang.Integer)value$; break;
-    case 2: status = (com.linkedin.venice.status.protocol.enums.PushJobStatus)value$; break;
-    case 3: pushId = (java.lang.CharSequence)value$; break;
-    case 4: pushDuration = (java.lang.Long)value$; break;
-    case 5: message = (java.lang.CharSequence)value$; break;
+    case 1: clusterName = (java.lang.CharSequence)value$; break;
+    case 2: versionNumber = (java.lang.Integer)value$; break;
+    case 3: status = (com.linkedin.venice.status.protocol.enums.PushJobStatus)value$; break;
+    case 4: pushId = (java.lang.CharSequence)value$; break;
+    case 5: pushDuration = (java.lang.Long)value$; break;
+    case 6: message = (java.lang.CharSequence)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
