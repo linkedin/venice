@@ -50,6 +50,12 @@ dependencies {
     runtime libraries.httpClient
 
     testCompile project(':venice-brooklin')
+
+    // The log4j2 dependencies are not required when running the test suite in Gradle, 
+    // but seem necessary when running in IntelliJ... No idea why, but it doesn't hurt
+    // us to declare it explicitly here, so why not.
+    testImplementation libraries.log4j2api
+    testImplementation libraries.log4j2core
 }
 
 configurations {
