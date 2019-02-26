@@ -450,7 +450,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     KafkaMessageEnvelope kafkaValue = record.value();
 
     if (kafkaKey.isControlMessage()) {
-      logger.info("Received control message: " + kafkaValue);
+      logger.debug("Received control message: " + kafkaValue);
       return;
     }
     // check message type
@@ -460,7 +460,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminOperation = deserializer.deserialize(put.putValue.array(), put.schemaId);
-    logger.info("Received admin message: " + adminOperation);
+    logger.debug("Received admin message: " + adminOperation);
     String storeName = extractStoreName(adminOperation);
     storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
     storeAdminOperationsMapWithOffset.get(storeName).add(new Pair<>(record.offset(), adminOperation));
