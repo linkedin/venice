@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.helix.SafeHelixDataAccessor;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.meta.Instance;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
@@ -261,10 +262,16 @@ public class HelixUtils {
     HelixAdmin admin = null;
     try {
       admin = new ZKHelixAdmin(zkAddress);
-      Map<String, String> instanceProperties = new HashMap<>();
-      instanceProperties.put(InstanceConfig.InstanceConfigProperty.DOMAIN.name(),
-          TOPOLOGY_CONSTRAINT + "=" + instanceId);
-      admin.setConfig(instanceScope, instanceProperties);
+
+      String instanceDomainKey = InstanceConfig.InstanceConfigProperty.DOMAIN.name();
+
+      Map<String, String> currentDomainValue = admin.getConfig(instanceScope, Arrays.asList(instanceDomainKey));
+      if (currentDomainValue == null || !currentDomainValue.containsKey(instanceDomainKey)) {
+        Map<String, String> instanceProperties = new HashMap<>();
+        instanceProperties.put(instanceDomainKey, TOPOLOGY_CONSTRAINT + "=" + instanceId);
+
+        admin.setConfig(instanceScope, instanceProperties);
+      }
     } finally {
       if (admin != null) {
         admin.close();

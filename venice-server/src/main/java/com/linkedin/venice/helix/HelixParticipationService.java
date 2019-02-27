@@ -169,8 +169,13 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
         checkBeforeJoinInCluster();
         manager.connect();
-        //setup instance config for participant used by CRUSH alg
-        HelixUtils.setupInstanceConfig(clusterName, instance.getNodeId(), zkAddress);
+
+        /**
+         * instance config is intended for CRUSH alg.
+         * Comment it out as it's already taken care by deployment script (by Helix rest APIs).
+         * So no need to invoke here
+         */
+        //HelixUtils.setupInstanceConfig(clusterName, instance.getNodeId(), zkAddress);
         managerFuture.complete(manager);
       } catch (Exception e) {
         logger.error(e.getMessage(), e);
