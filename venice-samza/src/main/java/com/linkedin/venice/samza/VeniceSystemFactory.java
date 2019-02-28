@@ -1,6 +1,7 @@
 package com.linkedin.venice.samza;
 
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import java.io.Serializable;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -14,7 +15,7 @@ import org.apache.samza.system.SystemProducer;
 import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 
 
-public class VeniceSystemFactory implements SystemFactory {
+public class VeniceSystemFactory implements SystemFactory, Serializable {
   private static final Logger LOGGER = Logger.getLogger(VeniceSystemFactory.class);
 
   public static final String D2_ZK_HOSTS_PROPERTY = "__r2d2DefaultClient__.r2d2Client.zkHosts";
@@ -66,26 +67,25 @@ public class VeniceSystemFactory implements SystemFactory {
     return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId);
   }
 
-  @Override
-  public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
-    String samzaJobId = config.get(DEPLOYMENT_ID);
+  // Overload this function to simplify Samza Table API.
+  public SystemProducer getProducer(String systemName, String storeName, boolean veniceAggregate,
+      String pushTypeString, Config config) {
+    if (isEmpty(storeName)) {
+      throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
+    }
 
+    String samzaJobId = config.get(DEPLOYMENT_ID);
     String prefix = SYSTEMS_PREFIX + systemName + DOT;
-    String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
     ControllerApiConstants.PushType venicePushType;
     try {
       venicePushType = ControllerApiConstants.PushType.valueOf(pushTypeString);
     } catch (Exception e) {
       throw new SamzaException("Cannot parse venice push type: " + pushTypeString
-      + ".  Must be one of: " + Arrays.stream(ControllerApiConstants.PushType.values())
+          + ".  Must be one of: " + Arrays.stream(ControllerApiConstants.PushType.values())
           .map(Enum::toString)
           .collect(Collectors.joining(",")));
     }
-    String storeName = config.get(prefix + VENICE_STORE);
-    if (isEmpty(storeName)) {
-      throw new SamzaException(VENICE_STORE + " should not be null for system " + systemName);
-    }
-    boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
+
     String veniceParentZKHosts = config.get(VENICE_PARENT_D2_ZK_HOSTS);
     if (isEmpty(veniceParentZKHosts)) {
       throw new SamzaException(VENICE_PARENT_D2_ZK_HOSTS + " should not be null, please put this property in your app-def.xml");
@@ -113,6 +113,15 @@ public class VeniceSystemFactory implements SystemFactory {
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
     return createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config);
+  }
+
+  @Override
+  public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
+    final String prefix = SYSTEMS_PREFIX + systemName + DOT;
+    final String storeName = config.get(prefix + VENICE_STORE);
+    final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
+    final String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
+    return getProducer(systemName, storeName, veniceAggregate, pushTypeString, config);
   }
 
   private static boolean isEmpty(String input) {
