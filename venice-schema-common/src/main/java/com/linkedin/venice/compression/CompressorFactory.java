@@ -1,11 +1,11 @@
 package com.linkedin.venice.compression;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 
 public class CompressorFactory {
-  private static Map<CompressionStrategy, VeniceCompressor> compressorMap = new ConcurrentHashMap<>();
+  private static Map<CompressionStrategy, VeniceCompressor> compressorMap = new VeniceConcurrentHashMap<>();
 
   public static VeniceCompressor getCompressor(CompressionStrategy compressionStrategy) {
     return compressorMap.computeIfAbsent(compressionStrategy, key -> createCompressor(compressionStrategy));

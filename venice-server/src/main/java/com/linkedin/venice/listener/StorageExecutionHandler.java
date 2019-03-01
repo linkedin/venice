@@ -44,6 +44,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.queues.LabeledRunnable;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
@@ -61,7 +62,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
@@ -112,7 +112,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.metadataRetriever = metadataRetriever;
     this.diskHealthCheckService = healthCheckService;
 
-    this.computeResultSchemaCache = new ConcurrentHashMap<>();
+    this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
   }
 
   @Override
@@ -285,6 +285,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // Reuse the same value record and result record instances for all values
     GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
     GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
+    RecordSerializer<GenericRecord> resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
     for (ComputeRouterRequestKeyV1 key : keys) {
       clearFieldsInReusedRecord(resultRecord, computeResultSchema);
       ComputeResponseRecordV1 record = computeResult(store,
@@ -295,6 +296,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      computeRequest.operations,
                                                      latestValueSchema,
                                                      computeResultSchema,
+                                                     resultSerializer,
                                                      valueRecord,
                                                      resultRecord,
                                                      isChunked,
@@ -337,6 +339,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       List<Object> operations,
       Schema latestValueSchema,
       Schema computeResultSchema,
+      RecordSerializer<GenericRecord> resultSerializer,
       GenericRecord valueRecord,
       GenericRecord resultRecord,
       boolean isChunked,
@@ -434,8 +437,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // serialize the compute result
     long serializeStartTimeInNS = System.nanoTime();
-    RecordSerializer<GenericRecord> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
-    responseRecord.value = ByteBuffer.wrap(serializer.serialize(resultRecord));
+    responseRecord.value = ByteBuffer.wrap(resultSerializer.serialize(resultRecord));
     response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;

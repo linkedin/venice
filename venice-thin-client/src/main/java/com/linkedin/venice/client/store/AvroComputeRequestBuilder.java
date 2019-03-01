@@ -9,6 +9,7 @@ import com.linkedin.venice.compute.protocol.request.DotProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -19,7 +20,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.codehaus.jackson.node.JsonNodeFactory;
@@ -43,7 +43,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   private final Schema.Field VENICE_COMPUTATION_ERROR_MAP_FIELD = new Schema.Field(VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME,
       Schema.createMap(Schema.create(Schema.Type.STRING)), "", JsonNodeFactory.instance.objectNode());
 
-  private static final Map< Map<String, Object>, Pair<Schema, String>> RESULT_SCHEMA_CACHE = new ConcurrentHashMap<>();
+  private static final Map< Map<String, Object>, Pair<Schema, String>> RESULT_SCHEMA_CACHE = new VeniceConcurrentHashMap<>();
   private static final String PROJECTION_SPEC = "projection_spec";
   private static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
   private static final String COSINE_SIMILARITY_SPEC = "cosineSimilarity_spec";

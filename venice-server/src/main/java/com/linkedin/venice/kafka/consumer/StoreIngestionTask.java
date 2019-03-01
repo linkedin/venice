@@ -42,6 +42,7 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -116,7 +117,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   /** Persists the exception thrown by {@link StoreBufferService}. */
   private Exception lastDrainerException = null;
   /** Keeps track of every upstream producer this consumer task has seen so far. */
-  private final ConcurrentMap<GUID, ProducerTracker> producerTrackerMap;
+  private final Map<GUID, ProducerTracker> producerTrackerMap;
   private final AggStoreIngestionStats storeIngestionStats;
   private final AggVersionedDIVStats versionedDIVStats;
   private final BooleanSupplier isCurrentVersion;
@@ -186,10 +187,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
         new ConsumerAction.ConsumerActionPriorityComparator());
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
-    this.partitionConsumptionStateMap = new ConcurrentHashMap<>();
+    this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
 
     // Could be accessed from multiple threads since there are multiple worker threads.
-    this.producerTrackerMap = new ConcurrentHashMap<>();
+    this.producerTrackerMap = new VeniceConcurrentHashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
     this.cachedLatestOffsetGetter = new CachedLatestOffsetGetter(topicManager, storeConfig.getTopicOffsetCheckIntervalMs());
@@ -602,8 +603,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-              producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
-              ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
+              ProducerTracker producerTracker = producerTrackerMap.computeIfAbsent(producerGuid, producerTrackerCreator);
               producerTracker.setPartitionState(partition, entry.getValue());
               producerTrackerMap.put(producerGuid, producerTracker);
             }
@@ -1221,8 +1221,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
   private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
-    producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerCreator);
-    ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
+    ProducerTracker producerTracker = producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerCreator);
 
     return producerTracker.addMessage(partition, key, message, endOfPushReceived, divErrorMetricCallback);
   }

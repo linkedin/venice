@@ -3,6 +3,7 @@ package com.linkedin.venice.client.stats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -11,7 +12,6 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 
 import io.tehuti.metrics.stats.Rate;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 
 public class ClientStats extends AbstractVeniceHttpStats {
@@ -20,7 +20,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor unhealthySensor;
   private final Sensor healthyRequestLatencySensor;
   private final Sensor unhealthyRequestLatencySensor;
-  private final Map<Integer, Sensor> httpStatusSensorMap = new ConcurrentHashMap<>();
+  private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
   private final Sensor requestKeyCountSensor;
   private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestKeyRatioSensor;

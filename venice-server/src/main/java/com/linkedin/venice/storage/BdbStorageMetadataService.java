@@ -9,6 +9,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.sleepycat.je.CacheMode;
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
@@ -20,7 +21,6 @@ import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -53,7 +53,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
   private static final String OFFSET_RECORD_DESCRIPTOR_PART_2 =  " PartitionId: ";
   private final Environment offsetsBdbEnvironment;
   private final Map<String, Boolean> chunkingEnabledCache = new HashMap<>();
-  private final Map<String, CompressionStrategy> compressionStrategyCache = new ConcurrentHashMap<>();
+  private final Map<String, CompressionStrategy> compressionStrategyCache = new VeniceConcurrentHashMap<>();
   private AtomicBoolean isOpen;
   private Database offsetsBdbDatabase;
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;

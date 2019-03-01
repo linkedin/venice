@@ -3,14 +3,14 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 
 public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttpRequestStats> {
-  private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new ConcurrentHashMap<>();
+  private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new VeniceConcurrentHashMap<>();
 
   public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
     super(metricsRepository);
@@ -31,8 +31,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   }
 
   public ScatterGatherStats getScatterGatherStatsForStore(String storeName) {
-    scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
-    return scatterGatherStatsMap.get(storeName);
+    return scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
   }
 
   public void recordRequest(String storeName) {

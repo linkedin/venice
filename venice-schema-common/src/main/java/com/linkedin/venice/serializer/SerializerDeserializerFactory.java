@@ -1,13 +1,12 @@
 package com.linkedin.venice.serializer;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Map;
 import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
-
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * For one given store, the client only needs the followings:
@@ -57,22 +56,19 @@ public class SerializerDeserializerFactory {
     }
   }
 
-  private static Map<Schema, AvroGenericSerializer> avroGenericSerializerMap = new ConcurrentHashMap<>();
-  private static Map<Schema, VsonAvroGenericSerializer> vsonGenericSerializerMap = new ConcurrentHashMap<>();
+  private static Map<Schema, AvroGenericSerializer> avroGenericSerializerMap = new VeniceConcurrentHashMap<>();
+  private static Map<Schema, VsonAvroGenericSerializer> vsonGenericSerializerMap = new VeniceConcurrentHashMap<>();
 
-  private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>> avroGenericDeserializerMap =
-      new ConcurrentHashMap<>();
-  private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
-      avroSpecificDeserializerMap = new ConcurrentHashMap<>();
-  private static Map<SchemaPairAndClassContainer, VsonAvroGenericDeserializer> vsonGenericDeserializerMap =
-      new ConcurrentHashMap<>();
+  private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>> avroGenericDeserializerMap = new VeniceConcurrentHashMap<>();
+  private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>> avroSpecificDeserializerMap = new VeniceConcurrentHashMap<>();
+  private static Map<SchemaPairAndClassContainer, VsonAvroGenericDeserializer> vsonGenericDeserializerMap = new VeniceConcurrentHashMap<>();
 
   public static <K> RecordSerializer<K> getAvroGenericSerializer(Schema schema) {
     return avroGenericSerializerMap.computeIfAbsent(schema, key -> new AvroGenericSerializer(key));
   }
 
   public static <K> RecordSerializer<K> getVsonSerializer(Schema schema) {
-     return vsonGenericSerializerMap.computeIfAbsent(schema, key -> new VsonAvroGenericSerializer<> (key));
+    return vsonGenericSerializerMap.computeIfAbsent(schema, key -> new VsonAvroGenericSerializer<> (key));
   }
 
   public static <K> RecordDeserializer<K> getVsonDeserializer(Schema writer, Schema reader) {

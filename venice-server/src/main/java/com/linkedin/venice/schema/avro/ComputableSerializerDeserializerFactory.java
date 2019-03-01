@@ -4,17 +4,17 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSpecificDeserializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
 
 public class ComputableSerializerDeserializerFactory extends SerializerDeserializerFactory {
   private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>>
-      avroComputableGenericDeserializerMap = new ConcurrentHashMap<>();
+      avroComputableGenericDeserializerMap = new VeniceConcurrentHashMap<>();
   private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
-      avroComputableSpecificDeserializerMap = new ConcurrentHashMap<>();
+      avroComputableSpecificDeserializerMap = new VeniceConcurrentHashMap<>();
 
   public static <V> RecordDeserializer<V> getComputableAvroGenericDeserializer(Schema writer, Schema reader) {
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, Object.class);

@@ -10,6 +10,7 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -22,7 +23,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -51,7 +51,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
   // Local cache between store name and store schema
-  private Map<String, SchemaData> schemaMap = new ConcurrentHashMap<>();
+  private Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
 
   private ZkBaseDataAccessor<SchemaEntry> dataAccessor;
 
@@ -180,7 +180,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   private void fetchStoreSchemaIfNotInCache(String storeName) {
     if (storeRepository.hasStore(storeName) && !schemaMap.containsKey(storeName)) {
       /**
-       * Use {@link ConcurrentHashMap#computeIfAbsent} here instead of {@link #schemaLock} to avoid the complication of
+       * Use {@link VeniceConcurrentHashMap#computeIfAbsent} here instead of {@link #schemaLock} to avoid the complication of
        * readlock/writelock switching/degrading.
        * You can get more details from the 'CachedData' example in {@link ReentrantReadWriteLock}.
        */

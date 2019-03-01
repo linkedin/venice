@@ -7,10 +7,10 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
@@ -36,7 +36,7 @@ public class SchemaReader implements Closeable {
   private final Logger logger = Logger.getLogger(SchemaReader.class);
   private final Optional<Schema> readerSchema;
   private Schema keySchema;
-  private Map<Integer, Schema> valueSchemaMap = new ConcurrentHashMap<>();
+  private Map<Integer, Schema> valueSchemaMap = new VeniceConcurrentHashMap<>();
   private AtomicReference<SchemaEntry> latestValueSchemaEntry = new AtomicReference<>();
 
   private final AbstractAvroStoreClient storeClient;
@@ -70,7 +70,7 @@ public class SchemaReader implements Closeable {
   }
 
   public Schema getValueSchema(int id) {
-    valueSchemaMap.computeIfAbsent(id, k -> {
+    return valueSchemaMap.computeIfAbsent(id, k -> {
       SchemaEntry valueSchemaEntry = null;
       try {
         valueSchemaEntry = fetchValueSchema(k);
@@ -88,8 +88,6 @@ public class SchemaReader implements Closeable {
       }
       return valueSchemaEntry.getSchema();
     });
-
-    return valueSchemaMap.get(id);
   }
 
   public Schema getLatestValueSchema() throws VeniceClientException {

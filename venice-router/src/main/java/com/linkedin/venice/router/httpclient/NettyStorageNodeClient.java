@@ -24,6 +24,7 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ResolveAllBootstrap;
 import io.netty.buffer.ByteBuf;
@@ -57,7 +58,6 @@ import io.netty.util.concurrent.Promise;
 import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -126,7 +126,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
       bootstrap.attr(Http2AwareChannelPoolFactory.SSL_CONTEXT, sslContext);
     }
 
-    ConcurrentMap<SocketAddress, CallTracker> healthCallTrackerMap = new ConcurrentHashMap<>();
+    ConcurrentMap<SocketAddress, CallTracker> healthCallTrackerMap = new VeniceConcurrentHashMap<>();
     ChannelPoolResolver resolver = new BasicDnsResolver();
     Http2AwareChannelPoolFactory factory =
         new Http2AwareChannelPoolFactory(

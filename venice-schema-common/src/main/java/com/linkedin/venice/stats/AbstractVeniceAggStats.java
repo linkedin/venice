@@ -1,8 +1,8 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 
 public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
@@ -18,12 +18,12 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     this.statsFactory = statsSupplier;
 
     this.totalStats = statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT);
-    storeStats = new ConcurrentHashMap<>();
+    storeStats = new VeniceConcurrentHashMap<>();
   }
 
   public AbstractVeniceAggStats(MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
-    storeStats = new ConcurrentHashMap<>();
+    storeStats = new VeniceConcurrentHashMap<>();
   }
 
   public void setStatsSupplier(StatsSupplier<T> statsSupplier) {
@@ -36,7 +36,7 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     this.statsFactory = statsSupplier;
 
     this.totalStats = statsSupplier.get(metricsRepository, STORE_NAME_FOR_TOTAL_STAT + "." + clusterName);
-    storeStats = new ConcurrentHashMap<>();
+    storeStats = new VeniceConcurrentHashMap<>();
   }
 
   protected T getStoreStats(String storeName) {

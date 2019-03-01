@@ -3,9 +3,9 @@ package com.linkedin.venice.serializer;
 import com.linkedin.avro.fastserde.FastSerdeCache;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Arrays;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
@@ -14,9 +14,9 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   private static FastSerdeCache cache = FastSerdeCache.getDefaultInstance();
 
   private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>>
-      avroFastGenericDeserializerMap = new ConcurrentHashMap<>();
+      avroFastGenericDeserializerMap = new VeniceConcurrentHashMap<>();
   private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
-      avroFastSpecificDeserializerMap = new ConcurrentHashMap<>();
+      avroFastSpecificDeserializerMap = new VeniceConcurrentHashMap<>();
 
   // Verify whether fast-avro could generate a fast specific deserializer, but there is no guarantee that
   // the success of all other fast specific deserializer generation in the future.
