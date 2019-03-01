@@ -20,6 +20,10 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
 
   protected AvroGenericStoreClientImpl(TransportClient transportClient, boolean needSchemaReader, ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
+
+    if (isUseFastAvro()) {
+      FastSerializerDeserializerFactory.verifyWhetherFastGenericSerializerWorks();
+    }
   }
 
   /**

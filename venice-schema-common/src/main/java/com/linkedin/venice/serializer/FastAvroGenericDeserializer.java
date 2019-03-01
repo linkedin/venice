@@ -1,6 +1,7 @@
 package com.linkedin.venice.serializer;
 
 import com.linkedin.avro.fastserde.FastGenericDatumReader;
+import com.linkedin.avro.fastserde.FastSerdeCache;
 import org.apache.avro.Schema;
 
 
@@ -9,7 +10,7 @@ import org.apache.avro.Schema;
  * @param <V>
  */
 public class FastAvroGenericDeserializer<V> extends AvroGenericDeserializer<V> {
-  public FastAvroGenericDeserializer(Schema writer, Schema reader) {
-    super(new FastGenericDatumReader<>(writer, reader));
+  public FastAvroGenericDeserializer(Schema writer, Schema reader, FastSerdeCache cache) {
+    super(new FastGenericDatumReader<>(writer, reader, cache));
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.serializer;
 
+import com.linkedin.avro.fastserde.FastSerdeCache;
 import com.linkedin.avro.fastserde.FastSpecificDatumReader;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
@@ -11,7 +12,7 @@ import org.apache.avro.specific.SpecificRecord;
  * @param <T>
  */
 public class FastAvroSpecificDeserializer<T extends SpecificRecord> extends AvroSpecificDeserializer<T> {
-  public FastAvroSpecificDeserializer(Schema writer, Class<T> c, IterableImpl iterableImpl) {
-    super(new FastSpecificDatumReader<>(writer, SpecificData.get().getSchema(c)), iterableImpl);
+  public FastAvroSpecificDeserializer(Schema writer, Class<T> c, FastSerdeCache cache, IterableImpl iterableImpl) {
+    super(new FastSpecificDatumReader<>(writer, SpecificData.get().getSchema(c), cache), iterableImpl);
   }
 }
