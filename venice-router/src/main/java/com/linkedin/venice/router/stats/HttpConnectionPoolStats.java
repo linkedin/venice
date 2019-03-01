@@ -3,6 +3,7 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.Gauge;
 import com.linkedin.venice.stats.LambdaStat;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -11,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import org.apache.http.conn.routing.HttpRoute;
@@ -28,7 +28,7 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
    * but I think it is fine to still keep this lock to make it independent from the external logic.
    */
   private ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
-  private Map<String, RouteHttpConnectionPoolStats> routeConnectionPoolStatsMap = new ConcurrentHashMap<>();
+  private Map<String, RouteHttpConnectionPoolStats> routeConnectionPoolStatsMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Measure how much time to take to lease a connection from connection pool.

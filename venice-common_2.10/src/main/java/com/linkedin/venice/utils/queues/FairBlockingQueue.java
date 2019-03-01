@@ -1,15 +1,15 @@
 package com.linkedin.venice.utils.queues;
 
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
@@ -39,7 +39,7 @@ import java.util.function.Function;
 public class FairBlockingQueue<T> implements BlockingQueue<T> {
 
   private final BlockingQueue<Queue<T>> workQueue = new LinkedBlockingQueue<>();
-  private final ConcurrentMap<String, Queue<T>> categoryQueues = new ConcurrentHashMap<>();
+  private final Map<String, Queue<T>> categoryQueues = new VeniceConcurrentHashMap<>();
 
   public FairBlockingQueue(){
   }

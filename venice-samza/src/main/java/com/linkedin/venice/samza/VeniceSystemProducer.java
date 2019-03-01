@@ -14,14 +14,15 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.function.Supplier;
@@ -62,7 +63,7 @@ public class VeniceSystemProducer implements SystemProducer {
 
   private final VeniceWriter<byte[], byte[]> veniceWriter;
 
-  private final ConcurrentMap<Schema, Integer> valueSchemaIds = new ConcurrentHashMap<>();
+  private final ConcurrentMap<Schema, Integer> valueSchemaIds = new VeniceConcurrentHashMap<>();
 
   private final Schema keySchema;
 
@@ -70,7 +71,7 @@ public class VeniceSystemProducer implements SystemProducer {
    * key is schema
    * value is Avro serializer
    */
-  private final ConcurrentMap<String, VeniceAvroGenericSerializer> serializers = new ConcurrentHashMap<>();
+  private final Map<String, VeniceAvroGenericSerializer> serializers = new VeniceConcurrentHashMap<>();
 
   private final VersionCreationResponse versionCreationResponse;
 

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
@@ -230,7 +231,7 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
   }
 
   private final Cache<CacheKey, CacheValue> cache;
-  private final Map<String, Integer> storeNameIdMapping = new ConcurrentHashMap();
+  private final Map<String, Integer> storeNameIdMapping = new VeniceConcurrentHashMap<>();
   private int storeId = 0;
 
   //store the int here since it's for constructing Http header

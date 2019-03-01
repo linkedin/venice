@@ -3,6 +3,7 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
@@ -12,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 
 public class RouteHttpStats {
-  private final Map<String, InternalRouteHttpStats> routeStatsMap = new ConcurrentHashMap<>();
+  private final Map<String, InternalRouteHttpStats> routeStatsMap = new VeniceConcurrentHashMap<>();
   private final MetricsRepository metricsRepository;
   private final RequestType requestType;
 
