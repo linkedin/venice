@@ -1052,7 +1052,7 @@ public class TestVeniceParentHelixAdmin {
       JobStatusQueryResponse response = new JobStatusQueryResponse();
       response.setStatus(status.toString());
       ControllerClient statusClient = mock(ControllerClient.class);
-      doReturn(response).when(statusClient).queryJobStatusWithRetry(anyString(), anyInt(), any());
+      doReturn(response).when(statusClient).queryJobStatus(anyString(), any());
       clientMap.put(status, statusClient);
     }
 
@@ -1089,15 +1089,15 @@ public class TestVeniceParentHelixAdmin {
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
     ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatusWithRetry(anyString(), anyInt(), any());
+    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), any());
     clientMap.put(null, failClient);
 
     // Verify clients work as expected
     for (ExecutionStatus status : ExecutionStatus.values()) {
-      Assert.assertEquals(clientMap.get(status).queryJobStatusWithRetry("topic", 1, Optional.empty())
+      Assert.assertEquals(clientMap.get(status).queryJobStatus("topic", Optional.empty())
           .getStatus(), status.toString());
     }
-    Assert.assertTrue(clientMap.get(null).queryJobStatusWithRetry("topic", 1, Optional.empty())
+    Assert.assertTrue(clientMap.get(null).queryJobStatus("topic", Optional.empty())
         .isError());
 
     Map<String, ControllerClient> completeMap = new HashMap<>();

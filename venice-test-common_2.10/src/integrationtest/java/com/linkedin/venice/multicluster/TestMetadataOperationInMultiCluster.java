@@ -73,7 +73,7 @@ public class TestMetadataOperationInMultiCluster {
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
     versionCreationResponse =
-        controllerClient.requestTopicForWrites(secondStoreName, 1000, ControllerApiConstants.PushType.BATCH,
+        secondControllerClient.requestTopicForWrites(secondStoreName, 1000, ControllerApiConstants.PushType.BATCH,
         Version.guidBasedDummyPushId(), false);
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);

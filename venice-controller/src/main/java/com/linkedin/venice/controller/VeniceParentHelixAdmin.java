@@ -1282,7 +1282,8 @@ public class VeniceParentHelixAdmin implements Admin {
     for (String cluster : childClusters){
       ControllerClient controllerClient = controllerClients.get(cluster);
       String masterControllerUrl = controllerClient.getMasterControllerUrl();
-      JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(kafkaTopic, 2, incrementalPushVersion); // TODO: Make retry count configurable
+      JobStatusQueryResponse response = ControllerClient.retryableRequest(controllerClient, 2, // TODO: Make retry count configurable
+          c -> c.queryJobStatus(kafkaTopic, incrementalPushVersion));
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
