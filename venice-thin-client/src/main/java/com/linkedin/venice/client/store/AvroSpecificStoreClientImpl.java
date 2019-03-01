@@ -28,6 +28,10 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
                                      ClientConfig clientConfig) {
     super(transportClient, needSchemaReader, clientConfig);
     valueClass = clientConfig.getSpecificValueClass();
+
+    if (isUseFastAvro()) {
+      FastSerializerDeserializerFactory.verifyWhetherFastSpecificSerializerWorks(valueClass);
+    }
   }
 
   @Override
