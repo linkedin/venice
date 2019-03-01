@@ -54,7 +54,7 @@ public class TestRestartController {
     VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getRandomRouterURL());
     Assert.assertEquals(
-        controllerClient.queryJobStatusWithRetry(topicName,1).getStatus(), ExecutionStatus.STARTED.toString());
+        controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
 
     // push some data
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -70,7 +70,7 @@ public class TestRestartController {
     // After stopping origin master, the new master could handle the push status report correctly.
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       JobStatusQueryResponse jobStatusQueryResponse =
-          controllerClient.queryJobStatusWithRetry(topicName, 1);
+          controllerClient.queryJobStatus(topicName);
       if (jobStatusQueryResponse.getError() != null) {
         return false;
       }
@@ -82,7 +82,7 @@ public class TestRestartController {
     String newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
     Assert.assertEquals(
-        controllerClient.queryJobStatusWithRetry(newTopicName, 1).getStatus(), ExecutionStatus.STARTED.toString());
+        controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum + 1);
 
@@ -93,7 +93,7 @@ public class TestRestartController {
     newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
     Assert.assertEquals(
-        controllerClient.queryJobStatusWithRetry(newTopicName, 1).getStatus(), ExecutionStatus.STARTED.toString());
+        controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum + 2);
   }

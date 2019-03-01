@@ -90,7 +90,6 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       Executors.newCachedThreadPool().execute(() -> {
         clusters.get(cluster).close();
       });
-      clusterIter.remove();
     }
   }
 

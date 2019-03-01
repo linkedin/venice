@@ -237,6 +237,12 @@ task buildAll {
   dependsOn integrationTests
 }
 
+task compile {
+  dependsOn compileJava
+  dependsOn compileTestJava
+  // dependsOn compileIntegrationtestJava // Not sure why this one doesn't work... it does work from the command line.
+}
+
 task wrapper(type: Wrapper) {
   gradleVersion = '2.14'
 }

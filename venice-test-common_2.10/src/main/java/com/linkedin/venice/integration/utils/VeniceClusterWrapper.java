@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.StringJoiner;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -423,13 +424,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    // Stop called in reverse order of dependency
-    veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
-    veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
-    veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
-    IOUtils.closeQuietly(zkServerWrapper);
-    IOUtils.closeQuietly(kafkaBrokerWrapper);
-    IOUtils.closeQuietly(brooklinWrapper);
+    Executors.newCachedThreadPool().execute(() -> {
+      // Stop called in reverse order of dependency
+      veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
+      veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
+      veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
+      IOUtils.closeQuietly(zkServerWrapper);
+      IOUtils.closeQuietly(kafkaBrokerWrapper);
+      IOUtils.closeQuietly(brooklinWrapper);
+    });
   }
 
   @Override

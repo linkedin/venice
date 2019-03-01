@@ -37,6 +37,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -104,6 +106,7 @@ public class KafkaPushJob extends AbstractJob {
   public final static String KAFKA_PRODUCER_RETRIES_CONFIG
       = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + "retries"; //kafka.retries
   public final static String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
+  public final static String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -206,6 +209,8 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean enablePushJobStatusUpload;
   private final boolean enableReducerSpeculativeExecution;
   private final long minimumReducerLoggingIntervalInMs;
+  private final int controllerRetries;
+  private final int controllerStatusPollRetries;
 
   private ControllerClient controllerClient;
 
@@ -249,81 +254,6 @@ public class KafkaPushJob extends AbstractJob {
   Map<String, String> previousExtraDetails = new HashMap<>();
   /** Overall job details. Stored in memory to avoid printing repetitive details. */
   String previousOverallDetails = null;
-
-
-  // This main method is not called by azkaban, this is only for testing purposes.
-  //TODO: the main method is out-of-dated. We should remove
-  public static void main(String[] args) throws Exception {
-    OptionParser parser = new OptionParser();
-    OptionSpec<String> veniceUrlOpt =
-        parser.accepts("venice-url", "REQUIRED: comma-delimited venice URLs")
-            .withRequiredArg()
-            .describedAs("venice-url")
-            .ofType(String.class);
-    OptionSpec<String> inputPathOpt =
-        parser.accepts("input-path", "REQUIRED: Input path")
-            .withRequiredArg()
-            .describedAs("input-path")
-            .ofType(String.class);
-    OptionSpec<String> clusterNameOpt =
-        parser.accepts("cluster-name", "REQUIRED: cluster name")
-            .withRequiredArg()
-            .describedAs("cluster-name")
-            .ofType(String.class);
-    OptionSpec<String> storeNameOpt =
-        parser.accepts("store-name", "REQUIRED: store name")
-            .withRequiredArg()
-            .describedAs("store-name")
-            .ofType(String.class);
-    OptionSpec<String> keyFieldOpt =
-        parser.accepts("key-field", "REQUIRED: key field")
-            .withRequiredArg()
-            .describedAs("key-field")
-            .ofType(String.class);
-    OptionSpec<String> valueFieldOpt =
-        parser.accepts("value-field", "REQUIRED: value field")
-            .withRequiredArg()
-            .describedAs("value-field")
-            .ofType(String.class);
-    OptionSpec<String> queueBytesOpt =
-        parser.accepts("batch-num-bytes", "Optional: max number of bytes that should be batched in a flush to kafka")
-            .withRequiredArg()
-            .describedAs("batch-num-bytes")
-            .ofType(String.class)
-            .defaultsTo(Integer.toString(1000000));
-
-    OptionSet options = parser.parse(args);
-    validateExpectedArguments(new OptionSpec[] {inputPathOpt,  keyFieldOpt, valueFieldOpt, clusterNameOpt,
-        veniceUrlOpt, storeNameOpt}, options, parser);
-
-    Properties props = new Properties();
-    props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
-    props.put(VENICE_URL_PROP, options.valueOf(veniceUrlOpt));
-    props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
-    props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
-    props.put(KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
-    props.put(VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
-    // Optional ones
-    props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
-
-    KafkaPushJob job = new KafkaPushJob("Console", props);
-    job.run();
-  }
-
-  private static void validateExpectedArguments(OptionSpec[] expectedOptions, OptionSet options, OptionParser parser)  throws IOException {
-    for (int i = 0; i < expectedOptions.length; i++) {
-      OptionSpec opt = expectedOptions[i];
-      if (!options.has(opt)) {
-        abortOnMissingArgument(opt, parser);
-      }
-    }
-  }
-
-  private static void abortOnMissingArgument(OptionSpec missingArgument, OptionParser parser)  throws IOException {
-    logger.error("Missing required argument \"" + missingArgument + "\"");
-    parser.printHelpOn(System.out);
-    throw new VeniceException("Missing required argument \"" + missingArgument + "\"");
-  }
 
   /**
    * Do not change this method argument type
@@ -375,6 +305,8 @@ public class KafkaPushJob extends AbstractJob {
     this.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
     this.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
     this.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    this.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+    this.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
 
     if (enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -499,8 +431,8 @@ public class KafkaPushJob extends AbstractJob {
       long duration = pushStartTime == 0 ? 0 : System.currentTimeMillis() - pushStartTime;
       String verifiedPushId = pushId == null ? "" : pushId;
       try {
-        PushJobStatusUploadResponse response =
-            controllerClient.uploadPushJobStatus(storeName, version, status, duration, verifiedPushId, message);
+        PushJobStatusUploadResponse response = controllerClient.retryableRequest(controllerRetries, c ->
+            c.uploadPushJobStatus(storeName, version, status, duration, verifiedPushId, message));
         if (response.isError()) {
           logger.warn("Failed to upload push job status with error: " + response.getError());
         }
@@ -542,7 +474,8 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to parent controller to validate key schema.
    */
   private void validateKeySchema() {
-    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(storeName);
+    SchemaResponse keySchemaResponse = controllerClient.retryableRequest(controllerRetries, c ->
+        c.getKeySchema(storeName));
     if (keySchemaResponse.isError()) {
       throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
     } else if (null == keySchemaResponse.getSchemaStr()) {
@@ -567,7 +500,8 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to controller to validate value schema.
    */
   private void validateValueSchema() {
-    SchemaResponse valueSchemaResponse = controllerClient.getValueSchemaID(storeName, valueSchemaString);
+    SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(controllerRetries, c ->
+        c.getValueSchemaID(storeName, valueSchemaString));
     if (valueSchemaResponse.isError()) {
       throw new VeniceException("Fail to validate value schema for store: " + storeName
           + "\nError from the server: " + valueSchemaResponse.getError()
@@ -579,7 +513,7 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   private void getSettingsFromController() {
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    StoreResponse storeResponse = controllerClient.retryableRequest(controllerRetries, c -> c.getStore(storeName));
     if (storeResponse.isError()) {
       throw new VeniceException("Can't get store info. " + storeResponse.getError());
     }
@@ -589,7 +523,7 @@ public class KafkaPushJob extends AbstractJob {
     }
 
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
-        controllerClient.getStorageEngineOverheadRatio(storeName);
+        controllerClient.retryableRequest(controllerRetries, c -> c.getStorageEngineOverheadRatio(storeName));
     if (storageEngineOverheadRatioResponse.isError()) {
       throw new VeniceException("Can't get storage engine overhead ratio. " +
       storageEngineOverheadRatioResponse.getError());
@@ -609,7 +543,8 @@ public class KafkaPushJob extends AbstractJob {
     pushStartTime = System.currentTimeMillis();
     pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
     VersionCreationResponse versionCreationResponse =
-        controllerClient.requestTopicForWrites(storeName, inputFileDataSize, pushType, pushId, false);
+        controllerClient.retryableRequest(controllerRetries, c ->
+            c.requestTopicForWrites(storeName, inputFileDataSize, pushType, pushId, false));
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
@@ -625,7 +560,7 @@ public class KafkaPushJob extends AbstractJob {
     sslToKafka = versionCreationResponse.isEnableSSL();
     compressionStrategy = versionCreationResponse.getCompressionStrategy();
     // Upload the properties to controller, as it's not in the critical path, so if it's failed, just log the error
-    // but do not thrown the exception.
+    // but do not thrown the exception. No retries for this.
     ControllerResponse response =
         controllerClient.uploadPushProperties(storeName, versionCreationResponse.getVersion(), props.toProperties());
     if (response.isError()) {
@@ -691,8 +626,6 @@ public class KafkaPushJob extends AbstractJob {
    * exception and fail the job.
    */
   private void pollStatusUntilComplete(Optional<String> incrementalPushVersion){
-    /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts by default */
-    int retryAttempts = this.props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
     ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
     while (keepChecking){
@@ -710,13 +643,14 @@ public class KafkaPushJob extends AbstractJob {
         case START_OF_INCREMENTAL_PUSH_RECEIVED:
         case END_OF_PUSH_RECEIVED:
         case PROGRESS:
-          JobStatusQueryResponse response = controllerClient.queryJobStatusWithRetry(topic, retryAttempts, incrementalPushVersion);
+          JobStatusQueryResponse response = controllerClient.retryableRequest(controllerStatusPollRetries, c ->
+              c.queryJobStatus(topic, incrementalPushVersion));
           /**
            * Note: {@link JobStatusQueryResponse#isError()} means the status could not be queried.
            * This may be due to a communication error.
            */
           if (response.isError()){
-            throw new RuntimeException("Failed to connect to: " + veniceControllerUrl + " to query job status, after " + retryAttempts + " attempts.");
+            throw new RuntimeException("Failed to connect to: " + veniceControllerUrl + " to query job status, after " + controllerStatusPollRetries + " attempts.");
           } else {
             printJobStatus(response);
             ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
@@ -988,7 +922,7 @@ public class KafkaPushJob extends AbstractJob {
       logger.info("Received exception while killing map-reduce job", ex);
     }
     if (! Utils.isNullOrEmpty(topic) && !isIncrementalPush) {
-      controllerClient.killOfflinePushJob(topic);
+      controllerClient.retryableRequest(controllerRetries, c -> c.killOfflinePushJob(topic));
       logger.info("Offline push job has been killed, topic: " + topic);
     }
     closeVeniceWriter();
@@ -1171,6 +1105,7 @@ public class KafkaPushJob extends AbstractJob {
 
   private void discoverCluster(){
     logger.info("Discover cluster for store:" +storeName);
+    // TODO: Evaluate what's the proper way to add retries here...
     ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrl, storeName);
     if(clusterDiscoveryResponse.isError()){
       throw new VeniceException("Get error in clusterDiscoveryResponse:"+clusterDiscoveryResponse.getError());

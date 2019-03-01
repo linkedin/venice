@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
@@ -22,6 +23,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
@@ -313,29 +316,29 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public JobStatusQueryResponse queryJobStatusWithRetry(String kafkaTopic, int attempts){
-    return queryJobStatusWithRetry(kafkaTopic, attempts, Optional.empty());
+  public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {
+    return retryableRequest(this, totalAttempts, request);
   }
 
-  public JobStatusQueryResponse queryJobStatusWithRetry(String kafkaTopic, int attempts, Optional<String> incrementalPushVersion){
-    if (attempts < 1){
-      throw new VeniceException("Querying with retries requires at least one attempt, called with " + attempts + " attempts");
+  /**
+   * Useful for pieces of code which want to have a test mocking the result of the function that's passed in...
+   */
+  public static <R extends ControllerResponse> R retryableRequest(ControllerClient client, int totalAttempts, Function<ControllerClient, R> request){
+    if (totalAttempts < 1){
+      throw new VeniceException("Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
     }
-    int attemptsRemaining = attempts;
-    JobStatusQueryResponse response = JobStatusQueryResponse.createErrorResponse("Request was not attempted");
-    while (attemptsRemaining > 0){
-      response = queryJobStatus(kafkaTopic, incrementalPushVersion); /* should always return a valid object */
-      if (! response.isError()){
+    int currentAttempt = 1;
+    while (true) {
+      R response = request.apply(client);
+      if (!response.isError() || currentAttempt == totalAttempts){
         return response;
       } else {
-        attemptsRemaining--;
-        logger.warn("Error querying job status: " + response.getError() + " -- Retrying " + attemptsRemaining + " more times...");
+        logger.warn("Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: " + response.getError());
+        currentAttempt++;
         Utils.sleep(2000);
       }
     }
-    return response;
   }
-
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
     return queryJobStatus(kafkaTopic, Optional.empty());
