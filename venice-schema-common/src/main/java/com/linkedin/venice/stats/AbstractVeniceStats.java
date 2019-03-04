@@ -7,9 +7,11 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Percentiles;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import static com.linkedin.venice.stats.AbstractVeniceAggStats.*;
 
 public class AbstractVeniceStats {
 
@@ -39,9 +41,12 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensor(String sensorName, MetricConfig config, MeasurableStat... stats) {
-    String sensorFullName = getSensorFullName(sensorName);
-    return sensors.computeIfAbsent(sensorName, key -> {
-      Sensor sensor = metricsRepository.sensor(sensorFullName);
+    return registerSensor(getSensorFullName(getName(), sensorName), config, null, stats);
+  }
+
+  protected Sensor registerSensor(String sensorFullName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
+    return sensors.computeIfAbsent(sensorFullName, key -> {
+      Sensor sensor = metricsRepository.sensor(sensorFullName, parents);
       for (MeasurableStat stat : stats) {
         if (stat instanceof Percentiles)
           sensor.add((Percentiles) stat, config);
@@ -52,6 +57,9 @@ public class AbstractVeniceStats {
     });
   }
 
+  /**
+   * @deprecated Use {@link #registerSensorIfAbsent(String, MeasurableStat...)} instead.
+   */
   protected Sensor getSensorIfPresent(String name, Supplier<Sensor> supplier) {
     Sensor sensor = metricsRepository.getSensor(getSensorFullName(name));
     if (sensor == null) {
@@ -61,9 +69,41 @@ public class AbstractVeniceStats {
     }
   }
 
-  protected String getSensorFullName(String sensorName) {
-    return getName() + AbstractVeniceStats.DELIMITER + sensorName;
+  protected Sensor registerSensorWithAggregate(String sensorName, Supplier<MeasurableStat[]> stats) {
+    return registerSensorWithAggregate(sensorName, null, stats);
   }
+
+  protected Sensor registerSensorWithAggregate(String sensorName, MetricConfig config, Supplier<MeasurableStat[]> stats) {
+    synchronized (AbstractVeniceStats.class) {
+      Sensor parent = registerSensorIfAbsent(STORE_NAME_FOR_TOTAL_STAT, sensorName, config,null, stats.get());
+      return registerSensorIfAbsent(getName(), sensorName, config, new Sensor[]{parent}, stats.get());
+    }
+  }
+
+  protected Sensor registerSensorIfAbsent(String sensorName, MeasurableStat... stats) {
+    return registerSensorIfAbsent(getName(), sensorName, null, null, stats);
+  }
+
+  protected Sensor registerSensorIfAbsent(String resourceName, String sensorName, MetricConfig config, Sensor[] parents, MeasurableStat... stats) {
+    String fullSensorName = getSensorFullName(resourceName, sensorName);
+    Sensor sensor = metricsRepository.getSensor(fullSensorName);
+    if (null == sensor) {
+      sensor = registerSensor(fullSensorName, config, parents, stats);
+    }
+    return sensor;
+  }
+
+  protected String getSensorFullName(String sensorName) {
+    return getSensorFullName(getName(), sensorName);
+  }
+
+  protected String getSensorFullName(String resourceName, String sensorName) {
+    if (!resourceName.substring(0, 1).equals(".")) {
+      resourceName = "." + resourceName;
+    }
+    return resourceName + AbstractVeniceStats.DELIMITER + sensorName;
+  }
+
 
   public void close() {
     metricsRepository.close();

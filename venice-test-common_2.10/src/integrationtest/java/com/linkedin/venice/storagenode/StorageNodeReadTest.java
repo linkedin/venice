@@ -24,9 +24,11 @@ import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -42,6 +44,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.httpclient.HttpStatus;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -49,11 +52,11 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.BasicHttpEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-import spark.utils.IOUtils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
@@ -61,6 +64,8 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 @Test(singleThreaded = true)
 public class StorageNodeReadTest {
+  private static final Logger LOGGER = Logger.getLogger(StorageNodeReadTest.class);
+
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
   private int valueSchemaId;
@@ -73,6 +78,7 @@ public class StorageNodeReadTest {
   private VeniceKafkaSerializer valueSerializer;
 
   private VeniceWriter<Object, Object> veniceWriter;
+  private AvroGenericStoreClient client;
 
   private final Base64.Encoder encoder = Base64.getUrlEncoder();
 
@@ -98,13 +104,17 @@ public class StorageNodeReadTest {
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+    client = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(veniceCluster.getRandomRouterURL()));
+
   }
 
   @AfterClass
   public void cleanUp() {
-    if (veniceCluster != null) {
-      veniceCluster.close();
-    }
+    IOUtils.closeQuietly(veniceCluster);
+    IOUtils.closeQuietly(veniceWriter);
+    IOUtils.closeQuietly(client);
   }
 
   private int getPartitionId(byte[] key) {
@@ -223,7 +233,7 @@ public class StorageNodeReadTest {
     }
   }
 
-  @Test (timeOut = 100000)
+  @Test (timeOut = 20000)
   public void testVersionedBdbSpaceMetrics() throws Exception {
     // create a new version
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 1024);
@@ -236,9 +246,7 @@ public class StorageNodeReadTest {
     // check current version bdb space in bytes metric is positive
     List<VeniceServerWrapper> serverList = veniceCluster.getVeniceServers();
     for (VeniceServerWrapper server : serverList) {
-      Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
-      Assert.assertTrue(map.containsKey("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat"));
-      Assert.assertTrue(map.get("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat").value() > 0.0);
+      assertDiskSpaceStat(server.getVeniceServer().getMetricsRepository(), "current");
     }
 
     // create a new version
@@ -251,11 +259,8 @@ public class StorageNodeReadTest {
 
     // check both current and backup version bdb space in bytes metric is positive
     for (VeniceServerWrapper server : serverList) {
-      Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
-      Assert.assertTrue(map.containsKey("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat"));
-      Assert.assertTrue(map.get("." + storeName + "_current--bdb_space_size_in_bytes.SpaceSizeStat").value() > 0.0);
-      Assert.assertTrue(map.containsKey("." + storeName + "_backup--bdb_space_size_in_bytes.SpaceSizeStat"));
-      Assert.assertTrue(map.get("." + storeName + "_backup--bdb_space_size_in_bytes.SpaceSizeStat").value() > 0.0);
+      assertDiskSpaceStat(server.getVeniceServer().getMetricsRepository(), "current");
+      assertDiskSpaceStat(server.getVeniceServer().getMetricsRepository(), "backup");
     }
 
     // create a new version
@@ -270,17 +275,10 @@ public class StorageNodeReadTest {
     }
 
     // do not send end of push; check whether the future version bdb space is positive
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       for (VeniceServerWrapper server : serverList) {
-        Map<String, ? extends Metric> map = server.getVeniceServer().getMetricsRepository().metrics();
-        if (!map.containsKey("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat")) {
-          return false;
-        }
-        if (map.get("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat").value() <= 0.0) {
-          return false;
-        }
+        assertDiskSpaceStat(server.getVeniceServer().getMetricsRepository(), "future");
       }
-      return true;
     });
 
     // send end of push
@@ -299,6 +297,15 @@ public class StorageNodeReadTest {
       Assert.assertTrue(map.get("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat").value() < 0.0);
     }
 
+  }
+
+  private void assertDiskSpaceStat(MetricsRepository metricsRepository, String versionName) {
+    Map<String, ? extends Metric> map = metricsRepository.metrics();
+    Metric currentSpace = map.get("." + storeName + "_" + versionName + "--bdb_space_size_in_bytes.SpaceSizeStat");
+    Assert.assertNotNull(currentSpace);
+    double value = currentSpace.value();
+    Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code, "Got a NULL_BDB_ENVIRONMENT!");
+    Assert.assertTrue(value > 0.0, "Expected to get a positive value for the " + versionName + " version, but instead got: " + value);
   }
 
   @Test
@@ -343,9 +350,21 @@ public class StorageNodeReadTest {
 
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
-      return currentVersion == pushVersion;
+      Assert.assertEquals(currentVersion, pushVersion, "The new version is not activated yet!");
+      for (int i = 0; i < numOfRecords; ++i) {
+        String key = keyPrefix + i;
+        String value = null;
+        try {
+          value = client.get(key).get().toString();
+        } catch (Exception e) {
+          LOGGER.error("Caught exception while trying to get data from the store", e);
+          Assert.fail("Caught exception while trying to get data from the store: " + e.getMessage());
+        }
+        Assert.assertNotNull(value, "Key '" + key + "' is not in the store yet.");
+        Assert.assertEquals(value, valuePrefix + i, "Key '" + key + "' does not have the right value.");
+      }
     });
   }
 }
