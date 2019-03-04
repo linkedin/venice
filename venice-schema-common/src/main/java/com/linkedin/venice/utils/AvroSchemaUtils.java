@@ -61,7 +61,48 @@ public class AvroSchemaUtils {
    */
   public static boolean schemaResolveHasErrors(Schema writerSchema, Schema readerSchema) throws IOException {
     Symbol symbol = (Symbol) ResolvingDecoder.resolve(writerSchema, readerSchema);
-    return Symbol.hasErrors(symbol);
+    return hasErrors(symbol);
+  }
+
+  /**
+   * Extracted from avro-1.7.7 avro/io/parsing/Symbol.java to work with legacy avro versions
+   */
+  private static boolean hasErrors(Symbol symbol) {
+    switch(symbol.kind) {
+      case ALTERNATIVE:
+        return hasErrors(symbol, ((Symbol.Alternative) symbol).symbols);
+      case EXPLICIT_ACTION:
+        return false;
+      case IMPLICIT_ACTION:
+        return symbol instanceof Symbol.ErrorAction;
+      case REPEATER:
+        Symbol.Repeater r = (Symbol.Repeater) symbol;
+        return hasErrors(r.end) || hasErrors(symbol, r.production);
+      case ROOT:
+      case SEQUENCE:
+        return hasErrors(symbol, symbol.production);
+      case TERMINAL:
+        return false;
+      default:
+        throw new RuntimeException("unknown symbol kind: " + symbol.kind);
+    }
+  }
+
+  /**
+   * Extracted from avro-1.7.7 avro/io/parsing/Symbol.java to work with legacy avro versions
+   */
+  private static boolean hasErrors(Symbol root, Symbol[] symbols) {
+    if(null != symbols) {
+      for(Symbol s: symbols) {
+        if (s == root) {
+          continue;
+        }
+        if (hasErrors(s)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
