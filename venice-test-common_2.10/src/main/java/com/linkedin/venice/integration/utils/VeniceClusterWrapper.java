@@ -458,7 +458,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     // Create new store
     ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
 
-    NewStoreResponse response = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
+    if (newStoreResponse.isError()) {
+      throw new VeniceException(newStoreResponse.getError());
+    }
     // Create new version
     VersionCreationResponse newVersion = controllerClient.requestTopicForWrites(storeName, storeSize,
         ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false);

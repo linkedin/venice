@@ -52,6 +52,15 @@ public class ExceptionUtils {
     return sw.toString(); // stack trace as a string
   }
 
+  public static String threadToThrowableToString(Thread thread) {
+    if (null == thread) {
+      return "null";
+    }
+    Throwable throwable = new Throwable();
+    throwable.setStackTrace(thread.getStackTrace());
+    return stackTraceToString(throwable);
+  }
+
   public static void logClassLoaderContent(String packageName) {
     ClassLoader cl = ClassLoader.getSystemClassLoader();
     URL[] urls = ((URLClassLoader)cl).getURLs();

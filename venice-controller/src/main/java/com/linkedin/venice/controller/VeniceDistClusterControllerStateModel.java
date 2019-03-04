@@ -55,62 +55,89 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.metricsRepository = metricsRepository;
   }
 
+  private void executeStateTransition(Message message, StateTransition stateTransition) throws VeniceException {
+    String from = message.getFromState();
+    String to = message.getToState();
+    String threadName = "Helix-ST-" + message.getResourceName() + "-" + from + "->" + to;
+    // Change name to indicate which st is occupied this thread.
+    Thread.currentThread().setName(threadName);
+    try {
+      stateTransition.execute();
+    } catch (Exception e) {
+      throw new VeniceException("Failed to execute '" + threadName + "'.", e);
+    } finally {
+      // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
+      Thread.currentThread().setName("Inactive ST thread.");
+    }
+  }
+
+  private interface StateTransition {
+    void execute() throws Exception;
+  }
+
   @Transition(to = HelixState.LEADER_STATE, from = "STANDBY")
-  public void onBecomeLeaderFromStandby(Message message, NotificationContext context)
-      throws Exception {
-    String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
+  public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
+    executeStateTransition(message, () -> {
+      String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
 
-    if (!clusterToConfigsMap.containsKey(clusterName)) {
-      throw new VeniceException("No configuration exists for " + clusterName);
-    }
+      if (!clusterToConfigsMap.containsKey(clusterName)) {
+        throw new VeniceException("No configuration exists for " + clusterName);
+      }
 
-    String controllerName = message.getTgtName();
-    logger.info(controllerName + " becoming leader from standby for " + clusterName);
-    if (controller == null) {
-      controller = new SafeHelixManager(
-          HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers()));
-      controller.connect();
-      controller.startTimerTasks();
-      resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
-          clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
-      resources.refresh();
-      logger.info(controllerName + " is the leader of " + clusterName);
-    } else {
-      logger.error("controller already exists:" + controller.getInstanceName() + " for " + clusterName);
-    }
+      String controllerName = message.getTgtName();
+      logger.info(controllerName + " becoming leader from standby for " + clusterName);
+      if (controller == null) {
+        controller = new SafeHelixManager(
+            HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers()));
+        controller.connect();
+        controller.startTimerTasks();
+        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
+            clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
+        resources.refresh();
+        logger.info(controllerName + " is the leader of " + clusterName);
+      } else {
+        logger.error("controller already exists:" + controller.getInstanceName() + " for " + clusterName);
+      }
+    });
   }
 
   @Transition(to = "STANDBY", from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
-    String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
-    String controllerName = message.getTgtName();
+    executeStateTransition(message, () -> {
+      String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
+      String controllerName = message.getTgtName();
 
-    logger.info(controllerName + " becoming standby from leader for " + clusterName);
-    // We have to create a snapshot of resources here, as the resources will be set to null during the reset. So this
-    // snapshot will let us unlock successfully.
-    VeniceHelixResources snapshot = resources;
-    snapshot.lockForShutdown(); // Lock to prevent the partial result of admin operation.
-    try {
-      reset();
-    } finally {
-      // After reset everything, unlock then hand-off the mastership.
-      snapshot.unlockForShutdown();
-    }
+      logger.info(controllerName + " becoming standby from leader for " + clusterName);
+      // We have to create a snapshot of resources here, as the resources will be set to null during the reset. So this
+      // snapshot will let us unlock successfully.
+      VeniceHelixResources snapshot = resources;
+      snapshot.lockForShutdown(); // Lock to prevent the partial result of admin operation.
+      try {
+        reset();
+      } finally {
+        // After reset everything, unlock then hand-off the mastership.
+        snapshot.unlockForShutdown();
+      }
+    });
   }
 
   @Transition(to = "OFFLINE", from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
-    String controllerName = message.getTgtName();
+    executeStateTransition(message, () -> {
+      String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
+      String controllerName = message.getTgtName();
 
-    logger.info(controllerName + " becoming offline from standby for " + clusterName);
+      logger.info(controllerName + " becoming offline from standby for " + clusterName);
+    });
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
-    clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
-    String controllerName = message.getTgtName();
-    logger.info(controllerName + " becoming standby from offline for " + clusterName);
+    executeStateTransition(message, () -> {
+      clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
+      String controllerName = message.getTgtName();
+      logger.info(controllerName + " becoming standby from offline for " + clusterName);
+    });
   }
 
   @Override
