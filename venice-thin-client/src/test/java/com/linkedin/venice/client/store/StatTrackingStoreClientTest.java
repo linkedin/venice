@@ -304,9 +304,11 @@ public class StatTrackingStoreClientTest {
     Metric requestMetric = metrics.get(storeMetricPrefix + "--compute_request.OccurrenceRate");
     Metric healthyRequestMetric = metrics.get(storeMetricPrefix + "--compute_healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(storeMetricPrefix + "--compute_unhealthy_request.OccurrenceRate");
+    Metric deserializationMetric = metrics.get(storeMetricPrefix + "--compute_response_deserialization_time.50thPercentile");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
     Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+    Assert.assertTrue(deserializationMetric.value() > 0.0);
   }
 }
