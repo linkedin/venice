@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -163,6 +164,14 @@ public abstract class TestRestartServerDuringIngestion {
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 
+    /**
+     * There is a delay before router realizes that servers are up, it's possible that the
+     * router couldn't find any replica because there is only one server in the cluster and
+     * the only server just gets restarted. Restart all routers to get the fresh state of
+     * the cluster.
+     */
+    restartAllRouters();
+
     // Build a venice client to verify all the data
     AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -218,12 +227,20 @@ public abstract class TestRestartServerDuringIngestion {
       }
       return allPartitionsReady;
     });
+    restartAllRouters();
     // Verify all the key/value pairs
     for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
       String key = deserializer.deserialize(entry.getKey()).toString();
       CharSequence expectedValue = (CharSequence)deserializer.deserialize(entry.getValue());
       CharSequence returnedValue = storeClient.get(key).get();
       Assert.assertEquals(returnedValue, expectedValue);
+    }
+  }
+
+  private void restartAllRouters() {
+    for (VeniceRouterWrapper router : cluster.getVeniceRouters()) {
+      cluster.stopVeniceRouter(router.getPort());
+      cluster.restartVeniceRouter(router.getPort());
     }
   }
 
