@@ -22,6 +22,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -303,8 +304,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
            * This optimization is trying to avoid the unnecessary lookup in {@link SerializerDeserializerFactory},
            * which introduces small performance issue with {@link Schema#hashCode} in avro-1.4, which is doing
            * hash code calculation every time.
+           *
+           * It is possible that multiple deserializer threads could try to access the following "deserializerCache",
+           * so here is using {@link VeniceConcurrentHashMap}.
            */
-          Map<Integer, RecordDeserializer<V>> deserializerCache = new HashMap<>();
+          Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
           try {
             batchGetDeserializer.deserialize(
                 valueFuture,
@@ -436,7 +440,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedFullComputeRequest = computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
     CompletableFuture valueFuture = requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
         () -> transportClient.post(getComputeRequestPath(), COMPUTE_HEADER_MAP, serializedFullComputeRequest),
-        (clientResponse, throwable, responseDeserializationComplete) -> {
+        (clientResponse, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
           }
@@ -451,7 +455,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           int responseSchemaId = clientResponse.getSchemaId();
           RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
           Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
-          RecordDeserializer<GenericRecord> dataDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(resultSchema);
+          RecordDeserializer<GenericRecord> dataDeserializer = getComputeResultRecordDeserializer(resultSchema);
           /** TODO: Integrate with {@link BatchGetDeserializer}. Might need to make it generic to deal with both envelopes. */
           Map<K, GenericRecord> resultMap = new HashMap<>();
           for (ComputeResponseRecordV1 record : records) {
@@ -530,6 +534,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     } else {
       return SerializerDeserializerFactory.getAvroSpecificDeserializer(ComputeResponseRecordV1.class);
     }
+  }
+
+  private RecordDeserializer<GenericRecord> getComputeResultRecordDeserializer(Schema resultSchema) {
+    if (useFastAvro) {
+      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(resultSchema, resultSchema);
+    }
+    return SerializerDeserializerFactory.getAvroGenericDeserializer(resultSchema);
   }
 
   public String toString() {
