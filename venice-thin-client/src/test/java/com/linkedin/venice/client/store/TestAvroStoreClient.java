@@ -137,17 +137,10 @@ public class TestAvroStoreClient {
 
     byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecord.SCHEMA$);
 
-    // Test deserialization when only v1 is known
+    // Test deserialization
+    genericStoreClient.getDataRecordDeserializer(1); // This will pull in all the value schemas
     RecordDeserializer genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
     Object genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
-    Assert.assertTrue(genericTestValue instanceof GenericData.Record);
-    Assert.assertNull(((GenericData.Record) genericTestValue).get("int_field"),
-        "we are not supposed to get the default value for the missing field since we have never seen schema v2 yet");
-
-    // Test deserialization when only v2 is also known
-    genericStoreClient.getDataRecordDeserializer(2); // Just to become aware of that schema
-    genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
-    genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
     Assert.assertTrue(genericTestValue instanceof GenericData.Record);
     Assert.assertEquals(((GenericData.Record) genericTestValue).get("int_field"), 10,
         "we are supposed to get the default value for the missing field");

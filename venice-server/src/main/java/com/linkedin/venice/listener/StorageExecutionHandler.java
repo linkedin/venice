@@ -42,6 +42,8 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.streaming.StreamingConstants;
+import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -70,7 +72,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.log4j.Logger;
 
@@ -163,6 +164,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
               throw new VeniceException("Unknown request type: " + request.getRequestType());
           }
           response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+          if (request.isStreamingRequest()) {
+            response.setStreamingResponse();
+          }
           context.writeAndFlush(response);
         } catch (Exception e) {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
@@ -240,8 +244,10 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     for (MultiGetRouterRequestKeyV1 key : keys) {
       MultiGetResponseRecordV1 record =
-          getMultiGetResponseRecordV1(store, key.partitionId, key.keyBytes, key.keyIndex, isChunked, responseWrapper);
+          getMultiGetResponseRecordV1(store, key.partitionId, key.keyBytes, key.keyIndex, isChunked,
+              request.isStreamingRequest(), responseWrapper);
       if (null != record) {
+        // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
       }
     }
@@ -313,9 +319,11 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      valueRecord,
                                                      resultRecord,
                                                      isChunked,
+                                                     request.isStreamingRequest(),
                                                      responseWrapper,
                                                      globalContext);
       if (null != record) {
+        // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
       }
     }
@@ -358,6 +366,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       GenericRecord valueRecord,
       GenericRecord resultRecord,
       boolean isChunked,
+      boolean isStreaming,
       ComputeResponseWrapper response,
       Map<String, Object> globalContext) {
     // get the raw bytes of the value from the key first
@@ -385,6 +394,14 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         containerToMultiGetResponseRecord);
     response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
     if (null == record) {
+      if (isStreaming) {
+        // For streaming, we need to send back non-existing keys
+        ComputeResponseRecordV1 computeResponseRecord = new ComputeResponseRecordV1();
+        // Negative key index to indicate non-existing key
+        computeResponseRecord.keyIndex = Math.negateExact(keyIndex);
+        computeResponseRecord.value = StreamingUtils.EMPTY_BYTE_BUFFER;
+        return computeResponseRecord;
+      }
       return null;
     }
 
@@ -476,6 +493,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       ByteBuffer key,
       final int keyIndex,
       boolean isChunked,
+      boolean isStreaming,
       MultiGetResponseWrapper response) {
 
     if (isChunked) {
@@ -491,9 +509,20 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         addChunkIntoNioByteBuffer,
         getSizeOfNioByteBuffer,
         containerToMultiGetResponseRecord);
-    if (record != null) {
+    if (null == record) {
+      if (isStreaming) {
+        // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
+        // non-existing keys in the response if the response is partial.
+        record = new MultiGetResponseRecordV1();
+        // Negative key index to indicate the non-existing keys
+        record.keyIndex = Math.negateExact(keyIndex);
+        record.schemaId = StreamingConstants.NON_EXISTING_KEY_SCHEMA_ID;
+        record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
+      }
+    } else {
       record.keyIndex = keyIndex;
     }
+
     return record;
   }
 
@@ -609,7 +638,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
    * the key to be properly formatted already. Use of one these simpler functions instead:
    *
    * @see #getValueRecord(AbstractStorageEngine, int, byte[], boolean, StorageResponseObject)
-   * @see #getMultiGetResponseRecordV1(AbstractStorageEngine, int, ByteBuffer, int, boolean, MultiGetResponseWrapper)
+   * @see #getMultiGetResponseRecordV1(AbstractStorageEngine, int, ByteBuffer, int, boolean, boolean, MultiGetResponseWrapper)
    *
    * This code makes use of several functional interfaces in order to abstract away the different needs
    * of the single get and batch get query paths.

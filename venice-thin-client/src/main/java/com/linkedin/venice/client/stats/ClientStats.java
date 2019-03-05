@@ -27,6 +27,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Sensor successRequestRatioSensor;
+  private final Sensor successRequestDuplicateKeyCountSensor;
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
@@ -34,6 +35,11 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor responseRecordsDeserializationTime;
   private final Sensor responseRecordsDeserializationSubmissionToStartTime;
   private final Sensor responseDecompressionTimeSensor;
+  private final Sensor streamingResponseTimeToReceiveFirstRecord;
+  private final Sensor streamingResponseTimeToReceive50PctRecord;
+  private final Sensor streamingResponseTimeToReceive90PctRecord;
+  private final Sensor streamingResponseTimeToReceive95PctRecord;
+  private final Sensor streamingResponseTimeToReceive99PctRecord;
 
   public ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
@@ -54,11 +60,12 @@ public class ClientStats extends AbstractVeniceHttpStats {
     successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.SimpleRatioStat(healthyRequest, request));
 
-    Rate requestKeyCount = new OccurrenceRate();
-    Rate successRequestKeyCount = new OccurrenceRate();
+    Rate requestKeyCount = new Rate();
+    Rate successRequestKeyCount = new Rate();
     requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
     successRequestKeyCountSensor = registerSensor("success_request_key_count", successRequestKeyCount,
         new Avg(), new Max());
+    successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
 
@@ -100,6 +107,15 @@ public class ClientStats extends AbstractVeniceHttpStats {
     responseRecordsDeserializationSubmissionToStartTime = registerSensorWithDetailedPercentiles("response_records_deserialization_submission_to_start_time", new Avg(), new Max());
 
     responseDecompressionTimeSensor = registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
+
+    /**
+     * Metrics to track the latency of each proportion of results received.
+     */
+    streamingResponseTimeToReceiveFirstRecord = registerSensorWithDetailedPercentiles("response_ttfr", new Avg());
+    streamingResponseTimeToReceive50PctRecord = registerSensorWithDetailedPercentiles("response_tt50pr", new Avg());
+    streamingResponseTimeToReceive90PctRecord = registerSensorWithDetailedPercentiles("response_tt90pr", new Avg());
+    streamingResponseTimeToReceive95PctRecord = registerSensorWithDetailedPercentiles("response_tt95pr", new Avg());
+    streamingResponseTimeToReceive99PctRecord = registerSensorWithDetailedPercentiles("response_tt99pr", new Avg());
   }
 
   public void recordRequest() {
@@ -138,6 +154,10 @@ public class ClientStats extends AbstractVeniceHttpStats {
     successRequestKeyCountSensor.record(successKeyCount);
   }
 
+  public void recordSuccessDuplicateRequestKeyCount(int duplicateKeyCount) {
+    successRequestDuplicateKeyCountSensor.record(duplicateKeyCount);
+  }
+
   public void recordRequestSerializationTime(double latency) {
     requestSerializationTime.record(latency);
   }
@@ -164,5 +184,25 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordResponseDecompressionTime(double latency) {
     responseDecompressionTimeSensor.record(latency);
+  }
+
+  public void recordStreamingResponseTimeToReceiveFirstRecord(double latency) {
+    streamingResponseTimeToReceiveFirstRecord.record(latency);
+  }
+
+  public void recordStreamingResponseTimeToReceive50PctRecord(double latency) {
+    streamingResponseTimeToReceive50PctRecord.record(latency);
+  }
+
+  public void recordStreamingResponseTimeToReceive90PctRecord(double latency) {
+    streamingResponseTimeToReceive90PctRecord.record(latency);
+  }
+
+  public void recordStreamingResponseTimeToReceive95PctRecord(double latency) {
+    streamingResponseTimeToReceive95PctRecord.record(latency);
+  }
+
+  public void recordStreamingResponseTimeToReceive99PctRecord(double latency) {
+    streamingResponseTimeToReceive99PctRecord.record(latency);
   }
 }

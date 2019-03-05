@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
@@ -11,6 +12,7 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -63,7 +65,13 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(MAX_READ_CAPCITY, 1000000000)
           .put(properties);
-      RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
+      // setup d2 config first
+      D2TestUtils.setupD2Config(zkAddress, false);
+      // Announce to d2 by default
+      List<D2Server>
+          d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
+
+      RouterServer router = new RouterServer(builder.build(), d2ServerList, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };
   }

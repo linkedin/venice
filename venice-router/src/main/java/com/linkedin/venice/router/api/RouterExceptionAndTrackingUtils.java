@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
@@ -25,27 +26,15 @@ public class RouterExceptionAndTrackingUtils {
     REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT
   }
 
-  private static AggRouterHttpRequestStats STATS_FOR_SINGLE_GET;
-  private static AggRouterHttpRequestStats STATS_FOR_MULTI_GET;
-  private static AggRouterHttpRequestStats STATS_FOR_COMPUTE;
+  private static RouterStats<AggRouterHttpRequestStats> ROUTER_STATS;
 
   private static Logger logger = Logger.getLogger(RouterExceptionAndTrackingUtils.class);
 
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   @Deprecated
-  public static void setStatsForSingleGet(AggRouterHttpRequestStats stats) {
-    STATS_FOR_SINGLE_GET = stats;
-  }
-
-  @Deprecated
-  public static void setStatsForMultiGet(AggRouterHttpRequestStats stats) {
-    STATS_FOR_MULTI_GET = stats;
-  }
-
-  @Deprecated
-  public static void setStatsForCompute(AggRouterHttpRequestStats stats) {
-    STATS_FOR_COMPUTE = stats;
+  public static void setRouterStats(RouterStats<AggRouterHttpRequestStats> routerStats) {
+    ROUTER_STATS = routerStats;
   }
 
   public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
@@ -84,20 +73,11 @@ public class RouterExceptionAndTrackingUtils {
 
   private static void metricTracking(Optional<String> storeName, Optional<RequestType> requestType,
       HttpResponseStatus responseStatus, FailureType failureType) {
-    AggRouterHttpRequestStats stats = STATS_FOR_SINGLE_GET;
-    if (requestType.isPresent()) {
-      switch (requestType.get()) {
-        case MULTI_GET:
-          stats = STATS_FOR_MULTI_GET;
-          break;
-        case COMPUTE:
-          stats = STATS_FOR_COMPUTE;
-          break;
-      }
+    if (ROUTER_STATS == null) {
+      // defensive code
+      throw new VeniceException("'ROUTER_STATS' hasn't been setup yet, so there must be some bug causing this.");
     }
-    if (null == stats) {
-      return;
-    }
+    AggRouterHttpRequestStats stats = ROUTER_STATS.getStatsByType(requestType.isPresent() ? requestType.get() : RequestType.SINGLE_GET);
     // If we don't know the actual store name, this error will only be aggregated in server level, but not
     // in store level
     if (responseStatus.equals(BAD_REQUEST)) {

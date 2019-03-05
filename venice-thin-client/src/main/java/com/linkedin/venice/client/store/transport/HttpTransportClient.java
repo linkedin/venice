@@ -60,6 +60,12 @@ public class HttpTransportClient extends TransportClient {
     return valueFuture;
   }
 
+  @Override
+  public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
+      TransportClientStreamingCallback callback) {
+    throw new VeniceClientException("streamPost is not supported");
+  }
+
   private String getHttpRequestUrl(String requestPath) {
     return routerUrl + requestPath;
   }

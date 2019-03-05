@@ -16,13 +16,12 @@ import com.linkedin.ddsstorage.netty4.pool.ChannelPoolResolver;
 import com.linkedin.ddsstorage.netty4.pool.Http2AwareChannelPoolFactory;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.Bootstrap;
@@ -87,9 +86,7 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
   private final ChannelPoolManager manager;
   private final String scheme;
 
-  private final AggRouterHttpRequestStats statsForSingleGet;
-  private final AggRouterHttpRequestStats statsForMultiGet;
-  private final AggRouterHttpRequestStats statsForCompute;
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
   private final ChannelHealthChecker healthChecker = ch -> {
     if (ch.isActive()) {
@@ -102,12 +99,9 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
   private MultithreadEventLoopGroup eventLoopGroup;
 
   public NettyStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactoryForRequests,
-      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet, AggRouterHttpRequestStats statsForCompute,
-      MultithreadEventLoopGroup workerEventLoopGroup, Class<? extends Channel> channelClass) {
+      RouterStats<AggRouterHttpRequestStats> routerStats, MultithreadEventLoopGroup workerEventLoopGroup, Class<? extends Channel> channelClass) {
     this.scheme = config.isSslToStorageNodes() ? HTTPS_PREFIX : HTTP_PREFIX;
-    this.statsForSingleGet = statsForSingleGet;
-    this.statsForMultiGet = statsForMultiGet;
-    this.statsForCompute = statsForCompute;
+    this.routerStats = routerStats;
     this.eventLoopGroup = workerEventLoopGroup;
 
     Bootstrap bootstrap =
@@ -169,32 +163,13 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
         path.getRequestBody(), false, System.currentTimeMillis(), System.nanoTime());
     request.headers()
         .set(HttpHeaderNames.HOST, hostAndPort)
-        .set(HttpConstants.VENICE_API_VERSION, path.getVeniceApiVersionHeader())
         .set(HttpHeaderNames.CONTENT_LENGTH, request.content().readableBytes());
-    path.setRetryHeader((k, v) -> request.headers().set(k, v));
+    path.setupVeniceHeaders((k, v) -> request.headers().set(k, v));
     String queueName = request.headers().get(X_QUEUE_NAME, "DEFAULT");
     QOS qos = Optional.ofNullable(request.headers().get(X_QOS)).map(QOS::valueOf).orElse(QOS.NORMAL);
     Promise<FullHttpResponse> responsePromise = ImmediateEventExecutor.INSTANCE.newPromise();
 
-    AggRouterHttpRequestStats stats;
-    switch (path.getRequestType()) {
-      case SINGLE_GET:
-        stats = statsForSingleGet;
-        break;
-      case MULTI_GET:
-        stats = statsForMultiGet;
-        break;
-      case COMPUTE:
-        stats = statsForCompute;
-        break;
-      default:
-        String errMsg = "Request type " + path.getRequestType() + " is not supported!";
-        logger.error(errMsg);
-        VeniceException e = new VeniceException(errMsg);
-        failedCallBack.accept(e);
-        responsePromise.setFailure(e);
-        return;
-    }
+    AggRouterHttpRequestStats stats = routerStats.getStatsByType(path.getRequestType());
 
     Future<Channel> future = manager.acquire(hostAndPort, queueName, qos);
     stats.recordNettyClientAcquireChannelLatency(storeName, LatencyUtils.getLatencyInMS(queryStartTimeInNS));

@@ -1,8 +1,6 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import java.util.function.Function;
 
@@ -13,30 +11,16 @@ import java.util.function.Function;
  * Venice is using this class to expose the internal stats to Venice and report them.
  */
 public class LongTailRetryStatsProvider implements Function<VenicePath, ScatterGatherStats> {
-  private final AggRouterHttpRequestStats statsForSingleGet;
-  private final AggRouterHttpRequestStats statsForMultiGet;
-  private final AggRouterHttpRequestStats statsForCompute;
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
-  public LongTailRetryStatsProvider(AggRouterHttpRequestStats statsForSingleGet,
-      AggRouterHttpRequestStats statsForMultiGet, AggRouterHttpRequestStats statsForCompute) {
-    this.statsForSingleGet = statsForSingleGet;
-    this.statsForMultiGet = statsForMultiGet;
-    this.statsForCompute = statsForCompute;
+  public LongTailRetryStatsProvider(RouterStats<AggRouterHttpRequestStats> routerStats) {
+    this.routerStats = routerStats;
   }
 
   @Override
   public ScatterGatherStats apply(VenicePath venicePath) {
     String storeName = venicePath.getStoreName();
 
-    switch (venicePath.getRequestType()) {
-      case SINGLE_GET:
-        return statsForSingleGet.getScatterGatherStatsForStore(storeName);
-      case MULTI_GET:
-        return statsForMultiGet.getScatterGatherStatsForStore(storeName);
-      case COMPUTE:
-        return statsForCompute.getScatterGatherStatsForStore(storeName);
-      default:
-        throw new VeniceException("Request type " + venicePath.getRequestType() + " is not supported!");
-    }
+    return routerStats.getStatsByType(venicePath.getRequestType()).getScatterGatherStatsForStore(storeName);
   }
 }

@@ -6,20 +6,29 @@ import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.api.path.VeniceComputePath;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
+import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.Utils;
+import io.netty.channel.ChannelHandlerContext;
 import java.util.Collection;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
 
 
@@ -57,27 +66,18 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
   private final VeniceVersionFinder versionFinder;
   private final VenicePartitionFinder partitionFinder;
-  private final AggRouterHttpRequestStats statsForSingleGet;
-  private final AggRouterHttpRequestStats statsForMultiGet;
-  private final AggRouterHttpRequestStats statsForCompute;
-  private final int maxKeyCountInMultiGetReq;
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final ReadOnlyStoreRepository storeRepository;
-  private final boolean smartLongTailRetryEnabled;
-  private final int smartLongTailRetryAbortThresholdMs;
+  private final VeniceRouterConfig routerConfig;
 
   public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
-      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet,
-      AggRouterHttpRequestStats statsForCompute, int maxKeyCountInMultiGetReq, ReadOnlyStoreRepository storeRepository,
-      boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs){
+      RouterStats<AggRouterHttpRequestStats> routerStats, ReadOnlyStoreRepository storeRepository,
+      VeniceRouterConfig routerConfig){
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
-    this.statsForSingleGet = statsForSingleGet;
-    this.statsForMultiGet = statsForMultiGet;
-    this.statsForCompute = statsForCompute;
-    this.maxKeyCountInMultiGetReq = maxKeyCountInMultiGetReq;
+    this.routerStats = routerStats;
     this.storeRepository = storeRepository;
-    this.smartLongTailRetryEnabled = smartLongTailRetryEnabled;
-    this.smartLongTailRetryAbortThresholdMs = smartLongTailRetryAbortThresholdMs;
+    this.routerConfig = routerConfig;
   };
 
   @Override
@@ -87,6 +87,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
           BAD_GATEWAY, "parseResourceUri should receive a BasicFullHttpRequest");
     }
     BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest)request;
+
     VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
     String resourceType = pathHelper.getResourceType();
     if (!resourceType.equals(TYPE_STORAGE) && !resourceType.equals(TYPE_COMPUTE)) {
@@ -102,40 +103,73 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     VenicePath path = null;
     try {
       // this method may throw store not exist exception; track the exception under unhealthy request metric
-      String resourceName = getResourceFromStoreName(storeName);
+      int version = versionFinder.getVersion(storeName);
+      String resourceName = Version.composeKafkaTopic(storeName, version);
 
       String method = fullHttpRequest.method().name();
-      AggRouterHttpRequestStats stats = null;
       int keyNum = 1;
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
         path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
-        stats = statsForSingleGet;
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         if (resourceType.equals(TYPE_STORAGE)) {
           // multi-get request
           path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-              smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
-          stats = statsForMultiGet;
+              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs());
         } else if (resourceType.equals(TYPE_COMPUTE)) {
           // read compute request
           path = new VeniceComputePath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-              smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
-          stats = statsForCompute;
+              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs());
         }
-
-        /**
-         * Here we only track key num for batch-get request, since single-get request will be always 1.
-         */
-        keyNum = path.getPartitionKeys().size();
-        stats.recordKeyNum(storeName, keyNum);
       } else {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
             BAD_REQUEST, "Method: " + method + " is not allowed");
       }
+      RequestType requestType = path.getRequestType();
+      if (StreamingUtils.isStreamingEnabled(request)) {
+        if (requestType.equals(RequestType.MULTI_GET) || requestType.equals(RequestType.COMPUTE)) {
+          // Right now, streaming support is only available for multi-get and compute
+          // Extract ChunkedWriteHandler reference
+          VeniceChunkedWriteHandler chunkedWriteHandler =
+              fullHttpRequest.attr(VeniceChunkedWriteHandler.CHUNKED_WRITE_HANDLER_ATTRIBUTE_KEY).get();
+          ChannelHandlerContext ctx =
+              fullHttpRequest.attr(VeniceChunkedWriteHandler.CHANNEL_HANDLER_CONTEXT_ATTRIBUTE_KEY).get();
+          /**
+           * If the streaming is disabled on Router, the following objects will be null since {@link VeniceChunkedWriteHandler}
+           * won't be in the pipeline when streaming is disabled, check {@link RouterServer#addStreamingHandler} for more
+           * details.
+            */
+          if (Objects.nonNull(chunkedWriteHandler) && Objects.nonNull(ctx)) {
+            // Streaming is enabled
+            path.setChunkedWriteHandler(ctx, chunkedWriteHandler, routerStats);
+          }
+          /**
+           * Request type will be changed to streaming request after setting up the proper streaming handler
+           */
+          requestType = path.getRequestType();
+        }
+      }
+
+      // TODO: maybe we should use the builder pattern here??
+      // Setup decompressor
+      VeniceResponseDecompressor responseDecompressor =
+          new VeniceResponseDecompressor(routerConfig.isDecompressOnClient(), routerStats, fullHttpRequest, storeName,
+              version);
+      path.setResponseDecompressor(responseDecompressor);
+
+      AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
+      if (!request.equals(SINGLE_GET)) {
+        /**
+         * Here we only track key num for non single-get request, since single-get request will be always 1.
+         */
+        keyNum = path.getPartitionKeys().size();
+        stats.recordKeyNum(storeName, keyNum);
+      }
+
       // Always record request usage in the single get stats, so we could compare it with the quota easily.
       // Right now we use key num as request usage, in the future we might consider the Capacity unit.
-      statsForSingleGet.recordRequestUsage(storeName, keyNum);
+      routerStats.getStatsByType(SINGLE_GET).recordRequestUsage(storeName, keyNum);
+
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
     } catch (RouterException e) {
@@ -143,6 +177,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
           BAD_REQUEST, e.getMessage());
     }
+
     return path;
   }
 
@@ -165,17 +200,6 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     return path.substitutePartitionKey(s);
   }
 
-  /***
-   * Queries the helix metadata repository for the
-   *
-   * @param storeName
-   * @return store-version, matches the helix resource
-   */
-  private String getResourceFromStoreName(String storeName) throws RouterException {
-    int version = versionFinder.getVersion(storeName);
-    return storeName + STORE_VERSION_SEP + version;
-  }
-
   public static boolean isStoreNameValid(String storeName){
     if (storeName.length() > STORE_MAX_LENGTH){
       return false;
@@ -187,7 +211,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private int getBatchGetLimit(String storeName) {
     int batchGetLimit = storeRepository.getBatchGetLimit(storeName);
     if (batchGetLimit <= 0) {
-      batchGetLimit = maxKeyCountInMultiGetReq;
+      batchGetLimit = routerConfig.getMaxKeyCountInMultiGetReq();
     }
     return batchGetLimit;
   }

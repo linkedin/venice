@@ -25,6 +25,7 @@ import com.linkedin.venice.router.api.VeniceRole;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -87,14 +88,11 @@ public class RouterRequestThrottlingTest {
 
     VeniceHostHealth healthMonitor = mock(VeniceHostHealth.class);
 
-    AggRouterHttpRequestStats statsForSingleGet = mock(AggRouterHttpRequestStats.class);
-    AggRouterHttpRequestStats statsForMultiGet = mock(AggRouterHttpRequestStats.class);
-    AggRouterHttpRequestStats statsForCompute = mock(AggRouterHttpRequestStats.class);
     MetricsRepository metricsRepository = mock(MetricsRepository.class);
     StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
 
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, healthMonitor, storeRepository, Optional.empty(),
-        statsForSingleGet, statsForMultiGet, statsForCompute, metricsRepository, storageNodeClient);
+        mock(RouterStats.class), metricsRepository, storageNodeClient);
     // set the ReadRequestThrottler
     dispatcher.initReadRequestThrottler(throttler);
 

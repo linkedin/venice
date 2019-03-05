@@ -40,6 +40,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     String offsetHeader = "-1";
     int schemaIdHeader = -1;
     CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+    boolean isStreamingResponse = false;
     try {
       if (msg instanceof ReadResponse) {
         ReadResponse obj = (ReadResponse) msg;
@@ -59,6 +60,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
           body = Unpooled.EMPTY_BUFFER;
           responseStatus = NOT_FOUND;
         }
+        isStreamingResponse = obj.isStreamingResponse();
       } else if (msg instanceof HttpShortcutResponse) {
         responseStatus = ((HttpShortcutResponse) msg).getStatus();
         body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
@@ -87,6 +89,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
     response.headers().set(HttpConstants.VENICE_OFFSET, offsetHeader);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
+    if (isStreamingResponse) {
+      response.headers().set(HttpConstants.VENICE_STREAMING_RESPONSE, "1");
+    }
 
     /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
      *  of connection, and {@link RouterRequestHttpHandler} will close the connection if necessary.

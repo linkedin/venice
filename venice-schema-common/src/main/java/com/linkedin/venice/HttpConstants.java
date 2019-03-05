@@ -25,6 +25,10 @@ public class HttpConstants {
   public static final String VENICE_COMPRESSION_STRATEGY = "X-VENICE-COMPRESSION-STRATEGY";
   public static final String VENICE_SUPPORTED_COMPRESSION = "X-VENICE-SUPPORTED-COMPRESSION";
 
+  public static final String VENICE_STREAMING = "X-VENICE-STREAMING";
+
+  public static final String VENICE_STREAMING_RESPONSE = "X-VENICE-STREAMING-RESPONSE";
+
   public static final int SC_MISDIRECTED_REQUEST = 421;
 
   private HttpConstants(){}

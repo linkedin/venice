@@ -85,6 +85,7 @@ public abstract class TestRead {
 
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
+
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);

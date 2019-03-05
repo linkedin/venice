@@ -6,7 +6,9 @@ import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -16,33 +18,28 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
+import static com.linkedin.venice.read.RequestType.*;
+
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   private static final Comparator<Instance> INSTANCE_COMPARATOR = Comparator.comparing(Instance::getNodeId);
 
   private final OnlineInstanceFinder onlineInstanceFinder;
-
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final boolean isStickyRoutingEnabledForSingleGet;
   private final boolean isStickyRoutingEnabledForMultiGet;
-  private final AggRouterHttpRequestStats statsForSingleGet;
-  private final AggRouterHttpRequestStats statsForMultiGet;
   private final HostHealthMonitor<Instance> instanceHealthMonitor;
 
-  /**
-   * For test purpose.
-   */
   public VeniceHostFinder(OnlineInstanceFinder onlineInstanceFinder,
       boolean isStickyRoutingEnabledForSingleGet,
       boolean isStickyRoutingEnabledForMultiGet,
-      AggRouterHttpRequestStats statsForSingleGet,
-      AggRouterHttpRequestStats statsForMultiGet,
+      RouterStats<AggRouterHttpRequestStats> routerStats,
       HostHealthMonitor<Instance> instanceHealthMonitor) {
     this.onlineInstanceFinder = onlineInstanceFinder;
 
     this.isStickyRoutingEnabledForSingleGet = isStickyRoutingEnabledForSingleGet;
     this.isStickyRoutingEnabledForMultiGet = isStickyRoutingEnabledForMultiGet;
-    this.statsForSingleGet = statsForSingleGet;
-    this.statsForMultiGet = statsForMultiGet;
+    this.routerStats = routerStats;
     this.instanceHealthMonitor = instanceHealthMonitor;
   }
 
@@ -91,8 +88,12 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
     /**
      * {@link VeniceHostFinder} needs to filter out unhealthy hosts.
      * Otherwise, the unhealthy host could keep receiving request because of sticky routing.
+     *
+     * Metric to track unhealthy host request for both compute and multi-get will fall into the multi-get category
+     * since right now, there is no good way to differentiate compute from multi-get according to the existing API
+     * of {@link HostFinder}.
      */
-    AggRouterHttpRequestStats currentStats = isSingleGet ? statsForSingleGet : statsForMultiGet;
+    AggRouterHttpRequestStats currentStats = routerStats.getStatsByType(isSingleGet? SINGLE_GET : MULTI_GET);
     /**
      * It seems not clean to use the following method to extract store name, but inside Venice, Kafka topic name is same
      * as Helix resource name.

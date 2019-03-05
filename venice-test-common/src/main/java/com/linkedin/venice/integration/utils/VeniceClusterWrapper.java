@@ -503,6 +503,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return response;
   }
 
+  public ControllerClient getControllerClient() {
+    return new ControllerClient(clusterName, getAllControllersURLs());
+  }
+
   /**
    * Get a venice writer to write string key-value pairs to given version for this cluster.
    * @return

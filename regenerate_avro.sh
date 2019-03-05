@@ -27,6 +27,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/ComputeRequest/*"
   "venice-schema-common/src/main/resources/avro/ComputeResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
+  "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"
 )
 CODE_GEN_PATH=(
   "venice-common_2.10/src/main/java"
@@ -39,6 +40,7 @@ CODE_GEN_PATH=(
   "venice-common_2.10/src/main/java"
   "venice-common_2.10/src/main/java"
   "venice-controller/src/main/java"
+  "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
@@ -63,6 +65,7 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[13]}/com/linkedin/venice/compute/protocol/request/*.java"
   "${CODE_GEN_PATH[14]}/com/linkedin/venice/compute/protocol/response/*.java"
   "${CODE_GEN_PATH[15]}/com/linkedin/venice/compute/protocol/request/router/*.java"
+  "${CODE_GEN_PATH[16]}/com/linkedin/venice/read/protocol/response/streaming/*.java"
 )
 
 if [[ $# < 1 ]]; then

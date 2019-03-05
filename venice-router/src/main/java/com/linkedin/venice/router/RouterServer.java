@@ -51,7 +51,9 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
@@ -101,9 +103,7 @@ public class RouterServer extends AbstractVeniceService {
   // Immutable state
   private final List<D2Server> d2ServerList;
   private final MetricsRepository metricsRepository;
-  private final AggRouterHttpRequestStats statsForSingleGet;
-  private final AggRouterHttpRequestStats statsForMultiGet;
-  private final AggRouterHttpRequestStats statsForCompute;
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -242,9 +242,7 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     this.metricsRepository = metricsRepository;
-    this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
-    this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
-    this.statsForCompute = new AggRouterHttpRequestStats(metricsRepository, RequestType.COMPUTE);
+    this.routerStats = new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType) );
 
     this.d2ServerList = d2ServerList;
     this.accessController= accessController;
@@ -337,7 +335,7 @@ public class RouterServer extends AbstractVeniceService {
       case NETTY_4_CLIENT:
         logger.info("Router will use NETTY_4_CLIENT");
         storageNodeClient = new NettyStorageNodeClient(config, sslFactoryForRequests,
-            statsForSingleGet, statsForMultiGet, statsForCompute, workerEventLoopGroup, channelClass);
+            routerStats, workerEventLoopGroup, channelClass);
         break;
       case APACHE_HTTP_ASYNC_CLIENT:
         logger.info("Router will use Apache_Http_Async_Client");
@@ -348,10 +346,11 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
-        statsForSingleGet, statsForMultiGet, statsForCompute, metricsRepository, storageNodeClient);
+        routerStats, metricsRepository, storageNodeClient);
 
 
-    heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
+    heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS,
+        config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
@@ -371,22 +370,17 @@ public class RouterServer extends AbstractVeniceService {
     VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
         config.isStickyRoutingEnabledForSingleGet(),
         config.isStickyRoutingEnabledForMultiGet(),
-        statsForSingleGet, statsForMultiGet,
+        routerStats,
         healthMonitor);
 
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
         metadataRepository, onlineInstanceFinder,
         new StaleVersionStats(metricsRepository, "stale_version"));
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
-        statsForSingleGet, statsForMultiGet, statsForCompute, config.getMaxKeyCountInMultiGetReq(),
-        metadataRepository, config.isSmartLongTailRetryEnabled(), config.getSmartLongTailRetryAbortThresholdMs());
+        routerStats, metadataRepository, config);
 
     // Setup stat tracking for exceptional case
-    RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
-    RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
-    RouterExceptionAndTrackingUtils.setStatsForCompute(statsForCompute);
-
-
+    RouterExceptionAndTrackingUtils.setRouterStats(routerStats);
 
     // Fixed retry future
     AsyncFuture<LongSupplier> singleGetRetryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryForSingleGetThresholdMs());
@@ -419,6 +413,12 @@ public class RouterServer extends AbstractVeniceService {
         }
       }
     };
+    // Log to indicate whether Streaming is enabled in Router or not
+    if (config.isStreamingEnabled()) {
+      logger.info("Streaming is enabled in Router");
+    } else {
+      logger.info("Streaming is disabled in Router");
+    }
 
     /**
      * No need to setup {@link com.linkedin.ddsstorage.router.api.HostHealthMonitor} here since
@@ -432,14 +432,14 @@ public class RouterServer extends AbstractVeniceService {
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(
-            new VeniceResponseAggregator(config.isDecompressOnClient(), statsForSingleGet, statsForMultiGet, statsForCompute)
+            new VeniceResponseAggregator(routerStats)
             .withSingleGetTardyThreshold(config.getSingleGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withMultiGetTardyThreshold(config.getMultiGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withComputeTardyThreshold(config.getComputeTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
         )
         .metricsProvider(new VeniceMetricsProvider())
         .longTailRetrySupplier(retrySupplier)
-        .scatterGatherStatsProvider(new LongTailRetryStatsProvider(statsForSingleGet, statsForMultiGet, statsForCompute))
+        .scatterGatherStatsProvider(new LongTailRetryStatsProvider(routerStats))
         .enableStackTraceResponseForException(true)
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
@@ -457,6 +457,7 @@ public class RouterServer extends AbstractVeniceService {
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
           pipeline.addLast("MetadataHandler", metaDataHandler);
           pipeline.addLast("VerifySSLHandler", nonSecureSSLEnforcement);
+          addStreamingHandler(pipeline);
         })
         .idleTimeout(3, TimeUnit.HOURS)
         .build();
@@ -469,11 +470,13 @@ public class RouterServer extends AbstractVeniceService {
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
       pipeline.addLast("SSL Verifier", verifySsl);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      addStreamingHandler(pipeline);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("SSL Verifier", verifySsl);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("RouterAclHandler", aclHandler);
+      addStreamingHandler(pipeline);
     };
 
     secureRouter = Router.builder(scatterGather)
@@ -494,6 +497,12 @@ public class RouterServer extends AbstractVeniceService {
 
     // The start up process is not finished yet, because it is continuing asynchronously.
     return false;
+  }
+
+  private void addStreamingHandler(ChannelPipeline pipeline) {
+    if (config.isStreamingEnabled()) {
+      pipeline.addLast("VeniceChunkedWriteHandler", new VeniceChunkedWriteHandler());
+    }
   }
 
   @Override
@@ -614,7 +623,8 @@ public class RouterServer extends AbstractVeniceService {
       // Setup read requests throttler.
       RouterThrottler throttler;
       if (config.isReadThrottlingEnabled()) {
-        throttler = new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, config.getMaxReadCapacityCu(), statsForSingleGet, config.getPerStorageNodeReadQuotaBuffer());
+        throttler = new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
+            config.getMaxReadCapacityCu(), routerStats.getStatsByType(RequestType.SINGLE_GET), config.getPerStorageNodeReadQuotaBuffer());
       } else {
         throttler = new NoopRouterThrottler();
       }

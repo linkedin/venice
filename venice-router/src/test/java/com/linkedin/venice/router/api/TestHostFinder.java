@@ -7,7 +7,9 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -45,7 +47,7 @@ public class TestHostFinder {
     doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
 
     VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false,
-        mock(AggRouterHttpRequestStats.class), mock(AggRouterHttpRequestStats.class), mockHostHealthMonitor);
+        mock(RouterStats.class), mockHostHealthMonitor);
 
     List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_3", NULL_HOST_HEALTH_MONITOR, null);
     Assert.assertEquals(hosts.size(), 2);
@@ -72,7 +74,9 @@ public class TestHostFinder {
 
     HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
     doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, null, null, mockHostHealthMonitor);
+    RouterStats mockRouterStats = mock(RouterStats.class);
+    when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, mockRouterStats, mockHostHealthMonitor);
 
     Map<Integer, String> partitionHostMapping = new HashMap<>();
     partitionHostMapping.put(0, "host_0");
@@ -106,7 +110,11 @@ public class TestHostFinder {
     AggRouterHttpRequestStats mockSingleGetStats = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockMultiGetStats = mock(AggRouterHttpRequestStats.class);
 
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, mockSingleGetStats, mockMultiGetStats, mockHostHealthMonitor);
+    RouterStats routerStats = mock(RouterStats.class);
+    when(routerStats.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockSingleGetStats);
+    when(routerStats.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockMultiGetStats);
+
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, routerStats, mockHostHealthMonitor);
 
     Map<Integer, String> partitionHostMapping = new HashMap<>();
     partitionHostMapping.put(0, "host_0");
@@ -148,8 +156,10 @@ public class TestHostFinder {
     List<Instance> instanceList = new ArrayList<>();
     instanceList.add(dummyInstance);
     doReturn(instanceList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
+    RouterStats mockRouterStats = mock(RouterStats.class);
+    when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
     VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false,
-        mock(AggRouterHttpRequestStats.class), mock(AggRouterHttpRequestStats.class), healthMon);
+        mockRouterStats, healthMon);
 
     // mock HeartBeat
     FullHttpResponse goodHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);

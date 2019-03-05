@@ -2,6 +2,7 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
@@ -195,14 +196,10 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
     });
   }
 
-  @Override
-  public CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException {
-    long preRequestTimeInNS = time.nanoseconds();
-    Pair<Schema,String> resultSchema = getResultSchema();
-
+  private ComputeRequestV1 generateComputeRequest(String resultSchemaStr) {
     // Generate ComputeRequest object
     ComputeRequestV1 computeRequest = new ComputeRequestV1();
-    computeRequest.resultSchemaStr = resultSchema.getSecond();
+    computeRequest.resultSchemaStr = resultSchemaStr;
     computeRequest.operations = new LinkedList<>();
     dotProducts.forEach( dotProduct -> {
       ComputeOperation computeOperation = new ComputeOperation();
@@ -217,7 +214,54 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
       computeRequest.operations.add(computeOperation);
     });
 
+    return computeRequest;
+  }
+
+  @Override
+  public CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException {
+    long preRequestTimeInNS = time.nanoseconds();
+    Pair<Schema,String> resultSchema = getResultSchema();
+    // Generate ComputeRequest object
+    ComputeRequestV1 computeRequest = generateComputeRequest(resultSchema.getSecond());
+
     return storeClient.compute(computeRequest, keys, resultSchema.getFirst(), stats, preRequestTimeInNS);
+  }
+
+  public CompletableFuture<Map<K, GenericRecord>> streamExecute(Set<K> keys) {
+    CompletableFuture<Map<K, GenericRecord>> resultFuture = new CompletableFuture<>();
+    execute(keys, new StreamingCallback<K, GenericRecord>() {
+      Map<K, GenericRecord> resultMap = new VeniceConcurrentHashMap<>();
+
+      @Override
+      public void onRecordReceived(K key, GenericRecord value) {
+        if (value != null) {
+          /**
+           * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
+           */
+          resultMap.put(key, value);
+        }
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        if (exception.isPresent()) {
+          resultFuture.completeExceptionally(exception.get());
+        } else {
+            resultFuture.complete(resultMap);
+          }
+        }
+    });
+
+    return resultFuture;
+  }
+
+  public void execute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
+    long preRequestTimeInNS = time.nanoseconds();
+    Pair<Schema,String> resultSchema = getResultSchema();
+    // Generate ComputeRequest object
+    ComputeRequestV1 computeRequest = generateComputeRequest(resultSchema.getSecond());
+
+    storeClient.compute(computeRequest, keys, resultSchema.getFirst(), callback, preRequestTimeInNS);
   }
 
   private void checkComputeFieldValidity(String computeFieldName, String resultFieldName, Set<String> resultFieldsSet, ComputeOperationType computeType) {
