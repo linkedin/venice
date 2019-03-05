@@ -3,11 +3,13 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -63,8 +65,19 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
+  public void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException {
+    innerStoreClient.compute(computeRequest, keys, resultSchema, callback, preRequestTimeInNS);
+  }
+
+  @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     return innerStoreClient.batchGet(keys);
+  }
+
+  @Override
+  public void batchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    innerStoreClient.batchGet(keys, callback);
   }
 
   @Override
@@ -97,8 +110,18 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
     return innerStoreClient.getLatestValueSchema();
   }
 
+  @Override
+  public Executor getDeserializationExecutor() {
+    return innerStoreClient.getDeserializationExecutor();
+  }
+
   // for testing
   public InternalAvroStoreClient<K, V> getInnerStoreClient() {
     return this.innerStoreClient;
+  }
+
+  @Override
+  public boolean streamingSupported() {
+    return innerStoreClient.streamingSupported();
   }
 }

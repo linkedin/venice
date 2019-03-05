@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -41,10 +42,12 @@ import static org.mockito.Mockito.*;
 public class TestVeniceResponseAggregator {
   private static Schema STRING_SCHEMA = Schema.parse("\"string\"");
 
-  private VenicePath getPath(String storeName, RequestType requestType) {
+  private VenicePath getPath(String storeName, RequestType requestType, RouterStats routerStats, BasicFullHttpRequest request) {
     VenicePath path = mock(VenicePath.class);
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
+    doReturn(Optional.empty()).when(path).getChunkedResponse();
+    doReturn(new VeniceResponseDecompressor(false, routerStats, request, storeName, 1)).when(path).getResponseDecompressor();
     return path;
   }
 
@@ -56,8 +59,7 @@ public class TestVeniceResponseAggregator {
         Unpooled.wrappedBuffer(fakeContent));
     List<FullHttpResponse> gatheredResponses = new ArrayList<>();
     gatheredResponses.add(response);
-    Metrics metrics = new Metrics();
-    metrics.setPath(getPath(storeName, RequestType.SINGLE_GET));
+
 
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET,
         "/storage/test_store/abc", -1, -1);
@@ -65,9 +67,16 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForCompute = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockStatsForSingleGet);
+    when(mockRouterStat.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockStatsForMultiGet);
+    when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
+
+    Metrics metrics = new Metrics();
+    metrics.setPath(getPath(storeName, RequestType.SINGLE_GET, mockRouterStat, request));
 
     VeniceResponseAggregator responseAggregator =
-        new VeniceResponseAggregator(false, mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute);
+        new VeniceResponseAggregator(mockRouterStat);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     Assert.assertEquals(finalResponse.content().array(), fakeContent);
@@ -112,8 +121,6 @@ public class TestVeniceResponseAggregator {
     gatheredResponses.add(response1);
     gatheredResponses.add(response2);
     gatheredResponses.add(response3);
-    Metrics metrics = new Metrics();
-    metrics.setPath(getPath(storeName, RequestType.MULTI_GET));
 
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST,
         "/storage/test_store", -1, -1);
@@ -121,9 +128,16 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForCompute = mock(AggRouterHttpRequestStats.class);
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    when(mockRouterStat.getStatsByType(RequestType.SINGLE_GET)).thenReturn(mockStatsForSingleGet);
+    when(mockRouterStat.getStatsByType(RequestType.MULTI_GET)).thenReturn(mockStatsForMultiGet);
+    when(mockRouterStat.getStatsByType(RequestType.COMPUTE)).thenReturn(mockStatsForCompute);
+
+    Metrics metrics = new Metrics();
+    metrics.setPath(getPath(storeName, RequestType.MULTI_GET, mockRouterStat, request));
 
     VeniceResponseAggregator responseAggregator =
-        new VeniceResponseAggregator(false, mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute);
+        new VeniceResponseAggregator(mockRouterStat);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     byte[] finalContent;

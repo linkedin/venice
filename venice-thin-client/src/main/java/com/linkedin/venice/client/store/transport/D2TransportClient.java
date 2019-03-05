@@ -3,24 +3,35 @@ package com.linkedin.venice.client.store.transport;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
+import com.linkedin.data.ByteString;
 import com.linkedin.r2.R2Constants;
 import com.linkedin.r2.message.RequestContext;
 import com.linkedin.r2.message.rest.RestException;
+import com.linkedin.r2.message.rest.RestMethod;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
-
+import com.linkedin.r2.message.stream.StreamRequest;
+import com.linkedin.r2.message.stream.StreamRequestBuilder;
+import com.linkedin.r2.message.stream.StreamResponse;
+import com.linkedin.r2.message.stream.entitystream.ByteStringWriter;
+import com.linkedin.r2.message.stream.entitystream.EntityStream;
+import com.linkedin.r2.message.stream.entitystream.EntityStreams;
+import com.linkedin.r2.message.stream.entitystream.ReadHandle;
+import com.linkedin.r2.message.stream.entitystream.Reader;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.schema.SchemaData;
-
+import java.net.URI;
+import java.util.Map;
+import java.util.Optional;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+
 
 /**
  * {@link D2Client} based TransportClient implementation.
@@ -86,10 +97,106 @@ public class D2TransportClient extends TransportClient {
       byte[] requestBody) {
     RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
+
+    d2Client.restRequest(request, getRequestContextForPost(), new D2TransportClientCallback(valueFuture));
+    return valueFuture;
+  }
+
+  // TODO: we may want to differentiate 'compute' from 'batchget'
+  private RequestContext getRequestContextForPost() {
     RequestContext requestContext = new RequestContext();
     requestContext.putLocalAttr(R2Constants.R2_OPERATION, "batchget"); //required for d2 backup requests
-    d2Client.restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
-    return valueFuture;
+
+    return requestContext;
+  }
+
+  @Override
+  public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
+      TransportClientStreamingCallback callback) {
+    try {
+      String requestUrl = getD2RequestUrl(requestPath);
+      StreamRequestBuilder requestBuilder = new StreamRequestBuilder(URI.create(requestUrl));
+      headers.forEach((name, value) -> requestBuilder.addHeaderValue(name, value));
+      requestBuilder.setMethod(RestMethod.POST);
+      StreamRequest streamRequest = requestBuilder.build(EntityStreams.newEntityStream(new ByteStringWriter(ByteString.unsafeWrap(requestBody))));
+
+      RequestContext requestContext = getRequestContextForPost();
+      requestContext.putLocalAttr(com.linkedin.r2.filter.R2Constants.IS_FULL_REQUEST, true);
+
+      d2Client.streamRequest(streamRequest, requestContext, new Callback<StreamResponse>() {
+        @Override
+        public void onSuccess(StreamResponse result) {
+          Map<String, String> headers = result.getHeaders();
+          callback.onHeaderReceived(headers);
+
+          EntityStream entityStream = result.getEntityStream();
+          /**
+           * All the operations in Reader is synchronized:
+           * 1. To guarantee the invocation order, for example:
+           *    a. onDataAvailable should be invoked before onDeserializationCompletion/onError;
+           *    b. onDeserializationCompletion/onError could only be invoked at most once;
+           * 2. To avoid using too many threads in R2 thread pool, and if the user would
+           * like to speed up the callback execution, it can always to process the callback
+           * in its own thread pool.
+           */
+          entityStream.setReader(new Reader() {
+            private boolean isDone = false;
+            private ReadHandle rh;
+
+            @Override
+            public void onInit(ReadHandle rh) {
+              this.rh = rh;
+              rh.request(10);
+            }
+
+            @Override
+            public synchronized void onDataAvailable(ByteString data) {
+              if (isDone) {
+                logger.warn("Received data after completion and data length: " + data.length());
+                return;
+              } else {
+                callback.onDataReceived(data.asByteBuffer());
+              }
+              // TODO: We might need to trigger write any away to clean up the buffer, or maybe throw an exception?
+              rh.request(1);
+            }
+
+            @Override
+            public synchronized void onDone() {
+              if (isDone) {
+                logger.warn("onDone got invoked after completion");
+                return;
+              }
+              callback.onCompletion(Optional.empty());
+              isDone = true;
+            }
+
+            @Override
+            public synchronized void onError(Throwable e) {
+              if (isDone) {
+                logger.warn("onError got invoked after completion");
+                return;
+              }
+              callback.onCompletion(Optional.of(new VeniceClientException(e)));
+            }
+          });
+        }
+
+        @Override
+        public void onError(Throwable e) {
+          /**
+           * The following onDeserializationCompletion invocation shouldn't need to be protected since
+           * either 'onSuccess' or 'onError' can be invoked, but not both.
+           */
+          callback.onCompletion(Optional.of(new VeniceClientException(e)));
+        }
+      });
+    } catch (Throwable t) {
+      /**
+       * Always trigger {@link callback.onCompletion} to finish the request
+       */
+      callback.onCompletion(Optional.of(new VeniceClientException("Received exception when sending out request", t)));
+    }
   }
 
   private String getD2RequestUrl(String requestPath) {

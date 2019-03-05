@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import java.util.Map;
 import java.util.Optional;
@@ -10,6 +11,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
@@ -40,6 +42,8 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
     return batchGet(keys, Optional.empty(), 0);
   }
 
+  public abstract void batchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException;
+
   @Override
   public ComputeRequestBuilder<K> compute() throws VeniceClientException {
     return compute(Optional.empty(), 0);
@@ -65,6 +69,13 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
   public abstract CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
       Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException;
 
+  public abstract void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+      StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException;
+
+  public Executor getDeserializationExecutor() {
+    throw new VeniceClientException("getDeserializationExecutor is not supported!");
+  }
+
   public static void handleStoreExceptionInternally(Throwable throwable) {
     if (null == throwable) {
       return;
@@ -85,5 +96,9 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
       throw (VeniceClientException)throwable;
     }
     throw new VeniceClientException(throwable);
+  }
+
+  public boolean streamingSupported() {
+    return false;
   }
 }

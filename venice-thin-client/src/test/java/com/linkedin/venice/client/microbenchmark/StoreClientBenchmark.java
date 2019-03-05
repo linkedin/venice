@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
@@ -26,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -202,4 +204,5 @@ public class StoreClientBenchmark {
     System.out.println("This test with useFastAvro: " + useFastAvro + " took " + (System.currentTimeMillis() - startTs)
         + "ms, and it finished " + totalFetchCnt.get() + " requests");
   }
+
 }

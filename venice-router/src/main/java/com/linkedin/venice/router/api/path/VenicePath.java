@@ -2,15 +2,23 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.api.VeniceResponseDecompressor;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.api.RouterKey;
+import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.internal.ConcurrentSet;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import javax.annotation.Nonnull;
@@ -29,6 +37,10 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private long originalRequestStartTs = -1;
   private int longTailRetryThresholdMs = Integer.MAX_VALUE;
   private Set<String> slowStorageNodeSet = new ConcurrentSet<>();
+  // Whether the request supports streaming or not
+  private Optional<VeniceChunkedResponse> chunkedResponse = Optional.empty();
+  // Response decompressor
+  private Optional<VeniceResponseDecompressor> responseDecompressor = Optional.empty();
 
   public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
     this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
@@ -100,6 +112,9 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
      */
     slowStorageNodeSet = originalPath.slowStorageNodeSet;
     setOriginalRequestStartTs(originalPath.getOriginalRequestStartTs());
+
+    this.chunkedResponse = originalPath.chunkedResponse;
+    this.responseDecompressor = originalPath.responseDecompressor;
   }
 
   public boolean isRetryRequest() {
@@ -180,20 +195,57 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
     return false;
   }
 
-  public void setRetryHeader(BiConsumer<String, String> setupRetryHeaderFunc) {
+  public void setupVeniceHeaders(BiConsumer<String, String> setupHeaderFunc) {
+    // API
+    setupHeaderFunc.accept(HttpConstants.VENICE_API_VERSION, getVeniceApiVersionHeader());
+    // Retry
     if (isRetryRequest()) {
-      setupRetryHeaderFunc.accept(HttpConstants.VENICE_RETRY, "1");
+      setupHeaderFunc.accept(HttpConstants.VENICE_RETRY, "1");
+    }
+    // Streaming
+    if (chunkedResponse.isPresent()) {
+      setupHeaderFunc.accept(HttpConstants.VENICE_STREAMING, "1");
     }
   }
 
   public HttpUriRequest composeRouterRequest(String storageNodeUri) {
     HttpUriRequest request = composeRouterRequestInternal(storageNodeUri);
-
-    // Setup API version header
-    request.setHeader(HttpConstants.VENICE_API_VERSION, getVeniceApiVersionHeader());
-    setRetryHeader((k, v) -> request.addHeader(k, v));
+    setupVeniceHeaders( (k, v) -> request.setHeader(k, v));
 
     return request;
+  }
+
+  public void setChunkedWriteHandler(ChannelHandlerContext ctx, VeniceChunkedWriteHandler chunkedWriteHandler,
+      RouterStats<AggRouterHttpRequestStats> routerStats) {
+    if (chunkedResponse.isPresent()) {
+      // Defensive code
+      throw new IllegalStateException("VeniceChunkedWriteHandler has already been setup");
+    }
+    this.chunkedResponse = Optional.of(new VeniceChunkedResponse(this, ctx, chunkedWriteHandler, routerStats));
+  }
+
+  public void setResponseDecompressor(VeniceResponseDecompressor decompressor) {
+     if (responseDecompressor.isPresent()) {
+       throw new VeniceException("VeniceResponseDecompressor has already been setup");
+     }
+     this.responseDecompressor = Optional.of(decompressor);
+  }
+
+  public VeniceResponseDecompressor getResponseDecompressor() {
+    if (!responseDecompressor.isPresent()) {
+      // Defensive code
+      throw new IllegalStateException("VeniceResponseDecompressor is not available for current request, and there must be a bug"
+          + " when this exception happens.");
+    }
+    return responseDecompressor.get();
+  }
+
+  public Optional<VeniceChunkedResponse> getChunkedResponse() {
+    return this.chunkedResponse;
+  }
+
+  public boolean isStreamingRequest() {
+    return getChunkedResponse().isPresent();
   }
 
   public void markStorageNodeAsFast(String fastStorageNode) {

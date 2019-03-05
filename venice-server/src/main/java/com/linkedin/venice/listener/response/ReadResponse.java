@@ -16,9 +16,18 @@ public abstract class ReadResponse {
   private double storageExecutionSubmissionWaitTime;
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+  private boolean isStreamingResponse = false;
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
+  }
+
+  public void setStreamingResponse() {
+    this.isStreamingResponse = true;
+  }
+
+  public boolean isStreamingResponse() {
+    return this.isStreamingResponse;
   }
 
   public CompressionStrategy getCompressionStrategy() {

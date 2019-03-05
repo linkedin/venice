@@ -91,7 +91,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
 
   @Override
   public RequestType getRequestType() {
-    return RequestType.MULTI_GET;
+    return isStreamingRequest() ? RequestType.MULTI_GET_STREAMING : RequestType.MULTI_GET;
   }
 
   /**

@@ -56,7 +56,16 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   public void initialize(String resourceName, Iterable<ByteBuffer> keys, VenicePartitionFinder partitionFinder, int maxKeyCount) throws RouterException {
     keyNum = 0;
     int keyIdx = 0;
-    int partitionNum = partitionFinder.getNumPartitions(resourceName);
+    int partitionNum = -1;
+    try {
+      partitionNum = partitionFinder.getNumPartitions(resourceName);
+    } catch (VeniceNoHelixResourceException e){
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(
+          Optional.of(getStoreName()),
+          Optional.of(RequestType.COMPUTE),
+          e.getHttpResponseStatus(),
+          e.getMessage());
+    }
     for (ByteBuffer key : keys) {
       RouterKey routerKey = new RouterKey(key);
 

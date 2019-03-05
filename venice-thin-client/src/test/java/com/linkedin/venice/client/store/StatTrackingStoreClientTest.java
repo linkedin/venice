@@ -3,6 +3,8 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -12,6 +14,7 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -22,6 +25,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
@@ -170,7 +174,6 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(http400RequestMetric.value() > 0.0);
   }
 
-  // Test Compute
   private static class SimpleStoreClient<K, V> extends AbstractAvroStoreClient<K, V> {
 
     public SimpleStoreClient(TransportClient transportClient, String storeName, boolean needSchemaReader,
@@ -200,7 +203,6 @@ public class StatTrackingStoreClientTest {
       return Schema.parse(VALUE_SCHEMA);
     }
   }
-
   private static final String VALUE_SCHEMA = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"record_schema\",\n"
       + "\t\"fields\": [\n"
       + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"doc for int_field\"},\n"
@@ -311,5 +313,115 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
     Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
     Assert.assertTrue(deserializationMetric.value() > 0.0);
+  }
+
+  @Test
+  public void multiGetStreamTest() {
+    class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
+
+      public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
+          boolean needSchemaReader, Executor deserializationExecutor) {
+        super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+      }
+
+      @Override
+      public void batchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+        if (callback instanceof TrackingStreamingCallback) {
+          TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
+          Utils.sleep(5);
+          trackingStreamingCallback.onDeserializationCompletion(Optional.empty(), 10, 5);
+        }
+      }
+    }
+
+    String storeName = TestUtils.getUniqueString("test_store");
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
+        storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+    MetricsRepository repository = new MetricsRepository();
+    StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        innerClient, ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < 10; ++i) {
+      keys.add("key_" + i);
+    }
+    statTrackingStoreClient.batchGet(keys, new StreamingCallback<String, GenericRecord>() {
+      @Override
+      public void onRecordReceived(String key, GenericRecord value) {
+        // do nothing
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        // do nothing
+      }
+    });
+    Map<String, ? extends Metric> metrics = repository.metrics();
+
+    String storeMetricPrefix = "." + storeName;
+    Metric requestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+    Metric duplicateKeyMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_success_request_duplicate_key_count.Rate");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertTrue(healthyRequestMetric.value() > 0.0);
+    Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+    Assert.assertTrue(duplicateKeyMetric.value() > 0.0);
+  }
+
+  @Test
+  public void multiGetStreamTestWithException() {
+    class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
+      private final VeniceClientException veniceException;
+      public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
+          boolean needSchemaReader, Executor deserializationExecutor, VeniceClientException veniceException) {
+        super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+        this.veniceException = veniceException;
+      }
+
+      @Override
+      public void batchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+        if (callback instanceof TrackingStreamingCallback) {
+          TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
+          Utils.sleep(5);
+          trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+        }
+      }
+    }
+
+    String storeName = TestUtils.getUniqueString("test_store");
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
+        storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
+    MetricsRepository repository = new MetricsRepository();
+    StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        innerClient, ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < 10; ++i) {
+      keys.add("key_" + i);
+    }
+    statTrackingStoreClient.batchGet(keys, new StreamingCallback<String, GenericRecord>() {
+      @Override
+      public void onRecordReceived(String key, GenericRecord value) {
+        // do nothing
+      }
+
+      @Override
+      public void onCompletion(Optional<Exception> exception) {
+        // do nothing
+      }
+    });
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    String storeMetricPrefix = "." + storeName;
+    Metric requestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_unhealthy_request.OccurrenceRate");
+    Metric duplicateKeyMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_success_request_duplicate_key_count.Rate");
+    Metric responseWith500 = metrics.get(storeMetricPrefix + "--multiget_streaming_http_500_request.OccurrenceRate");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertEquals(healthyRequestMetric.value(),  0.0);
+    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
+    Assert.assertTrue(duplicateKeyMetric.value() > 0.0);
+    Assert.assertTrue(responseWith500.value() > 0.0);
   }
 }

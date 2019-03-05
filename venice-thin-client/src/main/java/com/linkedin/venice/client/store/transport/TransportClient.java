@@ -26,6 +26,9 @@ public abstract class TransportClient implements Closeable {
   public abstract CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
       byte[] requestBody);
 
+  public abstract void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
+      TransportClientStreamingCallback callback);
+
   /**
    * If the internal client could not be used by its callback function,
    * implementation of this function should return a new copy.

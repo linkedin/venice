@@ -306,12 +306,12 @@ public class AvroGenericStoreClientImplTest {
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
           boolean causeOfCorrectType = cause instanceof VeniceClientException;
-          boolean correctMessage = cause.getMessage().contains("Failed to get value schema for store: test_store and id: 2");
+          boolean correctMessage = cause.getMessage().contains("Failed to get latest value schema for store: test_store");
           if (!causeOfCorrectType || !correctMessage) {
             LOGGER.error("Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: " + entry.getKey(), e);
           }
           Assert.assertTrue(causeOfCorrectType, "Expected to get a VeniceClientException but instead got a " + cause.getClass().getSimpleName());
-          Assert.assertTrue(correctMessage,"Expected to get an exception message containing 'Failed to get value schema [...]', but instead got the following message:" + cause.getMessage());
+          Assert.assertTrue(correctMessage,"Expected to get an exception message containing 'Failed to get latest value schema for store: test_store', but instead got the following message:" + cause.getMessage());
           continue;
         } catch (Throwable t) {
           LOGGER.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
@@ -412,13 +412,13 @@ public class AvroGenericStoreClientImplTest {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
 
       // Query value 1 while not having encountered any schema yet.
+      // The current logic will always pull all the value schemas if no schema is available yet.
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
       Assert.assertEquals(recordValue.get("a"), 100l);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
-      Assert.assertNull(recordValue.get("c"),
-          "The client has not yet encountered any v2 record, so it should not know about the v2 schema.");
+      Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
 
       // Query value 2 while having already encountered schema v1 but not schema v2 yet.
       Object value2 = entry.getValue().get(key2).get();
@@ -427,16 +427,6 @@ public class AvroGenericStoreClientImplTest {
       Assert.assertEquals(recordValue2.get("a"), 102l);
       Assert.assertEquals(recordValue2.get("b").toString(), "test_b_value_2");
       Assert.assertEquals(recordValue2.get("c").toString(), "test_c_value_2");
-
-      // Re-query value 1 after having encountered schema v2
-      value = entry.getValue().get(key).get();
-      Assert.assertTrue(value instanceof GenericData.Record);
-      recordValue = (GenericData.Record) value;
-      Assert.assertEquals(recordValue.get("a"), 100l);
-      Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
-      Assert.assertNotNull(recordValue.get("c"),
-          "The client has encountered a v2 record, so it should know about the v2 schema.");
-      Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
     }
   }
 

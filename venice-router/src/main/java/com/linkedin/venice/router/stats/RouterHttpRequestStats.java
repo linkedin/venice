@@ -191,7 +191,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   }
 
   public void recordFanoutRequestCount(int count) {
-    if (getRequestType().equals(RequestType.MULTI_GET)) {
+    if (!getRequestType().equals(RequestType.SINGLE_GET)) {
       fanoutRequestCountSensor.record(count);
     }
   }

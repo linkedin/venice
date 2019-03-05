@@ -17,6 +17,7 @@ import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
@@ -98,7 +99,6 @@ public class TestVeniceDispatcher {
       Assert.assertEquals(responses.size(), 1);
       Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.TOO_MANY_REQUESTS);
     });
-
   }
 
   private VeniceDispatcher getMockDispatcher(boolean useNettyClient){
@@ -110,10 +110,9 @@ public class TestVeniceDispatcher {
     doReturn(10l).when(routerConfig).getMaxPendingRequest();
     doReturn(false).when(routerConfig).isSslToStorageNodes();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
-    AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
-    AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
-    AggRouterHttpRequestStats mockStatsForCompute = mock(AggRouterHttpRequestStats.class);
     MetricsRepository mockMetricsRepo = new MetricsRepository();
+    RouterStats mockRouterStats = mock(RouterStats.class);
+    when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
     VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
 
     StorageNodeClient storageNodeClient;
@@ -131,12 +130,12 @@ public class TestVeniceDispatcher {
         channelClass = NioSocketChannel.class;
       }
       storageNodeClient = new NettyStorageNodeClient(routerConfig, Optional.empty(),
-          mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute, workerEventLoopGroup, channelClass);
+          mockRouterStats, workerEventLoopGroup, channelClass);
     } else {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo);
     }
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo, Optional.empty(),
-        mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute, mockMetricsRepo, storageNodeClient);
+        mockRouterStats, mockMetricsRepo, storageNodeClient);
     dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;
   }

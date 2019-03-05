@@ -1,0 +1,26 @@
+{
+  "name": "StreamingFooterRecordV1",
+  "namespace": "com.linkedin.venice.read.protocol.response.streaming",
+  "doc": "This record will store all the additional info after sending out streaming response",
+  "type": "record",
+  "fields": [
+    {
+      "name": "status",
+      "doc": "Final HTTP status code (non-200) after processing the streaming request completely",
+      "type": "int"
+    },
+    {
+      "name": "detail",
+      "doc": "Error detail",
+      "type": "bytes"
+    },
+    {
+      "name": "trailerHeaders",
+      "doc": "Additional headers after sending out response headers",
+      "type": {
+        "type": "map",
+        "values": "string"
+      }
+    }
+  ]
+}
