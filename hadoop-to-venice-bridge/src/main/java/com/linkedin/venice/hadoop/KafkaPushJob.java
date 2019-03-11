@@ -37,11 +37,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
-import java.util.function.Supplier;
-import joptsimple.OptionParser;
-import joptsimple.OptionSet;
-import joptsimple.OptionSpec;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericData;
@@ -182,7 +177,7 @@ public class KafkaPushJob extends AbstractJob {
   /**
    * TODO: for map-reduce job, we could come up with more accurate estimation.
    */
-  public static final int INPUT_DATA_SIZE_FACTOR = 2;
+  public static final long INPUT_DATA_SIZE_FACTOR = 2;
 
   private static final DecimalFormat PERCENT_FORMAT = new DecimalFormat("##.#%");
 
@@ -191,69 +186,76 @@ public class KafkaPushJob extends AbstractJob {
    */
   private static final int UNCREATED_VERSION_NUMBER = -1;
 
+  private String inputDirectory;
   // Immutable state
   private final VeniceProperties props;
   private final String id;
-  private final boolean enablePush;
-  private final String veniceControllerUrl;
-  private final String veniceRouterUrl;
-  private final String storeName;
-  private final int batchNumBytes;
-  private final boolean isMapOnly;
-  private final boolean enablePBNJ;
-  private final boolean pbnjFailFast;
-  private final boolean pbnjAsync;
-  private final double pbnjSamplingRatio;
-  private final boolean isIncrementalPush;
-  private final boolean isDuplicateKeyAllowed;
-  private final boolean enablePushJobStatusUpload;
-  private final boolean enableReducerSpeculativeExecution;
-  private final long minimumReducerLoggingIntervalInMs;
-  private final int controllerRetries;
-  private final int controllerStatusPollRetries;
 
   private ControllerClient controllerClient;
 
   private String clusterName;
-  boolean isAvro = true;
 
-  private String keyField;
-  private String valueField;
-
-  private String vsonFileKeySchema;
-  private String vsonFileValueSchema;
-
-  // Mutable state
-  // Kafka url will get from Venice backend for store push
-  private String kafkaUrl;
-  private boolean sslToKafka;
-  private String inputDirectory;
-  private FileSystem fs;
   private RunningJob runningJob;
-  private String fileSchemaString;
-  private String keySchemaString;
-  private String valueSchemaString;
-  // Value schema id retrieved from backend for valueSchemaString
-  private int valueSchemaId;
-  // Kafka topic for new data push
-  private String topic;
-  // Kafka topic partition count
-  private int partitionCount;
+
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
-  private long storeStorageQuota;
-  private double storageEngineOverheadRatio;
   private long pushStartTime;
   private String pushId;
 
-  private CompressionStrategy compressionStrategy;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
-  private boolean isChunkingEnabled;
 
-  /** Datacenter-specific details. Stored in memory to avoid printing repetitive details. */
-  Map<String, String> previousExtraDetails = new HashMap<>();
-  /** Overall job details. Stored in memory to avoid printing repetitive details. */
-  String previousOverallDetails = null;
+  private class SchemaInfo {
+    boolean isAvro = true;
+    int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
+    String keyField;
+    String valueField;
+    String fileSchemaString;
+    String keySchemaString;
+    String valueSchemaString;
+    String vsonFileKeySchema;
+    String vsonFileValueSchema;
+  }
+  private SchemaInfo schemaInfo;
+
+  private class PushJobSetting {
+    boolean enablePush;
+    String veniceControllerUrl;
+    String veniceRouterUrl;
+    String storeName;
+    int batchNumBytes;
+    // TODO: Map only code should be removed; it's incompatible with sorted keys
+    boolean isMapOnly;
+    boolean enablePBNJ;
+    boolean pbnjFailFast;
+    boolean pbnjAsync;
+    double pbnjSamplingRatio;
+    boolean isIncrementalPush;
+    boolean isDuplicateKeyAllowed;
+    boolean enablePushJobStatusUpload;
+    boolean enableReducerSpeculativeExecution;
+    long minimumReducerLoggingIntervalInMs;
+    int controllerRetries;
+    int controllerStatusPollRetries;
+  }
+  private PushJobSetting pushJobSetting;
+
+  private class VersionTopicInfo {
+    // Kafka topic for new data push
+    private String topic;
+    // Kafka topic partition count
+    private int partitionCount;
+    // Kafka url will get from Venice backend for store push
+    private String kafkaUrl;
+    private boolean sslToKafka;
+    CompressionStrategy compressionStrategy;
+  }
+  private VersionTopicInfo versionTopicInfo;
+
+  private class StoreSetting {
+    boolean isChunkingEnabled;
+    long storeStorageQuota;
+    double storageEngineOverheadRatio;
+  }
 
   /**
    * Do not change this method argument type
@@ -293,35 +295,35 @@ public class KafkaPushJob extends AbstractJob {
     logger.info("Constructing " + KafkaPushJob.class.getSimpleName() + ": " + props.toString(true));
 
     // Optional configs:
-    this.enablePush = props.getBoolean(ENABLE_PUSH, true);
-    this.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
-    this.isMapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
-    this.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
-    this.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
-    this.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
-    this.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
-    this.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
-    this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
-    this.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
-    this.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
-    this.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
-    this.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
-    this.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
+    pushJobSetting = new PushJobSetting();
+    pushJobSetting.enablePush = props.getBoolean(ENABLE_PUSH, true);
+    pushJobSetting.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
+    pushJobSetting.isMapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
+    pushJobSetting.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
+    pushJobSetting.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
+    pushJobSetting.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
+    pushJobSetting.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
+    pushJobSetting.isIncrementalPush = props.getBoolean(INCREMENTAL_PUSH, false);
+    pushJobSetting.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
+    pushJobSetting.enablePushJobStatusUpload = props.getBoolean(PUSH_JOB_STATUS_UPLOAD_ENABLE, false);
+    pushJobSetting.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
+    pushJobSetting.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    pushJobSetting.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
+    pushJobSetting.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
 
-    if (enablePBNJ) {
+    if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
-      this.veniceRouterUrl = props.getString(PBNJ_ROUTER_URL_PROP);
+      pushJobSetting.veniceRouterUrl = props.getString(PBNJ_ROUTER_URL_PROP);
     } else {
-      this.veniceRouterUrl = null;
+      pushJobSetting.veniceRouterUrl = null;
     }
 
     // Mandatory configs:
-    this.veniceControllerUrl = props.getString(VENICE_URL_PROP);
-    this.storeName = props.getString(VENICE_STORE_NAME_PROP);
-    this.inputDirectory = props.getString(INPUT_PATH_PROP);
+    pushJobSetting.veniceControllerUrl = props.getString(VENICE_URL_PROP);
+    pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
 
 
-    if (!enablePush && !enablePBNJ) {
+    if (!pushJobSetting.enablePush && !pushJobSetting.enablePBNJ) {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
 
@@ -343,72 +345,73 @@ public class KafkaPushJob extends AbstractJob {
     try {
       logGreeting();
 
-      // Create FileSystem handle, which will be shared in multiple functions
-      Configuration conf = new Configuration();
-      fs = FileSystem.get(conf);
-      // This will try to extract the source folder if the input path has 'latest' anchor.
-      Path sourcePath = getLatestPathOfInputDirectory(inputDirectory, fs);
-      inputDirectory = sourcePath.toString();
+      this.inputDirectory = getInputURI(this.props);
 
-      // Check Avro file schema consistency, data size
-      inspectHdfsSource(sourcePath);
+      // Check data size
+      // TODO: do we actually need this information?
+      this.inputFileDataSize = calculateInputDataSize(this.inputDirectory);
+      // Get input schema
+      this.schemaInfo = getInputSchema(this.inputDirectory);
+
       // Discover the cluster based on the store name and re-initialized controller client.
-      discoverCluster();
-      validateKeySchema();
-      validateValueSchema();
-      getSettingsFromController();
+      this.clusterName = discoverCluster(pushJobSetting);
+      this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl);
+      validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
+      validateValueSchema(controllerClient, pushJobSetting, schemaInfo);
+      StoreSetting storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
 
       JobClient jc;
 
-      if (enablePush) {
-
+      if (pushJobSetting.enablePush) {
+        this.pushStartTime = System.currentTimeMillis();
+        this.pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
         // Create new store version, topic and fetch Kafka url from backend
-        createNewStoreVersion();
+        versionTopicInfo = createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props);
         // Log Venice data push job related info
-        logPushJobProperties();
+        logPushJobProperties(versionTopicInfo, pushJobSetting, schemaInfo, this.clusterName, this.inputDirectory, this.inputFileDataSize);
 
         // Setup the hadoop job
-        JobConf pushJobConf = setupMRConf();
+        JobConf pushJobConf = setupMRConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
         // Whether the messages in one single topic partition is lexicographically sorted by key bytes.
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
         jc = new JobClient(pushJobConf);
         Optional<String> incrementalPushVersion = Optional.empty();
-        if (isIncrementalPush) {
+        if (pushJobSetting.isIncrementalPush) {
           incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
-          getVeniceWriter().broadcastStartOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
+          getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
           runningJob = jc.runJob(pushJobConf);
-          getVeniceWriter().broadcastEndOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
+          getVeniceWriter(versionTopicInfo).broadcastEndOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
         } else {
-          getVeniceWriter().broadcastStartOfPush(!isMapOnly, isChunkingEnabled, compressionStrategy, new HashMap<>());
+          getVeniceWriter(versionTopicInfo).broadcastStartOfPush(!pushJobSetting.isMapOnly, storeSetting.isChunkingEnabled, versionTopicInfo.compressionStrategy, new HashMap<>());
           // submit the job for execution and wait for completion
           runningJob = jc.runJob(pushJobConf);
           //TODO: send a failure END OF PUSH message if something went wrong
-          getVeniceWriter().broadcastEndOfPush(new HashMap<>());
+          getVeniceWriter(versionTopicInfo).broadcastEndOfPush(new HashMap<>());
         }
         // Close VeniceWriter before polling job status since polling job status could
         // trigger job deletion
         closeVeniceWriter();
 
         // Waiting for Venice Backend to complete consumption
-        pollStatusUntilComplete(incrementalPushVersion);
-        checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "");
+        pollStatusUntilComplete(incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
+        checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
       } else {
         logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
 
-      if (enablePBNJ) {
+      if (pushJobSetting.enablePBNJ) {
         logger.info("Post-Bulkload Analysis Job is about to run.");
-        JobConf pbnjJobConf = setupPBNJConf();
+        JobConf pbnjJobConf = setupPBNJConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
         jc = new JobClient(pbnjJobConf);
         runningJob = jc.runJob(pbnjJobConf);
       }
     } catch (Exception e) {
-      checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage());
+      checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
       logger.error("Failed to run job.", e);
       closeVeniceWriter();
       try {
-        stopAndCleanup();
+        stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
       } catch (Exception ex) {
         logger.info("Failed to stop and cleanup the job", ex);
       }
@@ -420,19 +423,109 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   /**
+   * Get input path from the properties;
+   * Check whether there is sub-directory in the input directory
+   *
+   * @param props
+   * @return input URI
+   * @throws Exception
+   */
+  protected String getInputURI(VeniceProperties props) throws Exception {
+    Configuration conf = new Configuration();
+    FileSystem fs = FileSystem.get(conf);
+    String uri = props.getString(INPUT_PATH_PROP);
+    Path sourcePath = getLatestPathOfInputDirectory(uri, fs);
+    return sourcePath.toString();
+  }
+
+  /**
+   * Calculate total data size of input directory
+   * @param inputUri
+   * @return total input data files size
+   * @throws Exception
+   */
+  protected long calculateInputDataSize(String inputUri) throws Exception {
+    Configuration conf = new Configuration();
+    FileSystem fs = FileSystem.get(conf);
+    Path srcPath = new Path(inputUri);
+    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
+
+    if (fileStatuses == null || fileStatuses.length == 0) {
+      throw new RuntimeException("No data found at source path: " + srcPath);
+    }
+
+    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
+    // we are applying this factor to provide a more reasonable estimation.
+    return validateInputDir(fileStatuses) * INPUT_DATA_SIZE_FACTOR;
+  }
+
+  /**
+   * 1. Check whether it's Vson input or Avro input
+   * 2. Check schema consistency;
+   * 3. Populate key schema, value schema;
+   * @param inputUri
+   * @return all schema related information
+   * @throws Exception
+   */
+  protected SchemaInfo getInputSchema(String inputUri) throws Exception {
+    Configuration conf = new Configuration();
+    FileSystem fs = FileSystem.get(conf);
+    Path srcPath = new Path(inputUri);
+    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
+
+    SchemaInfo schemaInfo = new SchemaInfo();
+
+    //try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
+    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath());
+    if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
+      schemaInfo.isAvro = false;
+      schemaInfo.vsonFileKeySchema = fileMetadata.get(FILE_KEY_SCHEMA);
+      schemaInfo.vsonFileValueSchema = fileMetadata.get(FILE_VALUE_SCHEMA);
+    }
+
+    if (schemaInfo.isAvro) {
+      logger.info("Detected Avro input format.");
+      schemaInfo.keyField = props.getString(KEY_FIELD_PROP);
+      schemaInfo.valueField = props.getString(VALUE_FIELD_PROP);
+
+      Schema avroSchema = checkAvroSchemaConsistency(fs, fileStatuses);
+
+      schemaInfo.fileSchemaString = avroSchema.toString();
+      schemaInfo.keySchemaString = extractAvroSubSchema(avroSchema, schemaInfo.keyField).toString();
+      schemaInfo.valueSchemaString = extractAvroSubSchema(avroSchema, schemaInfo.valueField).toString();
+    } else {
+      logger.info("Detected Vson input format, will convert to Avro automatically.");
+      //key / value fields are optional for Vson input
+      schemaInfo.keyField = props.getString(KEY_FIELD_PROP, "");
+      schemaInfo.valueField = props.getString(VALUE_FIELD_PROP, "");
+
+      Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fs, fileStatuses);
+
+      VsonSchema vsonKeySchema = Utils.isNullOrEmpty(schemaInfo.keyField) ?
+          vsonSchemaPair.getFirst() : vsonSchemaPair.getFirst().recordSubtype(schemaInfo.keyField);
+      VsonSchema vsonValueSchema = Utils.isNullOrEmpty(schemaInfo.valueField) ?
+          vsonSchemaPair.getSecond() : vsonSchemaPair.getSecond().recordSubtype(schemaInfo.valueField);
+
+      schemaInfo.keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
+      schemaInfo.valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
+    }
+    return schemaInfo;
+  }
+
+  /**
    * Check push job status related fields and provide appropriate values if yet to be set due to error situations.
    * Upload these fields to the controller using the {@link ControllerClient}.
    * @param status the status of the push job.
    * @param message the corresponding message to the push job status.
    */
-  private void checkAndUploadPushJobStatus(PushJobStatus status, String message) {
-    if (enablePushJobStatusUpload) {
-      int version = topic == null ? UNCREATED_VERSION_NUMBER : Version.parseVersionFromKafkaTopicName(topic);
+  private void checkAndUploadPushJobStatus(PushJobStatus status, String message, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo, long pushStartTime, String pushId) {
+    if (pushJobSetting.enablePushJobStatusUpload) {
+      int version = versionTopicInfo.topic == null ? UNCREATED_VERSION_NUMBER : Version.parseVersionFromKafkaTopicName(versionTopicInfo.topic);
       long duration = pushStartTime == 0 ? 0 : System.currentTimeMillis() - pushStartTime;
       String verifiedPushId = pushId == null ? "" : pushId;
       try {
-        PushJobStatusUploadResponse response = controllerClient.retryableRequest(controllerRetries, c ->
-            c.uploadPushJobStatus(storeName, version, status, duration, verifiedPushId, message));
+        PushJobStatusUploadResponse response = controllerClient.retryableRequest(pushJobSetting.controllerRetries, c ->
+            c.uploadPushJobStatus(pushJobSetting.storeName, version, status, duration, verifiedPushId, message));
         if (response.isError()) {
           logger.warn("Failed to upload push job status with error: " + response.getError());
         }
@@ -473,9 +566,9 @@ public class KafkaPushJob extends AbstractJob {
   /**
    * This method will talk to parent controller to validate key schema.
    */
-  private void validateKeySchema() {
-    SchemaResponse keySchemaResponse = controllerClient.retryableRequest(controllerRetries, c ->
-        c.getKeySchema(storeName));
+  private void validateKeySchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo) {
+    SchemaResponse keySchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
+        c.getKeySchema(setting.storeName));
     if (keySchemaResponse.isError()) {
       throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
     } else if (null == keySchemaResponse.getSchemaStr()) {
@@ -483,14 +576,14 @@ public class KafkaPushJob extends AbstractJob {
       throw new VeniceException("Got a null schema in keySchemaResponse: " + keySchemaResponse.toString());
     }
     Schema serverSchema = Schema.parse(keySchemaResponse.getSchemaStr());
-    Schema clientSchema = Schema.parse(keySchemaString);
+    Schema clientSchema = Schema.parse(schemaInfo.keySchemaString);
     String canonicalizedServerSchema = LinkedinAvroMigrationHelper.toParsingForm(serverSchema);
     String canonicalizedClientSchema = LinkedinAvroMigrationHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
-      String briefErrorMessage = "Key schema mis-match for store " + storeName;
+      String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
       logger.error(briefErrorMessage +
-          "\n\t\tController URLs: " + veniceControllerUrl +
-          "\n\t\tschema defined in HDFS: \t" + keySchemaString +
+          "\n\t\tController URLs: " + controllerClient.getUrlsToFindMasterController() +
+          "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
           "\n\t\tschema defined in Venice: \t" + keySchemaResponse.getSchemaStr());
       throw new VeniceException(briefErrorMessage);
     }
@@ -499,54 +592,55 @@ public class KafkaPushJob extends AbstractJob {
   /***
    * This method will talk to controller to validate value schema.
    */
-  private void validateValueSchema() {
-    SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(controllerRetries, c ->
-        c.getValueSchemaID(storeName, valueSchemaString));
+  private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo) {
+    SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
+        c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
     if (valueSchemaResponse.isError()) {
-      throw new VeniceException("Fail to validate value schema for store: " + storeName
+      throw new VeniceException("Fail to validate value schema for store: " + setting.storeName
           + "\nError from the server: " + valueSchemaResponse.getError()
-          + "\nSchema in data file: " + valueSchemaString
+          + "\nSchema in data file: " + schemaInfo.valueSchemaString
       );
     }
-    valueSchemaId = valueSchemaResponse.getId();
-    logger.info("Got schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
+    schemaInfo.valueSchemaId = valueSchemaResponse.getId();
+    logger.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
   }
 
-  private void getSettingsFromController() {
-    StoreResponse storeResponse = controllerClient.retryableRequest(controllerRetries, c -> c.getStore(storeName));
+  private StoreSetting getSettingsFromController(ControllerClient controllerClient, PushJobSetting setting) {
+    StoreSetting storeSetting = new StoreSetting();
+    StoreResponse storeResponse = controllerClient.retryableRequest(setting.controllerRetries, c -> c.getStore(setting.storeName));
     if (storeResponse.isError()) {
       throw new VeniceException("Can't get store info. " + storeResponse.getError());
     }
-    storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
-    if (storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && isMapOnly) {
-      throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + storeName);
+    storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+    if (storeSetting.storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && setting.isMapOnly) {
+      throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + setting.storeName);
     }
 
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
-        controllerClient.retryableRequest(controllerRetries, c -> c.getStorageEngineOverheadRatio(storeName));
+        controllerClient.retryableRequest(setting.controllerRetries, c -> c.getStorageEngineOverheadRatio(setting.storeName));
     if (storageEngineOverheadRatioResponse.isError()) {
       throw new VeniceException("Can't get storage engine overhead ratio. " +
       storageEngineOverheadRatioResponse.getError());
     }
 
-    storageEngineOverheadRatio = storageEngineOverheadRatioResponse.getStorageEngineOverheadRatio();
+    storeSetting.storageEngineOverheadRatio = storageEngineOverheadRatioResponse.getStorageEngineOverheadRatio();
 
-    this.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
+    storeSetting.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
+    return storeSetting;
   }
 
   /**
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
-  private void createNewStoreVersion() {
-    ControllerApiConstants.PushType pushType = isIncrementalPush ?
+  private VersionTopicInfo createNewStoreVersion(PushJobSetting setting, long inputFileDataSize, ControllerClient controllerClient, String pushId, VeniceProperties props) {
+    VersionTopicInfo versionTopicInfo = new VersionTopicInfo();
+    ControllerApiConstants.PushType pushType = setting.isIncrementalPush ?
         ControllerApiConstants.PushType.INCREMENTAL : ControllerApiConstants.PushType.BATCH;
-    pushStartTime = System.currentTimeMillis();
-    pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
     VersionCreationResponse versionCreationResponse =
-        controllerClient.retryableRequest(controllerRetries, c ->
-            c.requestTopicForWrites(storeName, inputFileDataSize, pushType, pushId, false));
+        controllerClient.retryableRequest(setting.controllerRetries, c ->
+            c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId, false));
     if (versionCreationResponse.isError()) {
-      throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
+      throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
     } else if (versionCreationResponse.getVersion() == 0) {
       // TODO: Fix the server-side request handling. This should not happen. We should get a 404 instead.
@@ -554,29 +648,31 @@ public class KafkaPushJob extends AbstractJob {
     } else {
       logger.info(versionCreationResponse.toString());
     }
-    topic = versionCreationResponse.getKafkaTopic();
-    kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
-    partitionCount = versionCreationResponse.getPartitions();
-    sslToKafka = versionCreationResponse.isEnableSSL();
-    compressionStrategy = versionCreationResponse.getCompressionStrategy();
+    versionTopicInfo.topic = versionCreationResponse.getKafkaTopic();
+    versionTopicInfo.kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    versionTopicInfo.partitionCount = versionCreationResponse.getPartitions();
+    versionTopicInfo.sslToKafka = versionCreationResponse.isEnableSSL();
+    versionTopicInfo.compressionStrategy = versionCreationResponse.getCompressionStrategy();
     // Upload the properties to controller, as it's not in the critical path, so if it's failed, just log the error
     // but do not thrown the exception. No retries for this.
     ControllerResponse response =
-        controllerClient.uploadPushProperties(storeName, versionCreationResponse.getVersion(), props.toProperties());
+        controllerClient.uploadPushProperties(setting.storeName, versionCreationResponse.getVersion(), props.toProperties());
     if (response.isError()) {
       logger.warn("Could not upload properties of this job to the controlelr. Error: " + response.getError());
     }
+
+    return versionTopicInfo;
   }
 
-  private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
+  private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
     if (null == this.veniceWriter) {
       // Initialize VeniceWriter
       Properties veniceWriterProperties = new Properties();
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }
-      if (sslToKafka) {
+      if (versionTopicInfo.sslToKafka) {
         veniceWriterProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
         props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
           veniceWriterProperties.setProperty(key, props.getString(key));
@@ -589,7 +685,7 @@ public class KafkaPushJob extends AbstractJob {
           veniceWriterProperties.putAll(sslWriterProperties);
           // Get the certs from Azkaban executor's file system.
         } catch (IOException e) {
-          throw new VeniceException("Could not get user credential for kafka push job for topic" + topic);
+          throw new VeniceException("Could not get user credential for kafka push job for topic" + versionTopicInfo.topic);
         }
       }
       if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
@@ -600,7 +696,7 @@ public class KafkaPushJob extends AbstractJob {
       }
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
 
-      VeniceWriter<KafkaKey, byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(topic);
+      VeniceWriter<KafkaKey, byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(versionTopicInfo.topic);
       logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       this.veniceWriter = newVeniceWriter;
     }
@@ -625,9 +721,15 @@ public class KafkaPushJob extends AbstractJob {
    * we are willing to mark the job as successful.  If any datacenters report an explicit error status, we throw an
    * exception and fail the job.
    */
-  private void pollStatusUntilComplete(Optional<String> incrementalPushVersion){
+  private void pollStatusUntilComplete(Optional<String> incrementalPushVersion, ControllerClient controllerClient, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo){
     ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
+
+    /** Datacenter-specific details. Stored in memory to avoid printing repetitive details. */
+    Map<String, String> previousExtraDetails = new HashMap<>();
+    /** Overall job details. Stored in memory to avoid printing repetitive details. */
+    String previousOverallDetails = null;
+
     while (keepChecking){
       Utils.sleep(5000); /* TODO better polling policy */
       keepChecking = false;
@@ -643,27 +745,27 @@ public class KafkaPushJob extends AbstractJob {
         case START_OF_INCREMENTAL_PUSH_RECEIVED:
         case END_OF_PUSH_RECEIVED:
         case PROGRESS:
-          JobStatusQueryResponse response = controllerClient.retryableRequest(controllerStatusPollRetries, c ->
-              c.queryJobStatus(topic, incrementalPushVersion));
+          JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries, c ->
+              c.queryJobStatus(versionTopicInfo.topic, incrementalPushVersion));
           /**
            * Note: {@link JobStatusQueryResponse#isError()} means the status could not be queried.
            * This may be due to a communication error.
            */
           if (response.isError()){
-            throw new RuntimeException("Failed to connect to: " + veniceControllerUrl + " to query job status, after " + controllerStatusPollRetries + " attempts.");
+            throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl + " to query job status, after " + pushJobSetting.controllerStatusPollRetries + " attempts.");
           } else {
-            printJobStatus(response);
+            printJobStatus(response, previousOverallDetails, previousExtraDetails);
             ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
             /* Status of ERROR means that the job status was queried, and the job is in an error status */
             if (status.equals(ExecutionStatus.ERROR)){
-              throw new RuntimeException("Push job triggered error for: " + veniceControllerUrl);
+              throw new RuntimeException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
             }
             currentStatus = status;
             keepChecking = true;
           }
           break;
         default:
-          throw new VeniceException("Unexpected status returned by job status poll: " + veniceControllerUrl);
+          throw new VeniceException("Unexpected status returned by job status poll: " + pushJobSetting.veniceControllerUrl);
       }
     }
     /* At this point either reported success, or had connection issues */
@@ -674,7 +776,7 @@ public class KafkaPushJob extends AbstractJob {
     }
   }
 
-  private void printJobStatus(JobStatusQueryResponse response) {
+  private void printJobStatus(JobStatusQueryResponse response, String previousOverallDetails, Map<String, String> previousExtraDetails) {
     String fullStatus = response.getStatus();
     ExecutionStatus status = ExecutionStatus.valueOf(fullStatus);
     long messagesConsumed = response.getMessagesConsumed();
@@ -724,52 +826,53 @@ public class KafkaPushJob extends AbstractJob {
     return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
   }
 
-  private JobConf setupMRConf() {
-    return setupReducerConf(setupInputFormatConf(setupDefaultJobConf(), isAvro), isMapOnly);
+  protected JobConf setupMRConf(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
+    JobConf defaultJobConf = setupDefaultJobConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
+    return setupReducerConf(setupInputFormatConf(defaultJobConf, schemaInfo), pushJobSetting, versionTopicInfo);
   }
 
-  private JobConf setupPBNJConf() {
-    if (!isAvro) {
+  private JobConf setupPBNJConf(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
+    if (!schemaInfo.isAvro) {
       throw new VeniceException("PBNJ only supports Avro input format");
     }
 
-    JobConf conf = setupReducerConf(setupInputFormatConf(setupDefaultJobConf(), true), true);
-    conf.set(VENICE_STORE_NAME_PROP, storeName);
-    conf.set(PBNJ_ROUTER_URL_PROP, veniceRouterUrl);
-    conf.set(PBNJ_FAIL_FAST, Boolean.toString(pbnjFailFast));
-    conf.set(PBNJ_ASYNC, Boolean.toString(pbnjAsync));
-    conf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pbnjSamplingRatio));
+    JobConf conf = setupReducerConf(setupInputFormatConf(setupDefaultJobConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory), schemaInfo), pushJobSetting, versionTopicInfo);
+    conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
+    conf.set(PBNJ_ROUTER_URL_PROP, pushJobSetting.veniceRouterUrl);
+    conf.set(PBNJ_FAIL_FAST, Boolean.toString(pushJobSetting.pbnjFailFast));
+    conf.set(PBNJ_ASYNC, Boolean.toString(pushJobSetting.pbnjAsync));
+    conf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pushJobSetting.pbnjSamplingRatio));
     conf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
     conf.setMapperClass(PostBulkLoadAnalysisMapper.class);
 
     return conf;
   }
 
-  private JobConf setupDefaultJobConf() {
+  protected JobConf setupDefaultJobConf(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
     JobConf conf = new JobConf();
-    conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
-    conf.set(TOPIC_PROP, topic);
-    conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    conf.set(COMPRESSION_STRATEGY, compressionStrategy.toString());
-    conf.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, Long.toString(minimumReducerLoggingIntervalInMs));
-    if( sslToKafka ){
+    conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
+    conf.set(TOPIC_PROP, versionTopicInfo.topic);
+    conf.set(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
+    conf.set(COMPRESSION_STRATEGY, versionTopicInfo.compressionStrategy.toString());
+    conf.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, Long.toString(pushJobSetting.minimumReducerLoggingIntervalInMs));
+    if( versionTopicInfo.sslToKafka ){
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
         conf.set(key, props.getString(key));
       });
     }
-    conf.setBoolean(VENICE_MAP_ONLY, isMapOnly);
+    conf.setBoolean(VENICE_MAP_ONLY, pushJobSetting.isMapOnly);
 
-    conf.setBoolean(ALLOW_DUPLICATE_KEY, isDuplicateKeyAllowed);
-    conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, isChunkingEnabled);
+    conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
+    conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, storeSetting.isChunkingEnabled);
 
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     conf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
     logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + conf.get(MAPREDUCE_JOB_CLASSLOADER));
 
-    conf.set(STORAGE_QUOTA_PROP, Long.toString(storeStorageQuota));
-    conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storageEngineOverheadRatio));
+    conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
+    conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storeSetting.storageEngineOverheadRatio));
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}.
      *  Allow overriding properties if their names start with {@link VeniceWriter.VENICE_WRITER_CONFIG_PREFIX}
@@ -796,13 +899,13 @@ public class KafkaPushJob extends AbstractJob {
       }
     }
 
-    conf.setInt(VALUE_SCHEMA_ID_PROP, valueSchemaId);
+    conf.setInt(VALUE_SCHEMA_ID_PROP, schemaInfo.valueSchemaId);
 
     if (System.getenv(HADOOP_TOKEN_FILE_LOCATION) != null) {
       conf.set(MAPREDUCE_JOB_CREDENTIALS_BINARY, System.getenv(HADOOP_TOKEN_FILE_LOCATION));
     }
 
-    conf.setJobName(id + ":" + "hadoop_to_venice_bridge" + "-" + topic);
+    conf.setJobName(id + ":" + "hadoop_to_venice_bridge" + "-" + versionTopicInfo.topic);
     conf.setJarByClass(this.getClass());
 
 
@@ -840,13 +943,13 @@ public class KafkaPushJob extends AbstractJob {
     return conf;
   }
 
-  private JobConf setupInputFormatConf(JobConf jobConf, boolean isAvro) {
-    jobConf.set(KEY_FIELD_PROP, keyField);
-    jobConf.set(VALUE_FIELD_PROP, valueField);
+  private JobConf setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo) {
+    jobConf.set(KEY_FIELD_PROP, schemaInfo.keyField);
+    jobConf.set(VALUE_FIELD_PROP, schemaInfo.valueField);
 
-    if (isAvro) {
-      jobConf.set(SCHEMA_STRING_PROP, fileSchemaString);
-      jobConf.set(AvroJob.INPUT_SCHEMA, fileSchemaString);
+    if (schemaInfo.isAvro) {
+      jobConf.set(SCHEMA_STRING_PROP, schemaInfo.fileSchemaString);
+      jobConf.set(AvroJob.INPUT_SCHEMA, schemaInfo.fileSchemaString);
       jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
       jobConf.setInputFormat(AvroInputFormat.class);
       jobConf.setMapperClass(VeniceAvroMapper.class);
@@ -855,45 +958,44 @@ public class KafkaPushJob extends AbstractJob {
       jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
       jobConf.setMapperClass(VeniceVsonMapper.class);
       jobConf.setBoolean(VSON_PUSH, true);
-      jobConf.set(FILE_KEY_SCHEMA, vsonFileKeySchema);
-      jobConf.set(FILE_VALUE_SCHEMA, vsonFileValueSchema);
+      jobConf.set(FILE_KEY_SCHEMA, schemaInfo.vsonFileKeySchema);
+      jobConf.set(FILE_VALUE_SCHEMA, schemaInfo.vsonFileValueSchema);
     }
 
     return jobConf;
   }
 
-  private JobConf setupReducerConf(JobConf jobConf, boolean isMapOnly) {
-    if (isMapOnly) {
+  private JobConf setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
+    if (pushJobSetting.isMapOnly) {
       jobConf.setMapSpeculativeExecution(false);
       jobConf.setNumReduceTasks(0);
     } else {
       jobConf.setPartitionerClass(VeniceMRPartitioner.class);
-
       jobConf.setMapOutputKeyClass(BytesWritable.class);
       jobConf.setMapOutputValueClass(BytesWritable.class);
       jobConf.setReducerClass(VeniceReducer.class);
-      jobConf.setReduceSpeculativeExecution(enableReducerSpeculativeExecution);
-      jobConf.setNumReduceTasks(partitionCount);
+      jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
+      jobConf.setNumReduceTasks(versionTopicInfo.partitionCount);
     }
 
     return jobConf;
   }
 
-  private void logPushJobProperties() {
-    logger.info("Kafka URL: " + kafkaUrl);
-    logger.info("Kafka Topic: " + topic);
-    logger.info("Kafka topic partition count: " + partitionCount);
-    logger.info("Kafka Queue Bytes: " + batchNumBytes);
+  private void logPushJobProperties(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, String clusterName, String inputDirectory, long inputFileDataSize) {
+    logger.info("Kafka URL: " + versionTopicInfo.kafkaUrl);
+    logger.info("Kafka Topic: " + versionTopicInfo.topic);
+    logger.info("Kafka topic partition count: " + versionTopicInfo.partitionCount);
+    logger.info("Kafka Queue Bytes: " + pushJobSetting.batchNumBytes);
     logger.info("Input Directory: " + inputDirectory);
-    logger.info("Venice Store Name: " + storeName);
+    logger.info("Venice Store Name: " + pushJobSetting.storeName);
     logger.info("Venice Cluster Name: " + clusterName);
-    logger.info("Venice URL: " + veniceControllerUrl);
-    logger.info("File Schema: " + fileSchemaString);
-    logger.info("Avro key schema: " + keySchemaString);
-    logger.info("Avro value schema: " + valueSchemaString);
+    logger.info("Venice URL: " + pushJobSetting.veniceControllerUrl);
+    logger.info("File Schema: " + schemaInfo.fileSchemaString);
+    logger.info("Avro key schema: " + schemaInfo.keySchemaString);
+    logger.info("Avro value schema: " + schemaInfo.valueSchemaString);
     logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
-    logger.info("Is incremental push: " + isIncrementalPush);
-    logger.info("Is duplicated key allowed" + isDuplicateKeyAllowed);
+    logger.info("Is incremental push: " + pushJobSetting.isIncrementalPush);
+    logger.info("Is duplicated key allowed" + pushJobSetting.isDuplicateKeyAllowed);
   }
   /**
    * Do not change this method argument type.
@@ -907,11 +1009,11 @@ public class KafkaPushJob extends AbstractJob {
    */
   @Override
   public void cancel() {
-    stopAndCleanup();
-    checkAndUploadPushJobStatus(PushJobStatus.KILLED, "");
+    stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
+    checkAndUploadPushJobStatus(PushJobStatus.KILLED, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
   }
 
-  private void stopAndCleanup() {
+  private void stopAndCleanup(PushJobSetting pushJobSetting, ControllerClient controllerClient, VersionTopicInfo versionTopicInfo) {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     try {
       if (null != runningJob && !runningJob.isComplete()) {
@@ -921,69 +1023,11 @@ public class KafkaPushJob extends AbstractJob {
       // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
       logger.info("Received exception while killing map-reduce job", ex);
     }
-    if (! Utils.isNullOrEmpty(topic) && !isIncrementalPush) {
-      controllerClient.retryableRequest(controllerRetries, c -> c.killOfflinePushJob(topic));
-      logger.info("Offline push job has been killed, topic: " + topic);
+    if (! Utils.isNullOrEmpty(versionTopicInfo.topic) && !pushJobSetting.isIncrementalPush) {
+      controllerClient.retryableRequest(pushJobSetting.controllerRetries, c -> c.killOfflinePushJob(versionTopicInfo.topic));
+      logger.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
     }
     closeVeniceWriter();
-  }
-
-  /**
-   * Pulls out the schema from an avro file, ignoring directories and prefix "."
-   * This function will do the following tasks as well:
-   * 1. Check whether we have sub-directory in inputDirectory or not;
-   * 2. Calculate total data size of input directory;
-   * 3. Check whether it's Vson input or Avro input
-   * 4. Check schema consistency;
-   * 5. Populate key schema, value schema;
-   */
-  private void inspectHdfsSource(Path srcPath) throws IOException {
-    inputFileDataSize = 0;
-    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
-
-    if (fileStatuses == null || fileStatuses.length == 0) {
-      throw new RuntimeException("No data found at source path: " + srcPath);
-    }
-
-    inputFileDataSize = validateInputDir(fileStatuses);
-    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
-    // we are applying this factor to provide a more reasonable estimation.
-    inputFileDataSize *= INPUT_DATA_SIZE_FACTOR;
-
-    //try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
-    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath());
-    if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
-      isAvro = false;
-      vsonFileKeySchema = fileMetadata.get(FILE_KEY_SCHEMA);
-      vsonFileValueSchema = fileMetadata.get(FILE_VALUE_SCHEMA);
-    }
-
-    if (isAvro) {
-      logger.info("Detected Avro input format.");
-      keyField = props.getString(KEY_FIELD_PROP);
-      valueField = props.getString(VALUE_FIELD_PROP);
-
-      Schema avroSchema = checkAvroSchemaConsistency(fileStatuses);
-
-      fileSchemaString = avroSchema.toString();
-      keySchemaString = extractAvroSubSchema(avroSchema, this.keyField).toString();
-      valueSchemaString = extractAvroSubSchema(avroSchema, this.valueField).toString();
-    } else {
-      logger.info("Detected Vson input format, will convert to Avro automatically.");
-      //key / value fields are optional for Vson input
-      keyField = props.getString(KEY_FIELD_PROP, "");
-      valueField = props.getString(VALUE_FIELD_PROP, "");
-
-      Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fileStatuses);
-
-      VsonSchema vsonKeySchema = Utils.isNullOrEmpty(this.keyField) ?
-          vsonSchemaPair.getFirst() : vsonSchemaPair.getFirst().recordSubtype(this.keyField);
-      VsonSchema vsonValueSchema = Utils.isNullOrEmpty(this.valueField) ?
-          vsonSchemaPair.getSecond() : vsonSchemaPair.getSecond().recordSubtype(this.valueField);
-
-      keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
-      valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
-    }
   }
 
   private Schema extractAvroSubSchema(Schema origin, String fieldName) {
@@ -996,7 +1040,7 @@ public class KafkaPushJob extends AbstractJob {
     return field.schema();
   }
 
-  private Schema getAvroFileHeader(Path path) throws IOException {
+  private Schema getAvroFileHeader(FileSystem fs, Path path) throws IOException {
     logger.debug("path:" + path.toUri().getPath());
 
     GenericDatumReader<Object> avroReader = new GenericDatumReader<Object>();
@@ -1014,7 +1058,7 @@ public class KafkaPushJob extends AbstractJob {
     return schema;
   }
 
-  private Pair<VsonSchema, VsonSchema> getVsonFileHeader(Path path) {
+  private Pair<VsonSchema, VsonSchema> getVsonFileHeader(FileSystem fs, Path path) {
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, path);
     if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
       throw new VeniceException("Can't find Vson schema from file: " + path.getName());
@@ -1025,10 +1069,10 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   //Vson-based file store key / value schema string as separated properties in file header
-  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileStatus[] fileStatusList) {
+  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) {
     Pair<VsonSchema, VsonSchema> vsonSchema = null;
     for (FileStatus status : fileStatusList) {
-      Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(status.getPath());
+      Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(fs, status.getPath());
       if (vsonSchema == null) {
         vsonSchema = newSchema;
       } else {
@@ -1044,10 +1088,10 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   //Avro-based file composes key and value schema as a whole
-  private Schema checkAvroSchemaConsistency(FileStatus[] fileStatusList) throws IOException{
+  private Schema checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) throws IOException{
     Schema avroSchema = null;
     for (FileStatus status : fileStatusList) {
-      Schema newSchema = getAvroFileHeader(status.getPath());
+      Schema newSchema = getAvroFileHeader(fs, status.getPath());
       if (avroSchema == null) {
         avroSchema = newSchema;
       } else {
@@ -1085,6 +1129,9 @@ public class KafkaPushJob extends AbstractJob {
     return metadataMap;
   }
 
+  /**
+   * Define as "protected" function instead of "private" because it's needed in some test cases.
+   */
   protected static Path getLatestPathOfInputDirectory(String inputDirectory, FileSystem fs) throws IOException{
     Path sourcePath;
     boolean computeLatestPath = false;
@@ -1103,21 +1150,21 @@ public class KafkaPushJob extends AbstractJob {
     return sourcePath;
   }
 
-  private void discoverCluster(){
-    logger.info("Discover cluster for store:" +storeName);
+  private String discoverCluster(PushJobSetting setting) {
+    logger.info("Discover cluster for store:" + setting.storeName);
     // TODO: Evaluate what's the proper way to add retries here...
-    ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrl, storeName);
-    if(clusterDiscoveryResponse.isError()){
-      throw new VeniceException("Get error in clusterDiscoveryResponse:"+clusterDiscoveryResponse.getError());
+    ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(setting.veniceControllerUrl, setting.storeName);
+    if (clusterDiscoveryResponse.isError()) {
+      throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
     } else {
-      clusterName = clusterDiscoveryResponse.getCluster();
-      controllerClient = new ControllerClient(clusterName, veniceControllerUrl);
-      logger.info("Found cluster: "+clusterName+" for store: "+storeName);
+      String clusterName = clusterDiscoveryResponse.getCluster();
+      logger.info("Found cluster: " + clusterName + " for store: " + setting.storeName);
+      return clusterName;
     }
   }
 
   public String getKafkaTopic() {
-    return topic;
+    return versionTopicInfo.topic;
   }
 
   public String getInputDirectory() {
@@ -1125,15 +1172,15 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   public String getFileSchemaString() {
-    return fileSchemaString;
+    return schemaInfo.fileSchemaString;
   }
 
   public String getKeySchemaString() {
-    return keySchemaString;
+    return schemaInfo.keySchemaString;
   }
 
   public String getValueSchemaString() {
-    return valueSchemaString;
+    return schemaInfo.valueSchemaString;
   }
 
   public long getInputFileDataSize() {
