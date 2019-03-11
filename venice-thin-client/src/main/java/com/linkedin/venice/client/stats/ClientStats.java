@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.stats;
 
+import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
+import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -73,8 +75,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
     /**
      * The total time it took to process the response.
      *
-     * For {@link com.linkedin.venice.client.store.deserialization.BatchGetDeserializer} implementations
-     * other than {@link com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType.BLOCKING},
+     * For {@link BatchDeserializer} implementations
+     * other than {@link BatchDeserializerType.BLOCKING},
      * this metric is also further broken down into sub-steps (see below).
      */
     responseDeserializationTime = registerSensorWithDetailedPercentiles("response_deserialization_time", new Avg(), new Max());

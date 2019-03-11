@@ -10,7 +10,8 @@ import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Arrays;
+import io.tehuti.utils.SystemTime;
+import io.tehuti.utils.Time;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -48,17 +49,20 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   private static final String DOT_PRODUCT_SPEC = "dotProduct_spec";
   private static final String COSINE_SIMILARITY_SPEC = "cosineSimilarity_spec";
 
+  private final Time time;
   private final Schema latestValueSchema;
   private final InternalAvroStoreClient storeClient;
   private final String resultSchemaName;
   private final Optional<ClientStats> stats;
-  private final long preRequestTimeInNS;
   private Set<String> projectFields = new HashSet<>();
   private List<DotProduct> dotProducts = new LinkedList<>();
   private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
 
-  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-      Optional<ClientStats> stats, final long preRequestTimeInNS) {
+  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient, Optional<ClientStats> stats) {
+    this(latestValueSchema, storeClient, stats, new SystemTime());
+  }
+
+  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient, Optional<ClientStats> stats, Time time) {
     if (latestValueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceClientException("Only value schema with 'RECORD' type is supported");
     }
@@ -66,10 +70,10 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
       throw new VeniceClientException("Field name: " + VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME +
           " is reserved, please don't use it in value schema: " + latestValueSchema);
     }
+    this.time = time;
     this.latestValueSchema = latestValueSchema;
     this.storeClient = storeClient;
     this.stats = stats;
-    this.preRequestTimeInNS = preRequestTimeInNS;
     this.resultSchemaName = ComputeUtils.removeAvroIllegalCharacter(storeClient.getStoreName()) + "_VeniceComputeResult";
   }
 
@@ -115,7 +119,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
     return this;
   }
 
-  private Pair<Schema, String> getResultSchema() {
+  protected Pair<Schema, String> getResultSchema() {
     Map<String, Object> computeSpec = new HashMap<>();
     computeSpec.put(PROJECTION_SPEC, projectFields);
     List<Pair<CharSequence, CharSequence>> dotProductPairs = new LinkedList<>();
@@ -193,6 +197,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
 
   @Override
   public CompletableFuture<Map<K, GenericRecord>> execute(Set<K> keys) throws VeniceClientException {
+    long preRequestTimeInNS = time.nanoseconds();
     Pair<Schema,String> resultSchema = getResultSchema();
 
     // Generate ComputeRequest object

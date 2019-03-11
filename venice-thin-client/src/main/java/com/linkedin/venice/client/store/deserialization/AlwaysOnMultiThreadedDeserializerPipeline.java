@@ -5,8 +5,6 @@ import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.stats.Reporter;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.LatencyUtils;
 import java.util.HashMap;
 import java.util.List;
@@ -18,37 +16,38 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 
 /**
- * This {@link BatchGetDeserializer} maintains a fixed number of long-running threads, which are
+ * This {@link BatchDeserializer} maintains a fixed number of long-running threads, which are
  * used to deserialize records originating from any request. Its threads will be added exactly
  * once per instance of {@link Executor} passed to it, in order to avoid starving it of threads
  * if it it is re-used across clients.
  */
-public class AlwaysOnMultiThreadedDeserializerPipeline<K, V> extends BatchGetDeserializer<K, V> {
+public class AlwaysOnMultiThreadedDeserializerPipeline<E, K, V> extends BatchDeserializer<E, K, V> {
   /**
-   * This map is used ot ensure that each {@link Executor} only gets threads added to it once.
+   * This map is used to ensure that each {@link Executor} only gets threads added to it once.
    */
-  private static final Map<Executor, BlockingQueue<RecordContainer>> alreadySeededExecutors = new HashMap<>();
+  private static final Map<Executor, BlockingQueue<RecordContainer>> ALREADY_SEEDED_EXECUTORS = new HashMap<>();
 
   private final BlockingQueue<RecordContainer> queue;
 
   public AlwaysOnMultiThreadedDeserializerPipeline(Executor deserializationExecutor, ClientConfig clientConfig) {
     super(deserializationExecutor, clientConfig);
+
     synchronized (AlwaysOnMultiThreadedDeserializerPipeline.class) {
-      if (!alreadySeededExecutors.containsKey(deserializationExecutor)) {
+      if (!ALREADY_SEEDED_EXECUTORS.containsKey(deserializationExecutor)) {
         BlockingQueue<RecordContainer> queueDedicatedToExecutor =
             new LinkedBlockingQueue<>(this.clientConfig.getAlwaysOnDeserializerQueueCapacity());
-        alreadySeededExecutors.put(deserializationExecutor, queueDedicatedToExecutor);
+        ALREADY_SEEDED_EXECUTORS.put(deserializationExecutor, queueDedicatedToExecutor);
         for (int i = 0; i < this.clientConfig.getAlwaysOnDeserializerNumberOfThreads(); i++) {
           deserializationExecutor.execute(() -> {
             Thread.currentThread().setName(Thread.currentThread().getName() + "-" + this.getClass().getSimpleName());
             while (true) {
-              RecordContainer<K, V> recordContainer;
+              RecordContainer<E, K, V> recordContainer;
               try {
                 recordContainer = queueDedicatedToExecutor.take();
                 if (null == recordContainer) {
@@ -59,16 +58,7 @@ public class AlwaysOnMultiThreadedDeserializerPipeline<K, V> extends BatchGetDes
               }
               try {
                 recordContainer.resultsMap.initFirstRecordedTimeStamp(() -> System.nanoTime());
-                MultiGetResponseRecordV1 record = recordContainer.multiGetResponseRecord;
-                int keyIdx = record.keyIndex;
-                if (keyIdx >= recordContainer.keyList.size() || keyIdx < 0) {
-                  recordContainer.resultsMap.valueFuture.completeExceptionally(
-                      new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key"));
-                }
-                int recordSchemaId = record.schemaId;
-                RecordDeserializer<V> dataDeserializer = recordContainer.recordDeserializerGetter.apply(recordSchemaId);
-                V value = dataDeserializer.deserialize(record.value);
-                recordContainer.resultsMap.put(recordContainer.keyList.get(keyIdx), value);
+                recordContainer.envelopeProcessor.accept(recordContainer.resultsMap, recordContainer.envelope);
               } catch (Exception e) {
                 recordContainer.resultsMap.valueFuture.completeExceptionally(
                     new VeniceClientException("Unexpected exception during record deserialization!", e));
@@ -78,18 +68,19 @@ public class AlwaysOnMultiThreadedDeserializerPipeline<K, V> extends BatchGetDes
         }
       }
     }
-    this.queue = alreadySeededExecutors.get(deserializationExecutor);
+    this.queue = ALREADY_SEEDED_EXECUTORS.get(deserializationExecutor);
   }
 
   @Override
   public void deserialize(
-      final CompletableFuture<Map<K, V>> valueFuture,
-      final Iterable<MultiGetResponseRecordV1> records,
-      final List<K> keyList,
-      final Function<Integer, RecordDeserializer<V>> recordDeserializerGetter,
-      final Reporter responseDeserializationComplete,
-      final Optional<ClientStats> stats,
-      final long preResponseEnvelopeDeserialization) {
+      CompletableFuture<Map<K, V>> valueFuture,
+      Iterable<E> envelopes,
+      List<K> keyList,
+      BiConsumer<Map<K, V>, E> envelopeProcessor,
+      Reporter responseDeserializationComplete,
+      Optional<ClientStats> stats,
+      long preResponseEnvelopeDeserialization) {
+
     long recordsDeserializationStartTime = System.nanoTime();
     Consumer<Long> endReporter = preResponseRecordsDeserialization -> {
       responseDeserializationComplete.report();
@@ -100,10 +91,10 @@ public class AlwaysOnMultiThreadedDeserializerPipeline<K, V> extends BatchGetDes
     };
     FuturisticMap<K, V> resultMap = new FuturisticMap<>(valueFuture, endReporter, keyList.size());
     int recordCount = 0;
-    for (MultiGetResponseRecordV1 record : records) {
+    for (E envelope : envelopes) {
       recordCount++;
       try {
-        queue.put(new RecordContainer(record, resultMap, keyList, recordDeserializerGetter));
+        queue.put(new RecordContainer(envelope, resultMap, envelopeProcessor));
       } catch (InterruptedException e) {
         valueFuture.completeExceptionally(new VeniceException("Interrupted during deserialization!", e));
       }
@@ -113,21 +104,18 @@ public class AlwaysOnMultiThreadedDeserializerPipeline<K, V> extends BatchGetDes
     resultMap.setTargetSize(recordCount);
   }
 
-  private static class RecordContainer<K, V> {
-    private final MultiGetResponseRecordV1 multiGetResponseRecord;
+  private static class RecordContainer<E, K, V> {
+    private final E envelope;
     private final FuturisticMap<K, V> resultsMap;
-    private final List<K> keyList;
-    private final Function<Integer, RecordDeserializer<V>> recordDeserializerGetter;
+    private final BiConsumer<Map<K, V>, E> envelopeProcessor;
 
     RecordContainer(
-        MultiGetResponseRecordV1 multiGetResponseRecord,
+        E envelope,
         FuturisticMap<K, V> resultsMap,
-        List<K> keyList,
-        Function<Integer, RecordDeserializer<V>> recordDeserializerGetter) {
-      this.multiGetResponseRecord = multiGetResponseRecord;
+        BiConsumer<Map<K, V>, E> envelopeProcessor) {
+      this.envelope = envelope;
       this.resultsMap = resultsMap;
-      this.keyList = keyList;
-      this.recordDeserializerGetter = recordDeserializerGetter;
+      this.envelopeProcessor = envelopeProcessor;
     }
   }
 
