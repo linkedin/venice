@@ -1,25 +1,23 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
-import com.linkedin.venice.client.store.transport.D2TransportClient;
-import com.linkedin.venice.client.store.transport.HttpTransportClient;
-import com.linkedin.venice.client.store.transport.TransportClientCallback;
+import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
-import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.Metric;
@@ -29,33 +27,27 @@ import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.commons.io.IOUtils;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeTest;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
-@Test(singleThreaded = true)
+@Test(singleThreaded = false)
 public class StoreClientPerfTest {
   private static final Logger LOGGER = Logger.getLogger(StoreClientPerfTest.class);
   private MockD2ServerWrapper routerServer;
@@ -110,39 +102,70 @@ public class StoreClientPerfTest {
         .setD2Client(d2Client);
 
     // Test variables
-    int[] concurrentCallsPerBatchArray = new int[]{1, 2, 5, 10, 20};
-    List<BatchGetDeserializerType> batchGetDeserializerTypes = new ArrayList<>(Arrays.asList(BatchGetDeserializerType.values()));
-    List<AvroGenericDeserializer.IterableImpl> iterableImplementations = new ArrayList<>(Arrays.asList(AvroGenericDeserializer.IterableImpl.values()));
+    int[] concurrentCallsPerBatchArray = new int[]{1, 2, 10};
+    List<BatchDeserializerType> batchDeserializerTypes = Arrays.stream(BatchDeserializerType.values())
+        .filter(batchGetDeserializerType -> batchGetDeserializerType != BatchDeserializerType.BLACK_HOLE)
+        .collect(Collectors.toList());
+    List<AvroGenericDeserializer.IterableImpl> iterableImplementations = Arrays.stream(AvroGenericDeserializer.IterableImpl.values())
+        // LAZY_WITH_REPLAY_SUPPORT is only intended for the back end, so not super relevant here. Skipped to speed up the test.
+        .filter(iterable -> iterable != AvroGenericDeserializer.IterableImpl.LAZY_WITH_REPLAY_SUPPORT)
+        .collect(Collectors.toList());
+    boolean[] yesAndNo = new boolean[]{true, false};
 
-    // LAZY_WITH_REPLAY_SUPPORT is only intended for the back end, so not super relevant here. Skipped to speed up the test.
-    iterableImplementations.remove(AvroGenericDeserializer.IterableImpl.LAZY_WITH_REPLAY_SUPPORT);
-
-    int totalTests = concurrentCallsPerBatchArray.length * batchGetDeserializerTypes.size() * iterableImplementations.size();
+    int totalTests = yesAndNo.length * 2 * concurrentCallsPerBatchArray.length * batchDeserializerTypes.size() * iterableImplementations.size();
     List<ResultsContainer> resultsContainers = new ArrayList<>();
     int testNumber = 1;
+    boolean warmedUp = false;
 
-    for (int concurrentCallsPerBatch: concurrentCallsPerBatchArray) {
-      for (BatchGetDeserializerType batchGetDeserializerType: batchGetDeserializerTypes) {
-        for (AvroGenericDeserializer.IterableImpl iterableImpl: iterableImplementations) {
+    for (boolean compute: yesAndNo) {
+      for (boolean fastAvro : yesAndNo) {
+        for (int concurrentCallsPerBatch : concurrentCallsPerBatchArray) {
+          for (BatchDeserializerType batchDeserializerType : batchDeserializerTypes) {
+            for (AvroGenericDeserializer.IterableImpl iterableImpl : iterableImplementations) {
+              MetricsRepository metricsRepository = new MetricsRepository();
+              ClientConfig newClientConfig = ClientConfig.cloneConfig(baseClientConfig)
+                  .setBatchDeserializerType(batchDeserializerType)
+                  .setMultiGetEnvelopeIterableImpl(iterableImpl)
+                  .setUseFastAvro(fastAvro)
+                  .setMetricsRepository(metricsRepository);
+              if (!warmedUp) {
+                ClientConfig warmUpConfig = ClientConfig.cloneConfig(newClientConfig)
+                    // Throw-away metrics repo, just to avoid double-registering metrics
+                    .setMetricsRepository(new MetricsRepository());
+                LOGGER.info("\n\n");
+                LOGGER.info("Warm up test.\n\n");
+                clientStressTest(warmUpConfig, concurrentCallsPerBatch, compute);
+                warmedUp = true;
+                LOGGER.info("\n\n");
+                LOGGER.info("Warm up finished. Beginning real tests now.\n\n");
+              }
+              LOGGER.info("\n\n");
+              LOGGER.info("Test " + testNumber + "/" + totalTests + "\n\n");
+              resultsContainers.add(clientStressTest(newClientConfig, concurrentCallsPerBatch, compute));
+              testNumber++;
+            }
+          }
           LOGGER.info("\n\n");
-          LOGGER.info("Test " + testNumber + "/" + totalTests + "\n\n");
-          MetricsRepository metricsRepository = new MetricsRepository();
-          ClientConfig newClientConfig = ClientConfig.cloneConfig(baseClientConfig)
-              .setBatchGetDeserializerType(batchGetDeserializerType)
-              .setMultiGetEnvelopeIterableImpl(iterableImpl)
-              .setMetricsRepository(metricsRepository);
-          resultsContainers.add(clientStressTest(newClientConfig, concurrentCallsPerBatch));
-          testNumber++;
+          LOGGER.info("Finished "
+              + (compute ? "compute" : "batch get") + " requests"
+              + " with" + (fastAvro ? "" : "out") + " fast-avro"
+              + " at " + concurrentCallsPerBatch + " concurrentCallsPerBatch."
+              + " All results so far:\n\n");
+          printCSV(resultsContainers);
         }
       }
     }
+  }
+
+  private void printCSV(List<ResultsContainer> resultsContainers) {
 
     StringBuilder sb = new StringBuilder();
-
     sb.append("\n\nCSV output:\n\n\n");
-    sb.append("Batch get deserializer,");
-    sb.append("Batch get envelope iterable impl,");
+    sb.append("Request type,");
+    sb.append("Fast Avro,");
     sb.append("Max concurrent queries,");
+    sb.append("Batch get deserializer,");
+    sb.append("Envelope iterable impl,");
     sb.append("Total queries,");
     sb.append("Throughput,");
     sb.append("Request serialization time Avg,");
@@ -187,8 +210,19 @@ public class StoreClientPerfTest {
     LOGGER.info(sb.toString());
   }
 
-  private ResultsContainer clientStressTest(ClientConfig clientConfig, int numberOfConcurrentCallsPerBatch) throws IOException, ExecutionException, InterruptedException {
-    try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
+  private static class TestComputeRequestBuilder extends AvroComputeRequestBuilder<String> {
+    public TestComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+        Optional<ClientStats> stats, long preRequestTimeInNS) {
+      super(latestValueSchema, storeClient, stats);
+    }
+
+    public Pair<Schema, String> getResultSchema() {
+      return super.getResultSchema();
+    }
+  }
+
+  private ResultsContainer clientStressTest(ClientConfig clientConfig, int numberOfConcurrentCallsPerBatch, boolean compute) throws IOException, ExecutionException, InterruptedException {
+    try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(clientConfig)) {
       MetricsRepository metricsRepository = clientConfig.getMetricsRepository();
 
       int valueSchemaId = 1;
@@ -197,25 +231,63 @@ public class StoreClientPerfTest {
       Schema valueSchema = new Schema.Parser().parse(valueSchemaStr);
       Set<String> keys = new HashSet<>();
       setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
-      // Construct MultiGetResponse
+      // Construct response
+
       RecordSerializer<Object> valueSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
-      List<Object> records = new ArrayList<>();
+      List<MultiGetResponseRecordV1> records = new ArrayList<>();
+
+      TestComputeRequestBuilder testComputeRequestBuilder = new TestComputeRequestBuilder(
+          client.getLatestValueSchema(),
+          (InternalAvroStoreClient) client,
+          Optional.empty(),
+          0);
+      Collection<String> fieldNames = valueSchema.getFields().stream()
+          .map(field -> field.name())
+          .collect(Collectors.toList());
+      testComputeRequestBuilder.project(fieldNames);
+      Pair<Schema, String> computeResultSchemaPair = testComputeRequestBuilder.getResultSchema();
+      Schema computeResultSchema = computeResultSchemaPair.getFirst();
+      RecordSerializer<Object> computeResultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
+      RecordDeserializer<Object> computeResultDeserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(computeResultSchema);
+      List<ComputeResponseRecordV1> computeRecords = new ArrayList<>();
+      LOGGER.debug("computeResultSchema : \n" + computeResultSchema.toString(true));
+
       for (int k = 0; k < 1000; k++) {
         MultiGetResponseRecordV1 dataRecord = new MultiGetResponseRecordV1();
         dataRecord.keyIndex = k;
         dataRecord.schemaId = valueSchemaId;
         dataRecord.value = ByteBuffer.wrap(valueSerializer.serialize(TestPushUtils.getRecordWithFloatArray(valueSchema, k, valueSizeInBytes)));
         records.add(dataRecord);
+
+        ComputeResponseRecordV1 computeRecord = new ComputeResponseRecordV1();
+        computeRecord.keyIndex = k;
+        GenericRecord computeResultRecord = TestPushUtils.getRecordWithFloatArray(computeResultSchema, k, valueSizeInBytes);
+        computeResultRecord.put(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME, new HashMap<String, String>());
+        if (k == 0) {
+           LOGGER.debug("computeResultRecord: " + computeResultRecord.toString());
+        }
+        computeRecord.value = ByteBuffer.wrap(computeResultSerializer.serialize(computeResultRecord));
+        computeRecords.add(computeRecord);
+
+        // Just to see if Avro will choke on it...
+        GenericRecord deserializedComputeResultRecord = (GenericRecord) computeResultDeserializer.deserialize(computeRecord.value);
+        Assert.assertEquals(deserializedComputeResultRecord, computeResultRecord);
+
         keys.add("key" + k);
       }
 
       // Serialize MultiGetResponse
-      RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+      RecordSerializer<MultiGetResponseRecordV1> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
       byte[] responseBytes = responseSerializer.serializeObjects(records);
       int responseSchemaId = 1;
-
       FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
       routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
+
+      // Serialize ComputeResponse
+      RecordSerializer<ComputeResponseRecordV1> computeSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(ComputeResponseRecordV1.SCHEMA$);
+      byte[] computeResponseBytes = computeSerializer.serializeObjects(computeRecords);
+      FullHttpResponse computeHttpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, computeResponseBytes);
+      routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_COMPUTE+ "/" + storeName, computeHttpResponse);
 
       // Batch-get
 
@@ -226,11 +298,35 @@ public class StoreClientPerfTest {
       long firstQueryStartTime = System.currentTimeMillis();
       AtomicInteger errors = new AtomicInteger(0);
       AtomicInteger success = new AtomicInteger(0);
+
+      ResultsContainer r = new ResultsContainer();
+
+      LOGGER.info("");
+      LOGGER.info("=============================================================================================");
+      LOGGER.info("Request Type:           " + r.put(compute ? "compute" : "batch-get"));
+      LOGGER.info("Fast Avro:              " + r.put(clientConfig.isUseFastAvro()));
+      LOGGER.info("Max concurrent queries: " + r.put(numberOfConcurrentCallsPerBatch));
+      LOGGER.info("Batch get deserializer: " + r.put(clientConfig.getBatchDeserializerType()));
+      LOGGER.info("Envelope iterable impl: " + r.put(clientConfig.getMultiGetEnvelopeIterableImpl()));
+      LOGGER.info("Total queries:          " + r.put(numberOfCalls));
+      LOGGER.info("keys/query:             " + keysPerCall);
+      LOGGER.info("bytes/value:            " + valueSizeInBytes);
+      LOGGER.info("");
+
+      ComputeRequestBuilder<String> computeRequestBuilder = client.compute().project(fieldNames);
       for (int call = 1; call <= numberOfCalls; call++) {
-        futures[call % numberOfConcurrentCallsPerBatch] = client.batchGet(keys).handle((o, throwable) -> {
+        CompletableFuture<Map<String, GenericRecord>> future;
+        if (compute) {
+          future = computeRequestBuilder.execute(keys);
+        } else {
+          future = client.batchGet(keys);
+        }
+        futures[call % numberOfConcurrentCallsPerBatch] = future.handle((o, throwable) -> {
           if (throwable != null) {
-            errors.getAndIncrement();
-            LOGGER.error("Query error!", throwable);
+            if (errors.getAndIncrement() < 10) {
+              // Only log the first few errors
+              LOGGER.error("Query error!", throwable);
+            }
           } else {
             Assert.assertEquals(o.size(), keysPerCall, "Not enough records returned!");
             success.getAndIncrement();
@@ -241,6 +337,7 @@ public class StoreClientPerfTest {
           CompletableFuture.allOf(futures).get();
         }
       }
+
       return CompletableFuture.allOf(futures).thenApply(aVoid -> {
         Assert.assertEquals(success.get(), numberOfCalls);
         Assert.assertEquals(errors.get(), 0);
@@ -248,7 +345,12 @@ public class StoreClientPerfTest {
         long allQueriesFinishTime = System.currentTimeMillis();
         double totalQueryTime = allQueriesFinishTime - firstQueryStartTime;
         Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-        String metricPrefix = "." + storeName + "--" + RequestType.MULTI_GET.getMetricPrefix();
+        String metricPrefix = "." + storeName + "--";
+        if (compute) {
+          metricPrefix += RequestType.COMPUTE.getMetricPrefix();
+        } else {
+          metricPrefix += RequestType.MULTI_GET.getMetricPrefix();
+        }
 
         Metric requestSerializationTimeMetric = metrics.get(metricPrefix + "request_serialization_time.Avg");
         Metric requestSubmissionToResponseHandlingTimeMetric = metrics.get(metricPrefix + "request_submission_to_response_handling_time.Avg");
@@ -280,16 +382,6 @@ public class StoreClientPerfTest {
         Metric latencyMetric999 = metrics.get(metricPrefix + "healthy_request_latency.99_9thPercentile");
         DecimalFormat decimalFormat = new DecimalFormat("0.0");
 
-        ResultsContainer r = new ResultsContainer();
-
-        LOGGER.info("");
-        LOGGER.info("=============================================================================================");
-        LOGGER.info("Batch get deserializer:           " + r.put(clientConfig.getBatchGetDeserializerType()));
-        LOGGER.info("Batch get envelope iterable impl: " + r.put(clientConfig.getMultiGetEnvelopeIterableImpl()));
-        LOGGER.info("Max concurrent queries:           " + r.put(numberOfConcurrentCallsPerBatch));
-        LOGGER.info("Total queries:                    " + r.put(numberOfCalls));
-        LOGGER.info(numberOfBatchesOfConcurrentCalls + " keys/query at " + valueSizeInBytes + " bytes/value.");
-        LOGGER.info("");
         LOGGER.info("Throughput: " + r.put((decimalFormat.format(numberOfCalls / (totalQueryTime / 1000.0)))) + " queries/sec");
         LOGGER.info("");
         LOGGER.info("Request serialization time                       (Avg, p50, p99) : " +
@@ -316,7 +408,7 @@ public class StoreClientPerfTest {
             r.round(responseRecordsDeserializationSubmissionToStartTime) + " ms, \t" +
             r.round(responseRecordsDeserializationSubmissionToStartTime50) + " ms, \t" +
             r.round(responseRecordsDeserializationSubmissionToStartTime99) + " ms.");
-        LOGGER.info("Latency                    (Avg, p50, p90, p77, p95, p99, p99.9) : " +
+        LOGGER.info("Latency                    (Avg, p50, p77, p90, p95, p99, p99.9) : " +
             r.round(latencyMetricAvg) + " ms, \t" +
             r.round(latencyMetric50) + " ms, \t" +
             r.round(latencyMetric77) + " ms, \t" +

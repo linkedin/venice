@@ -3,7 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
+import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
@@ -17,22 +17,14 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
-import com.linkedin.venice.utils.TestPushUtils;
-import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
-import java.text.DecimalFormat;
 import java.util.HashSet;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -56,7 +48,7 @@ import java.util.concurrent.ExecutionException;
 @Test(singleThreaded = true)
 public class AvroGenericStoreClientImplTest {
   private static final Logger LOGGER = Logger.getLogger(AvroGenericStoreClientImplTest.class);
-  private static final BatchGetDeserializerType BATCH_GET_DESERIALIZER_TYPE = BatchGetDeserializerType.ONE_FUTURE_PER_RECORD;
+  private static final BatchDeserializerType BATCH_GET_DESERIALIZER_TYPE = BatchDeserializerType.ONE_FUTURE_PER_RECORD;
   private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;
@@ -112,7 +104,7 @@ public class AvroGenericStoreClientImplTest {
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientMetricsRepository)
-            .setBatchGetDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
+            .setBatchDeserializerType(BATCH_GET_DESERIALIZER_TYPE));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     storeClientMetricsRepositories.put(d2StoreClient, d2ClientMetricsRepository);
     // test store client with fast avro
@@ -123,7 +115,7 @@ public class AvroGenericStoreClientImplTest {
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
             .setD2Client(d2Client)
             .setMetricsRepository(d2ClientWithFastAvroMetricsRepository)
-            .setBatchGetDeserializerType(BATCH_GET_DESERIALIZER_TYPE)
+            .setBatchDeserializerType(BATCH_GET_DESERIALIZER_TYPE)
             .setUseFastAvro(true));
     storeClients.put(D2TransportClient.class.getSimpleName() + "-fast_avro", d2StoreClientWithFastAvro);
     storeClientMetricsRepositories.put(d2StoreClientWithFastAvro, d2ClientWithFastAvroMetricsRepository);

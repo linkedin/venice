@@ -5,9 +5,9 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.compression.GzipCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
@@ -33,6 +34,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -94,13 +96,39 @@ public class StorageNodeComputeTest {
     }
   }
 
-  @DataProvider(name = "isNotCompressed_isCompressed")
-  public static Object[][] compressionStrategy() {
-    return new Object[][]{{CompressionStrategy.NO_OP}, {CompressionStrategy.GZIP}};
+  @DataProvider(name = "testPermutations")
+  public static Object[][] testPermutations() {
+    // Config dimensions:
+    CompressionStrategy[] compressionStrategies = new CompressionStrategy[]{CompressionStrategy.NO_OP, CompressionStrategy.GZIP};
+    List<BatchDeserializerType> batchDeserializerTypes = Arrays.stream(BatchDeserializerType.values())
+        .filter(batchGetDeserializerType -> batchGetDeserializerType != BatchDeserializerType.BLACK_HOLE)
+        .collect(Collectors.toList());
+    List<AvroGenericDeserializer.IterableImpl> iterableImplementations = Arrays.stream(AvroGenericDeserializer.IterableImpl.values())
+        // LAZY_WITH_REPLAY_SUPPORT is only intended for the back end, so not super relevant here. Skipped to speed up the test.
+        .filter(iterable -> iterable != AvroGenericDeserializer.IterableImpl.LAZY_WITH_REPLAY_SUPPORT)
+        .collect(Collectors.toList());
+    boolean[] yesAndNo = new boolean[]{true, false};
+
+    List<Object[]> returnList = new ArrayList<>();
+    for (CompressionStrategy compressionStrategy : compressionStrategies) {
+      for (BatchDeserializerType batchDeserializerType : batchDeserializerTypes) {
+        for (AvroGenericDeserializer.IterableImpl iterableImpl : iterableImplementations) {
+          for (boolean fastAvro : yesAndNo) {
+            returnList.add(new Object[]{compressionStrategy, batchDeserializerType, iterableImpl, fastAvro});
+          }
+        }
+      }
+    }
+    Object[][] valuesToReturn= new Object[returnList.size()][4];
+    return returnList.toArray(valuesToReturn);
   }
 
-  @Test (timeOut = 30000, dataProvider = "isNotCompressed_isCompressed")
-  public void testCompute(CompressionStrategy compressionStrategy) throws Exception {
+  @Test (timeOut = 30000, dataProvider = "testPermutations")
+  public void testCompute(
+      CompressionStrategy compressionStrategy,
+      BatchDeserializerType batchDeserializerType,
+      AvroGenericDeserializer.IterableImpl iterableImpl,
+      boolean fastAvro) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
     params.setReadComputationEnabled(true);
@@ -109,65 +137,65 @@ public class StorageNodeComputeTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
     final int pushVersion = newVersion.getVersion();
 
-    VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+    try (VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
+        AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerAddr)
+            .setBatchDeserializerType(batchDeserializerType)
+            .setMultiGetEnvelopeIterableImpl(iterableImpl)
+            .setUseFastAvro(fastAvro))) {
 
-    String keyPrefix = "key_";
-    String valuePrefix = "value_";
-    pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, 100, veniceCluster,
-                                veniceWriter, pushVersion, compressionStrategy);
+      String keyPrefix = "key_";
+      String valuePrefix = "value_";
+      pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, 100, veniceCluster,
+          veniceWriter, pushVersion, compressionStrategy);
 
-    /**
-     * Test with {@link AvroGenericStoreClient}.
-     */
-    AvroGenericStoreClient<String, Object>
-        storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
+      // Run multiple rounds
+      int rounds = 100;
+      int cur = 0;
+      while (cur++ < rounds) {
+        Set<String> keySet = new HashSet<>();
+        for (int i = 0; i < 10; ++i) {
+          keySet.add(keyPrefix + i);
+        }
+        keySet.add("unknown_key");
+        List<Float> p = Arrays.asList(100.0f, 0.1f);
+        List<Float> cosP = Arrays.asList(123.4f, 5.6f);
+        Map<String, GenericRecord> computeResult = (Map<String, GenericRecord>) storeClient.compute()
+            .project("id")
+            .dotProduct("member_feature", p, "member_score")
+            .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
+            .execute(keySet)
+            .get();
+        Assert.assertEquals(computeResult.size(), 10);
+        for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
+          int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
+          // check projection result
+          Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
+          // check dotProduct result
+          Assert.assertEquals(entry.getValue().get("member_score"), (double) (p.get(0) * keyIdx + p.get(1) * (keyIdx * 10)));
 
-    // Run multiple rounds
-    int rounds = 100;
-    int cur = 0;
-    while (cur++ < rounds) {
-      Set<String> keySet = new HashSet<>();
-      for (int i = 0; i < 10; ++i) {
-        keySet.add(keyPrefix + i);
+          // check cosine similarity result
+          double dotProductResult = (double) (cosP.get(0) * (float)keyIdx + cosP.get(1) * (float)(keyIdx * 10));
+          double valueVectorMagnitude = Math.sqrt((double) ((float)keyIdx * (float)keyIdx + ((float)keyIdx * 10.0f) * ((float)keyIdx * 10.0f)));
+          double parameterVectorMagnitude = Math.sqrt((double) (cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+          double expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
+          Assert.assertEquals((double)entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001d);
+        }
       }
-      keySet.add("unknown_key");
-      List<Float> p = Arrays.asList(100.0f, 0.1f);
-      List<Float> cosP = Arrays.asList(123.4f, 5.6f);
-      Map<String, GenericRecord> computeResult = (Map<String, GenericRecord>) storeClient.compute()
-          .project("id")
-          .dotProduct("member_feature", p, "member_score")
-          .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
-          .execute(keySet)
-          .get();
-      Assert.assertEquals(computeResult.size(), 10);
-      for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
-        int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
-        // check projection result
-        Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
-        // check dotProduct result
-        Assert.assertEquals(entry.getValue().get("member_score"), (double) (p.get(0) * keyIdx + p.get(1) * (keyIdx * 10)));
 
-        // check cosine similarity result
-        double dotProductResult = (double) (cosP.get(0) * (float)keyIdx + cosP.get(1) * (float)(keyIdx * 10));
-        double valueVectorMagnitude = Math.sqrt((double) ((float)keyIdx * (float)keyIdx + ((float)keyIdx * 10.0f) * ((float)keyIdx * 10.0f)));
-        double parameterVectorMagnitude = Math.sqrt((double) (cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
-        double expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-        Assert.assertEquals((double)entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001d);
+      // Check retry requests
+      double computeRetries = 0;
+      for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
+        MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+        Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+        if (metrics.containsKey(".total--compute_retry_count.LambdaStat")) {
+          computeRetries += metrics.get(".total--compute_retry_count.LambdaStat").value();
+        }
       }
+
+      Assert.assertTrue(computeRetries > 0, "After " + rounds + " reads, there should be some compute retry requests");
     }
-
-    // Check retry requests
-    double computeRetries = 0;
-    for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
-      MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
-      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-      if (metrics.containsKey(".total--compute_retry_count.LambdaStat")) {
-        computeRetries += metrics.get(".total--compute_retry_count.LambdaStat").value();
-      }
-    }
-
-    Assert.assertTrue(computeRetries > 0, "After " + rounds + " reads, there should be some compute retry requests");
   }
 
   private int getKeyIndex(String key, String keyPrefix) {

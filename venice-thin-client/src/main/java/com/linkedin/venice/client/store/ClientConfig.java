@@ -2,11 +2,12 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.client.store.deserialization.BatchGetDeserializer;
-import com.linkedin.venice.client.store.deserialization.BatchGetDeserializerType;
-import com.linkedin.venice.client.store.deserialization.BlockingDeserializer;
+import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
+import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.utils.SystemTime;
+import io.tehuti.utils.Time;
 import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -32,12 +33,13 @@ public class ClientConfig<T extends SpecificRecord> {
   private MetricsRepository metricsRepository = null;
   private Executor deserializationExecutor = null;
   private boolean isVsonClient = false;
-  private BatchGetDeserializerType batchGetDeserializerType = BatchGetDeserializerType.BLOCKING;
+  private BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
   private AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
   private int onDemandDeserializerNumberOfRecordsPerThread = 250;
   private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
   private int alwaysOnDeserializerQueueCapacity = 10000;
   private boolean useFastAvro = false;
+  private Time time = new SystemTime();
 
   //https specific settings
   private boolean isHttps = false;
@@ -72,7 +74,7 @@ public class ClientConfig<T extends SpecificRecord> {
              .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
              .setMetricsRepository(config.getMetricsRepository())
              .setVsonClient(config.isVsonClient)
-             .setBatchGetDeserializerType(config.batchGetDeserializerType)
+             .setBatchDeserializerType(config.batchDeserializerType)
              .setMultiGetEnvelopeIterableImpl(config.multiGetEnvelopeIterableImpl)
              .setOnDemandDeserializerNumberOfRecordsPerThread(config.onDemandDeserializerNumberOfRecordsPerThread)
              .setAlwaysOnDeserializerNumberOfThreads(config.alwaysOnDeserializerNumberOfThreads)
@@ -233,16 +235,16 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public BatchGetDeserializerType getBatchGetDeserializerType() {
-    return batchGetDeserializerType;
+  public BatchDeserializerType getBatchDeserializerType() {
+    return batchDeserializerType;
   }
 
-  public BatchGetDeserializer getBatchGetDeserializer(Executor executor) {
-    return batchGetDeserializerType.get(executor, this);
+  public BatchDeserializer getBatchGetDeserializer(Executor executor) {
+    return batchDeserializerType.get(executor, this);
   }
 
-  public ClientConfig<T> setBatchGetDeserializerType(BatchGetDeserializerType batchGetDeserializerType) {
-    this.batchGetDeserializerType = batchGetDeserializerType;
+  public ClientConfig<T> setBatchDeserializerType(BatchDeserializerType batchDeserializerType) {
+    this.batchDeserializerType = batchDeserializerType;
     return this;
   }
 
@@ -288,6 +290,15 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public ClientConfig<T> setUseFastAvro(boolean useFastAvro) {
     this.useFastAvro = useFastAvro;
+    return this;
+  }
+
+  public Time getTime() {
+    return time;
+  }
+
+  public ClientConfig<T> setTime(Time time) {
+    this.time = time;
     return this;
   }
 }
