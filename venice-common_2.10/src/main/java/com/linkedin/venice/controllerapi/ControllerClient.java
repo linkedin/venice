@@ -950,6 +950,10 @@ public class ControllerClient implements Closeable {
     return masterControllerUrl;
   }
 
+  public String getUrlsToFindMasterController() {
+    return urlsToFindMasterController;
+  }
+
   public ControllerResponse sendEndOfPush(String storeName, String version) {
     try {
       QueryParams params = newParams()
