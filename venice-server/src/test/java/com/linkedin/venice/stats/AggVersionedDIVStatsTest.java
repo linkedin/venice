@@ -108,6 +108,13 @@ public class AggVersionedDIVStatsTest {
 
     stats.recordCurrentIdleTime(storeName, 1);
     Assert.assertEquals(reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(), 1d);
+    stats.recordProducerConsumerLatencyMs(storeName, 1, 1000d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_future--producer_to_consumer_latency_avg_ms.DIVStatsCounter").value(), 1000d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_future--producer_to_consumer_latency_min_ms.DIVStatsCounter").value(), 1000d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_future--producer_to_consumer_latency_max_ms.DIVStatsCounter").value(), 1000d);
 
     //v1 becomes the current version and v2 starts pushing
     version.setStatus(VersionStatus.ONLINE);
@@ -117,7 +124,9 @@ public class AggVersionedDIVStatsTest {
 
 
     stats.recordCurrentIdleTime(storeName, 1);
+    stats.recordProducerBrokerLatencyMs(storeName, 1, 800d);
     stats.recordDuplicateMsg(storeName, 2);
+    stats.recordBrokerConsumerLatencyMs(storeName, 2, 200d);
     stats.handleStoreChanged(mockStore);
 
     //expect to see v1's stats on current reporter and v2's stats on future reporter
@@ -125,6 +134,18 @@ public class AggVersionedDIVStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_current--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(), 800d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_current--producer_to_broker_latency_min_ms.DIVStatsCounter").value(), 800d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_current--producer_to_broker_latency_max_ms.DIVStatsCounter").value(), 800d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_future--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(), 200d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_future--broker_to_consumer_latency_min_ms.DIVStatsCounter").value(), 200d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_future--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(), 200d);
 
     //v2 finishes pushing
     version2.setStatus(VersionStatus.ONLINE);
@@ -142,6 +163,19 @@ public class AggVersionedDIVStatsTest {
     //expect to see v2's stats on current reporter and v1's stats on backup reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_backup--current_idle_time.DIVStatsCounter").value(), 2d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_current--broker_to_consumer_latency_avg_ms.DIVStatsCounter").value(), 200d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_current--broker_to_consumer_latency_min_ms.DIVStatsCounter").value(), 200d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_current--broker_to_consumer_latency_max_ms.DIVStatsCounter").value(), 200d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_backup--producer_to_broker_latency_avg_ms.DIVStatsCounter").value(), 800d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_backup--producer_to_broker_latency_min_ms.DIVStatsCounter").value(), 800d);
+    Assert.assertEquals(reporter.query("." + storeName
+        + "_backup--producer_to_broker_latency_max_ms.DIVStatsCounter").value(), 800d);
+
 
     //v3 finishes pushing and the status becomes to be online
     Version version3 = new Version(storeName, 3);

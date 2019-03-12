@@ -55,4 +55,19 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
   public void resetCurrentIdleTime(String storeName, int version) {
     getStats(storeName, version).resetCurrentIdleTime();
   }
+
+  public void recordProducerBrokerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordProducerBrokerLatencyMs(value);
+    getStats(storeName, version).recordProducerBrokerLatencyMs(value);
+  }
+
+  public void recordBrokerConsumerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordBrokerConsumerLatencyMs(value);
+    getStats(storeName, version).recordBrokerConsumerLatencyMs(value);
+  }
+
+  public void recordProducerConsumerLatencyMs(String storeName, int version, double value) {
+    getTotalStats(storeName).recordProducerConsumerLatencyMs(value);
+    getStats(storeName, version).recordProducerConsumerLatencyMs(value);
+  }
 }

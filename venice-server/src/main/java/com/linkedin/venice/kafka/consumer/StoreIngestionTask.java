@@ -1147,6 +1147,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
     try {
+      // Assumes the timestamp on the ConsumerRecord is the broker's timestamp when it received the message.
+      recordWriterStats(kafkaValue.producerMetadata.messageTimestamp, consumerRecord.timestamp(),
+          System.currentTimeMillis());
       FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       try {
@@ -1236,6 +1239,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
       }
     }
     return sizeOfPersistedData;
+  }
+
+  private void recordWriterStats(long producerTimestampMs, long brokerTimestampMs, long consumerTimestampMs) {
+    long producerBrokerLatencyMs = Math.max(brokerTimestampMs - producerTimestampMs, 0);
+    long brokerConsumerLatencyMs = Math.max(consumerTimestampMs - brokerTimestampMs, 0);
+    long producerConsumerLatencyMs = Math.max(consumerTimestampMs - producerTimestampMs, 0);
+    versionedDIVStats.recordProducerBrokerLatencyMs(storeNameWithoutVersionInfo, storeVersion, producerBrokerLatencyMs);
+    versionedDIVStats.recordBrokerConsumerLatencyMs(storeNameWithoutVersionInfo, storeVersion, brokerConsumerLatencyMs);
+    versionedDIVStats.recordProducerConsumerLatencyMs(storeNameWithoutVersionInfo, storeVersion,
+        producerConsumerLatencyMs);
   }
 
   private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
