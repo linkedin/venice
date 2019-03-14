@@ -106,8 +106,12 @@ public class AdminOffsetManager implements OffsetManager {
     filterOldStates(record, STATE_PERSIST_NUM);
     // Persist offset to Zookeeper
     HelixUtils.update(dataAccessor, nodePath, record, ZK_UPDATE_RETRY);
-    LOGGER.info("Persisted offset record to ZK for topic: " + topicName + ", partition id: " + partitionId +
-        ", record: " + record.toDetailedString());
+    String logMessagePrefix = "Persisted offset record to ZK for topic: " + topicName + ", partition id: " + partitionId + ", ";
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(logMessagePrefix + "record: " + record.toDetailedString());
+    } else {
+      LOGGER.info(logMessagePrefix + "offset: " + record.getOffset() + " (full OffsetRecord logged at debug level).");
+    }
   }
 
   @Override
