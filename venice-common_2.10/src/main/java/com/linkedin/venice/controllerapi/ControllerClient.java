@@ -9,7 +9,6 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
-import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
@@ -24,7 +23,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
@@ -172,6 +170,32 @@ public class ControllerClient implements Closeable {
     } catch (Exception e){
       return handleError(
           new VeniceException("Error requesting topic for store: " + storeName, e), new VersionCreationResponse());
+    }
+  }
+
+  /**
+   * Used for store migration to add version and start ingestion in destination cluster for new pushes in the source
+   * cluster during the ingestion. The idea is like copying or create a version on an existing topic. Different use
+   * cases can be explored and expanded in the future. Applicable only to child controllers.
+   * @param storeName of the original push.
+   * @param pushJobId of the original push.
+   * @param version of the original push.
+   * @param partitionCount of the original push.
+   * @return
+   */
+  public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
+      int partitionCount) {
+    try {
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(PUSH_JOB_ID, pushJobId)
+          .add(VERSION, version)
+          .add(PARTITION_COUNT, partitionCount);
+      String responseJson = postRequest(ControllerRoute.ADD_VERSION.getPath(), params);
+      return mapper.readValue(responseJson, VersionResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error adding version " + version + " and starting ingestion for store "
+          + storeName, e), new VersionResponse());
     }
   }
 

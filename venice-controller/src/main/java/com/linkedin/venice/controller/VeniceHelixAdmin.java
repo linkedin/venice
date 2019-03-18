@@ -9,15 +9,20 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -25,14 +30,25 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.venice.meta.*;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.StoreGraveyard;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
-import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.replication.TopicReplicator;
@@ -45,15 +61,26 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
-import com.linkedin.venice.utils.*;
+import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PartitionCountUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
-
-import java.util.*;
-
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
@@ -81,7 +108,7 @@ import org.apache.helix.participant.StateMachineEngine;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 
-
+import static com.linkedin.venice.meta.VersionStatus.*;
 /**
  * Helix Admin based on 0.6.6.4 APIs.
  *
@@ -126,7 +153,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final long deprecatedJobTopicRetentionMs;
     private final long deprecatedJobTopicMaxRetentionMs;
     private final ZkStoreConfigAccessor storeConfigAccessor;
-    protected final HelixReadOnlyStoreConfigRepository storeConfigRepo;
+    private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
     private final VeniceWriterFactory veniceWriterFactory;
     private final VeniceControllerConsumerFactory veniceConsumerFactory;
     private final int minNumberOfUnusedKafkaTopicsToPreserve;
@@ -601,21 +628,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Get original store properties
         String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
         ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
-        StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
-        String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
-        MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
-
-        this.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
-
         // Update migration src and dest cluster in storeConfig
         setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
 
-        // Set store migration flag for both original and cloned store
         UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
-        srcControllerClient.updateStore(storeName, params);     // update original store
-        // Also decrease the largestUsedVersionNumber to trigger bootstrap
+        StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
+        String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
+        MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
+        this.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
+        // Decrease the largestUsedVersionNumber to trigger bootstrap in destination cluster
         params.setLargestUsedVersionNumber(0);
-        this.updateStore(destClusterName, storeName, params);   // update cloned store
+        this.updateStore(destClusterName, storeName, params);   // update cloned store in destination cluster
+        if (multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled()) {
+            // Start bootstrapping in destination cluster for online versions in the source cluster.
+            // TODO partitionCount should really be moved to version level as mentioned in addVersion in VeniceHelixAdmin
+            // This is okay for now because store migration currently disables all update store operations.
+            int partitionCount = srcStore.getPartitionCount();
+            List<Version> sourceOnlineVersions = srcStore
+                .getVersions()
+                .stream()
+                .sorted(Comparator.comparingInt(Version::getNumber))
+                .filter(version -> Arrays.asList(STARTED, PUSHED, ONLINE).contains(version.getStatus()))
+                .collect(Collectors.toList());
+            for (Version version : sourceOnlineVersions) {
+                try {
+                    addVersionAndStartIngestion(destClusterName, storeName, version.getPushJobId(), version.getNumber(),
+                        partitionCount);
+                } catch (Exception e) {
+                    logger.warn("An exception was thrown when attempting to add version and start ingestion for store "
+                    + storeName + " and version " + version.getNumber(), e);
+                }
+            }
+        }
+         // Set store migration flag for the original store. Possible race condition where we miss a new push while we
+         // are calling addVersionAndStartIngestion on existing ONLINE versions. However, if we update the store's
+         // migrating status first then we might run into another race condition where for example v3 (the new push) can
+         // be added prior to v1 and v2 (existing versions). Even worse, the source cluster controller could be calling
+         // the destination cluster controller's addVersionAndStartIngestion prior to the store is fully cloned.
+        UpdateStoreQueryParams srcStoreParams = new UpdateStoreQueryParams().setStoreMigration(true);
+        srcControllerClient.updateStore(storeName, srcStoreParams);
     }
 
     @Override
@@ -754,17 +805,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition, replicationFactor, true, false);
     }
 
-  /**
-   * A (temporary) wrapper method to keep the underlying {@code addVersion} behaviour but performs additional checks
-   * for feature flags and potential race condition when both {@code TopicMonitor} and add version via admin protocol
-   * are enabled. Second attempt of failed add version admin message will be ignored and succeed if the new version
-   * already exists.
-   * @param clusterName of the store.
-   * @param storeName of the store.
-   * @param pushJobId of the corresponding push.
-   * @param versionNumber of the new version.
-   * @param numberOfPartitions for the new push.
-   */
+    @Override
     public void addVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions) {
         if (!multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled()) {
@@ -782,6 +823,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
                 getReplicationFactor(clusterName, storeName), true, false);
+            if (store.isMigrating()) {
+                try {
+                    StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
+                    String destinationCluster = storeConfig.getMigrationDestCluster();
+                    String sourceCluster = storeConfig.getMigrationSrcCluster();
+                    if (storeConfig.getCluster().equals(destinationCluster)) {
+                        // Migration has completed in this colo but the overall migration is still in progress.
+                        if (clusterName.equals(destinationCluster)) {
+                            // Mirror new pushes back to the source cluster in case we abort migration after completion.
+                            ControllerClient sourceClusterControllerClient =
+                                new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false));
+                            VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
+                                pushJobId, versionNumber, numberOfPartitions);
+                            if (response.isError()) {
+                                logger.warn("Replicate add version endpoint call to source cluster: " + sourceCluster
+                                    + " failed for store " + storeName + " and version " + versionNumber + " Error: "
+                                    + response.getError());
+                            }
+                        }
+                    } else if (clusterName.equals(sourceCluster)) {
+                        ControllerClient destClusterControllerClient =
+                            new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false));
+                        VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
+                            pushJobId, versionNumber, numberOfPartitions);
+                        if (response.isError()) {
+                            logger.warn("Replicate add version endpoint call to destination cluster: " + destinationCluster
+                                + " failed for store " + storeName + " and version " + versionNumber + " Error: "
+                                + response.getError());
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Exception thrown when replicating add version for store " + storeName + " and version "
+                    + versionNumber + " as part of store migration", e);
+                }
+            }
         }
     }
 
@@ -1077,7 +1153,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * Don't use {@link Store#getCurrentVersion()} here since it is always 0 in parent controller
              */
             Version version = versions.get(versions.size() - 1);
-            if (version.getStatus() == VersionStatus.ERROR) {
+            if (version.getStatus() == ERROR) {
                 throw new VeniceException("cannot have incremental push because current version is in error status. "
                     + "Version: " + version.getNumber() + " Store:" + storeName);
             }
@@ -2681,7 +2757,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (store != null) {
                         status = store.getVersionStatus(Version.parseVersionFromKafkaTopicName(topic));
                     } else {
-                        status = VersionStatus.NOT_CREATED;
+                        status = NOT_CREATED;
                     }
                     result.put(topic, status.toString());
                     // Found at least one bootstrap replica, skip to next topic.
@@ -2778,6 +2854,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public ZkStoreConfigAccessor getStoreConfigAccessor() {
         return storeConfigAccessor;
     }
+
+    HelixReadOnlyStoreConfigRepository getStoreConfigRepo() { return storeConfigRepo; }
 
     private interface StoreMetadataOperation {
         /**

@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -104,6 +105,35 @@ public class CreateVersion {
         AdminSparkServer.handleError(e, request, response);
       }
 
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route addVersionAndStartIngestion(Admin admin) {
+    return (request, response) -> {
+      VersionResponse responseObject = new VersionResponse();
+      try {
+        AdminSparkServer.validateParams(request, ADD_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String pushJobId = request.queryParams(PUSH_JOB_ID);
+        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+        int partitionCount = Utils.parseIntFromString(request.queryParams(PARTITION_COUNT), PARTITION_COUNT);
+
+        String topicName = Version.composeKafkaTopic(storeName, versionNumber);
+        if (!admin.getTopicManager().containsTopic(topicName)) {
+          throw new VeniceException("Expected topic " + topicName + " cannot be found. Unable to add version and start "
+          + "ingestion for store " + storeName + " and version " + versionNumber + " in cluster " + clusterName);
+        }
+        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setVersion(versionNumber);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };

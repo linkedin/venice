@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.HashMap;
@@ -88,8 +89,9 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     Iterator<String> clusterIter = clusters.keySet().iterator();
     while (clusterIter.hasNext()) {
       String cluster = clusterIter.next();
+      VeniceClusterWrapper clusterWrapper = clusters.get(cluster);
       Executors.newCachedThreadPool().execute(() -> {
-        clusters.get(cluster).close();
+        clusterWrapper.close();
       });
     }
   }
@@ -124,13 +126,37 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return this.controllers.values().stream().filter(controller -> controller.isRunning()).findAny().get();
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName) {
+  public Optional<VeniceControllerWrapper> getMasterController(String clusterName) {
     return this.controllers.values()
         .stream()
         .filter(controller -> controller.isRunning())
         .filter(c -> c.isMasterController(clusterName))
-        .findAny()
-        .get();
+        .findAny();
+  }
+
+  public VeniceControllerWrapper getMasterController(String clusterName, long timeOutMs) {
+    Optional<VeniceControllerWrapper> masterController = null;
+    long startTime = System.currentTimeMillis();
+    long maxTime = startTime + timeOutMs;
+    do {
+      if (masterController != null) {
+        try {
+          Thread.sleep(timeOutMs / 10);
+        } catch (InterruptedException e) {
+          throw new VeniceException(e);
+        }
+      }
+      try {
+        masterController = getMasterController(clusterName);
+      } catch (VeniceNoClusterException e) {
+        masterController = Optional.empty();
+        // keep going....
+      }
+    } while (!masterController.isPresent() && System.currentTimeMillis() < maxTime);
+    if (masterController.isPresent()) {
+      return masterController.get();
+    }
+    throw new VeniceException("Could not get master controller in " + timeOutMs + " ms.");
   }
 
   public String getControllerConnectString(){
@@ -158,5 +184,13 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
         throw new VeniceException("Can not restart controller " + veniceControllerWrapper.getControllerUrl(), e);
       }
     });
+  }
+
+  public void removeOneController() {
+    if (controllers.size() > 1) {
+      VeniceControllerWrapper controllerWrapper = controllers.values().stream().findFirst().get();
+      controllerWrapper.close();
+      controllers.remove(controllerWrapper.getPort());
+    }
   }
 }

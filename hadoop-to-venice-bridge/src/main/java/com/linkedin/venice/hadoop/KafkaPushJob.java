@@ -44,6 +44,7 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -76,7 +77,7 @@ import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_
  * The job reads the input data off HDFS. It supports 2 kinds of
  * input -- Avro / Binary Json (Vson).
  */
-public class KafkaPushJob extends AbstractJob {
+public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneable {
   //Avro input configs
   public static final String LEGACY_AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String LEGACY_AVRO_VALUE_FIELD_PROP = "avro.value.field";
@@ -1027,7 +1028,7 @@ public class KafkaPushJob extends AbstractJob {
       controllerClient.retryableRequest(pushJobSetting.controllerRetries, c -> c.killOfflinePushJob(versionTopicInfo.topic));
       logger.info("Offline push job has been killed, topic: " + versionTopicInfo.topic);
     }
-    closeVeniceWriter();
+    close();
   }
 
   private Schema extractAvroSubSchema(Schema origin, String fieldName) {
@@ -1202,4 +1203,10 @@ public class KafkaPushJob extends AbstractJob {
    * ignore hdfs files with prefix "_" and "."
    */
   public static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
+
+  @Override
+  public void close() {
+    closeVeniceWriter();
+    IOUtils.closeQuietly(controllerClient);
+  }
 }

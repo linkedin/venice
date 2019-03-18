@@ -24,16 +24,19 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.log4j.Logger;
@@ -47,27 +50,42 @@ public class TestStoreMigration {
   private static final Logger logger = Logger.getLogger(TestStoreMigration.class);
   private static final int MAX_RETRY = 5;
   private static final int NUM_OF_CONTROLLERS = 3; // number of controller cannot be more than 3
+  private static final int NUM_OF_SERVERS = 1;
+  private static final int NUM_OF_ROUTERS = 1;
+  private static final long GET_MASTER_CONTROLLER_TIMEOUT = 20 * Time.MS_PER_SECOND;
+  private static final long EXPECTED_STORE_MIGRATION_COMPLETION_TIME_SEC = 60;
+  private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = {false, true, true};
 
-  @Test
-  public void testSchemaPreservation() {
-    String valueSchema1 = "{\"type\":\"record\",\"name\":\"HashtagPoolValue\",\"namespace\":\"com.linkedin.hashtags\",\"fields\":[{\"name\":\"hashtags\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"The list of hashtags in this pool\"}]}";
-    String valueSchema2 = "{\"type\":\"record\",\"name\":\"HashtagPoolValue\",\"namespace\":\"com.linkedin.hashtags\",\"fields\":[{\"name\":\"hashtags\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"The list of hashtags in this pool\"},{\"name\":\"poolFeatures\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"FeatureVector\",\"fields\":[{\"name\":\"features\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"Feature\",\"fields\":[{\"name\":\"qualifiedName\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"A list of strings to represent name of a unique feature. The array allows for grouping features hierarchically into sections.\"},{\"name\":\"value\",\"type\":\"double\",\"doc\":\"Value of a raw feature, range from -inf to inf\"}]}},\"doc\":\"Array of features\"}]}],\"doc\":\"The feature vector shared across all the hashtags within this pool.\",\"default\":null}]}";
+  private interface  StoreMigrationAssertionRunner {
+    void runAssertions(String srcClusterName, String destClusterName, String srcRouterUrl, String destRouterUrl,
+        String kafkaAddr, String randomControllerUrl, Admin randomVeniceAdmin, Admin srcAdmin, Admin destAdmin,
+        ControllerClient srcControllerClient, ControllerClient destControllerClient, String store1, String store0);
+  }
 
+  private interface MultiDatacenterStoreMigrationAssertionRunner {
+    void runAssertions(VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper,
+        List<VeniceMultiClusterWrapper> multiClusters, String srcClusterName, String destClusterName,
+        String parentControllerUrl, Admin srcParentAdmin, Admin destParentAdmin, ControllerClient srcControllerClient,
+        ControllerClient destControllerClient);
+  }
+
+  /**
+   * This function is a scaffolding for testing store migration-related scenarios that can happen
+   * where the stores involved are in the same and in different clusters.
+   */
+  private void testWithSameAndDifferentControllers(StoreMigrationAssertionRunner runner) throws InterruptedException{
     boolean sharedControllerTested = false;
     boolean diffControllerTested = false;
-    int retry = 0;
+    int attempt = 0;
 
-    while (!(sharedControllerTested && diffControllerTested) && retry++ < MAX_RETRY) {
-      if (NUM_OF_CONTROLLERS == 1) {
-        // When NUM_OF_CONTROLLERS == 1, controller will always be shared
-        diffControllerTested = true;
-      }
+    Admin randomVeniceAdmin = null, srcAdmin = null, destAdmin = null;
 
-      String store0 = TestUtils.getUniqueString("test-store0"); // Store in src cluster
-      String store1 = TestUtils.getUniqueString("test-store1"); // Store in dest cluster
-
-      VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(3, NUM_OF_CONTROLLERS, 2, 2);
-
+    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(
+        3,
+        NUM_OF_CONTROLLERS,
+        NUM_OF_SERVERS,
+        NUM_OF_ROUTERS)
+    ) {
       String[] clusterNames = multiClusterWrapper.getClusterNames();
       Assert.assertTrue(clusterNames.length >= 2, "For this test there must be at least two clusters");
 
@@ -75,27 +93,149 @@ public class TestStoreMigration {
       String srcClusterName = clusterNames[0];  // venice-cluster0-XXXXXXXXX
       String destClusterName = clusterNames[1]; // venice-cluster1-XXXXXXXXX
 
-      if (multiClusterWrapper.getMasterController(srcClusterName)
-          .getControllerUrl()
-          .equals(multiClusterWrapper.getMasterController(destClusterName).getControllerUrl())) {
-        if (sharedControllerTested) {
-          // tested this case already
-          multiClusterWrapper.close();
-          continue;
-        }
-        sharedControllerTested = true;
-      } else {
-        if (diffControllerTested) {
-          // tested this case already
-          multiClusterWrapper.close();
-          continue;
-        }
-        diffControllerTested = true;
-      }
+      while (!(sharedControllerTested && diffControllerTested) && ++attempt < MAX_RETRY) {
+        logger.info("Beginning of attempt #" + attempt + " / " + MAX_RETRY +
+            ". sharedControllerTested = " + sharedControllerTested +
+            ", diffControllerTested = " + diffControllerTested);
+        boolean controllersOfEachClusterAreCurrentlyShared =
+            multiClusterWrapper.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT)
+                .getControllerUrl()
+                .equals(multiClusterWrapper.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getControllerUrl());
 
-      Admin randomVeniceAdmin = multiClusterWrapper.getRandomController().getVeniceAdmin();
-      Admin srcAdmin = multiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
-      Admin destAdmin = multiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
+        if (controllersOfEachClusterAreCurrentlyShared) {
+          if (sharedControllerTested) {
+            // TODO: Make this deterministic...
+            if (multiClusterWrapper.getControllers().size() > 2) {
+              logger.info("We tested the sharedControllerTested case already, so we'll attempt to gradually alter the number of controllers so that we can hit the other case");
+              multiClusterWrapper.removeOneController();
+            } else {
+              logger.info("We tested the sharedControllerTested case already, so we'll attempt to bounce controllers so that we can hit the other case");
+              multiClusterWrapper.restartControllers();
+            }
+            continue;
+          }
+          sharedControllerTested = true;
+        }
+
+        if (!controllersOfEachClusterAreCurrentlyShared) {
+          if (diffControllerTested) {
+            logger.info("We tested the diffControllerTested case already, so we'll kill all controllers but one so that we can hit the other case");
+            while (multiClusterWrapper.getControllers().size() > 1) {
+              multiClusterWrapper.removeOneController();
+            }
+            continue;
+          }
+          diffControllerTested = true;
+        }
+
+        String store0 = TestUtils.getUniqueString("test-store0"); // Store in src cluster
+        String store1 = TestUtils.getUniqueString("test-store1"); // Store in dest cluster
+        String srcRouterUrl = multiClusterWrapper.getClusters().get(srcClusterName).getRandomRouterURL();
+        String destRouterUrl = multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL();
+        KafkaBrokerWrapper kafka = multiClusterWrapper.getKafkaBrokerWrapper();
+        String kafkaAddr = kafka.getHost() + ":" + kafka.getPort();
+        VeniceControllerWrapper randomController = multiClusterWrapper.getRandomController();
+        Assert.assertTrue(randomController.isRunning());
+        String randomControllerUrl = randomController.getControllerUrl();
+
+        // These are not closed during every loop iteration, otherwise it messes up the next iteration. They're closed at the end.
+        randomVeniceAdmin = randomController.getVeniceAdmin();
+        srcAdmin = multiClusterWrapper.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        destAdmin = multiClusterWrapper.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+
+        try (ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcRouterUrl);
+            ControllerClient destControllerClient = new ControllerClient(destClusterName,
+                multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL())) {
+          runner.runAssertions(
+              srcClusterName,
+              destClusterName,
+              srcRouterUrl,
+              destRouterUrl,
+              kafkaAddr,
+              randomControllerUrl,
+              randomVeniceAdmin,
+              srcAdmin,
+              destAdmin,
+              srcControllerClient,
+              destControllerClient,
+              store0,
+              store1);
+        } catch (Exception e) {
+          logger.error("Caught exception during attempt #" + attempt + " / " + MAX_RETRY +
+              ". sharedControllerTested = " + sharedControllerTested +
+              ", diffControllerTested = " + diffControllerTested, e);
+          throw e;
+        }
+      }
+    } catch (Exception e) {
+      logger.error("Caught exception during attempt #" + attempt + " / " + MAX_RETRY +
+          ". sharedControllerTested = " + sharedControllerTested +
+          ", diffControllerTested = " + diffControllerTested, e);
+      throw e;
+    } finally {
+      IOUtils.closeQuietly(randomVeniceAdmin);
+      IOUtils.closeQuietly(srcAdmin);
+      IOUtils.closeQuietly(destAdmin);
+    }
+
+    Assert.assertTrue(sharedControllerTested, "sharedControllerTested has not been tested after " + attempt + " attempts / " + MAX_RETRY);
+    Assert.assertTrue(diffControllerTested, "diffControllerTested has not been tested after " + attempt + " attempts / " + MAX_RETRY);
+
+    logger.info("Finished after " + attempt + " attempts / " + MAX_RETRY
+        + ". sharedControllerTested = " + sharedControllerTested
+        + ", diffControllerTested = " + diffControllerTested);
+  }
+
+  private void testWithMultiDatacenter(MultiDatacenterStoreMigrationAssertionRunner runner) throws InterruptedException {
+    try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
+        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
+            2,
+            2,
+            NUM_OF_CONTROLLERS,
+            NUM_OF_CONTROLLERS,
+            NUM_OF_SERVERS,
+            NUM_OF_ROUTERS)) {
+      List<VeniceMultiClusterWrapper> multiClusters = twoLayerMultiColoMultiClusterWrapper.getClusters();
+      List<VeniceControllerWrapper> parentControllers = twoLayerMultiColoMultiClusterWrapper.getParentControllers();
+
+      VeniceMultiClusterWrapper referenceCluster = multiClusters.get(0);
+      for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
+        Assert.assertEquals(multiCluster.getClusterNames(), referenceCluster.getClusterNames());
+      }
+      Assert.assertTrue(referenceCluster.getClusterNames().length >= 2,
+          "For this test there must be at least two clusters");
+
+      String srcClusterName = referenceCluster.getClusterNames()[0];  // venice-cluster0
+      String destClusterName = referenceCluster.getClusterNames()[1]; // venice-cluster1
+      String parentControllerUrl = parentControllers.stream()
+          .map(veniceControllerWrapper -> veniceControllerWrapper.getControllerUrl())
+          .collect(Collectors.joining(","));
+      try (Admin srcParentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
+          Admin destParentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
+          ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+          ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl)) {
+        runner.runAssertions(
+            twoLayerMultiColoMultiClusterWrapper,
+            multiClusters,
+            srcClusterName,
+            destClusterName,
+            parentControllerUrl,
+            srcParentAdmin,
+            destParentAdmin,
+            srcControllerClient,
+            destControllerClient);
+      }
+    }
+  }
+
+  @Test
+  public void testSchemaPreservation() throws InterruptedException {
+    String valueSchema1 = "{\"type\":\"record\",\"name\":\"HashtagPoolValue\",\"namespace\":\"com.linkedin.hashtags\",\"fields\":[{\"name\":\"hashtags\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"The list of hashtags in this pool\"}]}";
+    String valueSchema2 = "{\"type\":\"record\",\"name\":\"HashtagPoolValue\",\"namespace\":\"com.linkedin.hashtags\",\"fields\":[{\"name\":\"hashtags\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"The list of hashtags in this pool\"},{\"name\":\"poolFeatures\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"FeatureVector\",\"fields\":[{\"name\":\"features\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"Feature\",\"fields\":[{\"name\":\"qualifiedName\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"A list of strings to represent name of a unique feature. The array allows for grouping features hierarchically into sections.\"},{\"name\":\"value\",\"type\":\"double\",\"doc\":\"Value of a raw feature, range from -inf to inf\"}]}},\"doc\":\"Array of features\"}]}],\"doc\":\"The feature vector shared across all the hashtags within this pool.\",\"default\":null}]}";
+
+    testWithSameAndDifferentControllers((srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr,
+        randomControllerUrl, randomVeniceAdmin, srcAdmin, destAdmin, srcControllerClient, destControllerClient,
+        store1, store0) -> {
 
       // Create store and add a second schema
       srcAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", valueSchema1);
@@ -106,8 +246,6 @@ public class TestStoreMigration {
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
       // Copy store0 from src to dest
-      String destRouterUrl = multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL();
-      ControllerClient destControllerClient = new ControllerClient(destClusterName, destRouterUrl);
       StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
       Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
       Assert.assertEquals(storeMigrationResponse.getChildControllerUrls(), null);
@@ -117,55 +255,14 @@ public class TestStoreMigration {
           srcAdmin.getKeySchema(srcClusterName, store0).getSchema().toString());
       Assert.assertEquals(destAdmin.getValueSchemas(destClusterName, store0),
           srcAdmin.getValueSchemas(srcClusterName, store0));
-
-      multiClusterWrapper.close();
-    }
+    });
   }
 
   @Test
-  public void testDataMigration() {
-    boolean sharedControllerTested = false;
-    boolean diffControllerTested = false;
-    int retry = 0;
-
-    while (!(sharedControllerTested && diffControllerTested) && retry++ < MAX_RETRY) {
-      if (NUM_OF_CONTROLLERS == 1) {
-        // When NUM_OF_CONTROLLERS == 1, controller will always be shared
-        diffControllerTested = true;
-      }
-      String store0 = TestUtils.getUniqueString("test-store0"); // Store in src cluster
-      String store1 = TestUtils.getUniqueString("test-store1"); // Store in dest cluster
-
-      VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(3, NUM_OF_CONTROLLERS, 2, 2);
-      String[] clusterNames = multiClusterWrapper.getClusterNames();
-      Assert.assertTrue(clusterNames.length >= 2, "For this test there must be at least two clusters");
-
-      Arrays.sort(clusterNames);
-      String srcClusterName = clusterNames[0];  // venice-cluster0-XXXXXXXXX
-      String destClusterName = clusterNames[1]; // venice-cluster1-XXXXXXXXX
-
-      Admin randomVeniceAdmin = multiClusterWrapper.getRandomController().getVeniceAdmin();
-      Admin srcAdmin = multiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
-      Admin destAdmin = multiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
-
-      if (multiClusterWrapper.getMasterController(srcClusterName)
-          .getControllerUrl()
-          .equals(multiClusterWrapper.getMasterController(destClusterName).getControllerUrl())) {
-        if (sharedControllerTested) {
-          // tested this case already
-          multiClusterWrapper.close();
-          continue;
-        }
-        sharedControllerTested = true;
-      } else {
-        if (diffControllerTested) {
-          // tested this case already
-          multiClusterWrapper.close();
-          continue;
-        }
-        diffControllerTested = true;
-      }
-
+  public void testDataMigration() throws InterruptedException {
+    testWithSameAndDifferentControllers(
+        (srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr, randomControllerUrl,
+            randomVeniceAdmin, srcAdmin, destAdmin, srcControllerClient, destControllerClient, store1, store0) -> {
       // Create one store in each cluster
       srcAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", "\"string\"");
       srcAdmin.updateStore(srcClusterName, store0, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
@@ -174,14 +271,9 @@ public class TestStoreMigration {
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store0).getFirst(), srcClusterName);
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
-      String srcRouterUrl = multiClusterWrapper.getClusters().get(srcClusterName).getRandomRouterURL();
-      String destRouterUrl = multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL();
-      ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcRouterUrl);
-      ControllerClient destControllerClient = new ControllerClient(destClusterName, destRouterUrl);
-
       // Populate store0
-      populateStoreForSingleCluster(srcRouterUrl, srcClusterName, store0, 1);
-      populateStoreForSingleCluster(srcRouterUrl, srcClusterName, store0, 2);
+      populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 1);
+      populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 2);
       Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).containsVersion(1));
       Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).containsVersion(2));
       Assert.assertEquals(srcAdmin.getStore(srcClusterName, store0).getCurrentVersion(), 2);
@@ -221,7 +313,7 @@ public class TestStoreMigration {
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
       // Add one more version to store0 then test again
-      populateStoreForSingleCluster(srcRouterUrl, srcClusterName, store0, 3);
+      populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 3);
       Assert.assertFalse(destAdmin.hasStore(destClusterName, store0));
       Assert.assertTrue(srcAdmin.hasStore(srcClusterName, store0));
       Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).containsVersion(3));
@@ -236,7 +328,7 @@ public class TestStoreMigration {
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
       // Test backward: push to store1 in dest then move to src
-      populateStoreForSingleCluster(destRouterUrl, destClusterName, store1, 1);
+      populateStoreForSingleCluster(destRouterUrl, destControllerClient, store1, 1);
       Assert.assertFalse(srcAdmin.hasStore(srcClusterName, store1));
       Assert.assertTrue(destAdmin.hasStore(destClusterName, store1));
       Assert.assertTrue(destAdmin.getStore(destClusterName, store1).containsVersion(1));
@@ -280,63 +372,20 @@ public class TestStoreMigration {
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
       // Push another version, make sure everything works
-      populateStoreForSingleCluster(destRouterUrl, destClusterName, store0, 4);
-      populateStoreForSingleCluster(destRouterUrl, destClusterName, store1, 2);
+      populateStoreForSingleCluster(destRouterUrl, destControllerClient, store0, 4);
+      populateStoreForSingleCluster(destRouterUrl, destControllerClient, store1, 2);
       Assert.assertTrue(destAdmin.getStore(destClusterName, store0).containsVersion(4));
       Assert.assertTrue(destAdmin.getStore(destClusterName, store1).containsVersion(2));
       Assert.assertEquals(destAdmin.getStore(destClusterName, store0).getCurrentVersion(), 4);
       Assert.assertEquals(destAdmin.getStore(destClusterName, store1).getCurrentVersion(), 2);
-
-      multiClusterWrapper.close();
-    }
+    });
   }
 
   @Test
-  public void testTopicDeletion() {
-    boolean sharedControllerTested = false;
-    boolean diffControllerTested = false;
-    int retry = 0;
-
-    while (!(sharedControllerTested && diffControllerTested) && retry++ < MAX_RETRY) {
-      if (NUM_OF_CONTROLLERS == 1) {
-        // When numOfControllers == 1, controller will always be shared
-        diffControllerTested = true;
-      }
-      String store0 = TestUtils.getUniqueString("test-store0"); // Store in src cluster
-      String store1 = TestUtils.getUniqueString("test-store1"); // Store in dest cluster
-
-      VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(3, NUM_OF_CONTROLLERS, 2, 2);
-      String[] clusterNames = multiClusterWrapper.getClusterNames();
-      Assert.assertTrue(clusterNames.length >= 2, "For this test there must be at least two clusters");
-
-      Arrays.sort(clusterNames);
-      String srcClusterName = clusterNames[0];  // venice-cluster0-XXXXXXXXX
-      String destClusterName = clusterNames[1]; // venice-cluster1-XXXXXXXXX
-
-      VeniceControllerWrapper randomController = multiClusterWrapper.getRandomController();
-      String randomControllerUrl = randomController.getControllerUrl();
-      Admin randomVeniceAdmin = randomController.getVeniceAdmin();
-      Admin srcAdmin = multiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
-      Admin destAdmin = multiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
-
-      if (multiClusterWrapper.getMasterController(srcClusterName)
-          .getControllerUrl()
-          .equals(multiClusterWrapper.getMasterController(destClusterName).getControllerUrl())) {
-        if (sharedControllerTested) {
-          // tested this case already
-          multiClusterWrapper.close();
-          continue;
-        }
-        sharedControllerTested = true;
-      } else {
-        if (diffControllerTested) {
-          // tested this case already
-          multiClusterWrapper.close();
-          continue;
-        }
-        diffControllerTested = true;
-      }
-
+  public void testTopicDeletion() throws InterruptedException {
+    testWithSameAndDifferentControllers(
+        (srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr, randomControllerUrl,
+            randomVeniceAdmin, srcAdmin, destAdmin, srcControllerClient, destControllerClient, store1, store0) -> {
       // Create one store in each cluster
       srcAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", "\"string\"");
       srcAdmin.updateStore(srcClusterName, store0, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
@@ -345,19 +394,12 @@ public class TestStoreMigration {
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store0).getFirst(), srcClusterName);
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
-      String srcRouterUrl = multiClusterWrapper.getClusters().get(srcClusterName).getRandomRouterURL();
-      String destRouterUrl = multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL();
-      ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcRouterUrl);
-      ControllerClient destControllerClient = new ControllerClient(destClusterName, destRouterUrl);
-
       // Populate store
-      populateStoreForSingleCluster(srcRouterUrl, srcClusterName, store0, 1);
-      populateStoreForSingleCluster(srcRouterUrl, srcClusterName, store0, 2);
-      populateStoreForSingleCluster(srcRouterUrl, srcClusterName, store0, 3);
+      populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 1);
+      populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 2);
+      populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 3);
 
       // The first topic should have been deleted, this is the default behavior
-      KafkaBrokerWrapper kafka = multiClusterWrapper.getKafkaBrokerWrapper();
-      String kafkaAddr = kafka.getHost() + ":" + kafka.getPort();
       Assert.assertFalse(getExistingTopics(kafkaAddr).contains(store0 + "_v1"), "This topic should be deleted");
 
       // Move store0 from src to dest
@@ -381,10 +423,9 @@ public class TestStoreMigration {
         String newCluster = discoveryResponse.getCluster();
         Assert.assertEquals(newCluster, destClusterName);
       });
-      String newCluster = destControllerClient.discoverCluster(randomControllerUrl, store0).getCluster();
 
       // Topic deletion should have been disabled during store migration
-      populateStoreForSingleCluster(destRouterUrl, newCluster, store0, 4);
+      populateStoreForSingleCluster(destRouterUrl, destControllerClient, store0, 4);
       Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).isMigrating());
       Assert.assertTrue(destAdmin.getStore(destClusterName, store0).isMigrating());
       Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should not be deleted");
@@ -392,7 +433,7 @@ public class TestStoreMigration {
       Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v4"));
 
       // Test one more time
-      populateStoreForSingleCluster(destRouterUrl, newCluster, store0, 5);
+      populateStoreForSingleCluster(destRouterUrl, destControllerClient, store0, 5);
       Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).isMigrating());
       Assert.assertTrue(destAdmin.getStore(destClusterName, store0).isMigrating());
       Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should not be deleted");
@@ -413,7 +454,7 @@ public class TestStoreMigration {
 
       // After migration, reset the flag, push again, and old topics should be deleted
       destControllerClient.updateStore(store0, new UpdateStoreQueryParams().setStoreMigration(false));
-      populateStoreForSingleCluster(destRouterUrl, newCluster, store0, 6);
+      populateStoreForSingleCluster(destRouterUrl, destControllerClient, store0, 6);
       Assert.assertFalse(srcAdmin.hasStore(srcClusterName, store0));
       Assert.assertFalse(destAdmin.getStore(destClusterName, store0).isMigrating());
       Assert.assertFalse(getExistingTopics(kafkaAddr).contains(store0 + "_v2"), "This topic should have been deleted");
@@ -430,43 +471,43 @@ public class TestStoreMigration {
       // TODO: add brooklin to test frame work and test the following
       // Assert.assertTrue(getExistingTopics(kafkaAddr).contains(store0 + "_rt"), "RT topic should always be present");
 
-      multiClusterWrapper.close();
-    }
+    });
   }
 
   @Test
-  public void testMultiDatacenterMigration() {
-    VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(2, 2, NUM_OF_CONTROLLERS, NUM_OF_CONTROLLERS, 2, 2);
-    List<VeniceMultiClusterWrapper> multiClusters = twoLayerMultiColoMultiClusterWrapper.getClusters();
-    List<VeniceControllerWrapper> parentControllers = twoLayerMultiColoMultiClusterWrapper.getParentControllers();
+  public void testMultiDatacenterMigration() throws InterruptedException {
+    testWithMultiDatacenter((twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName, destClusterName,
+        parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient, destControllerClient) ->
+      testMultiDatacenterMigration(twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName,
+          destClusterName, parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient,
+          destControllerClient));
+  }
 
-    VeniceMultiClusterWrapper referenceCluster = multiClusters.get(0);
-    for (VeniceMultiClusterWrapper multiCluster: multiClusters) {
-      Assert.assertEquals(multiCluster.getClusterNames(), referenceCluster.getClusterNames());
-    }
-    Assert.assertTrue(referenceCluster.getClusterNames().length >= 2, "For this test there must be at least two clusters");
-
-    String srcClusterName = referenceCluster.getClusterNames()[0];  // venice-cluster0
-    String destClusterName = referenceCluster.getClusterNames()[1]; // venice-cluster1
+  /**
+   * Wanted to minimize the number of git lines changed, so having the bulk of the test here, and
+   * the wrapping into try-with-resources in the public @Test function, allows me to leave the test
+   * code mostly unchanged (not even indented). - FGV
+   */
+  private void testMultiDatacenterMigration(
+      VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper,
+      List<VeniceMultiClusterWrapper> multiClusters,
+      String srcClusterName,
+      String destClusterName,
+      String parentControllerUrl,
+      Admin srcParentAdmin,
+      Admin destParentAdmin,
+      ControllerClient srcControllerClient,
+      ControllerClient destControllerClient) {
     String store0 = "test-store0"; // Store in src cluster
     String store1 = "test-store1"; // Store in dest cluster
 
-    Admin srcParentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
-    Admin destParentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
     srcParentAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", "\"string\"");
     srcParentAdmin.updateStore(srcClusterName, store0, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
     destParentAdmin.addStore(destClusterName, store1, "tester", "\"string\"", "\"string\"");
     destParentAdmin.updateStore(destClusterName, store1, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
-    String parentControllerUrl = parentControllers.stream()
-        .map(veniceControllerWrapper -> veniceControllerWrapper.getControllerUrl())
-        .collect(Collectors.joining(","));
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
-
     // Populate store0
-    populateStoreForMultiCluster(parentControllerUrl, srcClusterName, store0, 1);
+    populateStoreForMultiCluster(parentControllerUrl, srcControllerClient, store0, 1);
 
     // Restart controllers to force storeConfig reload.
     // StoreConfigRepository had a bug that failed to register listeners for existing stores.
@@ -479,7 +520,7 @@ public class TestStoreMigration {
     StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
     Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
     Assert.assertTrue(storeMigrationResponse.getChildControllerUrls() != null, "Parent controller should return child controller urls");
-    TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(EXPECTED_STORE_MIGRATION_COMPLETION_TIME_SEC, TimeUnit.SECONDS, true, () -> {
       // Store discovery should point to the new cluster after migration
       ControllerResponse discoveryResponse = destControllerClient.discoverCluster(store0);
       String newCluster = discoveryResponse.getCluster();
@@ -488,8 +529,8 @@ public class TestStoreMigration {
 
     // Both original and new cluster should be able to serve read traffic
     for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-      Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-      Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+      Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+      Admin destChildAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
 
       Assert.assertTrue(srcChildAdmin.hasStore(srcClusterName, store0));
       Assert.assertTrue(destChildAdmin.hasStore(destClusterName, store0));
@@ -519,7 +560,7 @@ public class TestStoreMigration {
     // Push again
     // This would reveal a problem during store deletion in child cluster,
     // caused by "largest used version" mismatch between original store in parent and the rest of the world
-    populateStoreForMultiCluster(parentControllerUrl, srcClusterName, store0, 2);
+    populateStoreForMultiCluster(parentControllerUrl, srcControllerClient, store0, 2);
 
     // Both original and cloned stores should have the new version
     //
@@ -537,11 +578,11 @@ public class TestStoreMigration {
     Assert.assertEquals(clonedParentStore.getLargestUsedVersionNumber(), 2);
     Assert.assertTrue(clonedParentStore.isMigrating());
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(EXPECTED_STORE_MIGRATION_COMPLETION_TIME_SEC, TimeUnit.SECONDS, true, () -> {
       // Child
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-        Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+        Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        Admin destChildAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
 
         Assert.assertTrue(srcChildAdmin.hasStore(srcClusterName, store0));
         Assert.assertTrue(destChildAdmin.hasStore(destClusterName, store0));
@@ -570,6 +611,7 @@ public class TestStoreMigration {
     ControllerResponse controllerResponse =
         destControllerClient.updateStore(store0, new UpdateStoreQueryParams().setStoreMigration(false));
     Assert.assertFalse(controllerResponse.isError(), controllerResponse.getError());
+    Utils.sleep(1000);
 
     // Original store should be deleted in both parent and child
     // Cloned store migration flag should be reset, and can still serve traffic
@@ -581,8 +623,8 @@ public class TestStoreMigration {
 
       // Child
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-        Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+        Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        Admin destChildAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
 
         Assert.assertFalse(srcChildAdmin.hasStore(srcClusterName, store0));
         Assert.assertTrue(destChildAdmin.hasStore(destClusterName, store0));
@@ -596,11 +638,10 @@ public class TestStoreMigration {
       }
     });
 
-
     // Push version 3 to store0
-    populateStoreForMultiCluster(parentControllerUrl, destClusterName, store0, 3);
+    populateStoreForMultiCluster(parentControllerUrl, destControllerClient, store0, 3);
     for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-      Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+      Admin destChildAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
 
       Store clonedStore = destChildAdmin.getStore(destClusterName, store0);
       Assert.assertTrue(clonedStore.containsVersion(3));
@@ -615,8 +656,8 @@ public class TestStoreMigration {
 
     // Both original and new cluster should be able to serve read traffic
     for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-      Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-      Admin destChildAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+      Admin srcChildAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+      Admin destChildAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
 
       Assert.assertTrue(srcChildAdmin.hasStore(srcClusterName, store0));
       Assert.assertTrue(srcChildAdmin.hasStore(srcClusterName, store1));
@@ -631,104 +672,124 @@ public class TestStoreMigration {
     ControllerResponse discoveryResponse = srcControllerClient.discoverCluster(parentControllerUrl, store0);
     String newCluster = discoveryResponse.getCluster();
     Assert.assertEquals(newCluster, srcClusterName);
-
-    twoLayerMultiColoMultiClusterWrapper.close();
   }
 
   @Test
-  public void testAbortMigrationSingleDatacenter() {
-    String storeName = "test-store0"; // Store in src cluster
+  public void testMultiDatacenterMigrationWithNewPushes() throws InterruptedException {
+    testWithMultiDatacenter((twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName, destClusterName,
+        parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient, destControllerClient) -> {
+      String storeName = "test-store";
+      srcParentAdmin.addStore(srcClusterName, storeName, "test", STRING_SCHEMA, STRING_SCHEMA);
+      srcParentAdmin.updateStore(srcClusterName, storeName,
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+      List<String> srcRouterUrls = new ArrayList<>();
+      List<ControllerClient> srcControllerClients = new ArrayList<>();
+      for (VeniceMultiClusterWrapper cluster : multiClusters) {
+        String url = cluster.getClusters().get(srcClusterName).getRandomRouterURL();
+        srcRouterUrls.add(url);
+        srcControllerClients.add(new ControllerClient(srcClusterName, url));
+      }
 
-    VeniceMultiClusterWrapper multiClusterWrapper =
-        ServiceFactory.getVeniceMultiClusterWrapper(3, NUM_OF_CONTROLLERS, 2, 2);
-    String[] clusterNames = multiClusterWrapper.getClusterNames();
-    Assert.assertTrue(clusterNames.length >= 2, "For this test there must be at least two clusters");
+      // Push and verify v1 in source cluster
+      populateStoreForMultiCluster(parentControllerUrl, srcControllerClient, storeName, 1, true, Optional.of(srcRouterUrls));
 
-    Arrays.sort(clusterNames);
-    String srcClusterName = clusterNames[0];  // venice-cluster0-XXXXXXXXX
-    String destClusterName = clusterNames[1]; // venice-cluster1-XXXXXXXXX
+      // Start migration
+      StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
+      Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
+      // Ensure migration status is updated in the child controllers of the source cluster
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+        for (ControllerClient client : srcControllerClients) {
+          Assert.assertTrue(client.getStore(storeName).getStore().isMigrating());
+        }
+      });
 
-    Admin randomVeniceAdmin = multiClusterWrapper.getRandomController().getVeniceAdmin();
-    Admin srcAdmin = multiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
-    Admin destAdmin = multiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
+      // Push v2 in source cluster
+      populateStoreForMultiCluster(parentControllerUrl, srcControllerClient, storeName, 2, false, Optional.empty());
 
-    // Create one store in each cluster
-    srcAdmin.addStore(srcClusterName, storeName, "tester", "\"string\"", "\"string\"");
-    srcAdmin.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
-    Assert.assertEquals(randomVeniceAdmin.discoverCluster(storeName).getFirst(), srcClusterName);
-
-    String srcRouterUrl = multiClusterWrapper.getClusters().get(srcClusterName).getRandomRouterURL();
-    String destRouterUrl = multiClusterWrapper.getClusters().get(destClusterName).getRandomRouterURL();
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcRouterUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, destRouterUrl);
-
-    // Populate store0
-    populateStoreForSingleCluster(srcRouterUrl, srcClusterName, storeName, 1);
-    Assert.assertTrue(srcAdmin.getStore(srcClusterName, storeName).containsVersion(1));
-    Assert.assertEquals(srcAdmin.getStore(srcClusterName, storeName).getCurrentVersion(), 1);
-
-
-    // Test 1. Abort immediately
-    StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
-    Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
-    Assert.assertTrue(storeMigrationResponse.getChildControllerUrls() == null, "This should be a child controller");
-    Assert.assertTrue(srcAdmin.hasStore(srcClusterName, storeName));
-    Assert.assertTrue(destAdmin.hasStore(destClusterName, storeName));
-    Utils.sleep(1000);  // Mimic human response time
-
-    AdminTool.abortMigration(srcControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
-        false);
-    checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcAdmin, destAdmin, srcControllerClient);
-    verifyStoreData(storeName, srcRouterUrl);
-
-    // Test 2. Migrate again and wait until finish before abort
-    storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
-    Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
-    Assert.assertTrue(storeMigrationResponse.getChildControllerUrls() == null, "This should be a child controller");
-    Assert.assertTrue(srcAdmin.hasStore(srcClusterName, storeName));
-    Assert.assertTrue(destAdmin.hasStore(destClusterName, storeName));
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      Assert.assertTrue(srcControllerClient.discoverCluster(storeName).getCluster().equals(destClusterName));
+      TestUtils.waitForNonDeterministicAssertion(EXPECTED_STORE_MIGRATION_COMPLETION_TIME_SEC, TimeUnit.SECONDS, true, () -> {
+        // Store discovery should point to the new cluster after migration
+        ControllerResponse discoveryResponse = destControllerClient.discoverCluster(storeName);
+        String newCluster = discoveryResponse.getCluster();
+        Assert.assertEquals(newCluster, destClusterName);
+      });
     });
-    AdminTool.abortMigration(srcControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
-        true);
-    checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcAdmin, destAdmin, srcControllerClient);
-    verifyStoreData(storeName, srcRouterUrl);
-
-    multiClusterWrapper.close();
   }
 
+
   @Test
-  public void testAbortMigrationMultiDatacenter() {
-    VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper =
-        ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(2, 2, NUM_OF_CONTROLLERS, NUM_OF_CONTROLLERS, 2, 2);
-    List<VeniceMultiClusterWrapper> multiClusters = twoLayerMultiColoMultiClusterWrapper.getClusters();
-    List<VeniceControllerWrapper> parentControllers = twoLayerMultiColoMultiClusterWrapper.getParentControllers();
+  public void testAbortMigrationSingleDatacenter() throws InterruptedException {
+    testWithSameAndDifferentControllers(
+      (srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr, randomControllerUrl,
+          randomVeniceAdmin, srcAdmin, destAdmin, srcControllerClient, destControllerClient, store1, store0) -> {
+        srcAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", "\"string\"");
+        srcAdmin.updateStore(srcClusterName, store0, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
+        Assert.assertEquals(randomVeniceAdmin.discoverCluster(store0).getFirst(), srcClusterName);
 
-    VeniceMultiClusterWrapper referenceCluster = multiClusters.get(0);
-    for (VeniceMultiClusterWrapper multiCluster: multiClusters) {
-      Assert.assertEquals(multiCluster.getClusterNames(), referenceCluster.getClusterNames());
-    }
-    Assert.assertTrue(referenceCluster.getClusterNames().length >= 2, "For this test there must be at least two clusters");
+        // Populate store0
+        populateStoreForSingleCluster(srcRouterUrl, srcControllerClient, store0, 1);
+        Assert.assertTrue(srcAdmin.getStore(srcClusterName, store0).containsVersion(1));
+        Assert.assertEquals(srcAdmin.getStore(srcClusterName, store0).getCurrentVersion(), 1);
 
-    String srcClusterName = referenceCluster.getClusterNames()[0];  // venice-cluster0
-    String destClusterName = referenceCluster.getClusterNames()[1]; // venice-cluster1
+        // Test 1. Abort immediately
+        StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
+        Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
+        Assert.assertTrue(storeMigrationResponse.getChildControllerUrls() == null, "This should be a child controller");
+        Assert.assertTrue(srcAdmin.hasStore(srcClusterName, store0));
+        Assert.assertTrue(destAdmin.hasStore(destClusterName, store0));
+        Utils.sleep(1000);  // Mimic human response time
+
+        TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () ->
+        Assert.assertTrue(srcControllerClient.getStore(store0).getStore().isMigrating()));
+
+        abortMigration(srcControllerClient.getMasterControllerUrl(), store0, srcClusterName, destClusterName, false);
+        checkStatusAfterAbortCommand(srcClusterName, destClusterName, store0, srcAdmin, destAdmin,
+            srcControllerClient);
+        verifyStoreData(store0, srcRouterUrl);
+
+        // Test 2. Migrate again and wait until finish before abort
+        storeMigrationResponse = destControllerClient.migrateStore(store0, srcClusterName);
+        Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
+        Assert.assertTrue(storeMigrationResponse.getChildControllerUrls() == null, "This should be a child controller");
+        Assert.assertTrue(srcAdmin.hasStore(srcClusterName, store0));
+        Assert.assertTrue(destAdmin.hasStore(destClusterName, store0));
+
+        TestUtils.waitForNonDeterministicAssertion(EXPECTED_STORE_MIGRATION_COMPLETION_TIME_SEC, TimeUnit.SECONDS, true, () -> {
+          Assert.assertTrue(srcControllerClient.discoverCluster(store0).getCluster().equals(destClusterName));
+        });
+        abortMigration(srcControllerClient.getMasterControllerUrl(), store0, srcClusterName, destClusterName, true);
+        checkStatusAfterAbortCommand(srcClusterName, destClusterName, store0, srcAdmin, destAdmin,
+            srcControllerClient);
+        verifyStoreData(store0, srcRouterUrl);
+      });
+  }
+
+
+
+  @Test
+  public void testAbortMigrationMultiDatacenter() throws InterruptedException {
+    testWithMultiDatacenter((twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName, destClusterName,
+        parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient, destControllerClient) ->
+        testAbortMigrationMultiDatacenter(twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName,
+            destClusterName, parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient));
+  }
+
+  private void testAbortMigrationMultiDatacenter(
+      VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper,
+      List<VeniceMultiClusterWrapper> multiClusters,
+      String srcClusterName,
+      String destClusterName,
+      String parentControllerUrl,
+      Admin srcParentAdmin,
+      Admin destParentAdmin,
+      ControllerClient srcControllerClient) {
     String storeName = "test-store0"; // Store in src cluster
-
-    Admin srcParentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(srcClusterName).getVeniceAdmin();
-    Admin destParentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(destClusterName).getVeniceAdmin();
     srcParentAdmin.addStore(srcClusterName, storeName, "tester", "\"string\"", "\"string\"");
     srcParentAdmin.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
-
-    String parentControllerUrl = parentControllers.stream()
-        .map(veniceControllerWrapper -> veniceControllerWrapper.getControllerUrl())
-        .collect(Collectors.joining(","));
     ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
     ControllerClient destParentControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
 
     // Populate store
-    populateStoreForMultiCluster(parentControllerUrl, srcClusterName, storeName, 1);
+    populateStoreForMultiCluster(parentControllerUrl, srcControllerClient, storeName, 1);
     Assert.assertTrue(srcParentAdmin.hasStore(srcClusterName, storeName));
     Assert.assertFalse(destParentAdmin.hasStore(destClusterName, storeName));
 
@@ -741,8 +802,8 @@ public class TestStoreMigration {
     Assert.assertFalse(destParentAdmin.hasStore(destClusterName, storeName));
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, false, () -> {
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        Admin srcAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-        Admin destAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+        Admin srcAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        Admin destAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
         ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, multiCluster.getControllerConnectString());
         Assert.assertTrue(srcAdmin.hasStore(srcClusterName, storeName));
         Assert.assertFalse(srcAdmin.getStore(srcClusterName, storeName).isMigrating());
@@ -751,7 +812,10 @@ public class TestStoreMigration {
       }
     });
 
-    AdminTool.abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () ->
+        Assert.assertTrue(srcControllerClient.getStore(storeName).getStore().isMigrating()));
+
+    abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
         false);
     checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcParentAdmin, destParentAdmin,
         srcParentControllerClient);
@@ -766,8 +830,8 @@ public class TestStoreMigration {
 
     TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, () -> {
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        Admin srcAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-        Admin destAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+        Admin srcAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        Admin destAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
         ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, multiCluster.getControllerConnectString());
         Assert.assertTrue(srcAdmin.hasStore(srcClusterName, storeName));
         Assert.assertTrue(srcAdmin.getStore(srcClusterName, storeName).isMigrating());
@@ -777,7 +841,7 @@ public class TestStoreMigration {
       }
     });
 
-    AdminTool.abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
+    abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
         false);
     checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcParentAdmin, destParentAdmin,
         srcParentControllerClient);
@@ -792,8 +856,8 @@ public class TestStoreMigration {
 
     TestUtils.waitForNonDeterministicAssertion(300, TimeUnit.SECONDS, false, () -> {
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        Admin srcAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-        Admin destAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+        Admin srcAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        Admin destAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
         ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, multiCluster.getControllerConnectString());
         Assert.assertTrue(srcAdmin.hasStore(srcClusterName, storeName));
         Assert.assertTrue(srcAdmin.getStore(srcClusterName, storeName).isMigrating());
@@ -803,7 +867,7 @@ public class TestStoreMigration {
       }
     });
 
-    AdminTool.abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
+    abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
         false);
     checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcParentAdmin, destParentAdmin,
         srcParentControllerClient);
@@ -820,7 +884,7 @@ public class TestStoreMigration {
       Assert.assertTrue(srcParentControllerClient.discoverCluster(storeName).getCluster().equals(destClusterName));
     });
 
-    AdminTool.abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
+    abortMigration(srcParentControllerClient.getMasterControllerUrl(), storeName, srcClusterName, destClusterName,
         true);
     checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcParentAdmin, destParentAdmin,
         srcParentControllerClient);
@@ -829,20 +893,25 @@ public class TestStoreMigration {
     twoLayerMultiColoMultiClusterWrapper.close();
   }
 
+  private static void abortMigration(String veniceUrl, String storeName, String srcClusterName, String destClusterName,
+      boolean force) {
+    AdminTool.abortMigration(veniceUrl, storeName, srcClusterName, destClusterName, force, ABORT_MIGRATION_PROMPTS_OVERRIDE);
+  }
+
   private static void checkStatusAfterAbortCommand(String srcClusterName, String destClusterName, String storeName, Admin srcAdmin,
       Admin destAdmin, ControllerClient srcControllerClient) {
     Assert.assertTrue(srcAdmin.hasStore(srcClusterName, storeName));
     Assert.assertFalse(srcAdmin.getStore(srcClusterName, storeName).isMigrating());
     Assert.assertFalse(destAdmin.hasStore(destClusterName, storeName));
-    Assert.assertTrue(srcControllerClient.discoverCluster(storeName).getCluster().equals(srcClusterName));
+    Assert.assertEquals(srcControllerClient.discoverCluster(storeName).getCluster(),srcClusterName);
   }
 
   private static void checkChildStatusAfterAbortForMultiDatacenter(List<VeniceMultiClusterWrapper> multiClusters,
       String srcClusterName, String destClusterName, String storeName) {
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
       for (VeniceMultiClusterWrapper multiCluster : multiClusters) {
-        Admin srcAdmin = multiCluster.getMasterController(srcClusterName).getVeniceAdmin();
-        Admin destAdmin = multiCluster.getMasterController(destClusterName).getVeniceAdmin();
+        Admin srcAdmin = multiCluster.getMasterController(srcClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
+        Admin destAdmin = multiCluster.getMasterController(destClusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
         String srcRouterUrl = multiCluster.getClusters().get(srcClusterName).getRandomRouterURL();
         ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, multiCluster.getControllerConnectString());
         checkStatusAfterAbortCommand(srcClusterName, destClusterName, storeName, srcAdmin, destAdmin, srcChildControllerClient);
@@ -874,7 +943,9 @@ public class TestStoreMigration {
       // Store discovery should point to the new cluster after migration
       ControllerResponse discoveryResponse = destControllerClient.discoverCluster(storeName);
       String newCluster = discoveryResponse.getCluster();
-      Assert.assertNotEquals(newCluster, srcClusterName);
+      Assert.assertNotNull(newCluster);
+      Assert.assertNotEquals(newCluster, srcClusterName,
+          "The newCluster returned by the cluster discovery endpoint should be different from the srcClusterName.");
     });
 
     ControllerResponse updateStoreResponse1 = srcControllerClient.updateStore(storeName,
@@ -889,13 +960,13 @@ public class TestStoreMigration {
     Assert.assertFalse(updateStoreResponse2.isError(), updateStoreResponse2.getError());
   }
 
-  public static void printStoresInClusters(VeniceMultiClusterWrapper multiClusterWrapper) {
+  private static void printStoresInClusters(VeniceMultiClusterWrapper multiClusterWrapper) {
     String[] clusters = multiClusterWrapper.getClusterNames();
     Arrays.sort(clusters);
 
     String msg = "\n============= Cluster to Stores ===============\n";
     for (String cluster : clusters) {
-      Admin admin = multiClusterWrapper.getMasterController(cluster).getVeniceAdmin();
+      Admin admin = multiClusterWrapper.getMasterController(cluster, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       msg += cluster + ": ";
       String storeNames = admin.getAllStores(cluster).stream().map(s -> s.getName()).collect(Collectors.joining(" "));
       msg += storeNames + "\n";
@@ -904,7 +975,7 @@ public class TestStoreMigration {
     System.out.println(msg);
   }
 
-  public static void printClusterToController(VeniceMultiClusterWrapper multiClusterWrapper) {
+  private static void printClusterToController(VeniceMultiClusterWrapper multiClusterWrapper) {
     String msg = "\n============ Cluster to Controller ============\n";
     for (VeniceClusterWrapper cluster : multiClusterWrapper.getClusters()
         .values()
@@ -913,7 +984,7 @@ public class TestStoreMigration {
         .toArray(VeniceClusterWrapper[]::new)) {
 
       String clusterName = cluster.getClusterName();
-      String controllerUrl = multiClusterWrapper.getMasterController(clusterName).getControllerUrl();
+      String controllerUrl = multiClusterWrapper.getMasterController(clusterName, GET_MASTER_CONTROLLER_TIMEOUT).getControllerUrl();
       msg += clusterName + " : " + controllerUrl + "\n";
     }
     msg += "===============================================";
@@ -921,7 +992,7 @@ public class TestStoreMigration {
   }
 
 
-  public static void printMulticlusterInfo(VeniceMultiClusterWrapper multiClusterWrapper) {
+  private static void printMulticlusterInfo(VeniceMultiClusterWrapper multiClusterWrapper) {
     String msg = "\n============= Cluster basic info ================";
     msg += "\nClusters: " + Arrays.toString(multiClusterWrapper.getClusterNames());
     msg += "\nControllers: " + multiClusterWrapper.getControllerConnectString();
@@ -941,7 +1012,7 @@ public class TestStoreMigration {
     return kafkaConsumer.listTopics().keySet();
   }
 
-  public static void printExistingTopics(String kafkaAddr) {
+  private static void printExistingTopics(String kafkaAddr) {
     Set topics = getExistingTopics(kafkaAddr);
     String msg = "\n==============  Existing topics  ==============\n";
     msg += topics;
@@ -950,30 +1021,44 @@ public class TestStoreMigration {
     System.out.println(msg);
   }
 
-  public static void populateStoreForSingleCluster(String routerUrl, String clusterName, String storeName, int expectedVersion) {
-    populateStore(routerUrl, clusterName, storeName, expectedVersion, true);
+  private static void populateStoreForSingleCluster(String routerUrl, ControllerClient controllerClient, String storeName, int expectedVersion) {
+    populateStore(routerUrl, controllerClient, storeName, expectedVersion, true);
   }
 
-  public static void populateStoreForMultiCluster(String controllerUrl, String clusterName, String storeName, int expectedVersion) {
-    populateStore(controllerUrl, clusterName, storeName, expectedVersion, false);
+  private static void populateStoreForMultiCluster(String controllerUrl, ControllerClient controllerClient, String storeName, int expectedVersion) {
+    populateStore(controllerUrl, controllerClient, storeName, expectedVersion, false);
   }
 
-  public static void populateStore(String routerUrl, String clusterName, String storeName, int expectedVersion, boolean verify) {
+  private static void populateStoreForMultiCluster(String controllerUrl, ControllerClient controllerClient,
+      String storeName, int expectedVersion, boolean verify, Optional<List<String>> optionalRouterUrls) {
+    populateStore(controllerUrl, controllerClient, storeName, expectedVersion, false);
+    if (verify && optionalRouterUrls.isPresent() && !optionalRouterUrls.get().isEmpty()) {
+      List<String> routerUrls = optionalRouterUrls.get();
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, false, () -> {
+        System.out.println("Xun's log verifying");
+        verifyPushJobStatus(controllerClient, Version.composeKafkaTopic(storeName, 1));
+        for (String srcRouterUrl : routerUrls) {
+          verifyStoreData(storeName, srcRouterUrl);
+        }
+      });
+    }
+  }
+
+  private static void populateStore(String routerUrl, ControllerClient controllerClient, String storeName, int expectedVersion, boolean verify) {
     // Push
-    try {
-      Utils.thisIsLocalhost();
+    Utils.thisIsLocalhost();
 
-      File inputDir = getTempDataDirectory();
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-      String inputDirPath = "file:" + inputDir.getAbsolutePath();
-      String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-      Properties props = defaultH2VProps(routerUrl, inputDirPath, storeName);
-      if (verify) {
-        props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
-        props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, routerUrl);
-      }
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
+    Properties props = defaultH2VProps(routerUrl, inputDirPath, storeName);
+    if (verify) {
+      props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
+      props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, routerUrl);
+    }
 
-      KafkaPushJob job = new KafkaPushJob("Test push job", props);
+    try (KafkaPushJob job = new KafkaPushJob("Test push job", props)) {
+      writeSimpleAvroFileWithUserSchema(inputDir);
       job.run();
 
       // Verify job properties
@@ -986,7 +1071,7 @@ public class TestStoreMigration {
 
       if (verify) {
         TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
-          verifyPushJobStatus(clusterName, routerUrl, job);
+          verifyPushJobStatus(controllerClient, job.getKafkaTopic());
           verifyStoreData(storeName, routerUrl);
         });
       }
@@ -996,7 +1081,7 @@ public class TestStoreMigration {
     }
   }
 
-  public static void verifyStoreData(String storeName, String routerUrl) {
+  private static void verifyStoreData(String storeName, String routerUrl) {
     try (AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
       for (int i = 1; i <= 100; ++i) {
@@ -1009,10 +1094,8 @@ public class TestStoreMigration {
     }
   }
 
-  public static void verifyPushJobStatus(String clusterName, String routerUrl, KafkaPushJob job) {
-    ControllerClient controllerClient = new ControllerClient(clusterName, routerUrl);
-
-    JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
+  private static void verifyPushJobStatus(ControllerClient controllerClient, String topic) {
+    JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(topic);
     Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
         "After job is complete, status should reflect that");
     // In this test we are allowing the progress to not reach the full capacity, but we still want to make sure

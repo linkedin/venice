@@ -459,6 +459,12 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceUnsupportedOperationException("addVersion");
   }
 
+  @Override
+  public void addVersionAndStartIngestion(
+      String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions) {
+    throw new VeniceUnsupportedOperationException("addVersionAndStartIngestion");
+  }
+
   /**
    * Since there is no offline push running in Parent Controller,
    * the old store versions won't be cleaned up by job completion action, so Parent Controller chooses
@@ -1786,7 +1792,7 @@ public class VeniceParentHelixAdmin implements Admin {
               .collect(Collectors.toList());
 
           // Get a list of stores from storeConfig that are migrating
-          List<StoreConfig> allStoreConfigs = veniceHelixAdmin.storeConfigRepo.getAllStoreConfigs();
+          List<StoreConfig> allStoreConfigs = veniceHelixAdmin.getStoreConfigRepo().getAllStoreConfigs();
           List<String> migratingStores = allStoreConfigs.stream()
               .filter(storeConfig -> storeConfig.getMigrationSrcCluster() != null)  // Store might be migrating
               .filter(storeConfig -> storeConfig.getMigrationSrcCluster().equals(storeConfig.getCluster())) // Migration not complete
@@ -1798,7 +1804,7 @@ public class VeniceParentHelixAdmin implements Admin {
           // For each migrating stores, check if store migration is complete.
           // If so, update cluster discovery according to storeConfig
           for (String storeName : migratingStores) {
-            StoreConfig storeConfig = veniceHelixAdmin.storeConfigRepo.getStoreConfig(storeName).get();
+            StoreConfig storeConfig = veniceHelixAdmin.getStoreConfigRepo().getStoreConfig(storeName).get();
             String srcClusterName = storeConfig.getMigrationSrcCluster();
             String destClusterName = storeConfig.getMigrationDestCluster();
             String clusterDiscovered = storeConfig.getCluster();
@@ -1828,7 +1834,7 @@ public class VeniceParentHelixAdmin implements Admin {
               String childClusterDiscovered = childController.discoverCluster(storeName).getCluster();
               if (childClusterDiscovered.equals(destClusterName)) {
                 // CLuster discovery information has been updated,
-                // which means store migration is this particular cluster is successful
+                // which means store migration in this particular cluster is successful
                 readyCount++;
               }
             }

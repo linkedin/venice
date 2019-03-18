@@ -999,14 +999,23 @@ public class AdminTool {
     String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
     boolean force = cmd.hasOption(Arg.FORCE.toString());
 
-    abortMigration(veniceUrl, storeName, srcClusterName, destClusterName, force);
+    abortMigration(veniceUrl, storeName, srcClusterName, destClusterName, force, new boolean[0]);
   }
 
+  /**
+   * @param promptsOverride is an array of boolean used to replace/override user's responses to various possible prompts
+   *                        when calling abort migration programmatically. The corresponding response for each index is
+   *                        defined as follows:
+   *                        [0] Continue to execute abort migration even if the store doesn't appear to be migrating.
+   *                        [1] Continue to reset store migration flag, storeConfig and cluster discovery mapping.
+   *                        [2] Continue to delete the cloned store in the destination cluster.
+   */
   public static void abortMigration(String veniceUrl, String storeName, String srcClusterName, String destClusterName,
-      boolean force) {
+      boolean force, boolean[] promptsOverride) {
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
+    boolean terminate = false;
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
@@ -1017,7 +1026,12 @@ public class AdminTool {
       return;
     } else if (!srcControllerClient.getStore(storeName).getStore().isMigrating()) {
       System.err.println("WARNING: Store " + storeName + " is not in migration state in src cluster " + srcClusterName);
-      if (!userGivesPermission("Do you still want to proceed?")) {
+      if (promptsOverride.length > 0) {
+        terminate = !promptsOverride[0];
+      } else {
+        terminate = !userGivesPermission("Do you still want to proceed");
+      }
+      if (terminate) {
         return;
       }
     }
@@ -1033,8 +1047,13 @@ public class AdminTool {
     }
 
     // Reset original store, storeConfig, and cluster discovery
-    if (!userGivesPermission("Next step is to reset store migration flag, storeConfig and cluster discovery mapping."
-        + " Do you want to proceed?")) {
+    if (promptsOverride.length > 1) {
+      terminate = !promptsOverride[1];
+    } else {
+      terminate = !userGivesPermission("Next step is to reset store migration flag, storeConfig and cluster"
+          + "discovery mapping. Do you want to proceed?");
+    }
+    if (terminate) {
       return;
     }
     StoreMigrationResponse abortMigrationResponse = srcControllerClient.abortMigration(storeName, destClusterName);
@@ -1045,8 +1064,13 @@ public class AdminTool {
     }
 
     // Delete cloned store
-    if (!userGivesPermission("Next step is to delete the cloned store in dest cluster " + destClusterName + ". "
-        + storeName + " in " + destClusterName + " will be deleted irreversibly. Do you want to proceed?")) {
+    if (promptsOverride.length > 2) {
+      terminate = !promptsOverride[2];
+    } else {
+      terminate = !userGivesPermission("Next step is to delete the cloned store in dest cluster "
+          + destClusterName + ". " + storeName + " in " + destClusterName + " will be deleted irreversibly. Do you want to proceed?");
+    }
+    if (terminate) {
       return;
     }
     if (destControllerClient.getStore(storeName).getStore() == null) {
