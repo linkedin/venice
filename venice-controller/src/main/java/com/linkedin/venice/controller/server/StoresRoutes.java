@@ -45,7 +45,17 @@ public class StoresRoutes {
         AdminSparkServer.validateParams(request, LIST_STORES.getParams(), admin);
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
+
+        // Potentially filter out the system stores
+        String includeSystemStores = request.params(INCLUDE_SYSTEM_STORES);
         List<Store> storeList = admin.getAllStores(veniceResponse.getCluster());
+        if (null == includeSystemStores // If the param is not provided, the default is to exclude them
+            || !Boolean.parseBoolean(includeSystemStores)) {
+          storeList = storeList.stream()
+              .filter(store -> !store.isSystemStore())
+              .collect(Collectors.toList());
+        }
+
         String[] storeNameList = new String[storeList.size()];
         for (int i = 0; i < storeList.size(); i++) {
           storeNameList[i] = storeList.get(i).getName();

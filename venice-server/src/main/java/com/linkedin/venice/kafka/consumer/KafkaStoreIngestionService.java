@@ -1,10 +1,12 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -80,6 +82,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Map<String, StoreIngestionTask> topicNameToIngestionTaskMap;
   private final EventThrottler consumptionBandwidthThrottler;
   private final EventThrottler consumptionRecordsCountThrottler;
+  private final Optional<SchemaReader> schemaReader;
 
   private ExecutorService consumerExecutorService;
 
@@ -91,7 +94,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     StorageMetadataService storageMetadataService,
                                     ReadOnlyStoreRepository metadataRepo,
                                     ReadOnlySchemaRepository schemaRepo,
-                                    MetricsRepository metricsRepository) {
+                                    MetricsRepository metricsRepository,
+                                    Optional<SchemaReader> schemaReader) {
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -120,6 +124,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.getStoreWriterNumber(),
         serverConfig.getStoreWriterBufferMemoryCapacity(),
         serverConfig.getStoreWriterBufferNotifyDelta());
+    this.schemaReader = schemaReader;
     /**
      * Collect metrics for {@link #storeBufferService}.
      * Since all the metrics will be collected passively, there is no need to
@@ -163,7 +168,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     boolean bufferReplayEnabledForHybrid = version.get().isBufferReplayEnabledForHybrid();
 
-    return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
+    Properties kafkaProperties = getKafkaConsumerProperties(veniceStore);
+    if (schemaReader.isPresent()) {
+      kafkaProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, schemaReader.get());
+    }
+
+    return new StoreIngestionTask(veniceConsumerFactory, kafkaProperties, storeRepository,
         storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
         schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
         isStoreVersionCurrent, hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStore, diskUsage,
@@ -198,6 +208,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     for(VeniceNotifier notifier: notifiers ) {
       notifier.close();
     }
+
+    schemaReader.ifPresent(sr -> sr.close());
     logger.info("Shut down complete");
   }
 

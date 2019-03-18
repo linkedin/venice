@@ -20,7 +20,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -115,10 +115,10 @@ public abstract class TestRouterCache {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    VeniceAvroSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceAvroKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
     DefaultSerializer valueSerializer = new DefaultSerializer();
     //since compressor only takes bytes. Manually serialize the value to bytes first
-    VeniceAvroSerializer avroSerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceAvroKafkaSerializer avroSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     CompressionStrategy compressionStrategy = isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP;
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);

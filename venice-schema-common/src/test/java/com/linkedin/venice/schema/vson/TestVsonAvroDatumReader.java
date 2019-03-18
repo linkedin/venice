@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.vson;
 
-import com.linkedin.venice.serializer.AvroGenericSerializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.io.BinaryDecoder;
@@ -109,7 +109,7 @@ public class TestVsonAvroDatumReader {
 
   private void testReader(String vsonSchemaStr, Supplier valueSupplier, Consumer valueValidator) throws IOException {
     Schema avroSchema = VsonAvroSchemaAdapter.parse(vsonSchemaStr);
-    AvroGenericSerializer avroWriter = new AvroGenericSerializer(avroSchema);
+    AvroSerializer avroWriter = new AvroSerializer(avroSchema);
 
     byte[] avroBytes = avroWriter.serialize(valueSupplier.get());
     BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(avroBytes, null);

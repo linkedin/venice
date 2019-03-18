@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.OutputCollector;
@@ -91,7 +91,7 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
     //key needs to be Avro-formatted bytes here cause
     //Reducer is gonna try deserialize it if it finds duplicates key
     byte[] keyBytes =
-        new VeniceAvroSerializer("\"string\"").serialize("test_topic", "test_key");
+        new VeniceAvroKafkaSerializer("\"string\"").serialize("test_topic", "test_key");
 
     BytesWritable keyWritable = new BytesWritable(keyBytes);
     ArrayList<BytesWritable> values = new ArrayList<>();

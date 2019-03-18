@@ -724,7 +724,13 @@ public class ConfigKeys {
   public static final String PUSH_MONITOR_TYPE = "push.monitor.type";
 
   /**
-   * Flag to
+   * Flag to enable the participant message store.
    */
   public static final String PARTICIPANT_MESSAGE_STORE_ENABLED = "participant.message.store.enabled";
+
+  /**
+   * The name of the cluster that should host the special stores used to serve system schemas.
+   */
+  public static final String CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME = "controller.system.schema.cluster.name";
+
 }

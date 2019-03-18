@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -57,7 +58,7 @@ public class TestWritePathComputation {
       Admin parentAdmin = twoLayerMultiColoMultiClusterWrapper.getMasterController(clusterName).getVeniceAdmin();
       Admin childAdmin = multiCluster.getMasterController(clusterName, GET_MASTER_CONTROLLER_TIMEOUT).getVeniceAdmin();
       parentAdmin.addStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
         Assert.assertTrue(parentAdmin.hasStore(clusterName, storeName));
         Assert.assertTrue(childAdmin.hasStore(clusterName, storeName));
         Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
@@ -68,14 +69,14 @@ public class TestWritePathComputation {
       String parentControllerUrl = parentController.getControllerUrl();
       ControllerClient parentControllerClient = new ControllerClient(clusterName, parentControllerUrl);
       parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
         Assert.assertTrue(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
         Assert.assertTrue(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
       });
 
       // Reset flag
       parentControllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(false));
-      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, true, () -> {
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
         Assert.assertFalse(parentAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
         Assert.assertFalse(childAdmin.getStore(clusterName, storeName).isWriteComputationEnabled());
       });

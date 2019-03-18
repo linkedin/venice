@@ -130,8 +130,13 @@ public class AdminOffsetManager implements OffsetManager {
     if (null == offsetRecord) {
       offsetRecord = new OffsetRecord();
     }
-    LOGGER.info("Looked up last offset record from ZK for topic:" + topicName + ", partition id: " + partitionId +
-        ", record: " + offsetRecord.toDetailedString());
+    String logPrefix = "Looked up last offset record from ZK for topic: '" + topicName
+        + "', partition id: " + partitionId + ", ";
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug(logPrefix + "record: " + offsetRecord.toDetailedString());
+    } else {
+      LOGGER.info(logPrefix + "offset: " + offsetRecord.getOffset() + " (full offset record logged at debug level).");
+    }
     return offsetRecord;
   }
 }

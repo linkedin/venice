@@ -16,7 +16,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -87,8 +87,8 @@ public class ProducerConsumerReaderIntegrationTest {
     String routerUrl = veniceCluster.getRandomRouterSslURL();
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(topicName, keySerializer, valueSerializer);
@@ -146,8 +146,8 @@ public class ProducerConsumerReaderIntegrationTest {
         .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
 
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
     Properties veniceWriterProperties = new Properties();
     Properties defaultProps = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, creationResponse.getKafkaBootstrapServers());

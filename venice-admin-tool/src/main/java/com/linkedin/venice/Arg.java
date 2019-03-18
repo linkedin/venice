@@ -68,7 +68,8 @@ public enum Arg {
   FILTER_JSON("filter-json", "ftj", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage"),
-  FORCE("force", "f", false, "Force execute this operation");
+  FORCE("force", "f", false, "Force execute this operation"),
+  INCLUDE_SYSTEM_STORES("include-system-stores", "iss", false, "Include internal stores maintained by the system.");
 
 
   private final String argName;

@@ -10,6 +10,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
@@ -170,11 +171,9 @@ public interface Admin extends AutoCloseable, Closeable {
 
     SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
+    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
-    //Operations for updating store metadata
-    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr);
-
-    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
+    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
     void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 

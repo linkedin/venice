@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
@@ -7,6 +8,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
@@ -146,5 +149,18 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
         .filter(controller -> controller.isMasterController(clusterName))
         .findAny()
         .get();
+  }
+
+  public VeniceControllerWrapper getMasterController(String clusterName, long timeOutSec) {
+    AtomicReference<VeniceControllerWrapper> ref = new AtomicReference<>();
+    TestUtils.waitForNonDeterministicCompletion(timeOutSec, TimeUnit.SECONDS, () -> {
+      try {
+        ref.set(getMasterController(clusterName));
+      } catch (Exception e) {
+        return false;
+      }
+      return true;
+    });
+    return ref.get();
   }
 }

@@ -30,7 +30,7 @@ public enum ControllerRoute {
 
   JOB("/job", HttpMethod.GET, Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", HttpMethod.POST, Arrays.asList(TOPIC)),
-  LIST_STORES("/list_stores", HttpMethod.GET, Arrays.asList()),
+  LIST_STORES("/list_stores", HttpMethod.GET, Arrays.asList(), INCLUDE_SYSTEM_STORES),
   LIST_CHILD_CLUSTERS("/list_child_clusters", HttpMethod.GET, Arrays.asList()),
   LIST_NODES("/list_instances", HttpMethod.GET, Arrays.asList()),
   CLUSTER_HEALTH_STORES("/cluster_health_stores", HttpMethod.GET, Arrays.asList()),

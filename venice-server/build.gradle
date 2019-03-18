@@ -46,10 +46,10 @@ dependencies {
 
   implementation project(':venice-common_2.10')
   implementation project(':venice-controller')
-
-  testCompile (project(':venice-thin-client')){
+  implementation (project(':venice-thin-client')){
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
   }
+
   testCompile (project(':venice-router')){
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
   }

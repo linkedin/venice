@@ -8,27 +8,57 @@ import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
+import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 
-public class AvroGenericSerializer<K> implements RecordSerializer<K> {
-  private static final Logger logger = Logger.getLogger(AvroGenericSerializer.class);
-  private final DatumWriter<K> datumWriter;
+public class AvroSerializer<K> implements RecordSerializer<K> {
+  private static final Logger logger = Logger.getLogger(AvroSerializer.class);
+  private final DatumWriter<K> genericDatumWriter;
+  private final DatumWriter<K> specificDatumWriter;
 
   static {
     AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
   }
 
-  public AvroGenericSerializer(Schema schema) {
-    this(new GenericDatumWriter<>(schema));
+  public AvroSerializer(Schema schema) {
+    this(new GenericDatumWriter<>(schema), new SpecificDatumWriter(schema));
   }
 
-  protected AvroGenericSerializer(DatumWriter datumWriter) {
-    this.datumWriter = datumWriter;
+  protected AvroSerializer(DatumWriter genericDatumWriter, DatumWriter specificDatumWriter) {
+    this.genericDatumWriter = genericDatumWriter;
+    this.specificDatumWriter = specificDatumWriter;
+  }
+
+  private void write(K object, Encoder encoder) throws IOException {
+    try {
+      if (object instanceof SpecificRecord) {
+        specificDatumWriter.write(object, encoder);
+      } else {
+        genericDatumWriter.write(object, encoder);
+      }
+    } catch (NullPointerException e) {
+      if (object instanceof SpecificRecord && null == specificDatumWriter) {
+        /**
+         * Defensive code...
+         *
+         * At the time of writing this commit, only the {@link VsonAvroGenericSerializer}
+         * uses the protected constructor to pass in a null {@link specificDatumWriter},
+         * and the Vson serializer should never be used with a SpecificRecord, so the NPE
+         * should never happen. If this assumption is broken in the future, and this code
+         * regresses, then hopefully this exception can help future maintainers to find
+         * the issue more easily.
+         */
+        throw new IllegalStateException("This instance of " + this.getClass().getSimpleName()
+            + " was instantiated with a null specificDatumWriter, and was used to serialize a SpecificRecord.", e);
+      }
+      throw e;
+    }
   }
 
   @Override
@@ -36,7 +66,7 @@ public class AvroGenericSerializer<K> implements RecordSerializer<K> {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
     try {
-      datumWriter.write(object, encoder);
+      write(object, encoder);
       encoder.flush();
     } catch (IOException e) {
       throw new VeniceException("Could not serialize the Avro object", e);
@@ -62,7 +92,7 @@ public class AvroGenericSerializer<K> implements RecordSerializer<K> {
     try {
       objects.forEach(object -> {
         try {
-          datumWriter.write(object, encoder);
+          write(object, encoder);
         } catch (IOException e) {
           throw new VeniceException("Could not serialize the Avro object", e);
         }

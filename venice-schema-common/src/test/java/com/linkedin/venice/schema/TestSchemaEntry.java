@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import org.apache.avro.SchemaParseException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -104,7 +105,7 @@ public class TestSchemaEntry {
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr);
-    Assert.assertTrue(entry1.isCompatible(entry2));
+    Assert.assertTrue(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
   }
 
   @Test
@@ -140,7 +141,7 @@ public class TestSchemaEntry {
 
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
-    Assert.assertFalse(entry1.isCompatible(entry2));
+    Assert.assertFalse(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
   }
 
   @Test
@@ -177,7 +178,7 @@ public class TestSchemaEntry {
 
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
-    Assert.assertFalse(entry1.isCompatible(entry2));
+    Assert.assertFalse(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
   }
 
   @Test
@@ -214,7 +215,7 @@ public class TestSchemaEntry {
 
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
-    Assert.assertTrue(entry1.isCompatible(entry2));
+    Assert.assertTrue(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
   }
 
   @Test
@@ -252,6 +253,6 @@ public class TestSchemaEntry {
 
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
-    Assert.assertTrue(entry1.isCompatible(entry2));
+    Assert.assertTrue(entry1.isNewSchemaCompatible(entry2, DirectionalSchemaCompatibilityType.FULL));
   }
 }

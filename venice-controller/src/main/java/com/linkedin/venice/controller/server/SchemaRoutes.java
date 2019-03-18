@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.Utils;
 import java.util.Comparator;
 import java.util.stream.Collectors;
@@ -53,9 +54,12 @@ public class SchemaRoutes {
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
-        SchemaEntry valueSchemaEntry = admin.addValueSchema(responseObject.getCluster(),
+        SchemaEntry valueSchemaEntry = admin.addValueSchema(
+            responseObject.getCluster(),
             responseObject.getName(),
-            request.queryParams(ControllerApiConstants.VALUE_SCHEMA));
+            request.queryParams(ControllerApiConstants.VALUE_SCHEMA),
+            DirectionalSchemaCompatibilityType.FULL // TODO: Make compat type configurable to allow force registration
+        );
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
       } catch (Throwable e) {

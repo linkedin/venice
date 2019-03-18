@@ -69,6 +69,7 @@ dependencies {
   implementation libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
 
   api project(':venice-schema-common')
+  implementation project(':venice-thin-client')
 
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)

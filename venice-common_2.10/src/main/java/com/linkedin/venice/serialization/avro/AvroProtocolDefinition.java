@@ -82,7 +82,7 @@ public enum AvroProtocolDefinition {
    * greatest number available, but that may not necessarily be true if some new
    * experimental version of a protocol is being designed and is not yet rolled out.
    */
-  final Optional<Integer> currentProtocolVersion;
+  public final Optional<Integer> currentProtocolVersion;
 
   /**
    * The {@link SpecificRecord} class that this protocol should provide as an API
@@ -161,5 +161,17 @@ public enum AvroProtocolDefinition {
     } else {
       throw new VeniceMessageException("This protocol does not have a protocol version.");
     }
+  }
+
+  public Schema getCurrentProtocolVersionSchema() {
+    return schema;
+  }
+
+  public Optional<Byte> getMagicByte() {
+    return magicByte;
+  }
+
+  public String getClassName() {
+    return className;
   }
 }

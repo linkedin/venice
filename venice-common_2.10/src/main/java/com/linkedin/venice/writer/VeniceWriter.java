@@ -657,7 +657,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * @param messageType an instance of the {@link MessageType} enum.
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
-  private KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition) {
+  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = messageType.getValue();

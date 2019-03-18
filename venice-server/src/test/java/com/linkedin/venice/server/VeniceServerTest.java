@@ -21,6 +21,8 @@ import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
+
 
 public class VeniceServerTest {
 
@@ -144,7 +146,12 @@ public class VeniceServerTest {
     new Thread(new Runnable() {
       @Override
       public void run() {
-        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, false, true, false, false, new Properties());
+        Properties featureProperties = new Properties();
+        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(false));
+        featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(true));
+        featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(false));
+        featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(false));
+        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, featureProperties, new Properties());
       }
     }).start();
     Utils.sleep(1000);

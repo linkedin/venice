@@ -4,13 +4,12 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 import java.util.function.Function;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
 
 /**
  * For one given store, the client only needs the followings:
- * 1. One {@link AvroGenericSerializer} for key serialization;
+ * 1. One {@link AvroSerializer} for key serialization;
  * 2. Multiple {@link AvroGenericDeserializer} / {@link AvroSpecificDeserializer} for value deserialization;
  * By using this implementation, we can reuse the serializer/deserializer to improve the
  * performance of key serialization/value deserialization.
@@ -56,7 +55,7 @@ public class SerializerDeserializerFactory {
     }
   }
 
-  private static Map<Schema, AvroGenericSerializer> avroGenericSerializerMap = new VeniceConcurrentHashMap<>();
+  private static Map<Schema, AvroSerializer> avroGenericSerializerMap = new VeniceConcurrentHashMap<>();
   private static Map<Schema, VsonAvroGenericSerializer> vsonGenericSerializerMap = new VeniceConcurrentHashMap<>();
 
   private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>> avroGenericDeserializerMap = new VeniceConcurrentHashMap<>();
@@ -64,7 +63,7 @@ public class SerializerDeserializerFactory {
   private static Map<SchemaPairAndClassContainer, VsonAvroGenericDeserializer> vsonGenericDeserializerMap = new VeniceConcurrentHashMap<>();
 
   public static <K> RecordSerializer<K> getAvroGenericSerializer(Schema schema) {
-    return avroGenericSerializerMap.computeIfAbsent(schema, key -> new AvroGenericSerializer(key));
+    return avroGenericSerializerMap.computeIfAbsent(schema, key -> new AvroSerializer(key));
   }
 
   public static <K> RecordSerializer<K> getVsonSerializer(Schema schema) {

@@ -14,6 +14,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -55,12 +56,14 @@ public class KafkaStoreIngestionServiceTest {
 
  @Test
  public void testDisableMetricsEmission() {
-   kafkaStoreIngestionService = new KafkaStoreIngestionService(mockStoreRepository,
-                                                                   mockVeniceConfigLoader,
+   kafkaStoreIngestionService = new KafkaStoreIngestionService(
+       mockStoreRepository,
+       mockVeniceConfigLoader,
        storageMetadataService,
-                                                                   mockmetadataRepo,
-                                                                   mockSchemaRepo,
-                                                                   new MetricsRepository());
+       mockmetadataRepo,
+       mockSchemaRepo,
+       new MetricsRepository(),
+       Optional.empty());
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";

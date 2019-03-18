@@ -1,12 +1,14 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
@@ -47,6 +49,24 @@ public class ClientFactory {
     InternalAvroStoreClient<K, V> avroClient = new AvroSpecificStoreClientImpl<>(transportClient, clientConfig);
     SpecificStatTrackingStoreClient<K, V> client = new SpecificStatTrackingStoreClient<K, V>(avroClient, clientConfig);
     return client;
+  }
+
+  public static SchemaReader getSchemaReader(ClientConfig clientConfig) {
+    AvroGenericStoreClientImpl client =
+        new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
+    client.start();
+
+    /**
+     * N.B.: instead of returning a new {@link SchemaReader}, we could instead return
+     * {@link AbstractAvroStoreClient#getSchemaReader()}, but then the calling code would
+     * have no handle on the original client, and therefore it would leak with no ability
+     * to close it. In order to alleviate that risk, we instead construct a client with
+     * needSchemaReader == false, and pass that client to a new {@link SchemaReader}, which
+     * is the same as what would happen inside {@link AbstractAvroStoreClient#start()}.
+     *
+     * Closing this {@link SchemaReader} instance will also close the underlying client.
+     */
+    return new SchemaReader(client, Optional.empty());
   }
 
   private static D2TransportClient generateTransportClient(ClientConfig clientConfig){

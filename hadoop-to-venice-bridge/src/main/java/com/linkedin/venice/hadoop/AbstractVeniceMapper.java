@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
@@ -132,7 +132,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       reducer.configure(job);
     }
 
-    keySerializer = new VeniceAvroSerializer(getKeySchemaStr());
-    valueSerializer = new VeniceAvroSerializer(getValueSchemaStr());
+    keySerializer = new VeniceAvroKafkaSerializer(getKeySchemaStr());
+    valueSerializer = new VeniceAvroKafkaSerializer(getValueSchemaStr());
   }
 }

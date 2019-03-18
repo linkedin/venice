@@ -106,6 +106,7 @@ dependencies {
   implementation project(':venice-schema-common')
   implementation project(':venice-common_2.10')
   implementation project(':venice-server')
+  // implementation project(':venice-consumer').sourceSets.test.output
   implementation project(':venice-controller')
   implementation project(':venice-router')
   implementation project(':venice-thin-client')

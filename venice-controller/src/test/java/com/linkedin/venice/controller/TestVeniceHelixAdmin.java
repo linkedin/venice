@@ -391,7 +391,7 @@ public class TestVeniceHelixAdmin {
     Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
   }
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testHandleVersionCreationFailure() {
     String storeName = "test";
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
@@ -403,10 +403,15 @@ public class TestVeniceHelixAdmin {
     Version version =
         veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),1, 1, true);
     int versionNumber = version.getNumber();
+
+    // Not sure why, but sometimes, the new version is marked COMPLETED right away... This does not happen every time.
+    Admin.OfflinePushStatusInfo offlinePushStatus = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
+    Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.STARTED);
+
     String statusDetails = "synthetic error message";
     veniceAdmin.handleVersionCreationFailure(clusterName, storeName, versionNumber, statusDetails);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);
-    Admin.OfflinePushStatusInfo offlinePushStatus = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
+    offlinePushStatus = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
     Assert.assertEquals(offlinePushStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertTrue(offlinePushStatus.getStatusDetails().isPresent());
     Assert.assertEquals(offlinePushStatus.getStatusDetails().get(), statusDetails);
@@ -1038,7 +1043,7 @@ public class TestVeniceHelixAdmin {
   }
 
   //TODO slow test, ~15 seconds.  Can we improve it?
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testKillOfflinePush()
       throws Exception {
     String newNodeId = Utils.getHelixNodeIdentifier(9786);
@@ -1092,6 +1097,9 @@ public class TestVeniceHelixAdmin {
       });
     }
     veniceAdmin.deleteHelixResource(clusterName, version.kafkaTopicName());
+
+    // TODO: Fix the flaky assertions below and get rid of the fixed sleep. It doesn't sense the way it's written.
+
     Thread.sleep(2000);
     //Make sure the resource has been deleted, because after registering handler, kill message should be processed.
     Assert.assertFalse(veniceAdmin.getVeniceHelixResource(clusterName)

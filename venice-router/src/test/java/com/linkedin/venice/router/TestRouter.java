@@ -53,11 +53,7 @@ public class TestRouter {
 
   public void testRouterWithD2(boolean https, boolean secureOnly) throws Exception {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
-    if (https) {
-      D2TestUtils.setupHttpsD2Config(zk.getAddress());
-    } else {
-      D2TestUtils.setupD2Config(zk.getAddress());
-    }
+    D2TestUtils.setupD2Config(zk.getAddress(), https);
 
     Properties extraConfigs = new Properties();
     if (secureOnly){

@@ -2,7 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -29,7 +29,7 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
   private VsonAvroSerializer keyDeserializer;
   private VsonAvroSerializer valueDeserializer;
 
-  private VeniceAvroSerializer keySerializer;
+  private VeniceAvroKafkaSerializer keySerializer;
 
   @BeforeTest
   public void setup() {
@@ -38,7 +38,7 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     valueDeserializer = VsonAvroSerializer.fromSchemaStr(fileValueSchemaStr);
 
     keySerializer =
-        new VeniceAvroSerializer(VsonAvroSchemaAdapter.parse(fileKeySchemaStr).toString());
+        new VeniceAvroKafkaSerializer(VsonAvroSchemaAdapter.parse(fileKeySchemaStr).toString());
   }
 
   @Test
@@ -49,8 +49,8 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
 
-    VeniceAvroSerializer valueSerializer =
-        new VeniceAvroSerializer((VsonAvroSchemaAdapter.parse(fileValueSchemaStr).toString()));
+    VeniceAvroKafkaSerializer valueSerializer =
+        new VeniceAvroKafkaSerializer((VsonAvroSchemaAdapter.parse(fileValueSchemaStr).toString()));
 
     Pair<BytesWritable, BytesWritable> record = generateRecord();
     mapper.map(record.getFirst(), record.getSecond(), collector, null);
@@ -73,8 +73,8 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
 
     Schema schema = VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(fileValueSchemaStr));
-    VeniceAvroSerializer valueSerializer =
-        new VeniceAvroSerializer(schema.getField("userId").schema().toString());
+    VeniceAvroKafkaSerializer valueSerializer =
+        new VeniceAvroKafkaSerializer(schema.getField("userId").schema().toString());
 
     Pair<BytesWritable, BytesWritable> record = generateRecord();
     mapper.map(record.getFirst(), record.getSecond(), collector, null);

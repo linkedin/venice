@@ -18,7 +18,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
-import com.linkedin.venice.serializer.AvroGenericSerializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -43,7 +43,6 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.meta.PersistenceType.*;
 
 
 @Test (singleThreaded = true)
@@ -67,7 +66,7 @@ public abstract class TestRestartServerDuringIngestion {
     return properties;
   }
 
-  private Map<byte[], byte[]> generateInput(int recordCnt, boolean sorted, int startId, AvroGenericSerializer serializer) {
+  private Map<byte[], byte[]> generateInput(int recordCnt, boolean sorted, int startId, AvroSerializer serializer) {
     Map<byte[], byte[]> records;
     if (sorted) {
       BytewiseComparator comparator = new BytewiseComparator(new ComparatorOptions());
@@ -104,7 +103,7 @@ public abstract class TestRestartServerDuringIngestion {
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
-    AvroGenericSerializer serializer = new AvroGenericSerializer(Schema.parse(stringSchemaStr));
+    AvroSerializer serializer = new AvroSerializer(Schema.parse(stringSchemaStr));
     AvroGenericDeserializer deserializer = new AvroGenericDeserializer(Schema.parse(stringSchemaStr), Schema.parse(stringSchemaStr));
 
     String storeName = TestUtils.getUniqueString("test_store");

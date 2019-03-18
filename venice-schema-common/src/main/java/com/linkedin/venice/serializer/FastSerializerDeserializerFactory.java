@@ -18,7 +18,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
       avroFastSpecificDeserializerMap = new VeniceConcurrentHashMap<>();
 
-  private static Map<Schema, AvroGenericSerializer<Object>>
+  private static Map<Schema, AvroSerializer<Object>>
       avroFastGenericSerializerMap = new VeniceConcurrentHashMap<>();
 
   // Verify whether fast-avro could generate a fast specific deserializer, but there is no guarantee that
@@ -64,7 +64,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   }
 
   public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema) {
-    return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroGenericSerializer<>(s, cache));
+    return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache));
   }
 
 }

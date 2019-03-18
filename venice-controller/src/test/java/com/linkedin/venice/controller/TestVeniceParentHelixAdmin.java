@@ -48,6 +48,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -448,7 +449,7 @@ public class TestVeniceParentHelixAdmin {
     String valueSchemaStr = "\"string\"";
     int valueSchemaId = 10;
     doReturn(valueSchemaId).when(internalAdmin)
-        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
+        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
     doReturn(valueSchemaId).when(internalAdmin)
         .getValueSchemaId(clusterName, storeName, valueSchemaStr);
 
@@ -463,11 +464,10 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-
-    parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr);
+    parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
 
     verify(internalAdmin)
-        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
+        .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
