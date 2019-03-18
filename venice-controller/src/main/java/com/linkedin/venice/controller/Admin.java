@@ -14,6 +14,7 @@ import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.Closeable;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -22,7 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 
 
-public interface Admin {
+public interface Admin extends AutoCloseable, Closeable {
     // Wrapper to include both overall offline push status and other extra useful info
     class OfflinePushStatusInfo {
         private ExecutionStatus executionStatus;
@@ -84,6 +85,20 @@ public interface Admin {
 
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicationFactor);
+
+    /**
+     * A (temporary) wrapper method to keep the underlying {@code addVersion} behaviour but performs additional checks
+     * for feature flags and potential race condition when both {@code TopicMonitor} and add version via admin protocol
+     * are enabled. Second attempt of failed add version admin message will be ignored and succeed if the new version
+     * already exists.
+     * @param clusterName of the store.
+     * @param storeName of the store.
+     * @param pushJobId of the corresponding push.
+     * @param versionNumber of the new version.
+     * @param numberOfPartitions for the new push.
+     */
+    void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
+        int numberOfPartitions);
 
     /**
      * The implementation of this method must take no action and return the same Version object if the same parameters
