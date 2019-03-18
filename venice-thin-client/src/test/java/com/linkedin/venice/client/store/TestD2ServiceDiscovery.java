@@ -17,7 +17,7 @@ public class TestD2ServiceDiscovery {
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
     ZkServerWrapper zk = ServiceFactory.getZkServer();
     // Set up d2 config before announcing
-    D2TestUtils.setupD2Config(zk.getAddress());
+    D2TestUtils.setupD2Config(zk.getAddress(), false);
     // Start a mock server which will serve for the d2 service.
     MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), false, new Properties());
     // Set up client config to use the d2 service that router serving for

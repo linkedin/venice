@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
@@ -238,7 +239,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    *    schema entry if the schema is successfully added or already exists.
    */
   @Override
-  public SchemaEntry addValueSchema(String storeName, String schemaStr) {
+  public SchemaEntry addValueSchema(String storeName, String schemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
@@ -249,7 +250,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       if (entry.equals(newValueSchemaWithInvalidId)) {
         return entry;
       }
-      if (!entry.isCompatible(newValueSchemaWithInvalidId)) {
+      if (!entry.isNewSchemaCompatible(newValueSchemaWithInvalidId, expectedCompatibilityType)) {
         throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);
       }
       int entryId = entry.getId();
@@ -274,7 +275,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
-  public SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
+  public SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
@@ -282,7 +283,11 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     for (SchemaEntry entry : valueSchemas) {
       // If the new schema is not compatible with existing schema, here still throw an exception
-      if (!entry.isCompatible(newValueSchemaEntry)) {
+      /**
+       * TODO: Consider removing this check, since it is already performed prior to calling this in
+       * {@link com.linkedin.venice.controller.VeniceHelixAdmin#checkPreConditionForAddValueSchemaAndGetNewSchemaId()}
+       */
+      if (!entry.isNewSchemaCompatible(newValueSchemaEntry, expectedCompatibilityType)) {
         throw new SchemaIncompatibilityException(entry, newValueSchemaEntry);
       }
     }

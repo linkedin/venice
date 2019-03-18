@@ -4,6 +4,8 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -13,8 +15,11 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -376,6 +381,93 @@ public class Utils {
     LOGGER.info("Loaded schema from resource path '" + resourcePath + "'");
     LOGGER.debug("Schema literal:\n" + schema.toString(true));
     return schema;
+  }
+
+  public static Map<Integer, Schema> getAllSchemasFromResources(AvroProtocolDefinition protocolDef) {
+    final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA =
+        InternalAvroSpecificSerializer.SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
+    final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL =
+        InternalAvroSpecificSerializer.SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL;
+    int currentProtocolVersion;
+    if (protocolDef.currentProtocolVersion.isPresent()) {
+      int currentProtocolVersionAsInt = protocolDef.currentProtocolVersion.get();
+      if (currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA ||
+          currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL ||
+          currentProtocolVersionAsInt > Byte.MAX_VALUE) {
+        throw new IllegalArgumentException("Improperly defined protocol! Invalid currentProtocolVersion: " + currentProtocolVersionAsInt);
+      }
+      currentProtocolVersion = currentProtocolVersionAsInt;
+    } else {
+      currentProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL;
+    }
+
+    byte compiledProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
+    String className = protocolDef.getClassName();
+    Map<Integer, Schema> protocolSchemaMap = new TreeMap<>();
+    int initialVersion;
+    if (currentProtocolVersion > 0) {
+      initialVersion = 1; // TODO: Consider making configurable if we ever need to fully deprecate some old versions
+    } else {
+      initialVersion = currentProtocolVersion;
+    }
+    final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
+    int version = initialVersion;
+    while (true) {
+      String versionPath = "avro" + sep + className + sep;
+      if (currentProtocolVersion != SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
+        versionPath += "v" + version + sep;
+      }
+      versionPath += className + ".avsc";
+      try {
+        Schema schema = Utils.getSchemaFromResource(versionPath);
+        protocolSchemaMap.put(version, schema);
+        if (schema.equals(protocolDef.getCurrentProtocolVersionSchema())) {
+          compiledProtocolVersion = (byte) version;
+        }
+        if (currentProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
+          break;
+        } else if (currentProtocolVersion > 0) {
+          // Positive version protocols should continue looking "up" for the next version
+          version++;
+        } else {
+          // And vice-versa for negative version protocols
+          version--;
+        }
+      } catch (IOException e) {
+        // Then the schema was not found at the requested path
+        if (version == initialVersion) {
+          throw new VeniceException("Failed to initialize schemas! No resource found at: " + versionPath, e);
+        } else {
+          break;
+        }
+      }
+    }
+
+    /** Ensure that we are using Avro properly. */
+    if (compiledProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA) {
+      throw new VeniceException("Failed to identify which version is currently compiled for " + protocolDef.name() +
+          ". This could happen if the avro schemas have been altered without recompiling the auto-generated classes" +
+          ", or if the auto-generated classes were edited directly instead of generating them from the schemas.");
+    }
+
+    /**
+     * Verify that the intended current protocol version defined in the {@link AvroProtocolDefinition} is available
+     * in the jar's resources and that it matches the auto-generated class that is actually compiled.
+     *
+     * N.B.: An alternative design would have been to assume that what is compiled is the intended version, but we
+     * are instead making this a very explicit choice by requiring the change in both places and failing loudly
+     * when there is an inconsistency.
+     */
+    Schema intendedCurrentProtocol = protocolSchemaMap.get((int) currentProtocolVersion);
+    if (null == intendedCurrentProtocol) {
+      throw new VeniceException("Failed to get schema for current version: " + currentProtocolVersion
+          + " class: " + className);
+    } else if (!intendedCurrentProtocol.equals(protocolDef.getCurrentProtocolVersionSchema())) {
+      throw new VeniceException("The intended protocol version (" + currentProtocolVersion +
+          ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");
+    }
+
+    return protocolSchemaMap;
   }
 
   /**

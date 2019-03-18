@@ -18,7 +18,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -90,8 +90,8 @@ public class StorageNodeComputeTest {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
-    keySerializer = new VeniceAvroSerializer(keySchema);
-    valueSerializer = new VeniceAvroSerializer(valueSchemaForCompute);
+    keySerializer = new VeniceAvroKafkaSerializer(keySchema);
+    valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
   }
 
   @AfterClass
@@ -171,7 +171,35 @@ public class StorageNodeComputeTest {
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
             .execute(keySet)
-            .get();
+            /**
+             * Background around this timeout:
+             *
+             * This is a test which re-uses the same store multiple times, pushes and then queries data,
+             * but does not wait for the routers to be updated before querying the data. Obviously, the
+             * test itself can be fixed by adding retries, but in this case, it seems that it uncovers a
+             * real issue: the client should not time out, but rather, then router's exception should be
+             * propagated back to the client and the client should fail fast.
+             *
+             * The router sees one of two exceptions:
+             *
+             * 1. In the first few iterations, if the router has not seen even one store-version yet, then
+             *    it fails with this:
+             *
+             *    com.linkedin.venice.exceptions.VeniceNoHelixResourceException: There is no version for store 'venice-store-1557853651072-1905802900'.  Please push data to that store
+             *
+             * 2. In later iterations, if the router is hanging on to an old store-version which is 2 or
+             *    more versions behind the current one, and the version the router knows about got deleted
+             *    on the SN, then it fails with this:
+             *
+             *    com.linkedin.venice.exceptions.VeniceNoHelixResourceException: Resource 'venice-store-1557853651072-1905802900_v10' does not exist
+             *
+             * Setting the timeout here helps make the test fail faster, otherwise, the test failure is
+             * confusing, indicating that it timed out waiting for some resources to close (which seems
+             * inaccurate).
+             *
+             * TODO: Find out why some requests time out instead of failing fast.
+             */
+            .get(5, TimeUnit.SECONDS);
         Assert.assertEquals(computeResult.size(), 10);
         for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
           int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);

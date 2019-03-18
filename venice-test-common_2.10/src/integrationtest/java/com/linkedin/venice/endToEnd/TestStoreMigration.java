@@ -23,6 +23,7 @@ import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiCluster
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -47,6 +48,11 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestStoreMigration {
+  /**
+   * Unfortunately, this test class is quite flaky and also takes a very long time, therefore, it can be necessary to disable it.
+   */
+  private static final boolean ENABLED = true;
+
   private static final Logger logger = Logger.getLogger(TestStoreMigration.class);
   private static final int MAX_RETRY = 5;
   private static final int NUM_OF_CONTROLLERS = 3; // number of controller cannot be more than 3
@@ -228,7 +234,7 @@ public class TestStoreMigration {
     }
   }
 
-  @Test
+  @Test(enabled = ENABLED)
   public void testSchemaPreservation() throws InterruptedException {
     String valueSchema1 = "{\"type\":\"record\",\"name\":\"HashtagPoolValue\",\"namespace\":\"com.linkedin.hashtags\",\"fields\":[{\"name\":\"hashtags\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"The list of hashtags in this pool\"}]}";
     String valueSchema2 = "{\"type\":\"record\",\"name\":\"HashtagPoolValue\",\"namespace\":\"com.linkedin.hashtags\",\"fields\":[{\"name\":\"hashtags\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"The list of hashtags in this pool\"},{\"name\":\"poolFeatures\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"FeatureVector\",\"fields\":[{\"name\":\"features\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"Feature\",\"fields\":[{\"name\":\"qualifiedName\",\"type\":{\"type\":\"array\",\"items\":\"string\"},\"doc\":\"A list of strings to represent name of a unique feature. The array allows for grouping features hierarchically into sections.\"},{\"name\":\"value\",\"type\":\"double\",\"doc\":\"Value of a raw feature, range from -inf to inf\"}]}},\"doc\":\"Array of features\"}]}],\"doc\":\"The feature vector shared across all the hashtags within this pool.\",\"default\":null}]}";
@@ -239,9 +245,9 @@ public class TestStoreMigration {
 
       // Create store and add a second schema
       srcAdmin.addStore(srcClusterName, store0, "tester", "\"string\"", valueSchema1);
-      srcAdmin.addValueSchema(srcClusterName, store0, valueSchema2);
+      srcAdmin.addValueSchema(srcClusterName, store0, valueSchema2, DirectionalSchemaCompatibilityType.FULL);
       destAdmin.addStore(destClusterName, store1, "tester", "\"string\"", valueSchema1);
-      destAdmin.addValueSchema(destClusterName, store1, valueSchema2);
+      destAdmin.addValueSchema(destClusterName, store1, valueSchema2, DirectionalSchemaCompatibilityType.FULL);
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store0).getFirst(), srcClusterName);
       Assert.assertEquals(randomVeniceAdmin.discoverCluster(store1).getFirst(), destClusterName);
 
@@ -258,7 +264,7 @@ public class TestStoreMigration {
     });
   }
 
-  @Test
+  @Test(enabled = ENABLED)
   public void testDataMigration() throws InterruptedException {
     testWithSameAndDifferentControllers(
         (srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr, randomControllerUrl,
@@ -381,7 +387,7 @@ public class TestStoreMigration {
     });
   }
 
-  @Test
+  @Test(enabled = ENABLED)
   public void testTopicDeletion() throws InterruptedException {
     testWithSameAndDifferentControllers(
         (srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr, randomControllerUrl,
@@ -474,7 +480,7 @@ public class TestStoreMigration {
     });
   }
 
-  @Test
+  @Test(enabled = ENABLED)
   public void testMultiDatacenterMigration() throws InterruptedException {
     testWithMultiDatacenter((twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName, destClusterName,
         parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient, destControllerClient) ->
@@ -674,7 +680,7 @@ public class TestStoreMigration {
     Assert.assertEquals(newCluster, srcClusterName);
   }
 
-  @Test
+  @Test(enabled = ENABLED)
   public void testMultiDatacenterMigrationWithNewPushes() throws InterruptedException {
     testWithMultiDatacenter((twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName, destClusterName,
         parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient, destControllerClient) -> {
@@ -716,7 +722,7 @@ public class TestStoreMigration {
   }
 
 
-  @Test
+  @Test(enabled = ENABLED)
   public void testAbortMigrationSingleDatacenter() throws InterruptedException {
     testWithSameAndDifferentControllers(
       (srcClusterName, destClusterName, srcRouterUrl, destRouterUrl, kafkaAddr, randomControllerUrl,
@@ -764,8 +770,7 @@ public class TestStoreMigration {
   }
 
 
-
-  @Test
+  @Test(enabled = ENABLED)
   public void testAbortMigrationMultiDatacenter() throws InterruptedException {
     testWithMultiDatacenter((twoLayerMultiColoMultiClusterWrapper, multiClusters, srcClusterName, destClusterName,
         parentControllerUrl, srcParentAdmin, destParentAdmin, srcControllerClient, destControllerClient) ->

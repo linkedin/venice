@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.init.ControllerInitializationManager;
+import com.linkedin.venice.controller.init.ControllerInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
@@ -25,14 +27,16 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
       new ConcurrentHashMap<>();
   private final StoreCleaner storeCleaner;
   private final MetricsRepository metricsRepository;
+  private final ControllerInitializationRoutine controllerInitialization;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
+      StoreCleaner storeCleaner, MetricsRepository metricsRepository, ControllerInitializationRoutine controllerInitialization) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = new ConcurrentHashMap<>();
     this.storeCleaner = storeCleaner;
     this.metricsRepository = metricsRepository;
+    this.controllerInitialization = controllerInitialization;
   }
 
   @Override
@@ -42,7 +46,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap, storeCleaner,
-            metricsRepository);
+            metricsRepository, controllerInitialization);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

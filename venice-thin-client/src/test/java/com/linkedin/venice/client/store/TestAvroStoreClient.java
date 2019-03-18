@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
+@Test
 public class TestAvroStoreClient {
   private static final String STORE_NAME = "test-store";
   private static final String KEY_SCHEMA_STR = TestKeyRecord.SCHEMA$.toString();
@@ -109,6 +110,17 @@ public class TestAvroStoreClient {
     // Setup individual schema responses
     setupSchemaResponse(1, TestValueRecord.SCHEMA$);
     setupSchemaResponse(2, TestValueRecordWithMoreFields.SCHEMA$);
+
+    // Mock for single schema v2 request
+    CompletableFuture<TransportClientResponse> mockTransportFutureForV2 = mock(CompletableFuture.class);
+    CompletableFuture<byte[]> mockValueFutureForV2 = mock(CompletableFuture.class);
+    byte[] schemaResponseInBytesForV2 =
+        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 2, TestValueRecordWithMoreFields.SCHEMA$.toString());
+    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, schemaResponseInBytesForV2)).when(mockTransportFutureForV2).get();
+    doReturn(mockTransportFutureForV2).when(mockTransportClient)
+        .get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "2");
+    doReturn(schemaResponseInBytesForV2).when(mockValueFutureForV2).get();
+    doReturn(mockValueFutureForV2).when(mockTransportFutureForV2).handle(any());
 
     genericStoreClient.start();
 

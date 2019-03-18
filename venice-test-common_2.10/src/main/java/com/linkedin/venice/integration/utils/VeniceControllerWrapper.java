@@ -95,7 +95,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(PERSISTENCE_TYPE, PersistenceType.BDB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
-            .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false);
+            .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false)
+            // The first cluster will always be the one to host system schemas...
+            .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());

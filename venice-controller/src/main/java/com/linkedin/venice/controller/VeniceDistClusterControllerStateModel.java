@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.init.ControllerInitializationManager;
+import com.linkedin.venice.controller.init.ControllerInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
@@ -38,14 +40,15 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
   private final StoreCleaner storeCleaner;
+  private final MetricsRepository metricsRepository;
+  private final ControllerInitializationRoutine controllerInitialization;
   private String clusterName;
-  private MetricsRepository metricsRepository;
 
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository, ControllerInitializationRoutine controllerInitialization) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
@@ -53,6 +56,19 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.clusterToConfigsMap = clusterToConfigsMap;
     this.storeCleaner = storeCleaner;
     this.metricsRepository = metricsRepository;
+    this.controllerInitialization = controllerInitialization;
+  }
+
+  /**
+   * This runs after the state transition occurred.
+   */
+  @Override
+  public boolean updateState(String newState) {
+    boolean returnValue = super.updateState(newState);
+    if (newState.equals(HelixState.LEADER_STATE)) {
+      controllerInitialization.execute(clusterName);
+    }
+    return returnValue;
   }
 
   private void executeStateTransition(Message message, StateTransition stateTransition) throws VeniceException {
@@ -75,7 +91,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     void execute() throws Exception;
   }
 
-  @Transition(to = HelixState.LEADER_STATE, from = "STANDBY")
+  @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
       String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
@@ -101,7 +117,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     });
   }
 
-  @Transition(to = "STANDBY", from = HelixState.LEADER_STATE)
+  @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
       String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
@@ -121,7 +137,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     });
   }
 
-  @Transition(to = "OFFLINE", from = HelixState.STANDBY_STATE)
+  @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
       String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());

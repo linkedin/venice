@@ -1,5 +1,5 @@
 package com.linkedin.venice.integration.utils;
-
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -13,7 +13,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -113,17 +113,31 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 
-      for (int i = 0; i < numberOfServers; i++) {
-        VeniceServerWrapper veniceServerWrapper =
-            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist,
-                sslToStorageNodes, sslToKafka, new Properties());
-        veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
-      }
-
       for (int i = 0; i < numberOfRouters; i++) {
         VeniceRouterWrapper veniceRouterWrapper =
             ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, clusterToD2);
         veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
+      }
+
+      for (int i = 0; i < numberOfServers; i++) {
+        Properties featureProperties = new Properties();
+        featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableWhitelist));
+        featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinWhitelist));
+        featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(sslToStorageNodes));
+        featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
+        if (!veniceRouterWrappers.isEmpty()) {
+          featureProperties.put(CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
+                  .setVeniceURL("http://" + veniceRouterWrappers.values().stream().findFirst().get().getAddress())
+
+              // TODO: Figure out why the D2-based config doesn't work...
+//            .setD2Client(D2TestUtils.getAndStartD2Client(zkAddress))
+//            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+          );
+        }
+
+        VeniceServerWrapper veniceServerWrapper =
+            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, new Properties());
+        veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
       }
 
       /**
@@ -489,8 +503,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(CLUSTER_NAME, clusterName);
     TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     return factory.getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
 
@@ -506,8 +520,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
 
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     return factory.getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }

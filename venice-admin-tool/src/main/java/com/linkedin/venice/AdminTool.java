@@ -2,6 +2,7 @@ package com.linkedin.venice;
 
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -146,7 +147,7 @@ public class AdminTool {
 
       switch (foundCommand) {
         case LIST_STORES:
-          storeResponse = controllerClient.queryStoreList();
+          storeResponse = queryStoreList(cmd);
           printObject(storeResponse);
           break;
         case DESCRIBE_STORE:
@@ -156,7 +157,7 @@ public class AdminTool {
           }
           break;
         case DESCRIBE_STORES:
-          storeResponse = controllerClient.queryStoreList();
+          storeResponse = queryStoreList(cmd);
           for (String store : storeResponse.getStores()) {
             printStoreDescription(store);
           }
@@ -351,6 +352,11 @@ public class AdminTool {
       }
     }
     return Command.getCommand(foundCommand);
+  }
+
+  private static MultiStoreResponse queryStoreList(CommandLine cmd) {
+    boolean includeSystemStores = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.INCLUDE_SYSTEM_STORES));
+    return controllerClient.queryStoreList(includeSystemStores);
   }
 
   private static void queryStoreForKey(CommandLine cmd, String veniceUrl)
@@ -1274,7 +1280,7 @@ public class AdminTool {
   }
 
   private static void verifyStoreExistence(String storename, boolean desiredExistence){
-    MultiStoreResponse storeResponse = controllerClient.queryStoreList();
+    MultiStoreResponse storeResponse = controllerClient.queryStoreList(true);
     if (storeResponse.isError()){
       throw new VeniceException("Error verifying store exists: " + storeResponse.getError());
     }

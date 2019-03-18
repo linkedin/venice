@@ -11,7 +11,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class VeniceAvroSerializerTest {
+public class VeniceAvroKafkaSerializerTest {
   private String topic = "dummyTopic";
   @Test
   public void testSerializeUnionOfEnumField() throws IOException {
@@ -23,7 +23,7 @@ public class VeniceAvroSerializerTest {
         + "  \"type\": \"record\",\n" + "  \"namespace\": \"com.linkedin.venice.serialization.avro\"\n" + "}");
     Schema enumSchema = recordSchema.getField("union").schema().getTypes().get(1);
 
-    VeniceAvroSerializer serializer = new VeniceAvroSerializer(recordSchema);
+    VeniceAvroKafkaSerializer serializer = new VeniceAvroKafkaSerializer(recordSchema);
 
     //test serializing specificRecord
     UnionOfEnumRecord specificRecord = new UnionOfEnumRecord();

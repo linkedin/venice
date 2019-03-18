@@ -23,7 +23,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.serializer.AvroGenericSerializer;
+import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -253,7 +253,7 @@ public class TestHybrid {
       Map<String, String> storeStatus =
           controllerClient.listStoresStatuses().getStoreStatusMap();
       // Make sure Helix know the instance is completed shutdown
-      if (storeStatus.values().iterator().next().equals(StoreStatus.FULLLY_REPLICATED.toString())) {
+      if (storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString())) {
         return true;
       }
       return false;
@@ -391,7 +391,7 @@ public class TestHybrid {
     writer.broadcastStartOfBufferReplay(bufferReplyOffsets, "", "", new HashMap<>());
 
     // Write 100 records
-    AvroGenericSerializer<String> stringSerializer = new AvroGenericSerializer(Schema.parse(STRING_SCHEMA));
+    AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
     for (int i = 1; i <= 100; ++i) {
       writer.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
     }

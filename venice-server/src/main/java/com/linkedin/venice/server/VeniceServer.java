@@ -3,8 +3,12 @@ package com.linkedin.venice.server;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
+import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
@@ -20,6 +24,7 @@ import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
@@ -47,10 +52,15 @@ import org.apache.log4j.Logger;
 public class VeniceServer {
 
   private static final Logger logger = Logger.getLogger(VeniceServer.class);
+
+  public final static String SERVER_SERVICE_NAME = "venice-server";
+
   private final VeniceConfigLoader veniceConfigLoader;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<StaticAccessController> accessController;
+  private final Optional<ClientConfig> clientConfigForConsumer;
   private final AtomicBoolean isStarted;
+  private final List<AbstractVeniceService> services;
 
   private StorageService storageService;
   private BdbStorageMetadataService storageMetadataService;
@@ -63,9 +73,7 @@ public class VeniceServer {
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
 
-  private final List<AbstractVeniceService> services;
 
-  public final static String SERVER_SERVICE_NAME = "venice-server";
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
@@ -73,15 +81,21 @@ public class VeniceServer {
   }
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
-    this(veniceConfigLoader, metricsRepository, Optional.empty(), Optional.empty());
+    this(veniceConfigLoader, metricsRepository, Optional.empty(), Optional.empty(), Optional.empty());
   }
 
-  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository, Optional<SSLEngineComponentFactory> sslFactory, Optional<StaticAccessController> accessController) {
+  public VeniceServer(
+      VeniceConfigLoader veniceConfigLoader,
+      MetricsRepository  metricsRepository,
+      Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
+      Optional<StaticAccessController> accessController,
+      Optional<ClientConfig> clientConfigForConsumer) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
     this.metricsRepository = metricsRepository;
     this.sslFactory = sslFactory;
     this.accessController = accessController;
+    this.clientConfigForConsumer = clientConfigForConsumer;
     if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
                              veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
                              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
@@ -133,9 +147,18 @@ public class VeniceServer {
     // Create ReadOnlyStore/SchemaRepository
     createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
 
+    Optional<SchemaReader> schemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
+        cc.setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE))));
+
     //create and add KafkaSimpleConsumerService
-    this.kafkaStoreIngestionService =
-        new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo, schemaRepo, metricsRepository);
+    this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
+        storageService.getStoreRepository(),
+        veniceConfigLoader,
+        storageMetadataService,
+        metadataRepo,
+        schemaRepo,
+        metricsRepository,
+        schemaReader);
 
     AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     storageService.setAggBdbStorageEngineStats(bdbStorageEngineStats);

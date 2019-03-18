@@ -4,8 +4,10 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -39,6 +41,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
   public static final String SERVER_IS_AUTO_JOIN = "server_is_auto_join";
   public static final String SERVER_ENABLE_SSL = "server_enable_ssl";
   public static final String SERVER_SSL_TO_KAFKA = "server_ssl_to_kafka";
+  public static final String CLIENT_CONFIG_FOR_CONSUMER = "client_config_for_consumer";
 
   private VeniceServer veniceServer;
   private final VeniceProperties serverProps;
@@ -60,6 +63,8 @@ public class VeniceServerWrapper extends ProcessWrapper {
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
+      Optional<ClientConfig> clientConfigForConsumer = Optional.ofNullable(
+          (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER));
 
       /** Create config directory under {@link dataDirectory} */
       File configDirectory = new File(dataDirectory.getAbsolutePath(), "config");
@@ -107,7 +112,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
         sslFactory = Optional.of(SslUtils.getLocalSslFactory());
       }
 
-      VeniceServer server = new VeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty());
+      VeniceServer server = new VeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty(), clientConfigForConsumer);
       return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader);
     };
   }

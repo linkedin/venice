@@ -56,18 +56,27 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
 
   public ApacheKafkaProducer(VeniceProperties props) {
+    this(props, true);
+  }
+
+  /**
+   * @param props containing producer configs
+   * @param strictConfigs if true, the {@param props} will be validated to ensure no mandatory configs are badly overridden
+   *                      if false, the check will not happen (useful for tests only)
+   */
+  protected ApacheKafkaProducer(VeniceProperties props, boolean strictConfigs) {
     /** TODO: Consider making these default settings part of {@link VeniceWriter} or {@link KafkaProducerWrapper} */
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
 
     // TODO : For sending control message, this is not required. Move this higher in the stack.
-    ensureMandatoryProp(properties, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
-    ensureMandatoryProp(properties, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
+    validateProp(properties, strictConfigs, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
+    validateProp(properties, strictConfigs, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
 
     // This is to guarantee ordering, even in the face of failures.
-    ensureMandatoryProp(properties, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
+    validateProp(properties, strictConfigs, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
 
     // This will ensure the durability on Kafka broker side
-    ensureMandatoryProp(properties, ProducerConfig.ACKS_CONFIG, "-1");
+    validateProp(properties, strictConfigs, ProducerConfig.ACKS_CONFIG, "-1");
 
     if (!properties.containsKey(ProducerConfig.REQUEST_TIMEOUT_MS_CONFIG)) {
       // if not specified, set default request timeout as 5 minutes (300000ms)
@@ -79,9 +88,9 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     }
 
     // Hard-coded backoff config to be 1 sec
-    ensureMandatoryProp(properties, ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
+    validateProp(properties, strictConfigs, ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
     // Block if buffer is full
-    ensureMandatoryProp(properties, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
+    validateProp(properties, strictConfigs, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
 
     if (properties.containsKey(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
       LOGGER.info("Compression type explicitly specified by config: " + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
@@ -120,11 +129,11 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    *
    * TODO: Decide if this belongs here or higher up the call-stack
    */
-  private void ensureMandatoryProp(Properties properties, String requiredConfigKey, String requiredConfigValue) {
+  private void validateProp(Properties properties, boolean strictConfigs, String requiredConfigKey, String requiredConfigValue) {
     String actualConfigValue = properties.getProperty(requiredConfigKey);
     if (actualConfigValue == null) {
       properties.setProperty(requiredConfigKey, requiredConfigValue);
-    } else if (!actualConfigValue.equals(requiredConfigValue)) {
+    } else if (!actualConfigValue.equals(requiredConfigValue) && strictConfigs) {
       // We fail fast rather than attempting to use non-standard serializers
       throw new VeniceException("The Kafka Producer must use certain configuration settings in order to work properly. " +
           "requiredConfigKey: '" + requiredConfigKey +

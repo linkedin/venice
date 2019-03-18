@@ -194,7 +194,7 @@ public class ServiceFactory {
     featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableServerWhitelist));
     featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(autoJoinWhitelist));
     featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(DEFAULT_SSL_TO_STORAGE_NODES));
-    featureProperties.setProperty(SERVER_SSL_TO_KAFKA, "false");
+    featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.FALSE.toString());
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, new Properties()));
   }
@@ -218,14 +218,6 @@ public class ServiceFactory {
       Properties configProperties) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, configProperties));
-  }
-
-  /**
-   * Note: Assumes that helix and kafka are using the same zookeeper, uses the zookeeper from the kafkaBrokerWrapper
-   */
-  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes){
-    return getService(VeniceRouterWrapper.SERVICE_NAME,
-      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, null,  new Properties()));
   }
 
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,

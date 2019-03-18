@@ -280,9 +280,14 @@ public class ControllerClient implements Closeable {
         .add(MESSAGE, message);
     return request(ControllerRoute.UPLOAD_PUSH_JOB_STATUS, params, PushJobStatusUploadResponse.class);
   }
-
   public MultiStoreResponse queryStoreList() {
-    return request(ControllerRoute.LIST_STORES, newParams(), MultiStoreResponse.class);
+    return queryStoreList(false);
+  }
+
+  public MultiStoreResponse queryStoreList(boolean includeSystemStores) {
+    QueryParams queryParams = newParams()
+        .add(INCLUDE_SYSTEM_STORES, includeSystemStores);
+    return request(ControllerRoute.LIST_STORES, queryParams, MultiStoreResponse.class);
   }
 
   public MultiStoreStatusResponse listStoresStatuses() {

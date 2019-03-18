@@ -30,6 +30,10 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * TODO: It's handy to make {@link #versions} as a hash map.
  */
 public class Store {
+
+  private static final String SYSTEM_STORE_NAME_PADDING = "__";
+  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PADDING + "%s" + SYSTEM_STORE_NAME_PADDING;
+
   /**
    * Special version number indicates none of version is available to read.
    */
@@ -672,6 +676,10 @@ public class Store {
       // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in the future.
     }
     return versionsToDelete;
+  }
+
+  public boolean isSystemStore() {
+    return getName().startsWith(SYSTEM_STORE_NAME_PADDING) && getName().endsWith(SYSTEM_STORE_NAME_PADDING);
   }
 
   /**

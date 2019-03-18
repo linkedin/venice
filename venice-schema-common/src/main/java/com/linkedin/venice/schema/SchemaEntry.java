@@ -1,9 +1,15 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.schema.avro.SchemaCompatibility;
+import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaParseException;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType.*;
+import static com.linkedin.venice.schema.avro.SchemaCompatibility.*;
+import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatibilityType.*;
 
 /**
  * {@link SchemaEntry} is composed of a schema and its corresponding id.
@@ -84,41 +90,54 @@ public final class SchemaEntry {
 
   @Override
   public String toString() {
-    return id + "\t" + schema.toString();
+    return this.toString(false);
+  }
+
+  public String toString(boolean pretty) {
+    return id + "\t" + schema.toString(pretty);
   }
 
   public byte[] getSchemaBytes() {
     return schema.toString().getBytes();
   }
 
-  public boolean isCompatible(SchemaEntry otherSchemaEntry) {
-    return isFullyCompatible(otherSchemaEntry);
-  }
-
   /**
-   * This function will check whether two schema are both backward and forward compatible.
+   * This function will check whether a new schema is compatible with this one according to the passed in
+   * {@param expectedCompatibilityType}.
    *
    * Right now, this function is using the util function provided by avro-1.7+ to check compatibility.
    * We need to remove the util class manually copied when venice is able to use avro-1.7+
    *
-   * @param otherSchemaEntry
-   * @return
+   * @return true if compatible, false otherwise
    */
-  private boolean isFullyCompatible(SchemaEntry otherSchemaEntry) {
-    SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
-        SchemaCompatibility.checkReaderWriterCompatibility(schema, otherSchemaEntry.getSchema());
-    if (backwardCompatibility.getType() != SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE) {
-      logger.info("Schema: " + this + " is not compatible with Schema: " + otherSchemaEntry +
-          ", msg: " + backwardCompatibility.getDescription());
-      return false;
+  public boolean isNewSchemaCompatible(
+      final SchemaEntry newSchemaEntry,
+      final DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+
+    if (Arrays.asList(BACKWARD, FULL).contains(expectedCompatibilityType)) {
+      SchemaCompatibility.SchemaPairCompatibility backwardCompatibility = checkReaderWriterCompatibility(
+          /** reader */ newSchemaEntry.schema,
+          /** writer */ this.schema
+      );
+      if (backwardCompatibility.getType() == INCOMPATIBLE) {
+        logger.info("New schema (id " + newSchemaEntry.getId() +
+            ") is not backward compatible with (i.e.: cannot read data written by) existing schema (id "
+            + this.id + "), Full message:\n" + backwardCompatibility.getDescription());
+        return false;
+      }
     }
 
-    SchemaCompatibility.SchemaPairCompatibility forwardCompatibility =
-        SchemaCompatibility.checkReaderWriterCompatibility(otherSchemaEntry.getSchema(), schema);
-    if (forwardCompatibility.getType() != SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE) {
-      logger.info("Schema: " + this + " is not compatible with Schema: " + otherSchemaEntry +
-          ", msg: " + forwardCompatibility.getDescription());
-      return false;
+    if (Arrays.asList(FORWARD, FULL).contains(expectedCompatibilityType)) {
+      SchemaCompatibility.SchemaPairCompatibility forwardCompatibility = checkReaderWriterCompatibility(
+          /** reader */ this.schema,
+          /** writer */ newSchemaEntry.schema
+      );
+      if (forwardCompatibility.getType() == INCOMPATIBLE) {
+        logger.info("New schema id (" + newSchemaEntry.getId() +
+            ") is not forward compatible with (i.e.: cannot have its written data read by) existing schema id ("
+            + this.id + "), Full message:\n" + forwardCompatibility.getDescription());
+        return false;
+      }
     }
 
     return true;

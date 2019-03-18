@@ -53,6 +53,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
@@ -1207,10 +1208,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     acquireLock(clusterName);
     try {
-      int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
+      int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+          clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
       logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
       ValueSchemaCreation valueSchemaCreation = (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
@@ -1240,7 +1242,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 

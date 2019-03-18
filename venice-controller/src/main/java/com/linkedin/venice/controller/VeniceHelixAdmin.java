@@ -4,6 +4,9 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
+import com.linkedin.venice.controller.init.ControllerInitializationManager;
+import com.linkedin.venice.controller.init.ControllerInitializationRoutine;
+import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
@@ -61,8 +64,10 @@ import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -238,10 +243,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
 
+        List<ControllerInitializationRoutine> initRoutines = new ArrayList<>();
+        initRoutines.add(new SystemSchemaInitializationRoutine(
+            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
+        ControllerInitializationRoutine controllerInitialization = new ControllerInitializationManager(initRoutines);
+
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
-        controllerStateModelFactory =
-            new VeniceDistClusterControllerStateModelFactory(zkClient, adapterSerializer, this, metricsRepository);
+        controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
+            zkClient, adapterSerializer, this, metricsRepository, controllerInitialization);
         // Preset the configs for all known clusters.
         for (String cluster : multiClusterConfigs.getClusters()) {
             controllerStateModelFactory.addClusterConfig(cluster, multiClusterConfigs.getConfigForCluster(cluster));
@@ -606,8 +616,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private synchronized void configurePushJobStatusWriter(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
         if (pushJobStatusWriter == null) {
-            VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(key.getSchema().toString());
-            VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(value.getSchema().toString());
+            VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(key.getSchema().toString());
+            VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(value.getSchema().toString());
             pushJobStatusWriter = getVeniceWriterFactory()
                 .getVeniceWriter(pushJobStatusTopicName, keySerializer, valueSerializer);
         }
@@ -2159,17 +2169,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
-        checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
+    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+        checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+            clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
         HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.addValueSchema(storeName, valueSchemaStr);
+        return schemaRepo.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
     }
 
     @Override
-    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
-        checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
+    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+        checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+            clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
         HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.addValueSchema(storeName, valueSchemaStr, schemaId);
+        return schemaRepo.addValueSchema(storeName, valueSchemaStr, schemaId, expectedCompatibilityType);
     }
 
   /**
@@ -2180,7 +2192,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
    * @param valueSchemaStr
    * @return
    */
-    protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName, String valueSchemaStr) {
+    protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (!repository.hasStore(storeName)) {
@@ -2200,7 +2212,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (entry.equals(newValueSchemaWithInvalidId)) {
                 return entry.getId();
             }
-            if (!entry.isCompatible(newValueSchemaWithInvalidId)) {
+            if (!entry.isNewSchemaCompatible(newValueSchemaWithInvalidId, expectedCompatibilityType)) {
                 throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);
             }
             if (entry.getId() > maxValueSchemaId) {
@@ -2677,8 +2689,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             + ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName));
                     }
                     return getVeniceWriterFactory().getVeniceWriter(topic,
-                        new VeniceAvroSerializer(ParticipantMessageKey.SCHEMA$.toString()),
-                        new VeniceAvroSerializer(ParticipantMessageValue.SCHEMA$.toString()));
+                        new VeniceAvroKafkaSerializer(ParticipantMessageKey.SCHEMA$.toString()),
+                        new VeniceAvroKafkaSerializer(ParticipantMessageValue.SCHEMA$.toString()));
             });
             ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
             ParticipantMessageKey key = new ParticipantMessageKey();
@@ -2844,7 +2856,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Pair<String, String> discoverCluster(String storeName) {
         StoreConfig config = storeConfigAccessor.getStoreConfig(storeName);
         if (config == null || Utils.isNullOrEmpty(config.getCluster())) {
-            throw new VeniceException("Could not find the given store: " + storeName
+            throw new VeniceNoStoreException("Could not find the given store: " + storeName
             + ". Make sure the store is created and the provided store name is correct");
         }
         String clusterName = config.getCluster();

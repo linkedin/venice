@@ -20,7 +20,8 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -113,8 +114,8 @@ public abstract class TestRead {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    keySerializer = new VeniceAvroSerializer(stringSchema);
-    valueSerializer = new VeniceAvroSerializer(stringSchema);
+    keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
@@ -303,7 +304,10 @@ public abstract class TestRead {
       }
       metrics.forEach( (mName, metric) -> {
         if (mName.contains("_current--disk_usage_in_bytes")) {
-          Assert.assertTrue(metric.value() > 0.0, "Disk usage for current version should be postive");
+          double value = metric.value();
+          Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code, "Got a NULL_BDB_ENVIRONMENT!");
+          Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code, "Got NULL_STORAGE_ENGINE_STATS!");
+          Assert.assertTrue(value > 0.0, "Disk usage for current version should be postive. Got: " + value);
         }
       });
     }

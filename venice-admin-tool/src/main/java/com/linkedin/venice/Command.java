@@ -12,11 +12,11 @@ import static com.linkedin.venice.Arg.*;
 public enum Command {
 
   LIST_STORES("list-stores", "",
-      new Arg[] {URL, CLUSTER}),
+      new Arg[] {URL, CLUSTER}, new Arg[] {INCLUDE_SYSTEM_STORES}),
   DESCRIBE_STORE("describe-store", "",
       new Arg[] {URL, CLUSTER, STORE}),
   DESCRIBE_STORES("describe-stores", "",
-      new Arg[] {URL, CLUSTER}),
+      new Arg[] {URL, CLUSTER}, new Arg[] {INCLUDE_SYSTEM_STORES}),
   DISABLE_STORE_WRITE("disable-store-write", "Prevent a store from accepting new versions",
       new Arg[] {URL, CLUSTER, STORE}),
   ENABLE_STORE_WRITE("enable-store-write", "Allow a store to accept new versions again after being writes have been disabled",

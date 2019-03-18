@@ -1,0 +1,6 @@
+dependencies {
+  implementation project (':venice-common_2.10')
+  implementation libraries.kafkaClients
+  testImplementation project (':venice-thin-client')
+  testImplementation project (':venice-test-common_2.10').sourceSets.integrationtest.output
+}

@@ -36,21 +36,8 @@ public class D2TestUtils {
   public static final String CONTROLLER_CLUSTER_NAME = "VeniceController";
   public static final String CONTROLLER_SERVICE_NAME = "VeniceController";
 
-  private static final ObjectMapper mapper = new ObjectMapper();
-
-
-  public static void setupD2Config(String zkHosts){
-    setupD2Config(zkHosts, false);
-  }
-  public static void setupHttpsD2Config(String zkHosts){
-    setupD2Config(zkHosts, true);
-  }
   public static void setupD2Config(String zkHosts, boolean https){
     setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, false);
-  }
-
-  public static void setupD2Config(String zkHosts, boolean https, boolean stickyRoutingForSingleGet){
-    setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, stickyRoutingForSingleGet);
   }
 
   public static void setupD2Config(String zkHosts, boolean https, String clusterName, String serviceName,

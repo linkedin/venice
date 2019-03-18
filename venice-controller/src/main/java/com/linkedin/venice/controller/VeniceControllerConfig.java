@@ -51,6 +51,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean addVersionViaAdminProtocol;
   private final boolean addVersionViaTopicMonitor;
   private final boolean participantMessageStoreEnabled;
+  private final String systemSchemaClusterName;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -108,6 +109,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.addVersionViaAdminProtocol = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false);
     this.addVersionViaTopicMonitor = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, true);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
+    this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
   }
 
   public int getAdminPort() {
@@ -223,6 +225,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public boolean isAddVersionViaTopicMonitorEnabled() { return addVersionViaTopicMonitor; }
 
   public boolean isParticipantMessageStoreEnabled() { return participantMessageStoreEnabled; }
+
+  public String getSystemSchemaClusterName() { return systemSchemaClusterName; }
 
   /**
    * @param clusterPros list of child controller uris

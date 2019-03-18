@@ -210,6 +210,7 @@ task unitTests {
   dependsOn 'venice-router:build'
   dependsOn 'hadoop-to-venice-bridge:build'
   dependsOn 'venice-schema-common:build'
+  dependsOn 'venice-consumer:build'
 
   dependsOn 'venice-common_2.10:buildJar'
   dependsOn 'venice-server:installDist'
@@ -241,8 +242,4 @@ task compile {
   dependsOn compileJava
   dependsOn compileTestJava
   // dependsOn compileIntegrationtestJava // Not sure why this one doesn't work... it does work from the command line.
-}
-
-task wrapper(type: Wrapper) {
-  gradleVersion = '2.14'
 }

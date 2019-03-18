@@ -28,6 +28,7 @@ public class StoreStatusDecider {
       int replicationFactor = controllerClusterConfig.getReplicaFactor();
       String resourceName = Version.composeKafkaTopic(store.getName(), store.getCurrentVersion());
       if (!resourceAssignment.containsResource(resourceName)) {
+        // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems ambiguous.
         logger.warn("Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()
             + " does not exist ");
         storeStatusMap.put(store.getName(), StoreStatus.UNAVAILABLE.toString());

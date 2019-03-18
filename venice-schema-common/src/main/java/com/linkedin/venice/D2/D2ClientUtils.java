@@ -9,6 +9,7 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Collections;
 import java.util.Map;
+import java.util.concurrent.RejectedExecutionException;
 import org.apache.log4j.Logger;
 
 import java.net.URI;
@@ -60,19 +61,25 @@ public class D2ClientUtils {
   static public void shutdownClient(D2Client client, long timeoutInMs) {
     CountDownLatch latch = new CountDownLatch(1);
 
-    client.shutdown(new Callback<None>() {
-      @Override
-      public void onError(Throwable e) {
-        latch.countDown();
-        logger.error("Error when shutting down D2 client", e);
-      }
+    try {
+      client.shutdown(new Callback<None>() {
+        @Override
+        public void onError(Throwable e) {
+          latch.countDown();
+          logger.error("Error when shutting down D2 client", e);
+        }
 
-      @Override
-      public void onSuccess(None result) {
-        latch.countDown();
-        logger.info("D2 client shutdown completed");
-      }
-    });
+        @Override
+        public void onSuccess(None result) {
+          latch.countDown();
+          logger.info("D2 client shutdown completed");
+        }
+      });
+    } catch (RejectedExecutionException e) {
+      logger.warn("D2 client cannot initiate asynchronous shutdown procedure. "
+          + "It may be already closed or in a bad state. Will assume that the client is shut down and proceed.", e);
+      latch.countDown();
+    }
 
     try {
       latch.await(timeoutInMs, TimeUnit.MILLISECONDS);

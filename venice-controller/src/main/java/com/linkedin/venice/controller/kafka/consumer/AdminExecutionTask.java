@@ -29,6 +29,7 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.Pair;
 import java.util.Optional;
 import java.util.Queue;
@@ -201,7 +202,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String schemaStr = message.schema.definition.toString();
     int schemaId = message.schemaId;
 
-    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
+    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId, DirectionalSchemaCompatibilityType.FULL);
     logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
   }
 

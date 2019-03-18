@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -20,7 +21,7 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -49,6 +50,7 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
+import org.apache.http.StatusLine;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.BasicHttpEntity;
@@ -101,8 +103,8 @@ public class StorageNodeReadTest {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    keySerializer = new VeniceAvroSerializer(stringSchema);
-    valueSerializer = new VeniceAvroSerializer(stringSchema);
+    keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
@@ -163,6 +165,8 @@ public class StorageNodeReadTest {
       HttpResponse response = future.get();
       try (InputStream bodyStream = response.getEntity().getContent()) {
         byte[] body = IOUtils.toByteArray(bodyStream);
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+            "Response did not return 200: " + new String(body));
         Object value = valueSerializer.deserialize(null, body);
         Assert.assertEquals(value.toString(), valuePrefix + "0");
       }
@@ -199,23 +203,24 @@ public class StorageNodeReadTest {
 
       Future<HttpResponse> multiGetFuture = client.execute(httpPost, null);
       HttpResponse multiGetResponse = multiGetFuture.get();
-      Assert.assertEquals(multiGetResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
-      /**
-       * Validate header: {@link HttpConstants.VENICE_OFFSET}
-       */
-      Header partitionOffsetHeader = multiGetResponse.getFirstHeader(HttpConstants.VENICE_OFFSET);
-      Assert.assertNotNull(partitionOffsetHeader);
-      String headerValue = partitionOffsetHeader.getValue();
-      Map<Integer, Long> partitionOffsetMap = PartitionOffsetMapUtils.deserializePartitionOffsetMap(headerValue);
-      partitionIdSet.forEach( partitionId -> {
-        Long offset = partitionOffsetMap.get(partitionId);
-        Assert.assertNotNull(offset);
-        // TODO: Figure out why the assertion below occasionally fails...
-        Assert.assertTrue(offset > 0, "Offset <= 0 for partition '" + partitionId + "'.");
-      });
-
       try (InputStream bodyStream = multiGetResponse.getEntity().getContent()) {
         byte[] body = IOUtils.toByteArray(bodyStream);
+        Assert.assertEquals(multiGetResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+            "Response did not return 200: " + new String(body));
+        /**
+         * Validate header: {@link HttpConstants.VENICE_OFFSET}
+         */
+        Header partitionOffsetHeader = multiGetResponse.getFirstHeader(HttpConstants.VENICE_OFFSET);
+        Assert.assertNotNull(partitionOffsetHeader);
+        String headerValue = partitionOffsetHeader.getValue();
+        Map<Integer, Long> partitionOffsetMap = PartitionOffsetMapUtils.deserializePartitionOffsetMap(headerValue);
+        partitionIdSet.forEach( partitionId -> {
+          Long offset = partitionOffsetMap.get(partitionId);
+          Assert.assertNotNull(offset);
+          // TODO: Figure out why the assertion below occasionally fails...
+          Assert.assertTrue(offset > 0, "Offset <= 0 for partition '" + partitionId + "'.");
+        });
+
         Iterable<MultiGetResponseRecordV1> values = deserializer.deserializeObjects(body);
         Map<Integer, String> results = new HashMap<>();
         values.forEach(K -> {

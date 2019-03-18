@@ -1,5 +1,6 @@
 package com.linkedin.venice.serialization.avro;
 
+import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -9,15 +10,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
-import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
@@ -37,9 +37,14 @@ import org.apache.log4j.Logger;
 public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificRecord>
     implements VeniceKafkaSerializer<SPECIFIC_RECORD> {
 
+  /** Used to configure the {@link #schemaReader}. */
+  public static final String VENICE_SCHEMA_READER_CONFIG = "venice.schema-reader";
+
   private static final Logger logger = Logger.getLogger(InternalAvroSpecificSerializer.class);
-  private static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA = -1;
-  private static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL = 0;
+  private static final int MAX_ATTEMPTS_FOR_SCHEMA_READER = 60;
+  private static final int WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS = 1000;
+  public static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA = -1;
+  public static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL = 0;
 
   // Constants related to the protocol definition:
 
@@ -67,14 +72,20 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
   private final Map<Integer, SpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
 
+  /** The schema of the {@link SpecificRecord} which is compiled in the current version of the code. */
+  private final Schema compiledProtocol;
+
+  /** Used to fetch unknown schemas, to ensure forward compatibility when the protocol gets upgraded. */
+  private SchemaReader schemaReader = null;
+
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
     this(protocolDef, null);
   }
-  protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef, Integer payloadOffsetOverride) {
 
+  protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef, Integer payloadOffsetOverride) {
     // Magic byte handling
-    if (protocolDef.magicByte.isPresent()) {
-      this.magicByte = protocolDef.magicByte.get();
+    if (protocolDef.getMagicByte().isPresent()) {
+      this.magicByte = protocolDef.getMagicByte().get();
       this.MAGIC_BYTE_LENGTH = 1;
     } else {
       this.magicByte = 0;
@@ -109,6 +120,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       }
       this.PAYLOAD_OFFSET = payloadOffsetOverride;
     }
+    this.compiledProtocol = protocolDef.getCurrentProtocolVersionSchema();
     this.writer = initializeAvroSpecificDatumReaderAndWriter(protocolDef);
   }
 
@@ -122,6 +134,10 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
   }
 
+  public Set<Integer> knownProtocols() {
+    return readerMap.keySet();
+  }
+
   /**
    * Configure this class.
    *
@@ -132,6 +148,10 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   public void configure(Map<String, ?> configMap, boolean isKey) {
     if (isKey) {
       throw new VeniceException("Cannot use " + getClass().getSimpleName() + " for key data.");
+    }
+
+    if (configMap.containsKey(VENICE_SCHEMA_READER_CONFIG)) {
+      this.schemaReader = (SchemaReader) configMap.get(VENICE_SCHEMA_READER_CONFIG);
     }
   }
 
@@ -209,14 +229,40 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
     // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
     if (!readerMap.containsKey(protocolVersion)) {
-      throw new VeniceMessageException(
-          "Received Protocol Version '" + protocolVersion
-              + "' which is not supported by " + this.getClass().getSimpleName()
-              + ". The only supported Protocol Versions are [" + readerMap.keySet()
-              .stream()
-              .sorted()
-              .map(b -> b.toString())
-              .collect(Collectors.joining(", ")) + "].");
+      if (null == schemaReader) {
+        throw new VeniceMessageException("Received Protocol Version '" + protocolVersion
+            + "' which is not supported by " + this.getClass().getSimpleName()
+            + ". Protocol forward compatibility is not enabled"
+            + ". The only supported Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
+      }
+
+      for (int attempt = 1; attempt <= MAX_ATTEMPTS_FOR_SCHEMA_READER; attempt++) {
+        try {
+          Schema newProtocolSchema = schemaReader.getValueSchema(protocolVersion);
+          if (null == newProtocolSchema) {
+            throw new VeniceMessageException("Received Protocol Version '" + protocolVersion
+                + "' which is not currently known by " + this.getClass().getSimpleName()
+                + ". A remote fetch was attempted, but the " + SchemaReader.class.getSimpleName() + " returned null"
+                + ". The currently known Protocol Versions are: " + getCurrentlyLoadedProtocolVersions() + ".");
+          }
+
+          cacheDatumReader(protocolVersion, newProtocolSchema);
+
+          logger.info("Discovered new protocol version '" + protocolVersion + "', and successfully retrieved it. Schema:\n"
+              + newProtocolSchema.toString(true));
+
+          break;
+        } catch (Exception e) {
+          if (attempt == MAX_ATTEMPTS_FOR_SCHEMA_READER) {
+            throw new VeniceException("Failed to retrieve new protocol schema version (" + protocolVersion + ") after "
+                + MAX_ATTEMPTS_FOR_SCHEMA_READER + " attempts.", e);
+          }
+          logger.error("Caught an exception while trying to fetch a new protocol schema version (" + protocolVersion
+              + "). Attempt #" + attempt + "/" + MAX_ATTEMPTS_FOR_SCHEMA_READER + ". Will sleep "
+              + WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS + " ms and try again.", e);
+          Utils.sleep(WAIT_TIME_BETWEEN_SCHEMA_READER_ATTEMPTS_IN_MS, "Interrupted!");
+        }
+      }
     }
 
     try {
@@ -257,89 +303,30 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     return DECODER_FACTORY.createBinaryDecoder(bytes, offset, length, reuse);
   }
 
-  protected SpecificDatumReader<SPECIFIC_RECORD> createSpecificDatumReader(Schema writer, Schema reader) {
-    return new SpecificDatumReader<>(writer, reader);
-  }
-
   /**
    * Initialize both {@link #readerMap} and {@link #writer}.
    *
    * @param protocolDef
    */
   private SpecificDatumWriter initializeAvroSpecificDatumReaderAndWriter(AvroProtocolDefinition protocolDef) {
-    Schema compiledProtocol = protocolDef.schema;
-    byte compiledProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
-    String className = protocolDef.className;
-    Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
-    int initialVersion;
-    if (currentProtocolVersion > 0) {
-      initialVersion = 1; // TODO: Consider making configurable if we ever need to fully deprecate some old versions
-    } else {
-      initialVersion = currentProtocolVersion;
-    }
-    final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
-    int version = initialVersion;
-    while (true) {
-      String versionPath = "avro" + sep + className + sep;
-      if (this.currentProtocolVersion != SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
-        versionPath += "v" + version + sep;
-      }
-      versionPath += className + ".avsc";
-      try {
-        Schema schema = Utils.getSchemaFromResource(versionPath);
-        protocolSchemaMap.put(version, schema);
-        if (schema.equals(compiledProtocol)) {
-          compiledProtocolVersion = (byte) version;
-        }
-        if (this.currentProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
-          break;
-        } else if (this.currentProtocolVersion > 0) {
-          // Positive version protocols should continue looking "up" for the next version
-          version++;
-        } else {
-          // And vice-versa for negative version protocols
-          version--;
-        }
-      } catch (IOException e) {
-        // Then the schema was not found at the requested path
-        if (version == initialVersion) {
-          throw new VeniceException("Failed to initialize schemas! No resource found at: " + versionPath, e);
-        } else {
-          break;
-        }
-      }
-    }
-
-    /** Ensure that we are using Avro properly. */
-    if (compiledProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA) {
-      throw new VeniceException("Failed to identify which version is currently compiled for " + protocolDef.name() +
-          ". This could happen if the avro schemas have been altered without recompiling the auto-generated classes" +
-          ", or if the auto-generated classes were edited directly instead of generating them from the schemas.");
-    }
-
-    /**
-     * Verify that the intended current protocol version defined in the {@link AvroProtocolDefinition} is available
-     * in the jar's resources and that it matches the auto-generated class that is actually compiled.
-     *
-     * N.B.: An alternative design would have been to assume that what is compiled is the intended version, but we
-     * are instead making this a very explicit choice by requiring the change in both places and failing loudly
-     * when there is an inconsistency.
-     */
-    Schema intendedCurrentProtocol = protocolSchemaMap.get((int) this.currentProtocolVersion);
-    if (null == intendedCurrentProtocol) {
-      throw new VeniceException("Failed to get schema for current version: " + this.currentProtocolVersion
-          + " class: " + className);
-    } else if (!intendedCurrentProtocol.equals(compiledProtocol)) {
-      throw new VeniceException("The intended protocol version (" + this.currentProtocolVersion +
-          ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");
-    }
+    Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDef);
 
     /** Initialize {@link #readerMap} based on known protocol versions */
-    for (Map.Entry<Integer, Schema> entry : protocolSchemaMap.entrySet()) {
-      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = createSpecificDatumReader(entry.getValue(), compiledProtocol);
-      this.readerMap.put(entry.getKey(), specificDatumReader);
-    }
+    protocolSchemaMap.forEach((protocolVersion, protocolSchema) -> cacheDatumReader(protocolVersion, protocolSchema));
 
     return new SpecificDatumWriter(protocolDef.schema);
+  }
+
+  private void cacheDatumReader(int protocolVersion, Schema protocolSchema) {
+    SpecificDatumReader<SPECIFIC_RECORD> datumReader = new SpecificDatumReader<>(protocolSchema, compiledProtocol);
+    this.readerMap.put(protocolVersion, datumReader);
+  }
+
+  private String getCurrentlyLoadedProtocolVersions() {
+    return "[" + readerMap.keySet()
+        .stream()
+        .sorted()
+        .map(b -> b.toString())
+        .collect(Collectors.joining(", ")) + "]";
   }
 }
