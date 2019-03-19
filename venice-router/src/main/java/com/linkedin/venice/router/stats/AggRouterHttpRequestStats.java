@@ -49,6 +49,17 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordUnhealthyRequest();
   }
 
+  /**
+   * Calculate read quota usage based on how many key/value pairs
+   * are successfully returned from server.
+   * @param storeName
+   * @param quotaUsage
+   */
+  public void recordReadQuotaUsage(String storeName, int quotaUsage) {
+    totalStats.recordReadQuotaUsage(quotaUsage);
+    getStoreStats(storeName).recordReadQuotaUsage(quotaUsage);
+  }
+
   public void recordUnhealthyRequest() {
     totalStats.recordUnhealthyRequest();
   }

@@ -151,10 +151,13 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
       double latency = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
-      if (isFastRequest(latency, requestType) && HEALTHY_STATUSES.contains(responseStatus)) {
-        stats.recordHealthyRequest(storeName);
-      } else if (HEALTHY_STATUSES.contains(responseStatus)) {
-        stats.recordTardyRequest(storeName);
+      if (HEALTHY_STATUSES.contains(responseStatus)) {
+        statsForSingleGet.recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());
+        if (isFastRequest(latency, requestType)) {
+          stats.recordHealthyRequest(storeName);
+        } else {
+          stats.recordTardyRequest(storeName);
+        }
       } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
         LOGGER.debug("request is rejected by storage node because quota is exceeded");
         stats.recordThrottledRequest(storeName);

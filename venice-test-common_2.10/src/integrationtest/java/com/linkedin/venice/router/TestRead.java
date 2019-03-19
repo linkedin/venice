@@ -218,6 +218,8 @@ public abstract class TestRead {
     double localhostRequestCount = 0;
     double localhostRequestCountForMultiGet = 0;
 
+    double totalReadQuotaUsage = 0;
+
     for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
       MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
       Map<String, ? extends Metric> metrics = metricsRepository.metrics();
@@ -264,6 +266,9 @@ public abstract class TestRead {
       if (metrics.containsKey(".total--request_usage.Total")) {
         totalRequestUsage += metrics.get(".total--request_usage.Total").value();
       }
+      if (metrics.containsKey(".total--read_quota_usage_kps.Total")) {
+        totalReadQuotaUsage += metrics.get(".total--read_quota_usage_kps.Total").value();
+      }
     }
 
     if (getStorageNodeClientType() == StorageNodeClientType.APACHE_HTTP_ASYNC_CLIENT) {
@@ -286,7 +291,8 @@ public abstract class TestRead {
     Assert.assertTrue(localhostRequestCount > 0);
     Assert.assertTrue(localhostRequestCountForMultiGet > 0);
 
-    Assert.assertEquals(totalRequestUsage, rounds * (MAX_KEY_LIMIT + 1.0));
+    Assert.assertEquals(totalRequestUsage, rounds * (MAX_KEY_LIMIT + 1.0), 0.0001);
+    Assert.assertEquals(totalReadQuotaUsage, rounds * (MAX_KEY_LIMIT + 1.0), 0.0001);
 
     // Verify storage node metrics
     double maxMultiGetRequestPartCount = Double.MIN_VALUE;
