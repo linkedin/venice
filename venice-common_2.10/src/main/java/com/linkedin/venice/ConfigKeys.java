@@ -238,7 +238,7 @@ public class ConfigKeys {
 
   /**
    * This config is used to control how many times Kafka consumer would retry polling during ingestion
-   * when hitting {@link org.apache.kafka.common.errors.RetriableException}.
+   * when hitting {@literal org.apache.kafka.common.errors.RetriableException}.
    */
   public static final String SERVER_KAFKA_POLL_RETRY_TIMES = "server.kafka.poll.retry.times";
 
@@ -703,4 +703,10 @@ public class ConfigKeys {
    * Flag to indicate whether to perform add version and start of ingestion via the topic monitor.
    */
   public static final String CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR = "controller.add.version.via.topic.monitor";
+
+  /**
+   * Flag to skip buffer replay for hybrid store.
+   * For some scenario, buffer replay might not be necessary since the store version topic has already included all the data.
+   */
+  public static final String CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID = "controller.skip.buffer.replay.for.hybrid";
 }

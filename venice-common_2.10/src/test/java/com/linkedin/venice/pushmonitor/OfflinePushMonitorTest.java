@@ -23,8 +23,8 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.eq;
-import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.*;
+
 
 public class OfflinePushMonitorTest {
   private RoutingDataRepository mockRoutingDataRepo;
@@ -357,6 +357,55 @@ public class OfflinePushMonitorTest {
     mockReplicator = Mockito.mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
     monitor.onPartitionStatusChange(topic, partitionStatus);
+    // Should not send SOBR again
+    Mockito.verify(mockReplicator, Mockito.never()).startBufferReplay(any(), any(), any());
+  }
+
+  @Test
+  public void testDisableBufferReplayForHybrid() {
+    String topic = "hybridTestStore_v1";
+    // Prepare a hybrid store.
+    Store store = prepareMockStore(topic);
+    store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
+    // Prepare a mock topic replicator
+    TopicReplicator mockReplicator = Mockito.mock(TopicReplicator.class);
+    OfflinePushMonitor testMonitor = new OfflinePushMonitor("OfflinePushMonitorTest", mockRoutingDataRepo, mockAccessor, mockStoreCleaner,
+        mockStoreRepo, mockPushHealthStats, true);
+    testMonitor.setTopicReplicator(Optional.of(mockReplicator));
+    // Start a push
+    testMonitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    // Prepare the new partition status
+    List<ReplicaStatus> replicaStatuses = new ArrayList<>();
+    for (int i = 0; i < replicationFactor; i++) {
+      ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
+      replicaStatuses.add(replicaStatus);
+    }
+    // All replicas are in STARTED status
+    ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
+
+    // Check hybrid push status
+    testMonitor.onPartitionStatusChange(topic, partitionStatus);
+    // Not ready to send SOBR
+    Mockito.verify(mockReplicator, Mockito.never()).startBufferReplay(any(), any(), any());
+    Assert.assertEquals(testMonitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED,
+        "Hybrid push is not ready to send SOBR.");
+
+    // One replica received end of push
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+    testMonitor.onPartitionStatusChange(topic, partitionStatus);
+    // no buffer replay should be sent
+    Mockito.verify(mockReplicator, never())
+        .startBufferReplay(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+    Assert.assertEquals(testMonitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+        "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
+
+    // Another replica received end of push
+    replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+    mockReplicator = Mockito.mock(TopicReplicator.class);
+    testMonitor.setTopicReplicator(Optional.of(mockReplicator));
+    testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
     Mockito.verify(mockReplicator, Mockito.never()).startBufferReplay(any(), any(), any());
   }

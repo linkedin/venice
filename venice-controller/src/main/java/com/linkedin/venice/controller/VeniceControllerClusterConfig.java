@@ -52,6 +52,7 @@ public class VeniceControllerClusterConfig {
   private boolean enableOfflinePushSSLWhitelist;
   private boolean enableNearlinePushSSLWhitelist;
   private List<String> pushSSLWhitelist;
+  private boolean skipBufferRelayForHybrid;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -174,6 +175,8 @@ public class VeniceControllerClusterConfig {
     if (adminTopicReplicationFactor < 1) {
       throw new ConfigurationException(ADMIN_TOPIC_REPLICATION_FACTOR + " cannot be less than 1.");
     }
+
+    this.skipBufferRelayForHybrid = props.getBoolean(CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID, false);
   }
 
   public VeniceProperties getProps() {
@@ -311,5 +314,9 @@ public class VeniceControllerClusterConfig {
 
   public boolean isKafkaLogCompactionForIncrementalPushStoresEnabled() {
     return kafkaLogCompactionForIncrementalPushStores;
+  }
+
+  public boolean isSkipBufferRelayForHybrid() {
+    return skipBufferRelayForHybrid;
   }
 }
