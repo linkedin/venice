@@ -291,7 +291,12 @@ public class RouterServer extends AbstractVeniceService {
     workerExecutor = registry
         .factory(ShutdownableExecutors.class)
         .newFixedThreadPool(config.getNettyClientEventLoopThreads(), new DefaultThreadFactory("RouterThread", true, Thread.MAX_PRIORITY));
-    TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry);
+    /**
+     * Use TreeMap inside TimeoutProcessor; the other option ConcurrentSkipList has performance issue.
+     *
+     * Refer to more context on {@link VeniceRouterConfig#checkProperties(VeniceProperties)}
+     */
+    TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry, true, 1);
     Map<String, Object> serverSocketOptions = null;
 
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
