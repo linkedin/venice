@@ -29,13 +29,22 @@ public class OfflinePushMonitor extends AbstractPushStatusMonitor implements Rou
   private static final Logger logger = Logger.getLogger(OfflinePushMonitor.class);
 
   private final RoutingDataRepository routingDataRepository;
+  private final boolean skipBufferReplayForHybrid;
 
   public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats) {
+    this(clusterName, routingDataRepository, offlinePushAccessor, storeCleaner, metadataRepository,
+        aggPushHealthStats, false);
+  }
+
+  public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
+      OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
+      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, aggPushHealthStats);
 
     this.routingDataRepository = routingDataRepository;
+    this.skipBufferReplayForHybrid = skipBufferReplayForHybrid;
   }
 
   @Override
@@ -174,13 +183,17 @@ public class OfflinePushMonitor extends AbstractPushStatusMonitor implements Rou
       if (offlinePushStatus.isReadyToStartBufferReplay()) {
         logger.info(offlinePushStatus.getKafkaTopic()+" is ready to start buffer replay.");
         Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();
-        if (topicReplicatorOptional.isPresent()) {
+        if (topicReplicatorOptional.isPresent() || skipBufferReplayForHybrid) {
           try {
-            topicReplicatorOptional.get().startBufferReplay(
-                Version.composeRealTimeTopic(storeName),
-                offlinePushStatus.getKafkaTopic(),
-                store);
-            String newStatusDetails = "kicked off buffer replay";
+            String newStatusDetails;
+            if (skipBufferReplayForHybrid) {
+              newStatusDetails = "skipped buffer replay";
+              logger.info("Skip buffer replay for hybrid store version: " + offlinePushStatus.getKafkaTopic());
+            } else {
+              topicReplicatorOptional.get()
+                  .startBufferReplay(Version.composeRealTimeTopic(storeName), offlinePushStatus.getKafkaTopic(), store);
+              newStatusDetails = "kicked off buffer replay";
+            }
             updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
             logger.info("Successfully " + newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString());
           } catch (Exception e) {

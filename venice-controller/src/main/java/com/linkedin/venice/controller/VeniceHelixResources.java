@@ -89,7 +89,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
-        metadataRepository, new AggPushHealthStats(clusterName, metricsRepository));
+        metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid());
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
     routersClusterManager =
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
