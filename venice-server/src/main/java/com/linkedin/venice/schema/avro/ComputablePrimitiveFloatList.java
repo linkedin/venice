@@ -73,8 +73,15 @@ public class ComputablePrimitiveFloatList extends AbstractList<Float>
 
   private static Object newPrimitiveFloatArray(Object old, int size) {
     if (old instanceof ComputablePrimitiveFloatList) {
-      ((ComputablePrimitiveFloatList) old).clear();
-      return old;
+      ComputablePrimitiveFloatList oldFloatList = (ComputablePrimitiveFloatList) old;
+      if (size <= oldFloatList.getCapacity()) {
+        // reuse the float array directly
+        oldFloatList.clear();
+        return old;
+      } else {
+        oldFloatList.resizeAndClear(size);
+        return oldFloatList;
+      }
     } else {
       return new ComputablePrimitiveFloatList(size);
     }
@@ -115,6 +122,15 @@ public class ComputablePrimitiveFloatList extends AbstractList<Float>
   public void clear() {
     l2normComputed = false;
     size = 0;
+  }
+
+  private int getCapacity() {
+    return elements.length;
+  }
+
+  private void resizeAndClear(int newSize) {
+    elements = new float[newSize];
+    clear();
   }
 
   @Override

@@ -3,7 +3,6 @@ package com.linkedin.venice.compute;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.schema.avro.ComputablePrimitiveFloatList;
-import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
