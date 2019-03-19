@@ -61,6 +61,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor nettyClientLastResponseLatencySensor;
 
   private final Sensor nettyClientAcquireChannelFutureLatencySensor;
+
+  private final Sensor readQuotaUsageSensor;
+
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
       ScatterGatherStats scatterGatherStats) {
@@ -120,7 +123,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     keyNumSensor = registerSensor("key_num", new Avg(), new Max());
     /**
-     * request_usage.Total is KPS while request_usage.OccurrenceRate is QPS
+     * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
      */
     requestUsageSensor = registerSensor("request_usage", new Total(), new OccurrenceRate());
 
@@ -151,6 +154,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     nettyClientAcquireChannelFutureLatencySensor = registerSensor("netty_client_acquire_channel_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_acquire_channel_latency")));
+
+    readQuotaUsageSensor = registerSensor("read_quota_usage_kps", new Total());
   }
 
   public void recordRequest() {
@@ -163,6 +168,14 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordUnhealthyRequest() {
     unhealthySensor.record();
+  }
+
+  /**
+   * Record read quota usage based on healthy KPS.
+   * @param quotaUsage
+   */
+  public void recordReadQuotaUsage(int quotaUsage) {
+    readQuotaUsageSensor.record(quotaUsage);
   }
 
   public void recordTardyRequest() {
