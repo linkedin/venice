@@ -39,7 +39,7 @@ import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -558,8 +558,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private synchronized void configurePushJobStatusWriter(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
         if (pushJobStatusWriter == null) {
-            VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(key.getSchema().toString());
-            VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(value.getSchema().toString());
+            VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(key.getSchema().toString());
+            VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(value.getSchema().toString());
             pushJobStatusWriter = getVeniceWriterFactory()
                 .getVeniceWriter(pushJobStatusTopicName, keySerializer, valueSerializer);
         }
