@@ -20,7 +20,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -34,7 +34,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.httpclient.HttpStatus;
@@ -114,8 +113,8 @@ public abstract class TestRead {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    keySerializer = new VeniceAvroSerializer(stringSchema);
+    valueSerializer = new VeniceAvroSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }

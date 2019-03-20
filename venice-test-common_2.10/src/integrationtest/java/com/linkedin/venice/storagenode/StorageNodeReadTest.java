@@ -20,7 +20,7 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -99,8 +99,8 @@ public class StorageNodeReadTest {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    keySerializer = new VeniceAvroSerializer(stringSchema);
+    valueSerializer = new VeniceAvroSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(storeVersionName, keySerializer, valueSerializer);

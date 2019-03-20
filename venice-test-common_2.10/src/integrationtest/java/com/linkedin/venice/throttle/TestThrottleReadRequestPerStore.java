@@ -11,11 +11,10 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -48,8 +47,8 @@ public class TestThrottleReadRequestPerStore {
 
 
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
 
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     veniceWriter = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress()).getVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer);

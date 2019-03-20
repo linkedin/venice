@@ -4,14 +4,15 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import java.util.Map;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumWriter;
-import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
+import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.avro.specific.SpecificRecord;
 import org.apache.log4j.Logger;
 
 import java.io.ByteArrayOutputStream;
@@ -22,12 +23,16 @@ import java.io.IOException;
  * TODO: kill either one :(
  */
 
-public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object> {
+public class VeniceAvroSerializer implements VeniceKafkaSerializer<Object> {
     private final Schema typeDef;
-    private GenericDatumWriter<Object> datumWriter;
+    //we're using specific datum writer here because generic has some limitations dealing with
+    //Enum field (It cannot serialize a union of enum properly)
+    private SpecificDatumWriter<Object> specificDatumWriter;
+    private GenericDatumWriter<Object> genericDatumWriter;
+
     private GenericDatumReader<Object> reader;
 
-    private static final Logger logger = Logger.getLogger(VeniceAvroGenericSerializer.class);
+    private static final Logger logger = Logger.getLogger(VeniceAvroSerializer.class);
 
     static {
         AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
@@ -35,9 +40,14 @@ public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object
     }
 
     // general constructor
-    public VeniceAvroGenericSerializer(String schema) {
-        typeDef = Schema.parse(schema);
-        datumWriter = new GenericDatumWriter<>(typeDef);
+    public VeniceAvroSerializer(String schemaStr) {
+        this(Schema.parse(schemaStr));
+    }
+
+    public VeniceAvroSerializer(Schema schema) {
+        typeDef = schema;
+        specificDatumWriter = new SpecificDatumWriter<>(typeDef);
+        genericDatumWriter = new GenericDatumWriter<>(typeDef);
         reader = new GenericDatumReader<>(typeDef);
     }
 
@@ -66,7 +76,12 @@ public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
         try {
-            datumWriter.write(object, encoder);
+            if (object instanceof SpecificRecord) {
+                specificDatumWriter.write(object, encoder);
+            } else {
+                genericDatumWriter.write(object, encoder);
+            }
+
             encoder.flush();
         } catch(IOException e) {
             throw new VeniceMessageException("Could not serialize the Avro object" + e);

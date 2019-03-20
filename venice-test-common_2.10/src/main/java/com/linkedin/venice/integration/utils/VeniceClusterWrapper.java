@@ -13,15 +13,11 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -493,8 +489,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(CLUSTER_NAME, clusterName);
     TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
 
     return factory.getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
 
@@ -510,8 +506,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
 
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroSerializer(stringSchema);
 
     return factory.getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }

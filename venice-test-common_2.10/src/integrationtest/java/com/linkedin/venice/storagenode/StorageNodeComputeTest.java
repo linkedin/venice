@@ -18,7 +18,7 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -85,8 +85,8 @@ public class StorageNodeComputeTest {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
-    keySerializer = new VeniceAvroGenericSerializer(keySchema);
-    valueSerializer = new VeniceAvroGenericSerializer(valueSchemaForCompute);
+    keySerializer = new VeniceAvroSerializer(keySchema);
+    valueSerializer = new VeniceAvroSerializer(valueSchemaForCompute);
   }
 
   @AfterClass

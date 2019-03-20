@@ -11,7 +11,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -24,7 +24,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -34,7 +33,6 @@ import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 import org.apache.samza.SamzaException;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -71,7 +69,7 @@ public class VeniceSystemProducer implements SystemProducer {
    * key is schema
    * value is Avro serializer
    */
-  private final Map<String, VeniceAvroGenericSerializer> serializers = new VeniceConcurrentHashMap<>();
+  private final Map<String, VeniceAvroSerializer> serializers = new VeniceConcurrentHashMap<>();
 
   private final VersionCreationResponse versionCreationResponse;
 
@@ -264,8 +262,8 @@ public class VeniceSystemProducer implements SystemProducer {
 
   protected byte[] serializeObject(String topic, Object input) {
     if (input instanceof IndexedRecord) {
-      VeniceAvroGenericSerializer serializer = serializers.computeIfAbsent(
-          ((IndexedRecord) input).getSchema().toString(), VeniceAvroGenericSerializer::new);
+      VeniceAvroSerializer serializer = serializers.computeIfAbsent(
+          ((IndexedRecord) input).getSchema().toString(), VeniceAvroSerializer::new);
       return serializer.serialize(topic, input);
     } else if (input instanceof CharSequence) {
       return serializePrimitive(new Utf8(input.toString()), STRING_DATUM_WRITER);
