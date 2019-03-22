@@ -27,6 +27,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor valueSizeSensor;
 
   private final Sensor unexpectedMessageSensor;
+  private final Sensor inconsistentStoreMetadataSensor;
 
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
@@ -54,6 +55,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
         TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName, 40000, 1000000));
 
     unexpectedMessageSensor = registerSensor("unexpected_message", new Rate());
+    inconsistentStoreMetadataSensor = registerSensor("inconsistent_store_metadata", new Count());
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -96,6 +98,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   public void recordUnexpectedMessage(int count) {
     unexpectedMessageSensor.record(count);
   }
+
+  public void recordInconsistentStoreMetadata(int count) { inconsistentStoreMetadataSensor.record(count); }
 
   public void recordKeySize(long bytes) {
     keySizeSensor.record(bytes);

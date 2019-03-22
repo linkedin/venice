@@ -40,6 +40,11 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordUnexpectedMessage(count);
   }
 
+  public void recordInconsistentStoreMetadata(String storeName, int count) {
+    totalStats.recordInconsistentStoreMetadata(count);
+    getStoreStats(storeName).recordInconsistentStoreMetadata(count);
+  }
+
   public void recordKeySize(String storeName, long bytes) {
     //keySize aggregation among multiple stores is not necessary
     getStoreStats(storeName).recordKeySize(bytes);

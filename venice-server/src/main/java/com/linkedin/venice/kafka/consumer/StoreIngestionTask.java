@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
@@ -357,6 +358,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
             + ", storeVersionStateOptional: " + storeVersionStateOptional + ", sobrDestinationOffsetOptional: " + sobrDestinationOffsetOptional);
         return false;
       }
+      /**
+       * startOfBufferReplay could be null if the storeVersionState was deleted without deleting the corresponding
+       * partitionConsumptionState. This will cause storeVersionState to be recreated without startOfBufferReplay.
+       */
+      if (storeVersionStateOptional.get().startOfBufferReplay == null) {
+        throw new VeniceInconsistentStoreMetadataException("Inconsistent store metadata detected for topic " + topic
+            + ", partition " + partitionConsumptionState.getPartition()
+            +". Will clear the metadata and restart ingestion.");
+      }
 
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
@@ -693,9 +703,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
            * In either case, StoreIngestionTask should report 'started' => ['progress' => ] 'completed' to accomplish
            * task state transition in Controller.
            */
-        if (isReadyToServe(newPartitionConsumptionState)) {
-          notificationDispatcher.reportCompleted(newPartitionConsumptionState);
-          logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve");
+        try {
+          if (isReadyToServe(newPartitionConsumptionState)) {
+            notificationDispatcher.reportCompleted(newPartitionConsumptionState);
+            logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve");
+          }
+        } catch (VeniceInconsistentStoreMetadataException e) {
+          storeIngestionStats.recordInconsistentStoreMetadata(storeNameWithoutVersionInfo, 1);
+          // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
+          // processConsumerActions.
+          storageMetadataService.clearOffset(topic, partition);
+          storageMetadataService.clearStoreVersionState(topic);
+          producerTrackerMap.values().forEach(
+              producerTracker -> producerTracker.clearPartition(partition)
+          );
+          throw e;
         }
         consumer.subscribe(topic, partition, record);
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
