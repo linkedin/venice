@@ -27,7 +27,7 @@ def internalKafkaVersion = "0.11.1.3"
 def ossKafkaGroup = "org.apache.kafka"
 def ossKafkaVersion = "0.10.1.1"
 
-def ddsStorageCoreVersion = "5.3.3"
+def ddsStorageCoreVersion = "5.3.8"
 def gobblinVersion = "1.64.96"
 
 ext.libraries = [ // Groovy map literal
