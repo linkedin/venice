@@ -162,7 +162,7 @@ subprojects {
     testImplementation libraries.testng
     testImplementation libraries.mockito
     // Test utils and framework for all unit tests and integration tests.
-    testImplementation project(':venice-test-common_2.10')
+    testImplementation project(':venice-test-common')
   }
 
   idea {
@@ -203,7 +203,7 @@ subprojects {
 }
 
 task unitTests {
-  dependsOn 'venice-common_2.10:build'
+  dependsOn 'venice-common:build'
   dependsOn 'venice-thin-client:build'
   dependsOn 'venice-server:build'
   dependsOn 'venice-controller:build'
@@ -212,20 +212,20 @@ task unitTests {
   dependsOn 'venice-schema-common:build'
   dependsOn 'venice-consumer:build'
 
-  dependsOn 'venice-common_2.10:buildJar'
+  dependsOn 'venice-common:buildJar'
   dependsOn 'venice-server:installDist'
   dependsOn 'venice-controller:installDist'
   dependsOn 'venice-router:installDist'
   // dependsOn 'hadoop-to-venice-bridge:installApp'
   dependsOn 'venice-admin-tool:build'
-  dependsOn 'venice-test-common_2.10:build'
+  dependsOn 'venice-test-common:build'
   dependsOn 'venice-samza:build'
 
   dependsOn 'venice-etl:build'
 }
 
 task integrationTests {
-  dependsOn 'venice-test-common_2.10:integrationtest'
+  dependsOn 'venice-test-common:integrationtest'
 }
 
 task integrationtest {

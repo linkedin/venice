@@ -39,7 +39,7 @@ dependencies {
         exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
     }
     implementation libraries.asyncHttpClient
-    implementation project(':venice-common_2.10')
+    implementation project(':venice-common')
     implementation (libraries.d2){
         exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
         // this will introduce another different mockito-all version

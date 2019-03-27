@@ -31,7 +31,7 @@ dependencies {
   // Schema related dependencies
   implementation project(':venice-schema-common')
 
-  testImplementation project(':venice-common_2.10')
+  testImplementation project(':venice-common')
   testImplementation libraries.netty
-  testImplementation project(':venice-test-common_2.10')
+  testImplementation project(':venice-test-common')
 }

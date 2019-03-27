@@ -1,7 +1,7 @@
 apply plugin: 'java-library'
 
 dependencies {
-    implementation project(':venice-common_2.10')
+    implementation project(':venice-common')
 
     implementation (libraries.avro) {
         exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
@@ -89,7 +89,7 @@ task fatJar(type: Jar) {
     from "log4j.properties"
     exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
 
-    dependsOn ':venice-common_2.10:jar'
+    dependsOn ':venice-common:jar'
     with jar
 }
 

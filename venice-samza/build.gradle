@@ -17,7 +17,11 @@ dependencies {
   implementation libraries.kafka
 
   // Schema related dependencies
-  implementation project(':venice-common_2.10') //TODO, pull venice writer out of venice common so this is a smaller dependency
+  implementation (project(':venice-common')) {
+    //TODO, pull venice writer out of venice common so this is a smaller dependency
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
   implementation project(':venice-schema-common')
   implementation project(':venice-thin-client')
   testCompile project(':venice-brooklin')
