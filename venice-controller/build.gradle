@@ -42,7 +42,7 @@ dependencies {
   }
   implementation libraries.brooklinCommon
 
-  implementation project(':venice-common_2.10')
+  implementation project(':venice-common')
 
   // implementation libraries.bdbJe
   implementation libraries.commonsIo

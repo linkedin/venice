@@ -44,7 +44,7 @@ dependencies {
   implementation libraries.rocksdbjni
   implementation libraries.linkedinAvroFastserde
 
-  implementation project(':venice-common_2.10')
+  implementation project(':venice-common')
   implementation project(':venice-controller')
   implementation (project(':venice-thin-client')){
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
@@ -58,6 +58,6 @@ dependencies {
   testCompile 'commons-io:commons-io:2.4'
   testCompile libraries.tehuti
 
-  testCompile project(':venice-test-common_2.10')
+  testCompile project(':venice-test-common')
   testCompile project(':venice-router')
 }

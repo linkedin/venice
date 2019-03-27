@@ -1,5 +1,5 @@
 dependencies {
-    implementation project(':venice-common_2.10')
+    implementation project(':venice-common')
     implementation project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
 
     implementation libraries.commonsIo
@@ -131,7 +131,7 @@ task fatJar(type: Jar) {
   from "log4j.properties"
   exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
 
-  dependsOn ':venice-common_2.10:jar'
+  dependsOn ':venice-common:jar'
   dependsOn ':venice-thin-client:jar'
   dependsOn ':venice-schema-common:jar'
   with jar

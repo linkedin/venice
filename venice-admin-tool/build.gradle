@@ -33,11 +33,11 @@ task fatJar(type: Jar) {
     }
     exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
 
-    dependsOn ':venice-common_2.10:jar'
+    dependsOn ':venice-common:jar'
     dependsOn ':venice-thin-client:jar'
     dependsOn ':venice-controller:jar'
     dependsOn ':venice-schema-common:jar'
-    dependsOn ':venice-test-common_2.10:jar'
+    dependsOn ':venice-test-common:jar'
     with jar
 }
 
@@ -51,8 +51,8 @@ dependencies {
     }
     implementation libraries.kafka
 
-    implementation project(':venice-common_2.10')
-    implementation (project(':venice-test-common_2.10')) {
+    implementation project(':venice-common')
+    implementation (project(':venice-test-common')) {
       // Used by the command that spins up a MirrorMaker
       transitive = false
     }
