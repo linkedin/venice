@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -23,6 +24,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
+import com.linkedin.venice.integration.utils.IntegrationTestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -33,6 +35,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.participant.protocol.ParticipantMessageStoreUtils;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.TestUtils;
@@ -41,6 +44,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -73,15 +77,20 @@ public class TestAdminSparkServer {
    * And please collect the store and version you created in the end of your test case.
    */
   private static final int STORAGE_NODE_COUNT = 1;
-  private static final int TIME_OUT = 10 * Time.MS_PER_SECOND;
+  private static final int TIME_OUT = 20 * Time.MS_PER_SECOND;
 
   private VeniceClusterWrapper venice;
   private String routerUrl;
   private ControllerClient controllerClient;
+  private VeniceControllerWrapper parentController;
 
   @BeforeClass
   public void setUp() {
     venice = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 1); //Controllers, Servers, Routers
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    parentController =
+        ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
+            new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
     routerUrl = venice.getRandomRouterURL();
     controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
   }
@@ -445,18 +454,15 @@ public class TestAdminSparkServer {
 
   @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetLastSucceedExecutionId() {
-    Assert.assertEquals(controllerClient.getLastSucceedExecutionId().getLastSucceedExecutionId(),
-        -1);
+    LastSucceedExecutionIdResponse response = controllerClient.getLastSucceedExecutionId();
+    Assert.assertFalse(response.isError());
+    Assert.assertTrue(response.getLastSucceedExecutionId() > -1);
   }
 
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = 3 * TIME_OUT)
   public void controllerClientCanGetExecutionOfDeleteAllVersions()
       throws InterruptedException {
     String cluster = venice.getClusterName();
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    VeniceControllerWrapper parentController =
-        ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
-            new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
     String storeName = "controllerClientCanDeleteAllVersion";
     parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersionIdempotent(cluster, storeName, Version.guidBasedDummyPushId(),
@@ -469,9 +475,8 @@ public class TestAdminSparkServer {
     long executionId = multiVersionResponse.getExecutionId();
     AdminCommandExecutionResponse response =
         controllerClient.getAdminCommandExecution(executionId);
-    AdminCommandExecution execution = response.getExecution();
-    // Command would not be executed in child controller because we don't have Kafka MM in the local box.
-    Assert.assertFalse(execution.isSucceedInAllFabric());
+    Assert.assertFalse(response.isError());
+    Assert.assertNotNull(response.getExecution());
   }
 
   @Test(timeOut = TIME_OUT)
@@ -486,12 +491,16 @@ public class TestAdminSparkServer {
         controllerClient.listStoresStatuses();
     Assert.assertFalse(storeResponse.isError());
     //since all test cases share VeniceClusterWrapper, we get the total number of stores from the Wrapper.
-    List<String> storesInCluster = storeResponse.getStoreStatusMap().entrySet()
-        .stream().map(e -> e.getKey()).collect(Collectors.toList());
+    List<String> storesInCluster = storeResponse.getStoreStatusMap().entrySet().stream()
+        .map(e -> e.getKey()).collect(Collectors.toList());
     for (String storeName : storeNames) {
       Assert.assertTrue(storesInCluster.contains(storeName), "Result of listing store status should contain all stores we created.");
     }
-    for (String status : storeResponse.getStoreStatusMap().values()) {
+    List<String> storeStatuses = storeResponse.getStoreStatusMap().entrySet().stream()
+        .filter(e -> !e.getKey().equals(ParticipantMessageStoreUtils.getStoreNameForCluster(venice.getClusterName())))
+        .map(Map.Entry::getValue).collect(Collectors.toList());
+    Assert.assertFalse(storeStatuses.isEmpty());
+    for (String status : storeStatuses) {
       Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
           "Store should be unavailable because we have not created a version for this store.");
     }
@@ -639,7 +648,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(storeResponse.isError(), "Store should already be deleted.");
   }
 
-  @Test(timeOut = TIME_OUT * 2)
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetExecutionOfDeleteStore()
       throws InterruptedException {
     String cluster = venice.getClusterName();
@@ -660,9 +669,9 @@ public class TestAdminSparkServer {
     TrackableControllerResponse trackableControllerResponse = controllerClient.deleteStore(storeName);
     long executionId = trackableControllerResponse.getExecutionId();
     AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(executionId);
+    Assert.assertFalse(response.isError());
     AdminCommandExecution execution = response.getExecution();
-    // Command would not be executed in child controller because we don't have Kafka MM in the local box.
-    Assert.assertFalse(execution.isSucceedInAllFabric());
+    Assert.assertNotNull(execution);
   }
 
   @Test(timeOut = TIME_OUT)

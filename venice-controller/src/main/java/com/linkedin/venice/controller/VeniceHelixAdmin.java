@@ -47,6 +47,11 @@ import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.participant.protocol.KillPushJob;
+import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
+import com.linkedin.venice.participant.protocol.ParticipantMessageStoreUtils;
+import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
+import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
@@ -67,6 +72,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
@@ -80,7 +86,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
@@ -132,15 +137,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String kafkaSSLBootstrapServers;
     private final Map<String, AdminConsumerService> adminConsumerServices = new HashMap<>();
     // Track last exception when necessary
-    private Map<String, Exception> lastExceptionMap = new ConcurrentHashMap<String, Exception>();
+    private Map<String, Exception> lastExceptionMap = new VeniceConcurrentHashMap<>();
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     public static final long CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS = 1000*300l; // 5min
     public static final long CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS = 500l;
     public static final long WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS = 500;
-    public static final int PUSH_JOB_STATUS_GET_TOPIC_ATTEMPTS = 3;
 
-    private static final long PUSH_JOB_STATUS_RTT_RETRY_BACKOFF_MS = 5000;
+    private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
+    private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = 5000;
+    private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
 
     private final HelixAdmin admin;
@@ -159,6 +165,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final int minNumberOfUnusedKafkaTopicsToPreserve;
     private final int minNumberOfStoreVersionsToPreserve;
     private final StoreGraveyard storeGraveyard;
+    private final Map<String, String> participantMessageStoreRTTMap;
+    private final Map<String, VeniceWriter> participantMessageWriterMap;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -224,6 +232,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
         this.topicReplicator =
             TopicReplicator.getTopicReplicator(topicManager, commonConfig.getProps(), veniceWriterFactory);
+        this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
+        this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
@@ -282,6 +292,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         List<String> partitionNames = new ArrayList<>();
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         admin.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
+        if (multiClusterConfigs.getCommonConfig().isParticipantMessageStoreEnabled()) {
+            participantMessageStoreRTTMap.put(clusterName,
+                Version.composeRealTimeTopic(ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName)));
+        }
         waitUnitControllerJoinsCluster(clusterName);
     }
 
@@ -562,9 +576,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             int getTopicAttempts = 0;
             String expectedTopicName = Version.composeRealTimeTopic(multiClusterConfigs.getPushJobStatusStoreName());
             // Retry with backoff to allow the store and topic to be created when the config is changed.
-            while (getTopicAttempts < PUSH_JOB_STATUS_GET_TOPIC_ATTEMPTS) {
+            while (getTopicAttempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
                 if (getTopicAttempts != 0)
-                    Utils.sleep(PUSH_JOB_STATUS_RTT_RETRY_BACKOFF_MS);
+                    Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
                 if (topicManager.containsTopic(expectedTopicName)) {
                     pushJobStatusTopicName = expectedTopicName;
                     logger.info("Push job status topic name set to " + expectedTopicName);
@@ -2568,6 +2582,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
         // our cluster is not too big, so it's not a big deal here.
         messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
+        if (participantMessageStoreRTTMap.containsKey(clusterName)) {
+            VeniceWriter writer =
+                participantMessageWriterMap.computeIfAbsent(clusterName, k -> {
+                    int attempts = 0;
+                    boolean verified = false;
+                    String topic = participantMessageStoreRTTMap.get(clusterName);
+                    while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
+                        if (topicManager.containsTopic(topic)) {
+                            verified = true;
+                            logger.info("Participant message store RTT topic set to " + topic + " for cluster "
+                                + clusterName);
+                            break;
+                        }
+                        attempts++;
+                        Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
+                    }
+                    if (!verified) {
+                        throw new VeniceException("Can't find the expected topic " + topic
+                            + " for participant message store "
+                            + ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName));
+                    }
+                    return getVeniceWriterFactory().getVeniceWriter(topic,
+                        new VeniceAvroSerializer(ParticipantMessageKey.SCHEMA$.toString()),
+                        new VeniceAvroSerializer(ParticipantMessageValue.SCHEMA$.toString()));
+            });
+            ParticipantMessageType killPushJobType = ParticipantMessageType.KILL_PUSH_JOB;
+            ParticipantMessageKey key = new ParticipantMessageKey();
+            key.resourceName = kafkaTopic;
+            key.messageType = killPushJobType.getValue();
+            KillPushJob message = new KillPushJob();
+            message.timestamp = System.currentTimeMillis();
+            ParticipantMessageValue value = new ParticipantMessageValue();
+            value.messageType = killPushJobType.getValue();
+            value.messageUnion = message;
+            writer.put(key, value, PARTICIPANT_MESSAGE_STORE_SCHEMA_ID);
+        }
     }
 
     @Override
@@ -2808,6 +2858,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void close() {
         manager.disconnect();
         zkClient.close();
+        IOUtils.closeQuietly(pushJobStatusWriter);
+        for (VeniceWriter writer : participantMessageWriterMap.values()) {
+            IOUtils.closeQuietly(writer);
+        }
         IOUtils.closeQuietly(topicManager);
     }
 

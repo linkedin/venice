@@ -22,7 +22,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -36,45 +35,51 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.*;
-import com.linkedin.venice.migration.MigrationPushStrategy;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
-import static org.mockito.Mockito.*;
-
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-
 import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.any;
+import static org.mockito.Mockito.anyInt;
+import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.eq;
 
 
 public class TestVeniceParentHelixAdmin {
@@ -185,8 +190,8 @@ public class TestVeniceParentHelixAdmin {
       this.pushJobStatusStoreName = pushJobStatusStoreName;
     }
 
-    public boolean isAsyncSetupRunning() {
-      return asyncSetupRunning;
+    public boolean isAsyncSetupRunning(String clusterName) {
+      return asyncSetupEnabledMap.get(clusterName);
     }
 
     @Override
@@ -264,7 +269,7 @@ public class TestVeniceParentHelixAdmin {
     } finally {
       mockVeniceParentHelixAdmin.stop(clusterName);
     }
-    Assert.assertEquals(mockVeniceParentHelixAdmin.isAsyncSetupRunning(), false,
+    Assert.assertEquals(mockVeniceParentHelixAdmin.isAsyncSetupRunning(clusterName), false,
         "Async setup should be stopped");
   }
 
@@ -921,10 +926,9 @@ public class TestVeniceParentHelixAdmin {
     ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
     ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl);
     controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
-    MultiStoreResponse response = ControllerClient.listStores(controllerUrl, clusterName);
-    String[] stores = response.getStores();
-    Assert.assertEquals(stores.length, 1);
-    Assert.assertEquals(stores[0], storeName);
+    StoreResponse response = controllerClient.getStore(storeName);
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getStore().getName(), storeName);
 
     // Adding key schema
     SchemaResponse keySchemaResponse = controllerClient.getKeySchema(storeName);

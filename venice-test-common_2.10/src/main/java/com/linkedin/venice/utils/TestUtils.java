@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.helix.HelixInstanceConverter;
@@ -19,6 +20,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;

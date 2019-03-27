@@ -18,6 +18,8 @@ AVRO_SCHEMAS_PATH=(
   "venice-common_2.10/src/main/resources/avro/StoreVersionState/v3/*"
   "venice-common_2.10/src/main/resources/avro/ChunkedValueManifest/v-20/*"
   "venice-common_2.10/src/main/resources/avro/ChunkedKeySuffix/*"
+  "venice-common_2.10/src/main/resources/avro/ParticipantMessage/ParticipantMessageKey/*"
+  "venice-common_2.10/src/main/resources/avro/ParticipantMessage/ParticipantMessageValue/v1/*"
   "venice-controller/src/main/resources/avro/AdminOperation/v27/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
@@ -27,6 +29,8 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
 )
 CODE_GEN_PATH=(
+  "venice-common_2.10/src/main/java"
+  "venice-common_2.10/src/main/java"
   "venice-common_2.10/src/main/java"
   "venice-common_2.10/src/main/java"
   "venice-common_2.10/src/main/java"
@@ -50,13 +54,15 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[4]}/com/linkedin/venice/kafka/protocol/state/*.java"
   "${CODE_GEN_PATH[5]}/com/linkedin/venice/storage/protocol/*.java"
   "${CODE_GEN_PATH[6]}/com/linkedin/venice/storage/protocol/*.java"
-  "${CODE_GEN_PATH[7]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
-  "${CODE_GEN_PATH[8]}/com/linkedin/venice/read/protocol/response/*.java"
-  "${CODE_GEN_PATH[9]}/com/linkedin/venice/read/protocol/request/client/*.java"
-  "${CODE_GEN_PATH[10]}/com/linkedin/venice/read/protocol/request/router/*.java"
-  "${CODE_GEN_PATH[11]}/com/linkedin/venice/compute/protocol/request/*.java"
-  "${CODE_GEN_PATH[12]}/com/linkedin/venice/compute/protocol/response/*.java"
-  "${CODE_GEN_PATH[13]}/com/linkedin/venice/compute/protocol/request/router/*.java"
+  "${CODE_GEN_PATH[7]}/com/linkedin/venice/participant/protocol/*.java"
+  "${CODE_GEN_PATH[8]}/com/linkedin/venice/participant/protocol/*.java"
+  "${CODE_GEN_PATH[9]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
+  "${CODE_GEN_PATH[10]}/com/linkedin/venice/read/protocol/response/*.java"
+  "${CODE_GEN_PATH[11]}/com/linkedin/venice/read/protocol/request/client/*.java"
+  "${CODE_GEN_PATH[12]}/com/linkedin/venice/read/protocol/request/router/*.java"
+  "${CODE_GEN_PATH[13]}/com/linkedin/venice/compute/protocol/request/*.java"
+  "${CODE_GEN_PATH[14]}/com/linkedin/venice/compute/protocol/response/*.java"
+  "${CODE_GEN_PATH[15]}/com/linkedin/venice/compute/protocol/request/router/*.java"
 )
 
 if [[ $# < 1 ]]; then

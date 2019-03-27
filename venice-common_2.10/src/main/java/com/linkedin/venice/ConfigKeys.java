@@ -717,4 +717,9 @@ public class ConfigKeys {
    * Flag to indicate which push monitor controller will pick up for an upcoming push
    */
   public static final String PUSH_MONITOR_TYPE = "push.monitor.type";
+
+  /**
+   * Flag to
+   */
+  public static final String PARTICIPANT_MESSAGE_STORE_ENABLED = "participant.message.store.enabled";
 }

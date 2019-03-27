@@ -21,7 +21,7 @@ import java.util.Properties;
  *
  * N.B.: The visibility of this class and its functions is package-private on purpose.
  */
-class IntegrationTestUtils {
+public class IntegrationTestUtils {
   static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
 
   /**
@@ -79,7 +79,8 @@ class IntegrationTestUtils {
     .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
     .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
     .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString())
-    .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false).build();
+    .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false)
+    .put(PARTICIPANT_MESSAGE_STORE_ENABLED, true).build();
 
     return clusterProperties;
   }

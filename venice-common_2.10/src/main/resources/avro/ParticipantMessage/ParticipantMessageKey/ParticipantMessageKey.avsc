@@ -1,0 +1,16 @@
+{
+  "name": "ParticipantMessageKey",
+  "namespace": "com.linkedin.venice.participant.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "resourceName",
+      "type": "string"
+    },
+    {
+      "name": "messageType",
+      "doc": "0 => KillPushJob",
+      "type": "int"
+    }
+  ]
+}
