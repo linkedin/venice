@@ -123,9 +123,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String KAFKA_URL_PROP = "venice.kafka.url";
   public static final String TOPIC_PROP = "venice.kafka.topic";
 
-  private static final String HADOOP_PREFIX = "hadoop-conf.";
+  protected static final String HADOOP_PREFIX = "hadoop-conf.";
 
-  private static final String SSL_PREFIX = "ssl";
+  protected static final String SSL_PREFIX = "ssl";
 
   // PBNJ-related configs are all optional
   public static final String PBNJ_ENABLE = "pbnj.enable";
@@ -198,6 +198,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private RunningJob runningJob;
 
+  // Job config for regular push job
+  protected JobConf jobConf = new JobConf();
+  // Job config for pbnj
+  protected JobConf pbnjJobConf = new JobConf();
+
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
   private long pushStartTime;
@@ -205,7 +210,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
 
-  private class SchemaInfo {
+  protected class SchemaInfo {
     boolean isAvro = true;
     int valueSchemaId; // Value schema id retrieved from backend for valueSchemaString
     String keyField;
@@ -218,7 +223,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
   private SchemaInfo schemaInfo;
 
-  private class PushJobSetting {
+  protected class PushJobSetting {
     boolean enablePush;
     String veniceControllerUrl;
     String veniceRouterUrl;
@@ -240,19 +245,19 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
   private PushJobSetting pushJobSetting;
 
-  private class VersionTopicInfo {
+  protected class VersionTopicInfo {
     // Kafka topic for new data push
-    private String topic;
+    String topic;
     // Kafka topic partition count
-    private int partitionCount;
+    int partitionCount;
     // Kafka url will get from Venice backend for store push
-    private String kafkaUrl;
-    private boolean sslToKafka;
+    String kafkaUrl;
+    boolean sslToKafka;
     CompressionStrategy compressionStrategy;
   }
   private VersionTopicInfo versionTopicInfo;
 
-  private class StoreSetting {
+  protected class StoreSetting {
     boolean isChunkingEnabled;
     long storeStorageQuota;
     double storageEngineOverheadRatio;
@@ -352,7 +357,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       // TODO: do we actually need this information?
       this.inputFileDataSize = calculateInputDataSize(this.inputDirectory);
       // Get input schema
-      this.schemaInfo = getInputSchema(this.inputDirectory);
+      this.schemaInfo = getInputSchema(this.inputDirectory, this.props);
 
       // Discover the cluster based on the store name and re-initialized controller client.
       this.clusterName = discoverCluster(pushJobSetting);
@@ -372,21 +377,21 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         logPushJobProperties(versionTopicInfo, pushJobSetting, schemaInfo, this.clusterName, this.inputDirectory, this.inputFileDataSize);
 
         // Setup the hadoop job
-        JobConf pushJobConf = setupMRConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
+        setupMRConf(jobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
         // Whether the messages in one single topic partition is lexicographically sorted by key bytes.
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
-        jc = new JobClient(pushJobConf);
+        jc = new JobClient(jobConf);
         Optional<String> incrementalPushVersion = Optional.empty();
         if (pushJobSetting.isIncrementalPush) {
           incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
           getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
-          runningJob = jc.runJob(pushJobConf);
+          runningJob = jc.runJob(jobConf);
           getVeniceWriter(versionTopicInfo).broadcastEndOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
         } else {
           getVeniceWriter(versionTopicInfo).broadcastStartOfPush(!pushJobSetting.isMapOnly, storeSetting.isChunkingEnabled, versionTopicInfo.compressionStrategy, new HashMap<>());
           // submit the job for execution and wait for completion
-          runningJob = jc.runJob(pushJobConf);
+          runningJob = jc.runJob(jobConf);
           //TODO: send a failure END OF PUSH message if something went wrong
           getVeniceWriter(versionTopicInfo).broadcastEndOfPush(new HashMap<>());
         }
@@ -403,7 +408,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       if (pushJobSetting.enablePBNJ) {
         logger.info("Post-Bulkload Analysis Job is about to run.");
-        JobConf pbnjJobConf = setupPBNJConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
+        setupPBNJConf(pbnjJobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
         jc = new JobClient(pbnjJobConf);
         runningJob = jc.runJob(pbnjJobConf);
       }
@@ -465,10 +470,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * 2. Check schema consistency;
    * 3. Populate key schema, value schema;
    * @param inputUri
+   * @param props push job properties
    * @return all schema related information
    * @throws Exception
    */
-  protected SchemaInfo getInputSchema(String inputUri) throws Exception {
+  protected SchemaInfo getInputSchema(String inputUri, VeniceProperties props) throws Exception {
     Configuration conf = new Configuration();
     FileSystem fs = FileSystem.get(conf);
     Path srcPath = new Path(inputUri);
@@ -827,30 +833,28 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return detailsPresentWhenPreviouslyAbsent || detailsDifferentFromPreviously;
   }
 
-  protected JobConf setupMRConf(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
-    JobConf defaultJobConf = setupDefaultJobConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
-    return setupReducerConf(setupInputFormatConf(defaultJobConf, schemaInfo), pushJobSetting, versionTopicInfo);
+  protected void setupMRConf(JobConf jobConf, VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
+    setupDefaultJobConf(jobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
+    setupInputFormatConf(jobConf, schemaInfo, inputDirectory);
+    setupReducerConf(jobConf, pushJobSetting, versionTopicInfo);
   }
 
-  private JobConf setupPBNJConf(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
+  private void setupPBNJConf(JobConf jobConf, VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
     if (!schemaInfo.isAvro) {
       throw new VeniceException("PBNJ only supports Avro input format");
     }
 
-    JobConf conf = setupReducerConf(setupInputFormatConf(setupDefaultJobConf(versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory), schemaInfo), pushJobSetting, versionTopicInfo);
-    conf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
-    conf.set(PBNJ_ROUTER_URL_PROP, pushJobSetting.veniceRouterUrl);
-    conf.set(PBNJ_FAIL_FAST, Boolean.toString(pushJobSetting.pbnjFailFast));
-    conf.set(PBNJ_ASYNC, Boolean.toString(pushJobSetting.pbnjAsync));
-    conf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pushJobSetting.pbnjSamplingRatio));
-    conf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
-    conf.setMapperClass(PostBulkLoadAnalysisMapper.class);
-
-    return conf;
+    setupMRConf(jobConf, versionTopicInfo, pushJobSetting, schemaInfo, storeSetting, props, id, inputDirectory);
+    jobConf.set(VENICE_STORE_NAME_PROP, pushJobSetting.storeName);
+    jobConf.set(PBNJ_ROUTER_URL_PROP, pushJobSetting.veniceRouterUrl);
+    jobConf.set(PBNJ_FAIL_FAST, Boolean.toString(pushJobSetting.pbnjFailFast));
+    jobConf.set(PBNJ_ASYNC, Boolean.toString(pushJobSetting.pbnjAsync));
+    jobConf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pushJobSetting.pbnjSamplingRatio));
+    jobConf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
+    jobConf.setMapperClass(PostBulkLoadAnalysisMapper.class);
   }
 
-  protected JobConf setupDefaultJobConf(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
-    JobConf conf = new JobConf();
+  protected void setupDefaultJobConf(JobConf conf, VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, StoreSetting storeSetting, VeniceProperties props, String id, String inputDirectory) {
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(pushJobSetting.batchNumBytes));
     conf.set(TOPIC_PROP, versionTopicInfo.topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
@@ -866,11 +870,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     conf.setBoolean(ALLOW_DUPLICATE_KEY, pushJobSetting.isDuplicateKeyAllowed);
     conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, storeSetting.isChunkingEnabled);
-
-    // Hadoop2 dev cluster provides a newer version of an avro dependency.
-    // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
-    conf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
-    logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + conf.get(MAPREDUCE_JOB_CLASSLOADER));
 
     conf.set(STORAGE_QUOTA_PROP, Long.toString(storeSetting.storeStorageQuota));
     conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storeSetting.storageEngineOverheadRatio));
@@ -909,12 +908,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     conf.setJobName(id + ":" + "hadoop_to_venice_bridge" + "-" + versionTopicInfo.topic);
     conf.setJarByClass(this.getClass());
 
-
-    // TODO:The job is using path-filter to check the consistency of avro file schema ,
-    // but doesn't specify the path filter for the input directory of map-reduce job.
-    // We need to revisit it if any failure because of this happens.
-    FileInputFormat.setInputPaths(conf, new Path(inputDirectory));
-
     //do we need these two configs?
     conf.setOutputKeyClass(NullWritable.class);
     conf.setOutputValueClass(NullWritable.class);
@@ -934,17 +927,25 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
       conf.set(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
     }
+  }
+
+  protected void setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo, String inputDirectory) {
+    // Hadoop2 dev cluster provides a newer version of an avro dependency.
+    // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
+    jobConf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
+    logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + jobConf.get(MAPREDUCE_JOB_CLASSLOADER));
+
+    // TODO:The job is using path-filter to check the consistency of avro file schema ,
+    // but doesn't specify the path filter for the input directory of map-reduce job.
+    // We need to revisit it if any failure because of this happens.
+    FileInputFormat.setInputPaths(jobConf, new Path(inputDirectory));
 
     /**
      * Include all the files in the input directory no matter whether the file is with '.avro' suffix or not
      * to keep the logic consistent with {@link #checkAvroSchemaConsistency(FileStatus[])}.
      */
-    conf.set(AvroInputFormat.IGNORE_FILES_WITHOUT_EXTENSION_KEY, "false");
+    jobConf.set(AvroInputFormat.IGNORE_FILES_WITHOUT_EXTENSION_KEY, "false");
 
-    return conf;
-  }
-
-  private JobConf setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo) {
     jobConf.set(KEY_FIELD_PROP, schemaInfo.keyField);
     jobConf.set(VALUE_FIELD_PROP, schemaInfo.valueField);
 
@@ -962,11 +963,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       jobConf.set(FILE_KEY_SCHEMA, schemaInfo.vsonFileKeySchema);
       jobConf.set(FILE_VALUE_SCHEMA, schemaInfo.vsonFileValueSchema);
     }
-
-    return jobConf;
   }
 
-  private JobConf setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
+  private void setupReducerConf(JobConf jobConf, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
     if (pushJobSetting.isMapOnly) {
       jobConf.setMapSpeculativeExecution(false);
       jobConf.setNumReduceTasks(0);
@@ -978,8 +977,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
       jobConf.setNumReduceTasks(versionTopicInfo.partitionCount);
     }
-
-    return jobConf;
   }
 
   private void logPushJobProperties(VersionTopicInfo versionTopicInfo, PushJobSetting pushJobSetting, SchemaInfo schemaInfo, String clusterName, String inputDirectory, long inputFileDataSize) {
@@ -1031,7 +1028,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     close();
   }
 
-  private Schema extractAvroSubSchema(Schema origin, String fieldName) {
+  protected Schema extractAvroSubSchema(Schema origin, String fieldName) {
     Schema.Field field = origin.getField(fieldName);
 
     if (field == null) {
