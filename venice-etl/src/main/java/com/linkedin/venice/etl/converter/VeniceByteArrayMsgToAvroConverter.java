@@ -94,13 +94,13 @@ public class VeniceByteArrayMsgToAvroConverter extends ToAvroConverterBase<Schem
     try {
       DecoderFactory decoderFactory = new DecoderFactory();
       Decoder keyDecoder = decoderFactory.createBinaryDecoder(keyByteBuffer.array(), null);
-      GenericRecord keyRecord = (GenericRecord) keyReader.read(null, keyDecoder);
+      Object keyRecord = keyReader.read(null, keyDecoder);
       convertedRecord.put(VENICE_ETL_KEY_FIELD, keyRecord);
 
       if (inputRecord.get(VENICE_ETL_DELETED_TS_FIELD) == null) {
         // put message
         Decoder valueDecoder = decoderFactory.createBinaryDecoder(valueByteBuffer.array(), null);
-        GenericRecord valueRecord = (GenericRecord) valueReaders[schemaId - 1].read(null, valueDecoder);
+        Object valueRecord = valueReaders[schemaId - 1].read(null, valueDecoder);
         convertedRecord.put(VENICE_ETL_VALUE_FIELD, valueRecord);
       } else {
         // delete message

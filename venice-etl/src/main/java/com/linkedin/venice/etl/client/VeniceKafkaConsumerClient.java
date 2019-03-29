@@ -1,6 +1,7 @@
 package com.linkedin.venice.etl.client;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.source.VeniceKafkaSource;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -22,6 +23,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -94,18 +96,17 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   private String fabricName;
   private String[] veniceStoreNames;
 
-  private final ControllerClient controllerClient;
+  private Map<String, ControllerClient> storeToControllerClient;
   private final KafkaConsumerWrapper veniceKafkaConsumer;
 
   public VeniceKafkaConsumerClient(Config baseConfig) {
     super(baseConfig);
 
-    String veniceCluster = baseConfig.getString(VENICE_CLUSTER_NAME);
     String veniceControllerUrls = baseConfig.getString(VENICE_CONTROLLER_URLS);
     String veniceStoreNamesList = baseConfig.getString(VENICE_STORE_NAME);
     fabricName = baseConfig.getString(FABRIC_NAME);
     veniceStoreNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
-    controllerClient = new ControllerClient(veniceCluster, veniceControllerUrls);
+    storeToControllerClient = getControllerClients(veniceStoreNames, veniceControllerUrls);
 
     if (null == veniceStoreNames || 0 == veniceStoreNames.length) {
       throw new VeniceException("No store name specified when creating VeniceKafkaConsumerClient");
@@ -155,6 +156,24 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     veniceKafkaConsumer = new ApacheKafkaConsumer(veniceKafkaProp);
   }
 
+  public static Map<String, ControllerClient> getControllerClients(String[] veniceStoreNames, String veniceControllerUrls) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<String, ControllerClient>(veniceStoreNames.length);
+    // Reuse the same controller client for stores in the same cluster
+    Map<String, ControllerClient> clusterToControllerClient = new HashMap<>();
+    for (String veniceStoreName: veniceStoreNames) {
+      ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrls, veniceStoreName);
+      if(clusterDiscoveryResponse.isError()){
+        throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
+      } else {
+        String clusterName = clusterDiscoveryResponse.getCluster();
+        ControllerClient controllerClient = clusterToControllerClient.computeIfAbsent(clusterName, k -> new ControllerClient(k, veniceControllerUrls));
+        controllerClientMap.put(veniceStoreName, controllerClient);
+        logger.info("Found cluster: " + clusterDiscoveryResponse.getCluster() + " for store: " + veniceStoreName);
+      }
+    }
+    return controllerClientMap;
+  }
+
   private static Properties getKafkaConsumerProperties(String kafkaBoostrapServers) {
     Properties kafkaConsumerProperties = new Properties();
     kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBoostrapServers);
@@ -175,11 +194,11 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   public List<KafkaTopic> getTopics() {
     // get the topic names from Venice controllers
     Set<String> topicNames = new HashSet<String>();
-    for (int i = 0; i < veniceStoreNames.length; i++) {
-      StoreResponse storeResponse = controllerClient.getStore(veniceStoreNames[i]);
+    for (String storeName: veniceStoreNames) {
+      StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
       Map<String, Integer> coloToCurrentVersions = storeInfo.getColoToCurrentVersions();
-      String topicName = Version.composeKafkaTopic(veniceStoreNames[i], coloToCurrentVersions.get(fabricName));
+      String topicName = Version.composeKafkaTopic(storeName, coloToCurrentVersions.get(fabricName));
       topicNames.add(topicName);
       logger.info("Topic name in this ETL pipeline: " + topicName);
     }

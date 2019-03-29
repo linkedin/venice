@@ -3,6 +3,7 @@ package com.linkedin.venice.etl.schema;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.etl.client.VeniceKafkaConsumerClient;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -50,41 +51,40 @@ public class HDFSSchemaSource implements SchemaSource {
    * @param state
    */
   public void load(SourceState state) {
-    String veniceCluster = state.getProp(VENICE_CLUSTER_NAME);
     String veniceControllerUrls = state.getProp(VENICE_CONTROLLER_URLS);
     String veniceStoreNamesList = state.getProp(VENICE_STORE_NAME);
     String[] veniceStoreNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
 
-    getStoreSchemaFromVenice(veniceCluster, veniceControllerUrls, veniceStoreNames);
+    getStoreSchemaFromVenice(veniceControllerUrls, veniceStoreNames);
     for (String storeName : veniceStoreNames) {
       setKeySchema(storeName);
       putValueSchemas(storeName);
     }
   }
 
-  private void getStoreSchemaFromVenice(String veniceCluster, String veniceControllerUrls, String[] veniceStoreNames) {
-    ControllerClient controllerClient = new ControllerClient(veniceCluster, veniceControllerUrls);
-    getStoreSchema(controllerClient, veniceStoreNames);
+  private void getStoreSchemaFromVenice(String veniceControllerUrls, String[] veniceStoreNames) {
+    Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(veniceStoreNames, veniceControllerUrls);
+    getStoreSchema(storeToControllerClient, veniceStoreNames);
   }
 
-  private void getStoreSchema(ControllerClient controllerClient, String[] veniceStoreNames) {
+  private void getStoreSchema(Map<String, ControllerClient> storeToControllerClient, String[] veniceStoreNames) {
     storeNameToKeySchemaStr = new HashMap<>();
     storeNameToAllValueSchemaStr = new HashMap<>();
-    for (int i = 0; i < veniceStoreNames.length; i++) {
-      SchemaResponse keySchemaResponse = controllerClient.getKeySchema(veniceStoreNames[i]);
+    for (String storeName: veniceStoreNames) {
+      SchemaResponse keySchemaResponse = storeToControllerClient.get(storeName).getKeySchema(storeName);
       String keySchemaStr = keySchemaResponse.getSchemaStr();
-      storeNameToKeySchemaStr.put(veniceStoreNames[i], keySchemaStr);
-      logger.info("key schema for store " + veniceStoreNames[i] + ": " + keySchemaStr);
+      storeNameToKeySchemaStr.put(storeName, keySchemaStr);
+      logger.info("key schema for store " + storeName + ": " + keySchemaStr);
 
-      MultiSchemaResponse allValueSchemaResponses = controllerClient.getAllValueSchema(veniceStoreNames[i]);
+      MultiSchemaResponse allValueSchemaResponses = storeToControllerClient.get(storeName).getAllValueSchema(storeName);
       com.linkedin.venice.controllerapi.MultiSchemaResponse.Schema[] allValueSchemas = allValueSchemaResponses.getSchemas();
       int numOfValueSchemas = allValueSchemas.length;
       String[] allValueSchemaStr = new String[numOfValueSchemas];
       for (int j = 0; j < numOfValueSchemas; j++) {
         allValueSchemaStr[j] = allValueSchemas[j].getSchemaStr();
-        logger.info("value schema #" + j + " for store " + veniceStoreNames[i] + ": " + allValueSchemaStr[j]);
+        logger.info("value schema #" + j + " for store " + storeName + ": " + allValueSchemaStr[j]);
       }
-      storeNameToAllValueSchemaStr.put(veniceStoreNames[i], allValueSchemaStr);
+      storeNameToAllValueSchemaStr.put(storeName, allValueSchemaStr);
     }
   }
 
