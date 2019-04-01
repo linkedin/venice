@@ -250,7 +250,7 @@ public class TestMultiDataCenterPush {
           long failingOffset = adminConsumerService.getFailingOffset();
           if (failingOffset >= 0) {
             // Cleanup the failing admin message to reduce unneeded logging.
-            adminConsumerService.setOffsetToSkip(clusterName, failingOffset);
+            adminConsumerService.setOffsetToSkip(clusterName, failingOffset, false);
           }
         } else {
           return false;
@@ -263,7 +263,7 @@ public class TestMultiDataCenterPush {
     // Skipping the problematic admin message is required to proceed with the other tests while child controllers can
     // still function with the blocking admin message.
     AdminConsumerService adminConsumerService = parentController.getAdminConsumerServiceByCluster(clusterName);
-    adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset());
+    adminConsumerService.setOffsetToSkip(clusterName, adminConsumerService.getFailingOffset(), false);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       boolean allFailedMessagesSkipped = adminConsumerService.getFailingOffset() == -1;
       for (List<VeniceControllerWrapper> controllerWrappers : childControllers) {

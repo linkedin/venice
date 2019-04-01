@@ -305,10 +305,11 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse skipAdminMessage(String offset){
+  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV){
     try {
       QueryParams queryParams = newParams()
-          .add(OFFSET, offset);
+          .add(OFFSET, offset)
+          .add(SKIP_DIV, skipDIV);
       String responseJson = postRequest(ControllerRoute.SKIP_ADMIN.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {

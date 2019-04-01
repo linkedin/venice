@@ -65,6 +65,8 @@ public class ControllerApiConstants {
 
   public static final String LEADER_FOLLOWER_MODEL_ENABLED = "leader_follower_model_enabled";
 
+  public static final String SKIP_DIV = "skip_div";
+
   private ControllerApiConstants(){}
 
   /**

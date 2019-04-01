@@ -179,7 +179,8 @@ public class AdminTool {
           break;
         case SKIP_ADMIN:
           String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
-          response = controllerClient.skipAdminMessage(offset);
+          boolean skipDIV = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.SKIP_DIV, "false"));
+          response = controllerClient.skipAdminMessage(offset, skipDIV);
           printObject(response);
           break;
         case NEW_STORE:
