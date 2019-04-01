@@ -2541,9 +2541,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void skipAdminMessage(String clusterName, long offset){
+    public void skipAdminMessage(String clusterName, long offset, boolean skipDIV){
         if (adminConsumerServices.containsKey(clusterName)){
-            adminConsumerServices.get(clusterName).setOffsetToSkip(clusterName, offset);
+            adminConsumerServices.get(clusterName).setOffsetToSkip(clusterName, offset, skipDIV);
         } else {
             throw new VeniceException("Cannot skip execution, must first setAdminConsumerService for cluster " + clusterName);
         }

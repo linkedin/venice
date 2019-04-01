@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -8,6 +7,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.kafka.validation.AdminProducerTracker;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
@@ -16,10 +16,10 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
-import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -47,7 +47,6 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.helix.HelixAdmin;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -80,6 +79,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private OffsetRecord lastOffset;
   private long lastPersistedOffset = UNASSIGNED_VALUE;
   private volatile long offsetToSkip = UNASSIGNED_VALUE;
+  private volatile long offsetToSkipDIV = UNASSIGNED_VALUE;
   /**
    * The smallest or first failing offset.
    */
@@ -110,7 +110,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   /**
    * Keeps track of every upstream producer this consumer task has seen so far.
    */
-  private final Map<GUID, ProducerTracker> producerTrackerMap;
+  private final Map<GUID, AdminProducerTracker> producerTrackerMap;
 
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
@@ -190,7 +190,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         if (undelegatedRecords.isEmpty()) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           if (null == records || records.isEmpty()) {
-            logger.info("Received null or no records");
+            logger.debug("Received null or no records");
           } else {
             logger.debug("Received record num: " + records.count());
             recordsIterator = records.iterator();
@@ -209,6 +209,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             // Very unlikely but exceptions like DataValidationException could be thrown here.
             logger.error("Admin consumption task is blocked due to DataValidationException with offset "
                 + undelegatedRecords.peek().offset(), e);
+            logger.info("Last offset: " + lastOffset.toDetailedString() + "\nProducerTracker: "
+                + producerTrackerMap.get(undelegatedRecords.peek().value().producerMetadata.producerGUID));
             failingOffset = undelegatedRecords.peek().offset();
             break;
           }
@@ -231,9 +233,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // First let's try to restore the state retrieved from the OffsetManager
     lastOffset.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
       GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-      ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
+      AdminProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
       if (null == producerTracker) {
-        producerTracker = new ProducerTracker(producerGuid, topic);
+        producerTracker = new AdminProducerTracker(producerGuid, topic);
       }
       producerTracker.setPartitionState(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, entry.getValue());
       producerTrackerMap.put(producerGuid, producerTracker);
@@ -252,7 +254,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       undelegatedRecords.clear();
       failingOffset = UNASSIGNED_VALUE;
       offsetToSkip = UNASSIGNED_VALUE;
+      offsetToSkipDIV = UNASSIGNED_VALUE;
       largestSucceededExecutionId = UNASSIGNED_VALUE;
+      stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
+      stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       isSubscribed = false;
       logger.info("Unsubscribe from topic name: " + topic);
     }
@@ -414,13 +419,24 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return false;
     }
 
+    if (checkOffsetToSkipDIV(record.offset())) {
+      ProducerMetadata producerMetadata = record.value().producerMetadata;
+      if (producerTrackerMap.containsKey(producerMetadata.producerGUID)) {
+        // Overwrite the sequence number on skip. The assumption here is that checksum is disabled and the segment
+        // number will always remain 0 for the admin topic.
+        producerTrackerMap.get(producerMetadata.producerGUID).overwriteSequenceNumber(
+            AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, producerMetadata.messageSequenceNumber);
+      }
+      return true;
+    }
+
     KafkaKey kafkaKey = record.key();
     KafkaMessageEnvelope kafkaValue = record.value();
     try {
       final GUID producerGUID = kafkaValue.producerMetadata.producerGUID;
-      ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
+      AdminProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
       if (producerTracker == null) {
-        producerTracker = new ProducerTracker(producerGUID, topic);
+        producerTracker = new AdminProducerTracker(producerGUID, topic);
         producerTrackerMap.put(producerGUID, producerTracker);
       }
       offsetRecordTransformer = Optional.of(
@@ -515,11 +531,30 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
+  void skipMessageDIVWithOffset(long offset) {
+    if (offset == failingOffset) {
+      offsetToSkipDIV = offset;
+    } else {
+      throw new VeniceException(
+          "Cannot skip an offset that isn't the first one failing.  Last failed offset is: " + failingOffset);
+    }
+  }
+
   private boolean checkOffsetToSkip(long offset) {
     boolean skip = false;
     if (offset == offsetToSkip) {
       logger.warn("Skipping admin message with offset " + offset + " as instructed");
       offsetToSkip = UNASSIGNED_VALUE;
+      skip = true;
+    }
+    return skip;
+  }
+
+  private boolean checkOffsetToSkipDIV(long offset) {
+    boolean skip = false;
+    if (offset == offsetToSkipDIV) {
+      logger.warn("Skipping DIV for admin message with offset " + offset + " as instructed");
+      offsetToSkipDIV = UNASSIGNED_VALUE;
       skip = true;
     }
     return skip;

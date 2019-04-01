@@ -43,6 +43,7 @@ public class DumpAdminMessages {
     public String operationType;
     public String adminOperation;
     public String publishTimeStamp;
+    String producerMetadata;
   }
 
   public static List<AdminOperationInfo> dumpAdminMessages(String kafkaUrl, String clusterName,
@@ -84,6 +85,7 @@ public class DumpAdminMessages {
           adminOperationInfo.adminOperation = adminMessage.toString();
           adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
           adminOperationInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+          adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
           adminOperations.add(adminOperationInfo);
         }
         if (curMsgCnt > messageCnt) {

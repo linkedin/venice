@@ -376,8 +376,9 @@ public interface Admin {
      * the task from consuming subsequent messages.
      * @param clusterName
      * @param offset
+     * @param skipDIV tries to skip only the DIV check for the blocking message.
      */
-    void skipAdminMessage(String clusterName, long offset);
+    void skipAdminMessage(String clusterName, long offset, boolean skipDIV);
 
     /**
      * Get the id of the last succeed execution in this controller.

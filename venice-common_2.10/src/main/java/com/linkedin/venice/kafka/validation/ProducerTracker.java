@@ -41,7 +41,7 @@ public class ProducerTracker {
 
   private final GUID producerGUID;
   // This will allow to create segments for different partitions in parallel.
-  private final ConcurrentMap<Integer, Segment> segments = new ConcurrentHashMap<>();
+  protected final ConcurrentMap<Integer, Segment> segments = new ConcurrentHashMap<>();
   private final String topicName;
 
   public ProducerTracker(GUID producerGUID, String topicName) {
