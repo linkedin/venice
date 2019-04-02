@@ -2,6 +2,8 @@ package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.exceptions.VeniceClientRateExceededException;
+import com.linkedin.venice.compression.CompressionStrategy;
+
 import org.apache.http.HttpStatus;
 
 import java.nio.charset.StandardCharsets;
@@ -11,8 +13,6 @@ import java.util.concurrent.CompletableFuture;
  * Define the common functions for call back of {@link TransportClient}
  */
 public class TransportClientCallback {
-  public static String HEADER_VENICE_SCHEMA_ID = "X-VENICE-SCHEMA-ID";
-
   private final CompletableFuture<TransportClientResponse> valueFuture;
 
   public TransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
@@ -23,11 +23,9 @@ public class TransportClientCallback {
     return valueFuture;
   }
 
-  public void completeFuture(int statusCode,
-                             byte[] body,
-      int schemaId) {
+  public void completeFuture(int statusCode, int schemaId, CompressionStrategy compressionStrategy, byte[] body) {
     if (statusCode == HttpStatus.SC_OK || (statusCode < 300 && statusCode >= 200)) {
-      valueFuture.complete(new TransportClientResponse(schemaId, body));
+      valueFuture.complete(new TransportClientResponse(schemaId, compressionStrategy, body));
     } else if (statusCode == HttpStatus.SC_NOT_FOUND) {
       valueFuture.complete(null);
     } else {

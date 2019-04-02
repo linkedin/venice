@@ -1,8 +1,10 @@
 package com.linkedin.venice.client.store.transport;
 
+import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.schema.SchemaData;
-import java.util.Map;
+
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
@@ -18,6 +20,7 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -118,14 +121,22 @@ public class HttpTransportClient extends TransportClient {
     @Override
     public void completed(HttpResponse result) {
       int statusCode = result.getStatusLine().getStatusCode();
+
       int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
       // If we try to retrieve the header value directly, and the 'getValue' will hang if the header doesn't exist.
-        Header schemaIdHeader = result.getFirstHeader(HEADER_VENICE_SCHEMA_ID);
-        if (HttpStatus.SC_OK == statusCode) {
-          if (null != schemaIdHeader) {
-            schemaId = Integer.parseInt(schemaIdHeader.getValue());
-          }
+      Header schemaIdHeader = result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID);
+      if (HttpStatus.SC_OK == statusCode) {
+        if (null != schemaIdHeader) {
+          schemaId = Integer.parseInt(schemaIdHeader.getValue());
+        }
       }
+
+      CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+      Header compressionHeader = result.getFirstHeader(HttpConstants.VENICE_COMPRESSION_STRATEGY);
+      if (compressionHeader != null) {
+        compressionStrategy = CompressionStrategy.valueOf(Integer.valueOf(compressionHeader.getValue()));
+      }
+
       byte[] body = null;
       try (InputStream bodyStream = result.getEntity().getContent()) {
         body = IOUtils.toByteArray(bodyStream);
@@ -134,7 +145,7 @@ public class HttpTransportClient extends TransportClient {
         return;
       }
 
-      completeFuture(statusCode, body, schemaId);
+      completeFuture(statusCode, schemaId, compressionStrategy, body);
     }
   }
 

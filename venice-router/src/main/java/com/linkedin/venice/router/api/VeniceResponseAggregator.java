@@ -25,10 +25,11 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponse;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -43,6 +44,7 @@ import org.apache.log4j.Logger;
 import static com.linkedin.ddsstorage.router.api.MetricNames.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
+import static com.linkedin.venice.HttpConstants.VENICE_SUPPORTED_COMPRESSION;
 
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
 
@@ -65,6 +67,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion()));
   }
 
+  private final boolean decompressOnClient;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
   private final AggRouterHttpRequestStats statsForCompute;
@@ -77,8 +80,9 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private long multiGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
   private long computeTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
 
-  public VeniceResponseAggregator(AggRouterHttpRequestStats statsForSingleGet,
+  public VeniceResponseAggregator(boolean decompressOnClient, AggRouterHttpRequestStats statsForSingleGet,
       AggRouterHttpRequestStats statsForMultiGet, AggRouterHttpRequestStats statsForCompute) {
+    this.decompressOnClient = decompressOnClient;
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
     this.statsForCompute = statsForCompute;
@@ -122,23 +126,25 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        */
       return gatheredResponses.get(0);
     }
+
     RequestType requestType = venicePath.getRequestType();
     String storeName = venicePath.getStoreName();
     int version = venicePath.getVersionNumber();
     FullHttpResponse finalResponse = null;
     AggRouterHttpRequestStats stats = null;
+    CompressionStrategy clientCompression = decompressOnClient ? getSupportedCompression(request) : CompressionStrategy.NO_OP;
     switch (requestType) {
       case SINGLE_GET:
         stats = statsForSingleGet;
-        finalResponse = buildSingleGetResponse(storeName, version, gatheredResponses.get(0), stats);
+        finalResponse = buildSingleGetResponse(storeName, version, gatheredResponses.get(0), stats, clientCompression);
         break;
       case MULTI_GET:
         stats = statsForMultiGet;
-        finalResponse = buildMultiKeyResponse(storeName, version, gatheredResponses, stats, MULTI_GET_VALID_HEADER_MAP, requestType);
+        finalResponse = buildMultiKeyResponse(storeName, version, gatheredResponses, stats, MULTI_GET_VALID_HEADER_MAP, requestType, clientCompression);
         break;
       case COMPUTE:
         stats = statsForCompute;
-        finalResponse = buildMultiKeyResponse(storeName, version, gatheredResponses, stats, COMPUTE_VALID_HEADER_MAP, requestType);
+        finalResponse = buildMultiKeyResponse(storeName, version, gatheredResponses, stats, COMPUTE_VALID_HEADER_MAP, requestType, clientCompression);
         break;
       default:
         throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
@@ -205,27 +211,39 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
   }
 
-  private FullHttpResponse buildSingleGetResponse(String storeName, int version, FullHttpResponse response, AggRouterHttpRequestStats stats) {
+  private static CompressionStrategy getCompressionStrategy(HttpResponse response) {
+    final String defaultValue = Integer.toString(CompressionStrategy.NO_OP.getValue());
+    return CompressionStrategy.valueOf(Integer.valueOf(response.headers().get(VENICE_COMPRESSION_STRATEGY, defaultValue)));
+  }
+
+  private static CompressionStrategy getSupportedCompression(HttpRequest request) {
+    final String defaultValue = Integer.toString(CompressionStrategy.NO_OP.getValue());
+    return CompressionStrategy.valueOf(Integer.valueOf(request.headers().get(VENICE_SUPPORTED_COMPRESSION, defaultValue)));
+  }
+
+  private FullHttpResponse buildSingleGetResponse(String storeName, int version, FullHttpResponse response,
+    AggRouterHttpRequestStats stats, CompressionStrategy clientCompression) {
+
     if (response.status() != OK) {
       return response;
     }
 
-    CompressionStrategy compressionStrategy = response.headers().contains(VENICE_COMPRESSION_STRATEGY) ?
-        CompressionStrategy.valueOf(Integer.valueOf(response.headers().get(VENICE_COMPRESSION_STRATEGY))) : CompressionStrategy.NO_OP;
-
-    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(storeName, version, compressionStrategy,
-        response.content().nioBuffer(), stats));
-
-    if (compressionStrategy != CompressionStrategy.NO_OP) {
-      /**
-       * When using compression, the data in response is already copied to `decompressedData`, so we can explicitly
-       * release the ByteBuf in the response immediately to avoid any memory leak.
-       *
-       * When not using compression, the backing byte array in the response will be reused to construct the response to
-       * client, and the ByteBuf will be released in the netty pipeline.
-       */
-      response.content().release();
+    CompressionStrategy responseCompression = getCompressionStrategy(response);
+    if (responseCompression == clientCompression || responseCompression == CompressionStrategy.NO_OP) {
+      // Decompress record on the client side if needed
+      return response;
     }
+
+    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(storeName, version, responseCompression,
+        response.content().nioBuffer(), stats));
+    /**
+     * When using compression, the data in response is already copied to `decompressedData`, so we can explicitly
+     * release the ByteBuf in the response immediately to avoid any memory leak.
+     *
+     * When not using compression, the backing byte array in the response will be reused to construct the response to
+     * client, and the ByteBuf will be released in the netty pipeline.
+     */
+    response.content().release();
 
     FullHttpResponse fullHttpResponse = response.replace(decompressedData);
     fullHttpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, decompressedData.readableBytes());
@@ -242,20 +260,21 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
    * This could be mitigated if client-side decompression is supported later.
    */
   private FullHttpResponse buildMultiKeyResponse(String storeName, int version, List<FullHttpResponse> responses,
-      AggRouterHttpRequestStats stats, Map<CharSequence, String> headerMap, RequestType requestType) {
+      AggRouterHttpRequestStats stats, Map<CharSequence, String> headerMap, RequestType requestType, CompressionStrategy clientCompression) {
     /**
      * Here we will check the consistency of the following headers among all the responses:
      * 1. {@link HttpHeaderNames.CONTENT_TYPE}
      * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
      */
-    List<byte[]> contentList = new ArrayList<>();
+    CompressionStrategy compressionStrategy = null;
+    CompositeByteBuf content = Unpooled.compositeBuffer();
 
-    int resultLen = 0;
     for (FullHttpResponse response : responses) {
       if (response.status() != OK) {
         // Return error response directly for now.
         return response;
       }
+
       headerMap.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
         if (null == currentValue) {
@@ -268,36 +287,50 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         }
       });
 
-      CompressionStrategy compressionStrategy = response.headers().contains(VENICE_COMPRESSION_STRATEGY) ?
-          CompressionStrategy.valueOf(Integer.valueOf(response.headers().get(VENICE_COMPRESSION_STRATEGY))) : CompressionStrategy.NO_OP;
-
-      if (response.content() instanceof CompositeByteBuf) {
-        CompositeByteBuf compositeByteBuf = (CompositeByteBuf)response.content();
-        for (int i = 0; i < compositeByteBuf.numComponents(); i++) {
-          byte[] content = compositeByteBuf.internalComponent(i).array();
-          resultLen += addResponseToList(content, contentList, storeName, version, requestType, compressionStrategy, stats);
-        }
-      } else {
-        byte[] content = response.content().array();
-        resultLen += addResponseToList(content, contentList, storeName, version, requestType, compressionStrategy, stats);
+      CompressionStrategy responseCompression = getCompressionStrategy(response);
+      if (compressionStrategy == null) {
+        compressionStrategy = responseCompression;
       }
 
+      if (responseCompression != compressionStrategy) {
+        // Compression strategy should be consistent accross all records for a specific store version
+        throw new VeniceException(String.format(
+            "Inconsistent compression strategy retruned. Store: %s; Version: %d, ExpectedCompression: %d, ResponseCompression: %d",
+            storeName, version, compressionStrategy.getValue(), responseCompression.getValue()));
+      }
+
+      if (responseCompression == clientCompression || responseCompression == CompressionStrategy.NO_OP) {
+        content.addComponent(true, response.content());
+      } else {
+        if (response.content() instanceof CompositeByteBuf) {
+          for (ByteBuf buffer : (CompositeByteBuf)response.content()) {
+            content.addComponent(true, decompressRecordList(storeName, version, responseCompression, buffer, stats));
+          }
+        } else {
+          content.addComponent(true, decompressRecordList(storeName, version, responseCompression, response.content(), stats));
+        }
+        /**
+         * When using compression, the data in response is already copied during decompression, so we can explicitly
+         * release the ByteBuf in the response immediately to avoid any memory leak.
+         *
+         * When not using compression, the backing byte array in the response will be reused to construct the response to
+         * client, and the ByteBuf will be released in the netty pipeline.
+         */
+        response.content().release();
+      }
     }
 
-    // Concat all the responses
-    CompositeByteBuf result = Unpooled.compositeBuffer(contentList.size());
-    for (int i = 0; i < contentList.size(); i++) {
-      byte[] content = contentList.get(i);
-      result.addComponent(true, i, Unpooled.wrappedBuffer(content));
+    if (compressionStrategy == null || compressionStrategy != clientCompression) {
+      // Content is already decompressed by service router above
+      compressionStrategy = CompressionStrategy.NO_OP;
     }
 
-    FullHttpResponse multiKeyResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, result);
+    FullHttpResponse multiKeyResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
     headerMap.forEach((headerName, headerValue) -> {
       multiKeyResponse.headers().add(headerName, headerValue);
     });
-    multiKeyResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, result.readableBytes());
-    multiKeyResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
-
+    multiKeyResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+    multiKeyResponse.headers().add(VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
     return multiKeyResponse;
   }
 
@@ -314,36 +347,12 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     }
   }
 
-  private int addResponseToList(byte[] content, List<byte[]> contentList, String storeName, int version,
-          RequestType requestType, CompressionStrategy compressionStrategy, AggRouterHttpRequestStats stats) {
-    switch (requestType) {
-      case COMPUTE:
-        // for compute request, decompression has been done on server already.
-        contentList.add(content);
-        return content.length;
-      case MULTI_GET:
-        if (compressionStrategy != CompressionStrategy.NO_OP) {
-          /**
-           * Reuse the original byte array by {@link org.apache.avro.io.OptimizedBinaryDecoder}.
-           */
-          Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
-              OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(content, 0, content.length));
-
-          for (MultiGetResponseRecordV1 record : records) {
-            record.value = decompressRecord(storeName, version, compressionStrategy, record.value, stats);
-          }
-
-          byte[] decompressedRecords = recordSerializer.serializeObjects(records);
-          contentList.add(decompressedRecords);
-          return decompressedRecords.length;
-        } else {
-          contentList.add(content);
-          return content.length;
-        }
-      case SINGLE_GET:
-        throw new VeniceException("Error! Processing single-get requests while building multi keys response. Store: " + storeName);
-      default:
-        throw new VeniceException("Unknown request type: " + requestType);
+  private ByteBuf decompressRecordList(String storeName, int version, CompressionStrategy compressionStrategy, ByteBuf data, AggRouterHttpRequestStats stats) {
+    Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(
+        OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(data.array(), 0, data.readableBytes()));
+    for (MultiGetResponseRecordV1 record : records) {
+      record.value = decompressRecord(storeName, version, compressionStrategy, record.value, stats);
     }
+    return Unpooled.wrappedBuffer(recordSerializer.serializeObjects(records));
   }
 }

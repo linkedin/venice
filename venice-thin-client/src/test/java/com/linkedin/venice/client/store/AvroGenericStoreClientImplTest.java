@@ -1,6 +1,7 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
@@ -331,7 +332,7 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueStr.getBytes());
-    valueResponse.headers().remove(TransportClientCallback.HEADER_VENICE_SCHEMA_ID);
+    valueResponse.headers().remove(HttpConstants.VENICE_SCHEMA_ID);
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {

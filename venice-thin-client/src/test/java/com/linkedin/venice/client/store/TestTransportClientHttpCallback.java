@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.Mockito.*;
@@ -35,17 +36,17 @@ public class TestTransportClientHttpCallback {
   @Test
   void testRawResponse() {
     TransportClientCallback rawResponseCallback = new TransportClientCallback(mockFuture);
-    rawResponseCallback.completeFuture(HttpStatus.SC_OK, mockResponseBody, SCHEMA_ID);
+    rawResponseCallback.completeFuture(HttpStatus.SC_OK, SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody);
 
-    verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, mockResponseBody));
+    verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody));
   }
 
   @Test
   void TestNormalResponse() {
-    transportClientCallback.completeFuture(HttpStatus.SC_OK, mockResponseBody, SCHEMA_ID);
-    verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, mockResponseBody));
+    transportClientCallback.completeFuture(HttpStatus.SC_OK, SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody);
+    verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody));
 
-    transportClientCallback.completeFuture(HttpStatus.SC_NOT_FOUND, mockResponseBody, SCHEMA_ID);
+    transportClientCallback.completeFuture(HttpStatus.SC_NOT_FOUND, SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody);
     verify(mockFuture).complete(null);
   }
 
@@ -57,15 +58,15 @@ public class TestTransportClientHttpCallback {
     ArgumentCaptor<VeniceClientException> clientExceptionArgumentCaptor
         = ArgumentCaptor.forClass(VeniceClientException.class);
 
-    transportClientCallback.completeFuture(HttpStatus.SC_INTERNAL_SERVER_ERROR, emptyByteArray, SCHEMA_ID);
+    transportClientCallback.completeFuture(HttpStatus.SC_INTERNAL_SERVER_ERROR, SCHEMA_ID, CompressionStrategy.NO_OP, emptyByteArray);
     verify(mockFuture).completeExceptionally(serverExceptionArgumentCaptor.capture());
     Assert.assertEquals(serverExceptionArgumentCaptor.getValue().getMessage(), "http status: 500");
 
-    transportClientCallback.completeFuture(HttpStatus.SC_SERVICE_UNAVAILABLE, mockResponseBody, SCHEMA_ID);
+    transportClientCallback.completeFuture(HttpStatus.SC_SERVICE_UNAVAILABLE, SCHEMA_ID, CompressionStrategy.NO_OP, mockResponseBody);
     verify(mockFuture, times(2)).completeExceptionally(serverExceptionArgumentCaptor.capture());
     Assert.assertEquals(serverExceptionArgumentCaptor.getValue().getMessage(), "http status: 503, " + RESPONSE_BODY_STR);
 
-    transportClientCallback.completeFuture(HttpStatus.SC_BAD_REQUEST, emptyByteArray, SCHEMA_ID);
+    transportClientCallback.completeFuture(HttpStatus.SC_BAD_REQUEST, SCHEMA_ID, CompressionStrategy.NO_OP, emptyByteArray);
     verify(mockFuture, times(3)).completeExceptionally(clientExceptionArgumentCaptor.capture());
     Assert.assertEquals(clientExceptionArgumentCaptor.getValue().getMessage(), "http status: 400");
   }

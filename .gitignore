@@ -13,3 +13,4 @@ build/
 out/
 */target/
 avro_tools
+*.project

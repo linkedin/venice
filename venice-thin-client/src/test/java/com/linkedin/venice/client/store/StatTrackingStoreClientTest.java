@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -260,7 +261,7 @@ public class StatTrackingStoreClientTest {
     byte[] serializedResponse = computeResponseSerializer.serializeObjects(responseRecordV1List);
 
     TransportClientResponse clientResponse = new TransportClientResponse(
-        ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion(), serializedResponse);
+        ReadAvroProtocolDefinition.COMPUTE_RESPONSE_V1.getProtocolVersion(), CompressionStrategy.NO_OP, serializedResponse);
     CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
     transportFuture.complete(clientResponse);
     transportFuture.handle( (value, throwable) -> {

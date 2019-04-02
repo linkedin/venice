@@ -14,10 +14,15 @@ public class TestBatchForRocksDB extends TestBatch {
 
   @Override
   public VeniceClusterWrapper initializeVeniceCluster() {
-    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 0, 1);
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1, 0, 0);
+
     Properties serverProperties = new Properties();
     serverProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
     veniceClusterWrapper.addVeniceServer(serverProperties);
+
+    Properties routerProperties = new Properties();
+    routerProperties.put(ROUTER_CLIENT_DECOMPRESSION_ENABLED, "true");
+    veniceClusterWrapper.addVeniceRouter(routerProperties);
 
     return veniceClusterWrapper;
   }

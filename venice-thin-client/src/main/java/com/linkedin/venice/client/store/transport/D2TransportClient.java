@@ -8,13 +8,17 @@ import com.linkedin.r2.message.RequestContext;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
+
 import com.linkedin.venice.D2.D2ClientUtils;
+import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.schema.SchemaData;
-import java.util.Map;
+
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -133,20 +137,27 @@ public class D2TransportClient extends TransportClient {
     @Override
     public void onSuccess(RestResponse result) {
       int statusCode = result.getStatus();
-      int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
 
+      int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
       String schemaIdHeader = null;
       if (HttpStatus.SC_OK == statusCode) {
-        schemaIdHeader = result.getHeader(HEADER_VENICE_SCHEMA_ID);
+        schemaIdHeader = result.getHeader(HttpConstants.VENICE_SCHEMA_ID);
         if (null != schemaIdHeader) {
           schemaId = Integer.parseInt(schemaIdHeader);
         }
       }
+
+      CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+      String compressionHeader = result.getHeader(HttpConstants.VENICE_COMPRESSION_STRATEGY);
+      if (compressionHeader != null) {
+        compressionStrategy = CompressionStrategy.valueOf(Integer.valueOf(compressionHeader));
+      }
+
       /**
        * TODO: consider to pass back {@link java.io.InputStream} instead of making a copy of response bytes
        */
       byte[] body = result.getEntity().copyBytes();
-      completeFuture(statusCode, body, schemaId);
+      completeFuture(statusCode, schemaId, compressionStrategy, body);
     }
   }
 
