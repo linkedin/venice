@@ -107,23 +107,22 @@ public class ServiceFactory {
       int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica,
       BrooklinWrapper brooklinWrapper, boolean sslToKafka) {
     return getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
-        delayToRebalanceMS, minActiveReplica, brooklinWrapper, null, sslToKafka, false);
+        delayToRebalanceMS, minActiveReplica, brooklinWrapper, null, sslToKafka, false, new Properties());
   }
 
   public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
       KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize, long delayToRebalanceMS,
-      int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2, boolean sslToKafka, boolean d2Enabled) {
-    VeniceProperties extraProperties;
-    if (null == brooklinWrapper) {
-      extraProperties = EMPTY_VENICE_PROPS;
-    } else {
-      extraProperties = new PropertyBuilder().put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true")
-          .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "com.linkedin.venice.replication.BrooklinTopicReplicator")
-          .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress())
-          .put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.connection.string", brooklinWrapper.getBrooklinDmsUri())
-          .put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", TestUtils.getUniqueString("venice"))
-          .build();
+      int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2, boolean sslToKafka, boolean d2Enabled,
+      Properties properties) {
+    if (null != brooklinWrapper) {
+      properties.put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true");
+      properties.put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "com.linkedin.venice.replication.BrooklinTopicReplicator");
+      properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress());
+      properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.connection.string", brooklinWrapper.getBrooklinDmsUri());
+      properties.put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", TestUtils.getUniqueString("venice"));
+
     }
+    VeniceProperties extraProperties = new VeniceProperties(properties);
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
             delayToRebalanceMS, minActiveReplica, null, extraProperties, clusterToD2, sslToKafka, d2Enabled));

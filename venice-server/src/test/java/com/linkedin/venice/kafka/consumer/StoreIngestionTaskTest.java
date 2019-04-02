@@ -335,7 +335,7 @@ public class StoreIngestionTaskTest {
         new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
             mockBandwidthThrottler, mockRecordsThrottler, mockSchemaRepo, mockTopicManager,
             mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion,
-            hybridStoreConfig, incrementalPushEnabled,storeConfig, diskUsage);
+            hybridStoreConfig, incrementalPushEnabled,storeConfig, diskUsage, true);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;

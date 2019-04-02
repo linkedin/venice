@@ -151,6 +151,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
   private final boolean readOnlyForBatchOnlyStoreEnabled;
 
+  /**
+   * When buffer replay is disabled, {@link #measureHybridOffsetLag(StartOfBufferReplay, PartitionConsumptionState, boolean)}
+   * won't consider the real-time topic offset.
+   */
+  private final boolean bufferReplayEnabledForHybrid;
+
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
                             @NotNull StoreRepository storeRepository,
@@ -167,7 +173,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
                             @NotNull boolean isIncrementalPushEnabled,
                             @NotNull VeniceStoreConfig storeConfig,
-                            DiskUsage diskUsage) {
+                            DiskUsage diskUsage,
+                            boolean bufferReplayEnabledForHybrid) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -213,6 +220,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.diskUsage = diskUsage;
 
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
+
+    this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
   }
 
   private void validateState() {
@@ -376,6 +385,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs, boolean shouldLog) {
     int partition = pcs.getPartition();
+    long currentOffset = pcs.getOffsetRecord().getOffset();
     /**
      * We still allow the upstream to check whether it could become 'ONLINE' for every message since it is possible
      * that there is no messages after rewinding, which causes partition won't be 'ONLINE' in the future.
@@ -383,25 +393,34 @@ public class StoreIngestionTask implements Runnable, Closeable {
      * With this strategy, it is possible that partition could become 'ONLINE' at most
      * {@link CachedLatestOffsetGetter#ttlMs} earlier.
      */
-    long sourceTopicMaxOffset = cachedLatestOffsetGetter.getOffset(sobr.sourceTopicName.toString(), partition);
+    if (bufferReplayEnabledForHybrid) {
+      long sourceTopicMaxOffset = cachedLatestOffsetGetter.getOffset(sobr.sourceTopicName.toString(), partition);
 
-    long sobrSourceOffset = sobr.sourceOffsets.get(partition);
-    long currentOffset = pcs.getOffsetRecord().getOffset();
+      long sobrSourceOffset = sobr.sourceOffsets.get(partition);
 
-    if (!pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
-      throw new  IllegalArgumentException("SOBR DestinationOffset is not presented.");
+      if (!pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
+        throw new IllegalArgumentException("SOBR DestinationOffset is not presented.");
+      }
+
+      long sobrDestinationOffset = pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().get();
+
+      long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
+
+      if (shouldLog) {
+        logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
+            consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
+      }
+
+      return lag;
+    } else {
+      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(topic, partition);
+      long lag = storeVersionTopicLatestOffset - currentOffset;
+      if (shouldLog) {
+        logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",
+            consumerTaskId, partition, storeVersionTopicLatestOffset, currentOffset, lag));
+      }
+      return lag;
     }
-
-    long sobrDestinationOffset = pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().get();
-
-    long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
-
-    if (shouldLog) {
-      logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
-          consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
-    }
-
-    return lag;
   }
 
   private void processMessages() throws InterruptedException {
