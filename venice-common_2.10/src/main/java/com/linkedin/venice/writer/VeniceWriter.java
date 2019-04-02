@@ -712,7 +712,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        logger.error("Failed to send out message to Kafka producer: [key: " + key + ", value: " + value + "]", e);
+        logger.error("Failed to send out message to Kafka producer: [value.messageType: " + value.messageType
+            + ", value.producerMetadata: " + value.producerMetadata + "]", e);
       }
     }
   }
