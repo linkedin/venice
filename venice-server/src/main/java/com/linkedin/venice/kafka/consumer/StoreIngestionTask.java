@@ -1265,8 +1265,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         putValue.putInt(backupBytes);
 
         if (logger.isTraceEnabled()) {
-          logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " +
-                  ByteUtils.toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(put.putValue.array()) + " in " +
+          logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
                   (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
         return valueLen;
@@ -1279,9 +1278,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
         storageEngine.delete(partition, keyBytes);
 
         if (logger.isTraceEnabled()) {
-          logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " for key: " +
-                  ByteUtils.toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " +
-                  System.currentTimeMillis());
+          logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " in " +
+              (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
         return 0;
       default:
