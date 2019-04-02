@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -24,7 +25,7 @@ public class TestD2ControllerClient {
     D2TestUtils.setupD2Config(zkAddress, false, D2TestUtils.CONTROLLER_CLUSTER_NAME, D2TestUtils.CONTROLLER_SERVICE_NAME, false);
 
     VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, null, true, true);
+        ServiceFactory.getVeniceController(new String[]{CLUSTER_NAME}, kafkaBrokerWrapper, 1, 10, 0, 1, null, null, true, true, new Properties());
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
     String d2ServiceName = D2TestUtils.CONTROLLER_SERVICE_NAME;
 

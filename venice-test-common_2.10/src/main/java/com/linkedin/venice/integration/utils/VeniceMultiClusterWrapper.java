@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.Executors;
 
 
@@ -49,7 +50,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
-          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false);
+          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, new Properties());
       controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
     }
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();

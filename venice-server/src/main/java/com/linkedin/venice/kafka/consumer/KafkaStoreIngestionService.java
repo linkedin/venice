@@ -157,10 +157,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
         veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
 
+    Optional<Version> version = store.getVersion(storeVersion);
+    if (!version.isPresent()) {
+      throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
+    }
+    boolean bufferReplayEnabledForHybrid = version.get().isBufferReplayEnabledForHybrid();
+
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
         storageMetadataService, notifiers, consumptionBandwidthThrottler, consumptionRecordsCountThrottler,
         schemaRepo, topicManager, ingestionStats, versionedDIVStats, storeBufferService,
-        isStoreVersionCurrent, hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStore, diskUsage);
+        isStoreVersionCurrent, hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStore, diskUsage,
+        bufferReplayEnabledForHybrid);
   }
 
   /**

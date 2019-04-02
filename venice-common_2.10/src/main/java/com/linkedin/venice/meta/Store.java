@@ -491,6 +491,14 @@ public class Store {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
+  public void setBufferReplayForHybridForVersion(int versionNum, boolean enabled) {
+    Optional<Version> version = getVersion(versionNum);
+    if (! version.isPresent()) {
+      throw new VeniceException("Unknown version: " + versionNum + " in store: " + name);
+    }
+    version.get().setBufferReplayEnabledForHybrid(enabled);
+  }
+
   /**
    * Add a version into store.
    *

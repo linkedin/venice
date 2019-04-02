@@ -23,12 +23,14 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.serializer.AvroGenericSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -338,5 +340,80 @@ public class TestHybrid {
         () -> controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
             .getStore().getCurrentVersion() == expectedVersionNumber);
     logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+  }
+
+
+
+  @Test
+  public void testHybridWithBufferReplayDisabled() throws Exception {
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);
+
+    List<VeniceControllerWrapper> controllers = venice.getVeniceControllers();
+    Assert.assertEquals(controllers.size(), 1, "There should only be one controller");
+    // Create a controller with buffer replay disabled, and remove the previous controller
+    Properties controllerProps = new Properties();
+    controllerProps.put(CONTROLLER_SKIP_BUFFER_REPLAY_FOR_HYBRID, true);
+    venice.addVeniceController(controllerProps);
+    List<VeniceControllerWrapper> newControllers = venice.getVeniceControllers();
+    Assert.assertEquals(newControllers.size(), 2, "There should be two controllers now");
+    // Shutdown the original controller, now there is only one controller with config: buffer replay disabled.
+    controllers.get(0).close();
+
+    long streamingRewindSeconds = 25L;
+    long streamingMessageLag = 2L;
+
+    String storeName = TestUtils.getUniqueString("hybrid-store");
+
+    //Create store , make it a hybrid store
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
+    controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setHybridRewindSeconds(streamingRewindSeconds)
+        .setHybridOffsetLagThreshold(streamingMessageLag));
+
+    // Create a new version, and do an empty push for that version
+    VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+    int versionNumber = vcr.getVersion();
+    assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
+    int partitionCnt = vcr.getPartitions();
+
+    // Continue to write more records to the version topic
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+    VeniceWriter<byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber));
+
+    // Mock buffer replay message
+    List<Long> bufferReplyOffsets = new ArrayList<>();
+    for (int i = 0; i < partitionCnt; ++i) {
+      bufferReplyOffsets.add(1l);
+    }
+    writer.broadcastStartOfBufferReplay(bufferReplyOffsets, "", "", new HashMap<>());
+
+    // Write 100 records
+    AvroGenericSerializer<String> stringSerializer = new AvroGenericSerializer(Schema.parse(STRING_SCHEMA));
+    for (int i = 1; i <= 100; ++i) {
+      writer.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
+    }
+    // Wait for up to 10 seconds
+    TestUtils.waitForNonDeterministicAssertion(10 * 1000, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse store = controllerClient.getStore(storeName);
+      Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
+    });
+
+    //Verify some records (note, records 1-100 have been pushed)
+    AvroGenericStoreClient client =
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+    for (int i = 1; i <= 10; i++){
+      String key = "key_" + i;
+      assertEquals(client.get(key).get().toString(), "value_" + i);
+    }
+
+    // And real-time topic should not exist since buffer replay is skipped.
+    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    assertFalse(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    IOUtils.closeQuietly(topicManager);
+
+    venice.close();
   }
 }

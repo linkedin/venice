@@ -46,6 +46,11 @@ public class Version implements Comparable<Version> {
   private boolean leaderFollowerModelEnabled = false;
 
   /**
+   * Whether or not to enable buffer replay for hybrid.
+   */
+  private boolean bufferReplayEnabledForHybrid = true;
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
@@ -100,6 +105,14 @@ public class Version implements Comparable<Version> {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
+  public boolean isBufferReplayEnabledForHybrid() {
+    return bufferReplayEnabledForHybrid;
+  }
+
+  public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
+    this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
+  }
+
   public String getStoreName() {
     return storeName;
   }
@@ -116,6 +129,9 @@ public class Version implements Comparable<Version> {
         ", createdTime=" + createdTime +
         ", status=" + status +
         ", pushJobId='" + pushJobId + '\'' +
+        ", compressionStrategy='" + compressionStrategy + "\'" +
+        ", leaderFollowerModelEnabled=" + leaderFollowerModelEnabled +
+        ", bufferReplayEnabledForHybrid=" + bufferReplayEnabledForHybrid +
         '}';
   }
 
@@ -164,6 +180,10 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if (bufferReplayEnabledForHybrid != version.bufferReplayEnabledForHybrid) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -176,6 +196,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + pushJobId.hashCode();
     result = 31 * result + compressionStrategy.hashCode();
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
+    result = 31 * result + (bufferReplayEnabledForHybrid ? 1: 0);
     return result;
   }
 
@@ -192,6 +213,7 @@ public class Version implements Comparable<Version> {
     clonedVersion.setStatus(status);
     clonedVersion.setCompressionStrategy(compressionStrategy);
     clonedVersion.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
+    clonedVersion.setBufferReplayEnabledForHybrid(bufferReplayEnabledForHybrid);
     return clonedVersion;
   }
 

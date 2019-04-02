@@ -839,6 +839,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         store.setPartitionCount(
                             numberOfPartitions); //TODO, persist numberOfPartitions at the version level
                     }
+                    // Disable buffer replay for hybrid according to cluster config
+                    if (store.isHybrid() && clusterConfig.isSkipBufferRelayForHybrid()) {
+                      store.setBufferReplayForHybridForVersion(version.getNumber(), false);
+                      logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
+                          version.getNumber() + " in cluster: " + clusterName);
+                    }
                     newTopicPartitionCount = store.getPartitionCount();
                     repository.updateStore(store);
                     logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
