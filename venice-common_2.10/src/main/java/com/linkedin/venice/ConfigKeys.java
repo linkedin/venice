@@ -490,6 +490,8 @@ public class ConfigKeys {
    */
   public static final String ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "router.netty.graceful.shutdown.period.seconds";
 
+  public static final String ROUTER_CLIENT_DECOMPRESSION_ENABLED = "router.client.decompression.enabled";
+
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.

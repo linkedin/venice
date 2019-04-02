@@ -23,6 +23,7 @@ public class HttpConstants {
   public static final String VENICE_RETRY = "X-VENICE-RETRY";
 
   public static final String VENICE_COMPRESSION_STRATEGY = "X-VENICE-COMPRESSION-STRATEGY";
+  public static final String VENICE_SUPPORTED_COMPRESSION = "X-VENICE-SUPPORTED-COMPRESSION";
 
   public static final int SC_MISDIRECTED_REQUEST = 421;
 

@@ -427,7 +427,7 @@ public class RouterServer extends AbstractVeniceService {
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(
-            new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet, statsForCompute)
+            new VeniceResponseAggregator(config.isDecompressOnClient(), statsForSingleGet, statsForMultiGet, statsForCompute)
             .withSingleGetTardyThreshold(config.getSingleGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withMultiGetTardyThreshold(config.getMultiGetTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)
             .withComputeTardyThreshold(config.getComputeTardyLatencyThresholdMs(), TimeUnit.MILLISECONDS)

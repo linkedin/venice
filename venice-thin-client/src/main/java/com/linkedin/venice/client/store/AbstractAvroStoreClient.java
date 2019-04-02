@@ -23,8 +23,11 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,6 +38,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import javax.validation.constraints.NotNull;
@@ -63,8 +67,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
      */
     GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+    GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION,
+        Integer.toString(CompressionStrategy.GZIP.getValue()));
+
     MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+    MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION,
+        Integer.toString(CompressionStrategy.GZIP.getValue()));
+
     COMPUTE_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getProtocolVersion()));
 
@@ -237,19 +247,26 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
     return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
         () -> transportClient.get(requestPath, GET_HEADER_MAP),
-        (clientResponse, throwable) -> {
+        (response, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
           }
-          if (null == clientResponse) {
+          if (null == response) {
             // Doesn't exist
             return null;
           }
-          if (!clientResponse.isSchemaIdValid()) {
+          if (!response.isSchemaIdValid()) {
             throw new VeniceClientException("No valid schema id received for single-get request!");
           }
-          RecordDeserializer<V> deserializer = getDataRecordDeserializer(clientResponse.getSchemaId());
-          return deserializer.deserialize(clientResponse.getBody());
+
+          CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+          long decompressionStartTime = System.nanoTime();
+          ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
+          stats.ifPresent((clientStats) ->
+            clientStats.recordResponseDecompressionTime(LatencyUtils.getLatencyInMS(decompressionStartTime))
+          );
+          RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
+          return deserializer.deserialize(data.array());
         }
     );
   }
@@ -281,6 +298,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
     byte[] multiGetBody = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     String requestPath = getStorageRequestPath();
+    LongAdder decompressionTime = new LongAdder();
 
     CompletableFuture<Map<K, V>> valueFuture = new CompletableFuture();
 
@@ -289,21 +307,22 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         preRequestTimeInNS,
         true,
         () -> transportClient.post(requestPath, MULTI_GET_HEADER_MAP, multiGetBody),
-        (clientResponse, throwable, responseDeserializationComplete) -> {
+        (response, throwable, responseDeserializationComplete) -> {
           if (null != throwable) {
             valueFuture.completeExceptionally(throwable);
           }
-          if (null == clientResponse) {
+          if (null == response) {
             // Even all the keys don't exist in Venice, multi-get should receive empty result instead of 'null'
             valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for multi-get request"));
           }
-          if (!clientResponse.isSchemaIdValid()) {
+          if (!response.isSchemaIdValid()) {
             valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for multi-get request!"));
           }
-          int responseSchemaId = clientResponse.getSchemaId();
+
           long preResponseEnvelopeDeserialization = System.nanoTime();
-          RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(responseSchemaId);
-          Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
+          CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+          RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(response.getSchemaId());
+          Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(response.getBody()));
           /**
            * We cache the deserializers by schema ID in order to avoid the unnecessary lookup in
            * {@link SerializerDeserializerFactory}, which introduces small performance issue with
@@ -318,16 +337,17 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
                 valueFuture,
                 records,
                 keyList,
-                (resultMap, envelope) -> {
-                  int keyIdx = envelope.keyIndex;
-                  if (keyIdx >= keyList.size() || keyIdx < 0) {
-                    valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key"));
+                (resultMap, record) -> {
+                  int keyIndex = record.keyIndex;
+                  if (keyIndex >= keyList.size() || keyIndex < 0) {
+                    valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIndex + " doesn't have a corresponding key"));
                   }
-                  int recordSchemaId = envelope.schemaId;
-                  RecordDeserializer<V> dataDeserializer = deserializerCache.computeIfAbsent(recordSchemaId,
+                  RecordDeserializer<V> dataDeserializer = deserializerCache.computeIfAbsent(record.schemaId,
                       id -> getDataRecordDeserializer(id));
-                  V value = dataDeserializer.deserialize(envelope.value);
-                  resultMap.put(keyList.get(keyIdx), value);
+                  long decompressionStartTime = System.nanoTime();
+                  ByteBuffer data = decompressRecord(compressionStrategy, record.value);
+                  decompressionTime.add(System.nanoTime() - decompressionStartTime);
+                  resultMap.put(keyList.get(keyIndex), dataDeserializer.deserialize(data));
                 },
                 responseDeserializationComplete,
                 stats,
@@ -338,6 +358,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
           return null;
         });
+
+    stats.ifPresent((clientStats) -> valueFuture.thenRun(() ->
+      clientStats.recordResponseDecompressionTime(LatencyUtils.convertLatencyFromNSToMS(decompressionTime.sum()))
+    ));
 
     return valueFuture;
   }
@@ -603,5 +627,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
      */
     getKeySerializer();
     return schemaReader.getLatestValueSchema();
+  }
+
+  private static ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
+    try {
+      return CompressorFactory.getCompressor(compressionStrategy).decompress(data);
+    } catch (IOException e) {
+      throw new VeniceClientException(
+        String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);
+    }
   }
 }

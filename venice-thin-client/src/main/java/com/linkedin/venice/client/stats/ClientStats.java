@@ -33,6 +33,7 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor responseEnvelopeDeserializationTime;
   private final Sensor responseRecordsDeserializationTime;
   private final Sensor responseRecordsDeserializationSubmissionToStartTime;
+  private final Sensor responseDecompressionTimeSensor;
 
   public ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
@@ -97,6 +98,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
      * The time it took between beginning to fork off asynchronous tasks and starting to deserialize a record.
      */
     responseRecordsDeserializationSubmissionToStartTime = registerSensorWithDetailedPercentiles("response_records_deserialization_submission_to_start_time", new Avg(), new Max());
+
+    responseDecompressionTimeSensor = registerSensorWithDetailedPercentiles("response_decompression_time", new Avg(), new Max());
   }
 
   public void recordRequest() {
@@ -157,5 +160,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordResponseRecordsDeserializationSubmissionToStartTime(double latency) {
     responseRecordsDeserializationSubmissionToStartTime.record(latency);
+  }
+
+  public void recordResponseDecompressionTime(double latency) {
+    responseDecompressionTimeSensor.record(latency);
   }
 }

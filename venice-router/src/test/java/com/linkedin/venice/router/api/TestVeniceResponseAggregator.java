@@ -67,7 +67,7 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForCompute = mock(AggRouterHttpRequestStats.class);
 
     VeniceResponseAggregator responseAggregator =
-        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute);
+        new VeniceResponseAggregator(false, mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     Assert.assertEquals(finalResponse.content().array(), fakeContent);
@@ -123,7 +123,7 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForCompute = mock(AggRouterHttpRequestStats.class);
 
     VeniceResponseAggregator responseAggregator =
-        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute);
+        new VeniceResponseAggregator(false, mockStatsForSingleGet, mockStatsForMultiGet, mockStatsForCompute);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     byte[] finalContent;

@@ -11,6 +11,7 @@ import com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields;
 
 import static org.mockito.Mockito.*;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.Utils;
@@ -48,7 +49,7 @@ public class TestAvroStoreClient {
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
     CompletableFuture<TransportClientResponse> mockFuture = mock(CompletableFuture.class);
-    doReturn(new TransportClientResponse(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaResponseInBytes)).when(mockFuture).get();
+    doReturn(new TransportClientResponse(SchemaData.INVALID_VALUE_SCHEMA_ID, CompressionStrategy.NO_OP, schemaResponseInBytes)).when(mockFuture).get();
     doReturn(mockFuture).when(mockTransportClient).get(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
 
     CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
@@ -86,7 +87,7 @@ public class TestAvroStoreClient {
     String b64key = Base64.getUrlEncoder()
         .encodeToString(StoreClientTestUtils.serializeRecord(testKey, TestKeyRecord.SCHEMA$));
     CompletableFuture<TransportClientResponse> mockFuture = mock(CompletableFuture.class);
-    doReturn(new TransportClientResponse(-1, null)).when(mockFuture).get();
+    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, null)).when(mockFuture).get();
     doReturn(mockFuture).when(mockTransportClient)
         .get(eq(AbstractAvroStoreClient.TYPE_STORAGE + "/" + STORE_NAME + "/" +
             b64key + AbstractAvroStoreClient.B64_FORMAT), any());
@@ -104,7 +105,7 @@ public class TestAvroStoreClient {
     byte[] multiSchemasInBytes =
         StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
     CompletableFuture<TransportClientResponse> mockTransportFuture = mock(CompletableFuture.class);
-    doReturn(new TransportClientResponse(-1, multiSchemasInBytes)).when(mockTransportFuture).get();
+    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, multiSchemasInBytes)).when(mockTransportFuture).get();
     CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
     doReturn(multiSchemasInBytes).when(mockValueFuture).get();
     doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
@@ -117,7 +118,7 @@ public class TestAvroStoreClient {
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, TestValueRecord.SCHEMA$.toString());
     mockTransportFuture = mock(CompletableFuture.class);
-    doReturn(new TransportClientResponse(-1, schemaResponseInBytes)).when(mockTransportFuture).get();
+    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, schemaResponseInBytes)).when(mockTransportFuture).get();
     doReturn(mockTransportFuture).when(mockTransportClient)
         .get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "1");
     mockValueFuture = mock(CompletableFuture.class);

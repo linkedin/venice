@@ -1,10 +1,12 @@
 package com.linkedin.venice.client.utils;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -14,6 +16,7 @@ import io.netty.handler.codec.http.HttpHeaderValues;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
@@ -105,7 +108,7 @@ public class StoreClientTestUtils {
     ByteBuf body = Unpooled.wrappedBuffer(value);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     response.headers().set(HttpHeaderNames.CONTENT_TYPE, "text/plain");
-    response.headers().set(TransportClientCallback.HEADER_VENICE_SCHEMA_ID, Integer.toString(schemaId));
+    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(schemaId));
     // We must specify content_length header, otherwise netty will keep polling, since it
     // doesn't know when to finish writing the response.
     response.headers().set(HttpHeaderNames.CONTENT_LENGTH, response.content().readableBytes());
