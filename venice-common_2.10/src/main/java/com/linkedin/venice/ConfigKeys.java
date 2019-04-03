@@ -662,10 +662,11 @@ public class ConfigKeys {
   public static final String SERVER_DISK_FULL_THRESHOLD = "disk.full.threshold";
 
   /**
-   * If a request is slower than this, it will be reported as unhealthy in the router metrics
+   * If a request is slower than this, it will be reported as tardy in the router metrics
    */
-  public static final String ROUTER_SINGLEGET_UNHEALTHY_LATENCY_MS = "router.singleget.unhealthy.latency.ms";
-  public static final String ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS = "router.multiget.unhealthy.latency.ms";
+  public static final String ROUTER_SINGLEGET_TARDY_LATENCY_MS = "router.singleget.tardy.latency.ms";
+  public static final String ROUTER_MULTIGET_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
+  public static final String ROUTER_COMPUTE_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
 
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 

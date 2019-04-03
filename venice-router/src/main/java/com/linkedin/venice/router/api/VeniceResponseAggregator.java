@@ -73,8 +73,9 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer;
 
   //timeout is configurable and should be overwritten elsewhere
-  private long singleGetTimeoutThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
-  private long multiGetTimeoutThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
+  private long singleGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
+  private long multiGetTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
+  private long computeTardyThresholdInMs = TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS);
 
   public VeniceResponseAggregator(AggRouterHttpRequestStats statsForSingleGet,
       AggRouterHttpRequestStats statsForMultiGet, AggRouterHttpRequestStats statsForCompute) {
@@ -86,13 +87,18 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
     this.recordDeserializer = SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
   }
 
-  public VeniceResponseAggregator withSingleGetTimeoutThreshold(long timeout, TimeUnit unit){
-    this.singleGetTimeoutThresholdInMs = unit.toMillis(timeout);
+  public VeniceResponseAggregator withSingleGetTardyThreshold(long timeout, TimeUnit unit){
+    this.singleGetTardyThresholdInMs = unit.toMillis(timeout);
     return this;
   }
 
-  public VeniceResponseAggregator withMultiGetTimeoutThreshold(long timeout, TimeUnit unit){
-    this.multiGetTimeoutThresholdInMs = unit.toMillis(timeout);
+  public VeniceResponseAggregator withMultiGetTardyThreshold(long timeout, TimeUnit unit){
+    this.multiGetTardyThresholdInMs = unit.toMillis(timeout);
+    return this;
+  }
+
+  public VeniceResponseAggregator withComputeTardyThreshold(long timeout, TimeUnit unit) {
+    this.computeTardyThresholdInMs = unit.toMillis(timeout);
     return this;
   }
 
@@ -187,12 +193,15 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   }
 
   private boolean isFastRequest(double requestLatencyMs, RequestType requestType){
-    if (requestType.equals(RequestType.SINGLE_GET)){
-      return requestLatencyMs < singleGetTimeoutThresholdInMs;
-    } else if (requestType.equals(RequestType.MULTI_GET)){
-      return requestLatencyMs < multiGetTimeoutThresholdInMs;
-    } else {
-      return false;
+    switch (requestType) {
+      case SINGLE_GET:
+        return requestLatencyMs < singleGetTardyThresholdInMs;
+      case MULTI_GET:
+        return requestLatencyMs < multiGetTardyThresholdInMs;
+      case COMPUTE:
+        return requestLatencyMs < computeTardyThresholdInMs;
+      default:
+        throw new VeniceException("Unknown request type: " + requestType);
     }
   }
 
