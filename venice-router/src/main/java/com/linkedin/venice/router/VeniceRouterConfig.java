@@ -58,8 +58,9 @@ public class VeniceRouterConfig {
   private String hostPatternForDnsCache;
   private long dnsCacheRefreshIntervalInMs;
   private boolean greedyMultiGet;
-  private long singleGetUnhealthyLatencyThresholdMs;
-  private long multiGetUnhealthyLatencyThresholdMs;
+  private long singleGetTardyLatencyThresholdMs;
+  private long multiGetTardyLatencyThresholdMs;
+  private long computeTardyLatencyThresholdMs;
   private boolean readThrottlingEnabled;
   private long maxPendingRequest;
   private StorageNodeClientType storageNodeClientType;
@@ -136,8 +137,9 @@ public class VeniceRouterConfig {
     hostPatternForDnsCache = props.getString(ROUTE_DNS_CACHE_HOST_PATTERN, ".*prod.linkedin.com");
     dnsCacheRefreshIntervalInMs = props.getLong(ROUTER_DNS_CACHE_REFRESH_INTERVAL_MS, TimeUnit.MINUTES.toMillis(3)); // 3 mins
 
-    singleGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_SINGLEGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
-    multiGetUnhealthyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_UNHEALTHY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    singleGetTardyLatencyThresholdMs = props.getLong(ROUTER_SINGLEGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    multiGetTardyLatencyThresholdMs = props.getLong(ROUTER_MULTIGET_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
+    computeTardyLatencyThresholdMs = props.getLong(ROUTER_COMPUTE_TARDY_LATENCY_MS, TimeUnit.MILLISECONDS.convert(10, TimeUnit.SECONDS));
 
     readThrottlingEnabled = props.getBoolean(ROUTER_ENABLE_READ_THROTTLING, true);
     maxPendingRequest = props.getLong(ROUTER_MAX_PENDING_REQUEST, 2500l * 12l);
@@ -300,12 +302,16 @@ public class VeniceRouterConfig {
     return dnsCacheRefreshIntervalInMs;
   }
 
-  public long getSingleGetUnhealthyLatencyThresholdMs() {
-    return singleGetUnhealthyLatencyThresholdMs;
+  public long getSingleGetTardyLatencyThresholdMs() {
+    return singleGetTardyLatencyThresholdMs;
   }
 
-  public long getMultiGetUnhealthyLatencyThresholdMs() {
-    return multiGetUnhealthyLatencyThresholdMs;
+  public long getMultiGetTardyLatencyThresholdMs() {
+    return multiGetTardyLatencyThresholdMs;
+  }
+
+  public long getComputeTardyLatencyThresholdMs() {
+    return computeTardyLatencyThresholdMs;
   }
 
   public boolean isReadThrottlingEnabled() {
