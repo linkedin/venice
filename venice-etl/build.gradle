@@ -63,3 +63,36 @@ jar {
     from "log4j.properties"
     exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
 }
+
+task fatJar(type: Jar) {
+    classifier 'fatJar'
+
+    zip64 true
+    from configurations.runtimeClasspath
+        .filter {!it.absolutePath.endsWith(".xml")}
+        .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
+        .collect {
+        // filtering hadoop core jars and configs as it clashes with Azkaban
+        it.isDirectory() ? it : zipTree(it).matching {
+            exclude("**/org/apache/commons/**")
+            exclude("**/org/apache/hadoop/**")
+            exclude("**/com/linkedin/azkaban**")
+            exclude("**/com/linkedin/hadoop**")
+            exclude("**/org/apache/xerces/**")
+            exclude("com/google/common/**")
+            exclude("org/apache/avro/**")
+            exclude("**/org.apache.hadoop*")
+        }
+    }
+
+    // override log4j properties for hadoop job
+    from "log4j.properties"
+    exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
+
+    dependsOn ':venice-common_2.10:jar'
+    with jar
+}
+
+artifacts {
+    archives fatJar
+}
