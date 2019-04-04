@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -25,7 +26,7 @@ import org.apache.log4j.Logger;
  * monitor shall be used when new pushes arrive. The selecting logic is
  * configurable in controller's configs.
  */
-public class PushMonitorDelegator implements PushMonitor{
+public class PushMonitorDelegator implements PushMonitor {
   private static final Logger logger = Logger.getLogger(PushMonitorDelegator.class);
 
   private final PushMonitorType pushMonitorType;
@@ -61,6 +62,12 @@ public class PushMonitorDelegator implements PushMonitor{
     return topicToPushMonitorMap.computeIfAbsent(kafkaTopic, topicName -> {
       Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
 
+      //WriteReadyStoreRepository is the source of truth. No need to refresh metadata repo here
+      if (store == null) {
+        throw new VeniceNoStoreException("Cannot find store metadata when tyring to allocate push status to push monitor."
+            + "It's likely that the store has been deleted. topic: " + topicName);
+      }
+
       //if the store is set to use L/F model, we would always use partition status based push status monitor
       Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
       if (version.isPresent()) {
@@ -95,16 +102,27 @@ public class PushMonitorDelegator implements PushMonitor{
     synchronized (lock) {
       List<OfflinePushStatus> offlinePushMonitorStatuses = new ArrayList<>();
       List<OfflinePushStatus> partitionStatusBasedPushMonitorStatuses = new ArrayList<>();
+
+      //This is for cleaning up legacy push statuses due to resource leaking. Ideally,
+      //we won't need it anymore once resource leaking is fixed.
+      List<OfflinePushStatus> legacyPushStatuses = new ArrayList<>();
       offlinePushAccessor.loadOfflinePushStatusesAndPartitionStatuses().forEach(status -> {
-        if (getPushMonitor(status.getKafkaTopic()).equals(offlinePushMonitor)) {
-          offlinePushMonitorStatuses.add(status);
-        } else {
-          partitionStatusBasedPushMonitorStatuses.add(status);
+        try {
+          if (getPushMonitor(status.getKafkaTopic()).equals(offlinePushMonitor)) {
+            offlinePushMonitorStatuses.add(status);
+          } else {
+            partitionStatusBasedPushMonitorStatuses.add(status);
+          }
+        } catch (VeniceNoStoreException e) {
+          logger.info("Found a legacy push status. topic: " + status.getKafkaTopic());
+          legacyPushStatuses.add(status);
         }
       });
 
       offlinePushMonitor.loadAllPushes(offlinePushMonitorStatuses);
       partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
+
+      legacyPushStatuses.forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
     }
   }
 
@@ -116,6 +134,12 @@ public class PushMonitorDelegator implements PushMonitor{
   @Override
   public void stopMonitorOfflinePush(String kafkaTopic) {
     getPushMonitor(kafkaTopic).stopMonitorOfflinePush(kafkaTopic);
+  }
+
+  @Override
+  public void cleanupStoreStatus(String storeName) {
+    offlinePushMonitor.cleanupStoreStatus(storeName);
+    partitionStatusBasedPushStatusMonitor.cleanupStoreStatus(storeName);
   }
 
   @Override

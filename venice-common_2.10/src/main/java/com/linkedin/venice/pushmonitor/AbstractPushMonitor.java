@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -167,6 +168,17 @@ public abstract class AbstractPushMonitor
         cleanupPushStatus(pushStatus);
       }
       logger.info("Stopped monitoring push on topic:" + kafkaTopic);
+    }
+  }
+
+  @Override
+  public void cleanupStoreStatus(String storeName) {
+    synchronized (lock) {
+      List<String> topicList = topicToPushMap.keySet().stream()
+          .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
+          .collect(Collectors.toList());
+
+      topicList.forEach(topic -> cleanupPushStatus(topicToPushMap.get(topic)));
     }
   }
 

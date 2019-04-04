@@ -431,7 +431,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void deleteStore(String clusterName, String storeName, int largestUsedVerisionNumber) {
+  public void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
     acquireLock(clusterName);
     try {
       Store store = veniceHelixAdmin.checkPreConditionForDeletion(clusterName, storeName);
