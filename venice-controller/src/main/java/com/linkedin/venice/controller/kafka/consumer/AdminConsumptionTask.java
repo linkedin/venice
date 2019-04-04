@@ -230,6 +230,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void subscribe() {
     lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    lastPersistedOffset = lastOffset.getOffset();
     // First let's try to restore the state retrieved from the OffsetManager
     lastOffset.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
       GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -249,6 +250,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void unSubscribe() {
     if (isSubscribed) {
       consumer.unSubscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+      offsetRecordTransformer = Optional.empty();
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
@@ -511,7 +513,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   private void persistLastOffset() {
-    if (lastPersistedOffset >= lastOffset.getOffset()) {
+    if (lastPersistedOffset == lastOffset.getOffset()) {
       // offset did not change from previously persisted value
       return;
     }
