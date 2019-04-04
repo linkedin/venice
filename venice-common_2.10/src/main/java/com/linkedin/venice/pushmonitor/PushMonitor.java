@@ -41,6 +41,12 @@ public interface PushMonitor {
   void stopMonitorOfflinePush(String kafkaTopic);
 
   /**
+   * Clean up all push statuses related to a store including all error pushes. This is called when
+   * a store gets deleted. 
+   */
+  void cleanupStoreStatus(String storeName);
+
+  /**
    * return a push's status (push status contains the history statuses and current status)
    */
   OfflinePushStatus getOfflinePush(String topic);

@@ -464,8 +464,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             } finally {
                 storeRepository.unLock();
             }
-            // Delete All versions
+            // Delete All versions and push statues
             deleteAllVersionsInStore(clusterName, storeName);
+            resources.getPushMonitor().cleanupStoreStatus(storeName);
             // Clean up topics
             if (!store.isMigrating()) {
                 truncateKafkaTopic(Version.composeRealTimeTopic(storeName));

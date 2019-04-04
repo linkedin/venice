@@ -106,6 +106,8 @@ public class VeniceHelixResources implements VeniceResource {
   @Override
   public void refresh() {
     clear();
+    //make sure that metadataRepo is initialized first since schemaRepo and
+    //pushMonitor depends on it
     metadataRepository.refresh();
     schemaRepository.refresh();
     routingDataRepository.refresh();
