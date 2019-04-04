@@ -94,9 +94,10 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private String fabricName;
+  private String veniceControllerUrls;
   private String[] veniceStoreNames;
 
-  private Map<String, ControllerClient> storeToControllerClient;
+  private Map<String, ControllerClient> storeToControllerClient = null;
   private final KafkaConsumerWrapper veniceKafkaConsumer;
 
   public VeniceKafkaConsumerClient(Config baseConfig) {
@@ -106,7 +107,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     String veniceStoreNamesList = baseConfig.getString(VENICE_STORE_NAME);
     fabricName = baseConfig.getString(FABRIC_NAME);
     veniceStoreNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
-    storeToControllerClient = getControllerClients(veniceStoreNames, veniceControllerUrls);
+    this.veniceControllerUrls = veniceControllerUrls;
 
     if (null == veniceStoreNames || 0 == veniceStoreNames.length) {
       throw new VeniceException("No store name specified when creating VeniceKafkaConsumerClient");
@@ -190,8 +191,20 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     return kafkaConsumerProperties;
   }
 
+  private synchronized void createControllersList() {
+    if (null == storeToControllerClient) {
+      storeToControllerClient = getControllerClients(veniceStoreNames, veniceControllerUrls);
+    }
+  }
+
   @Override
   public List<KafkaTopic> getTopics() {
+    /**
+     * Mapper/Reducer is not able to reach our controller clusters; but this function would only be invoked in Azkaban,
+     * so we lazily create the controller clients list when it's actually needed.
+     */
+    createControllersList();
+
     // get the topic names from Venice controllers
     Set<String> topicNames = new HashSet<String>();
     for (String storeName: veniceStoreNames) {
