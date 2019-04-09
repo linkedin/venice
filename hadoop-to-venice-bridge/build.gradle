@@ -51,7 +51,7 @@ dependencies {
 
     testCompile project(':venice-brooklin')
 
-    // The log4j2 dependencies are not required when running the test suite in Gradle, 
+    // The log4j2 dependencies are not required when running the test suite in Gradle,
     // but seem necessary when running in IntelliJ... No idea why, but it doesn't hurt
     // us to declare it explicitly here, so why not.
     testImplementation libraries.log4j2api
@@ -78,7 +78,6 @@ configurations.all {
   }
 }
 
-
 jar {
   // including all jar runtime dependency jars (fat jar)
   // from configurations.jarRuntime.collect {
@@ -101,12 +100,45 @@ jar {
           // exclude("mapred*.xml")
           // exclude("core*.xml")
           exclude("**/org.apache.hadoop*")
-       }
-  }
+        }
+      }
+  // override log4j properties for hadoop job
+  from "log4j.properties"
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
+}
+
+task fatJar(type: Jar) {
+  classifier 'fatJar'
+
+  zip64 true
+  // including all jar runtime dependency jars (fat jar)
+  from configurations.runtimeClasspath
+      .filter {!it.absolutePath.endsWith(".xml")}
+      .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
+      .collect {
+        // filtering hadoop core jars and configs as it clashes with Azkaban
+        it.isDirectory() ? it : zipTree(it).matching {
+          exclude("**/org/apache/commons/**")
+          exclude("**/org/apache/hadoop/**")
+          exclude("**/com/linkedin/azkaban**")
+          exclude("**/com/linkedin/hadoop**")
+          exclude("**/org/apache/xerces/**")
+          exclude("**/org.apache.hadoop*")
+        }
+      }
 
   // override log4j properties for hadoop job
   from "log4j.properties"
   exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
+
+  dependsOn ':venice-common_2.10:jar'
+  dependsOn ':venice-thin-client:jar'
+  dependsOn ':venice-schema-common:jar'
+  with jar
+}
+
+artifacts {
+  archives fatJar
 }
 
 task zipAzkabanDev(type: Zip, dependsOn: jar) {
