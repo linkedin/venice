@@ -18,6 +18,7 @@ import org.apache.gobblin.kafka.client.ByteArrayBasedKafkaRecord;
 import org.apache.gobblin.source.extractor.extract.kafka.KafkaExtractor;
 
 import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
+import static org.apache.gobblin.configuration.ConfigurationKeys.*;
 
 
 public class VeniceKafkaExtractor extends KafkaExtractor<Schema, GenericRecord> {
@@ -32,8 +33,9 @@ public class VeniceKafkaExtractor extends KafkaExtractor<Schema, GenericRecord> 
       outputSchemaFields.add(new Schema.Field(field.name(), field.schema(), field.doc(),
           field.defaultValue(), field.order()));
     }
+    // use store name as the class name in the record schema
     decodedSchema = Schema
-        .createRecord(topicName, VeniceKafkaDecodedRecord.SCHEMA$.getDoc(),
+        .createRecord(state.getProp(EXTRACT_TABLE_NAME_KEY), VeniceKafkaDecodedRecord.SCHEMA$.getDoc(),
             VeniceKafkaDecodedRecord.SCHEMA$.getNamespace(), VeniceKafkaDecodedRecord.SCHEMA$.isError());
     decodedSchema.setFields(outputSchemaFields);
   }
