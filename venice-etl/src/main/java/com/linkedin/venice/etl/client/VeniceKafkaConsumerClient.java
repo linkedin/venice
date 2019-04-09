@@ -1,5 +1,6 @@
 package com.linkedin.venice.etl.client;
 
+import com.google.common.base.Optional;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -34,6 +35,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.annotation.Nonnull;
+import org.apache.gobblin.configuration.State;
 import org.apache.gobblin.kafka.client.AbstractBaseKafkaConsumerClient;
 import org.apache.gobblin.kafka.client.ByteArrayBasedKafkaRecord;
 import org.apache.gobblin.kafka.client.GobblinKafkaConsumerClient;
@@ -61,6 +63,7 @@ import lombok.ToString;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 import static com.linkedin.venice.utils.Utils.*;
+import static org.apache.gobblin.configuration.ConfigurationKeys.*;
 
 
 public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
@@ -221,8 +224,13 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     for (Map.Entry<String, List<PartitionInfo>> topicEntry : topicList.entrySet()) {
       // filter out all topics that don't match the topic name
       if (topicNames.contains(topicEntry.getKey())) {
+        /**
+         * Use store name as the table name which will become part of the output path.
+         */
+        State topicSpecificState = new State();
+        topicSpecificState.appendToSetProp(EXTRACT_TABLE_NAME_KEY, Version.parseStoreFromKafkaTopicName(topicEntry.getKey()));
         filteredTopics.add(new KafkaTopic(topicEntry.getKey(),
-            topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList())));
+            topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList()), Optional.of(topicSpecificState)));
 
         topicNames.remove(topicEntry.getKey());
       }
