@@ -116,21 +116,27 @@ public class OfflinePushStatus {
     return isValid;
   }
 
-  public void setPartitionStatus(PartitionStatus partitionStatus) {
-    if (partitionStatus.getPartitionId() < 0 || partitionStatus.getPartitionId() >= numberOfPartition) {
+  /**
+   *
+   * @param partitionStatusList a list of partitions ordered by partition id
+   * @param newPartitionStatus the new partition status
+   */
+  public static void setPartitionStatus(List<PartitionStatus> partitionStatusList, PartitionStatus newPartitionStatus,
+      String kafkaTopic, int numberOfPartition) {
+    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= numberOfPartition) {
       throw new VeniceException(
-          "Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
+          "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
     }
-    for (int partitionId = 0; partitionId < numberOfPartition; partitionId++) {
-      if (partitionId == partitionStatus.getPartitionId()) {
-        if(partitionStatus instanceof ReadOnlyPartitionStatus) {
-          partitionStatuses.set(partitionId, partitionStatus);
-        }else{
-          partitionStatuses.set(partitionId, ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
-        }
-        break;
-      }
+
+    if (newPartitionStatus instanceof ReadOnlyPartitionStatus) {
+      partitionStatusList.set(newPartitionStatus.getPartitionId(), newPartitionStatus);
+    } else {
+      partitionStatusList.set(newPartitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(newPartitionStatus));
     }
+  }
+
+  public void setPartitionStatus(PartitionStatus partitionStatus) {
+    setPartitionStatus(partitionStatuses, partitionStatus, kafkaTopic, numberOfPartition);
     updateStatusDetails();
   }
 

@@ -207,7 +207,7 @@ public abstract class PushStatusDecider {
     return STARTED;
   }
 
-  protected ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
+  public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
     List<ExecutionStatus> statusList = historicStatusList.stream()
         .map(statusSnapshot -> statusSnapshot.getStatus())
         .sorted(Collections.reverseOrder())

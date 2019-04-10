@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import java.util.List;
+import org.I0Itec.zkclient.IZkChildListener;
 
 
 /**
@@ -55,6 +56,16 @@ public interface OfflinePushAccessor {
    * @param listener
    */
   void unsubscribePartitionsStatusChange(OfflinePushStatus pushStatus, PartitionStatusListener listener);
+
+  /**
+   * Subscribe a child listener that listens to OfflinePushStatus creation/deleted.
+   */
+  void subscribePushStatusCreationChange(IZkChildListener childListener);
+
+  /**
+   * Unsubscribe a child listener
+   */
+  void unsubscribePushStatusCreationChange(IZkChildListener childListener);
 
   /**
    * Listener used to listen the data change of partition status.

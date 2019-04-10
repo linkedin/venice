@@ -2,20 +2,15 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.StaleVersionStats;
-import com.linkedin.venice.utils.HelixUtils;
 import java.util.List;
-import java.util.Optional;
-import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import javax.validation.constraints.NotNull;
-import org.apache.http.client.methods.HttpGet;
 import org.apache.log4j.Logger;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
@@ -23,23 +18,19 @@ public class VeniceVersionFinder {
   private static final Logger logger = Logger.getLogger(VeniceVersionFinder.class);
 
   private final ReadOnlyStoreRepository metadataRepository;
-  private final Optional<RoutingDataRepository> routingData;
   private final StaleVersionStats stats;
   private ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
 
-  /**
-   *
-   * @param metadataRepository for getting the current version from zookeeper
-   * @param routingData for validating that a new version has online replicas.  Pass null to disable this check (for tests)
-   */
-  public VeniceVersionFinder(@NotNull ReadOnlyStoreRepository metadataRepository, Optional<RoutingDataRepository> routingData, StaleVersionStats stats){
+  private OnlineInstanceFinder onlineInstanceFinder;
+
+  public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
+      StaleVersionStats stats) {
     this.metadataRepository = metadataRepository;
-    this.routingData = routingData;
+    this.onlineInstanceFinder = onlineInstanceFinder;
     this.stats = stats;
   }
 
-  public int getVersion(@NotNull String store)
-      throws RouterException {
+  public int getVersion(String store) throws RouterException {
     /**
      * TODO: clone a store object is too expensive, and we could choose to expose the necessary methods
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
@@ -56,7 +47,7 @@ public class VeniceVersionFinder {
     }
 
     int metadataCurrentVersion = veniceStore.getCurrentVersion();
-    if (! lastCurrentVersion.containsKey(store)){
+    if (!lastCurrentVersion.containsKey(store)){
       lastCurrentVersion.put(store, metadataCurrentVersion);
     }
     if (lastCurrentVersion.get(store).equals(metadataCurrentVersion)){
@@ -65,7 +56,7 @@ public class VeniceVersionFinder {
     }
    //This is a new version change, verify we have online replicas for each partition
     String kafkaTopic = Version.composeKafkaTopic(store, metadataCurrentVersion);
-    if (anyOfflinePartitions(routingData, kafkaTopic)){
+    if (anyOfflinePartitions(kafkaTopic)) {
       VersionStatus lastCurrentVersionStatus = veniceStore.getVersionStatus(lastCurrentVersion.get(store));
       if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
         logger.warn(
@@ -88,22 +79,20 @@ public class VeniceVersionFinder {
     }
   }
 
-  private static boolean anyOfflinePartitions(Optional<RoutingDataRepository> routingData, String kafkaTopic) {
-    if (routingData.isPresent()) { //If we passed an empty routingData object, assume the new version is safe
-      int partitionCount = routingData.get().getNumberOfPartitions(kafkaTopic);
-      for (int p = 0; p < partitionCount; p++) {
-        List<Instance> partitionHosts = routingData.get().getReadyToServeInstances(kafkaTopic, p);
-        if (partitionHosts.isEmpty()) {
-          String partitionAssignment;
-          try {
-            partitionAssignment = routingData.get().getPartitionAssignments(kafkaTopic).getPartition(p).getAllInstances().toString();
-          } catch (Exception e) {
-            logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
-            partitionAssignment = "unknown";
-          }
-          logger.warn("No online replicas for partition " + p + " of " + kafkaTopic + ", partition assignment: " + partitionAssignment);
-          return true;
+  private boolean anyOfflinePartitions(String kafkaTopic) {
+    int partitionCount = onlineInstanceFinder.getNumberOfPartitions(kafkaTopic);
+    for (int p = 0; p < partitionCount; p++) {
+      List<Instance> partitionHosts = onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, p);
+      if (partitionHosts.isEmpty()) {
+        String partitionAssignment;
+        try {
+          partitionAssignment = onlineInstanceFinder.getAllInstances(kafkaTopic, p).toString();
+        } catch (Exception e) {
+          logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
+          partitionAssignment = "unknown";
         }
+        logger.warn("No online replicas for partition " + p + " of " + kafkaTopic + ", partition assignment: " + partitionAssignment);
+        return true;
       }
     }
     return false;

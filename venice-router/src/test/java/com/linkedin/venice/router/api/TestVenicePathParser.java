@@ -35,7 +35,7 @@ public class TestVenicePathParser {
     ReadOnlyStoreRepository mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
-    return new VeniceVersionFinder(mockMetadataRepository, Optional.empty(), stats);
+    return new VeniceVersionFinder(mockMetadataRepository, TestVeniceVersionFinder.getDefaultInstanceFinder(), stats);
   }
 
   AggRouterHttpRequestStats getMockedStats() {
