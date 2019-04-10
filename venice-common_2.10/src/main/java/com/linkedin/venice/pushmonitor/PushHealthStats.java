@@ -9,8 +9,6 @@ import io.tehuti.metrics.stats.Max;
 
 
 public class PushHealthStats extends AbstractVeniceStats {
-  private final Sensor failedPushSensor;
-  private final Sensor successfulPushSensor;
   private final Sensor successfulPushDurationSensor;
   private final Sensor failedPushDurationSensor;
   private final Sensor pushPreparationDurationSensor;
@@ -18,12 +16,6 @@ public class PushHealthStats extends AbstractVeniceStats {
   public PushHealthStats(MetricsRepository metricsRepository, String storeName) {
     super(metricsRepository, storeName);
     synchronized (PushHealthStats.class) {
-
-      failedPushSensor =
-          getSensorIfPresent("failed_push", () -> registerSensor("failed_push", new Count()));
-      successfulPushSensor = getSensorIfPresent("successful_push",
-          () -> registerSensor("successful_push", new Count()));
-
       failedPushDurationSensor = getSensorIfPresent("failed_push_duration_sec",
           () -> registerSensor("failed_push_duration_sec", new Avg(), new Max()));
       successfulPushDurationSensor = getSensorIfPresent("successful_push_duration_sec",
@@ -34,12 +26,10 @@ public class PushHealthStats extends AbstractVeniceStats {
   }
 
   public void recordFailedPush(long durationInSec) {
-    failedPushSensor.record();
     failedPushDurationSensor.record(durationInSec);
   }
 
   public void recordSuccessfulPush(long durationInSec) {
-    successfulPushSensor.record();
     successfulPushDurationSensor.record(durationInSec);
   }
 
