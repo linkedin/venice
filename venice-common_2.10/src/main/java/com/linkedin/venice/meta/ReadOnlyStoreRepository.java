@@ -1,7 +1,6 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import java.util.List;
 import java.util.concurrent.locks.ReadWriteLock;
 

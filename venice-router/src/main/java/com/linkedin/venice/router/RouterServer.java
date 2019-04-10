@@ -17,12 +17,16 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
+import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
+import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.acl.RouterAclHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -44,7 +48,6 @@ import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
-import com.linkedin.venice.router.httpclient.StorageNodeClientType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
@@ -56,7 +59,6 @@ import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -362,15 +364,18 @@ public class RouterServer extends AbstractVeniceService {
      * so there is no way to distinguish compute request from multi-get; all read compute metrics in host finder will
      * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
      */
-    VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
+    OnlineInstanceFinder onlineInstanceFinder =
+        new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, new PartitionStatusOnlineInstanceFinder(
+        new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter), routingDataRepository));
+
+    VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
         config.isStickyRoutingEnabledForSingleGet(),
         config.isStickyRoutingEnabledForMultiGet(),
         statsForSingleGet, statsForMultiGet,
         healthMonitor);
 
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-        metadataRepository,
-        Optional.of(routingDataRepository),
+        metadataRepository, onlineInstanceFinder,
         new StaleVersionStats(metricsRepository, "stale_version"));
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
         statsForSingleGet, statsForMultiGet, statsForCompute, config.getMaxKeyCountInMultiGetReq(),

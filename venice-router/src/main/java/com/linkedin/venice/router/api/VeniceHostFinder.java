@@ -4,15 +4,13 @@ import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.LiveInstanceMonitor;
-import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -22,7 +20,8 @@ import java.util.List;
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   private static final Comparator<Instance> INSTANCE_COMPARATOR = Comparator.comparing(Instance::getNodeId);
 
-  private final RoutingDataRepository dataRepository;
+  private final OnlineInstanceFinder onlineInstanceFinder;
+
   private final boolean isStickyRoutingEnabledForSingleGet;
   private final boolean isStickyRoutingEnabledForMultiGet;
   private final AggRouterHttpRequestStats statsForSingleGet;
@@ -31,21 +30,15 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
 
   /**
    * For test purpose.
-   *
-   * @param dataRepository
-   * @param isStickyRoutingEnabledForSingleGet
-   * @param isStickyRoutingEnabledForMultiGet
-   * @param statsForSingleGet
-   * @param statsForMultiGet
-   * @param instanceHealthMonitor
    */
-  public VeniceHostFinder(RoutingDataRepository dataRepository,
+  public VeniceHostFinder(OnlineInstanceFinder onlineInstanceFinder,
       boolean isStickyRoutingEnabledForSingleGet,
       boolean isStickyRoutingEnabledForMultiGet,
       AggRouterHttpRequestStats statsForSingleGet,
       AggRouterHttpRequestStats statsForMultiGet,
       HostHealthMonitor<Instance> instanceHealthMonitor) {
-    this.dataRepository = dataRepository;
+    this.onlineInstanceFinder = onlineInstanceFinder;
+
     this.isStickyRoutingEnabledForSingleGet = isStickyRoutingEnabledForSingleGet;
     this.isStickyRoutingEnabledForMultiGet = isStickyRoutingEnabledForMultiGet;
     this.statsForSingleGet = statsForSingleGet;
@@ -67,7 +60,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   @Override
   public List<Instance> findHosts(String requestMethod, String resourceName, String partitionName,
       HostHealthMonitor<Instance> hostHealthMonitor, VeniceRole roles) {
-    List<Instance> hosts = dataRepository.getReadyToServeInstances(resourceName, HelixUtils.getPartitionId(partitionName));
+    List<Instance> hosts = onlineInstanceFinder.getReadyToServeInstances(resourceName, HelixUtils.getPartitionId(partitionName));
     if (hosts.isEmpty()) {
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.

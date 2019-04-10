@@ -14,6 +14,8 @@ import java.util.Iterator;
 import java.util.List;
 
 import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.TimeUnit;
+import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -37,6 +39,9 @@ import org.apache.log4j.Logger;
  */
 public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public static final String OFFLINE_PUSH_SUB_PATH = "OfflinePushes";
+  private static final int DEFAULT_ZK_REFRESH_ATTEMPTS = 3;
+  private static final long DEFAULT_ZK_REFRESH_INTERVAL = TimeUnit.SECONDS.toMillis(10);
+
   private static final Logger logger = Logger.getLogger(HelixOfflinePushMonitorAccessor.class);
   private final String clusterName;
   /**
@@ -57,6 +62,10 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   private final int refreshAttemptsForZkReconnect;
 
   private final long refreshIntervalForZkReconnectInMs;
+
+  public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter) {
+    this(clusterName, zkClient, adapter, DEFAULT_ZK_REFRESH_ATTEMPTS, DEFAULT_ZK_REFRESH_INTERVAL);
+  }
 
   public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter,
       int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
@@ -215,6 +224,16 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       partitionStatusAccessor.unsubscribeDataChanges(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId),
           partitionStatusZkListener);
     }
+  }
+
+  @Override
+  public void subscribePushStatusCreationChange(IZkChildListener childListener) {
+    offlinePushStatusAccessor.subscribeChildChanges(getOfflinePushStatuesParentPath(), childListener);
+  }
+
+  @Override
+  public void unsubscribePushStatusCreationChange(IZkChildListener childListener) {
+    offlinePushStatusAccessor.unsubscribeChildChanges(getOfflinePushStatuesParentPath(), childListener);
   }
 
   /**

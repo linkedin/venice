@@ -183,34 +183,17 @@ public abstract class TestBatch {
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
   }
 
-  //This method will be enabled once offline push monitor's changes get merged.
-  //@Test //(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testLeaderFollowerStateModel() throws Exception {
     testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
       return new Pair<>(recordSchema.getField("id").schema(),
           recordSchema.getField("name").schema());
     }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
-      //this section will be enabled once VersionFinder's changes get merged
-      /*//test single get
+      //test single get
       for (int i = 1; i <= 100; i ++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
       }
-
-      //test batch get
-      for (int i = 0; i < 10; i ++) {
-        Set<String> keys = new HashSet<>();
-        for (int j = 1; j <= 10; j ++) {
-          keys.add(Integer.toString(i * 10 + j));
-        }
-
-        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-        Assert.assertEquals(values.size(), 10);
-
-        for (int j = 1; j <= 10; j ++) {
-          Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
-        }
-      }*/
     }, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
   }
 
