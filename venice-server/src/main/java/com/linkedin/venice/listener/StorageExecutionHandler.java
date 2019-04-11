@@ -273,7 +273,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     }
 
     ComputeResponseWrapper responseWrapper = new ComputeResponseWrapper();
-    responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    CompressionStrategy compressionStrategy = metadataRetriever.getStoreVersionCompressionStrategy(topic);
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
 
     // The following metrics will get incremented for each record processed in computeResult()
@@ -281,6 +281,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     responseWrapper.setDatabaseLookupLatency(0.0);
     responseWrapper.setReadComputeSerializationLatency(0.0);
     responseWrapper.setReadComputeLatency(0.0);
+
+    responseWrapper.setCompressionStrategy(CompressionStrategy.NO_OP);
 
     // Reuse the same value record and result record instances for all values
     GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
@@ -294,6 +296,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      key.keyIndex,
                                                      key.partitionId,
                                                      computeRequest.operations,
+                                                     compressionStrategy,
                                                      latestValueSchema,
                                                      computeResultSchema,
                                                      resultSerializer,
@@ -337,6 +340,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       final int keyIndex,
       int partition,
       List<Object> operations,
+      CompressionStrategy compressionStrategy,
       Schema latestValueSchema,
       Schema computeResultSchema,
       RecordSerializer<GenericRecord> resultSerializer,
@@ -381,10 +385,10 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         );
 
     ByteBuffer decompressedData;
-    if (response.getCompressionStrategy() != CompressionStrategy.NO_OP) {
+    if (compressionStrategy != CompressionStrategy.NO_OP) {
       // decompress the data first
       try {
-        decompressedData = CompressorFactory.getCompressor(response.getCompressionStrategy())
+        decompressedData = CompressorFactory.getCompressor(compressionStrategy)
             .decompress(
                 record.value.array(),    // data
                 record.value.position(), // offset
