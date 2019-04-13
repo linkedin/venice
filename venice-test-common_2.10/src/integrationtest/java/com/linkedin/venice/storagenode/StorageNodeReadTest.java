@@ -25,7 +25,9 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -122,7 +124,17 @@ public class StorageNodeReadTest {
     return partitioner.getPartitionId(key, partitionCount);
   }
 
-  @Test (timeOut = 100000)
+  /**
+   * There are (at least) two types of flakiness in this test:
+   *
+   * 1. Sometimes, it times out. Usually, the test completes in under 3 sec, so the 10s timeout should be generous...
+   *    At this point, it is unclear why the test times out. TODO: Debug the timeout.
+   * 2. Sometimes, data is apparently not fully ingested in all partitions by the time the batch get happens,
+   *    so the offset data is still at zero... This shouldn't happen, since data freshness is checked in
+   *    {@link #pushSyntheticData(String, String, int, VeniceClusterWrapper, VeniceWriter, int)} so it is not
+   *    clear why that would be the case. TODO: Debug why the offset occasionally shows as zero
+   */
+  @Test (timeOut = 10 * Time.MS_PER_SECOND, retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -198,7 +210,8 @@ public class StorageNodeReadTest {
       partitionIdSet.forEach( partitionId -> {
         Long offset = partitionOffsetMap.get(partitionId);
         Assert.assertNotNull(offset);
-        Assert.assertTrue(offset > 0);
+        // TODO: Figure out why the assertion below occasionally fails...
+        Assert.assertTrue(offset > 0, "Offset <= 0 for partition '" + partitionId + "'.");
       });
 
       try (InputStream bodyStream = multiGetResponse.getEntity().getContent()) {
@@ -219,17 +232,18 @@ public class StorageNodeReadTest {
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    AvroGenericStoreClient<String, CharSequence>
-        storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
-    Set<String> keySet = new HashSet<>();
-    for (int i = 0; i < 10; ++i) {
-      keySet.add(keyPrefix + i);
-    }
-    keySet.add("unknown_key");
-    Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
-    Assert.assertEquals(result.size(), 10);
-    for (int i = 0; i < 10; ++i) {
-      Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
+    try (AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr))) {
+      Set<String> keySet = new HashSet<>();
+      for (int i = 0; i < 10; ++i) {
+        keySet.add(keyPrefix + i);
+      }
+      keySet.add("unknown_key");
+      Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
+      Assert.assertEquals(result.size(), 10);
+      for (int i = 0; i < 10; ++i) {
+        Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
+      }
     }
   }
 
