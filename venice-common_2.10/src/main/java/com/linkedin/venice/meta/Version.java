@@ -231,11 +231,27 @@ public class Version implements Comparable<Version> {
   }
 
   public static String parseStoreFromKafkaTopicName(@NotNull String kafkaTopic) {
-    return kafkaTopic.substring(0, kafkaTopic.lastIndexOf(VERSION_SEPARATOR));
+    return kafkaTopic.substring(0, getLastIndexOfVersionSeparator(kafkaTopic));
   }
 
   public static int parseVersionFromKafkaTopicName(@NotNull String kafkaTopic) {
-    return Integer.valueOf(kafkaTopic.substring(kafkaTopic.lastIndexOf(VERSION_SEPARATOR) + VERSION_SEPARATOR.length()));
+    return Integer.valueOf(kafkaTopic.substring(getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length()));
+  }
+
+  private static int getLastIndexOfVersionSeparator(String kafkaTopic) {
+    int lastIndexOfVersionSeparator = kafkaTopic.lastIndexOf(VERSION_SEPARATOR);
+    if (lastIndexOfVersionSeparator == -1) {
+      throw new IllegalArgumentException("The version separator '" + VERSION_SEPARATOR
+          + "' is not present in the provided topic name: '" + kafkaTopic + "'");
+    } else if (lastIndexOfVersionSeparator == 0) {
+      /**
+       * Empty string "" is not a valid store name, therefore the topic name cannot
+       * start with the {@link VERSION_SEPARATOR}
+       */
+      throw new IllegalArgumentException("There is nothing prior to the version separator '"
+          + VERSION_SEPARATOR + "' in the provided topic name: '" + kafkaTopic + "'");
+    }
+    return lastIndexOfVersionSeparator;
   }
 
   public static String composeKafkaTopic(String storeName,int versionNumber){
@@ -260,7 +276,7 @@ public class Version implements Comparable<Version> {
   public static boolean topicIsValidStoreVersion(String kafkaTopic){
     try{
       parseVersionFromKafkaTopicName(kafkaTopic);
-    } catch (NumberFormatException e){
+    } catch (IllegalArgumentException e){
       return false;
     }
     return true;

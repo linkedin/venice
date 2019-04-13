@@ -396,13 +396,46 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(key);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
+    String key2 = "test_key_2";
+    Schema valueSchema2 = Schema.parse(valueSchemaStr2);
+    GenericData.Record valueRecord2 = new GenericData.Record(valueSchema2);
+    valueRecord2.put("a", 102l);
+    valueRecord2.put("b", "test_b_value_2");
+    valueRecord2.put("c", "test_c_value_2");
+    byte[] valueArray2 = StoreClientTestUtils.serializeRecord(valueRecord2, valueSchema2);
+    FullHttpResponse valueResponse2 = StoreClientTestUtils.constructStoreResponse(valueSchemaId2, valueArray2);
+    String storeRequestPath2 = "/" + someStoreClient.getRequestPathByKey(key2);
+    routerServer.addResponseForUri(storeRequestPath2, valueResponse2);
+
+
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       LOGGER.info("Execute test for transport client: " + entry.getKey());
+
+      // Query value 1 while not having encountered any schema yet.
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
       GenericData.Record recordValue = (GenericData.Record) value;
       Assert.assertEquals(recordValue.get("a"), 100l);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
+      Assert.assertNull(recordValue.get("c"),
+          "The client has not yet encountered any v2 record, so it should not know about the v2 schema.");
+
+      // Query value 2 while having already encountered schema v1 but not schema v2 yet.
+      Object value2 = entry.getValue().get(key2).get();
+      Assert.assertTrue(value2 instanceof GenericData.Record);
+      GenericData.Record recordValue2 = (GenericData.Record) value2;
+      Assert.assertEquals(recordValue2.get("a"), 102l);
+      Assert.assertEquals(recordValue2.get("b").toString(), "test_b_value_2");
+      Assert.assertEquals(recordValue2.get("c").toString(), "test_c_value_2");
+
+      // Re-query value 1 after having encountered schema v2
+      value = entry.getValue().get(key).get();
+      Assert.assertTrue(value instanceof GenericData.Record);
+      recordValue = (GenericData.Record) value;
+      Assert.assertEquals(recordValue.get("a"), 100l);
+      Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
+      Assert.assertNotNull(recordValue.get("c"),
+          "The client has encountered a v2 record, so it should know about the v2 schema.");
       Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
     }
   }
