@@ -44,7 +44,7 @@ ext.libraries = [ // Groovy map literal
                   bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
                   commonsCodec: 'commons-codec:commons-codec:1.4',
                   commonsIo: 'commons-io:commons-io:2.4',
-                  helix: 'org.apache.helix:helix-core:0.8.3.203',
+                  helix: 'org.apache.helix:helix-core:0.8.4.201',
                   kafka: internalKafkaGroup + ':kafka_2.10:' + internalKafkaVersion,
                   kafkaTest: internalKafkaGroup + ':kafka_2.10:' + internalKafkaVersion+":test",
                   kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,

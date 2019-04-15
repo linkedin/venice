@@ -99,31 +99,18 @@ public class TestAvroStoreClient {
 
   @Test(dependsOnMethods = { "testStartClient" })
   public void testFetchRecordDeserializer() throws IOException, ExecutionException, InterruptedException {
+    // Setup multi-schema response
     Map schemas = new HashMap<>();
     schemas.put(1, TestValueRecord.SCHEMA$.toString());
     schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
-    byte[] multiSchemasInBytes =
-        StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
-    CompletableFuture<TransportClientResponse> mockTransportFuture = mock(CompletableFuture.class);
-    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, multiSchemasInBytes)).when(mockTransportFuture).get();
-    CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
-    doReturn(multiSchemasInBytes).when(mockValueFuture).get();
-    doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
+    byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
+    setupSchemaResponse(multiSchemasInBytes, SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
 
-    doReturn(mockTransportFuture).when(mockTransportClient).get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
+    // Setup individual schema responses
+    setupSchemaResponse(1, TestValueRecord.SCHEMA$);
+    setupSchemaResponse(2, TestValueRecordWithMoreFields.SCHEMA$);
 
     genericStoreClient.start();
-    RecordDeserializer genericRecordDeserializer =  genericStoreClient.getDataRecordDeserializer(1);
-
-    byte[] schemaResponseInBytes =
-        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, TestValueRecord.SCHEMA$.toString());
-    mockTransportFuture = mock(CompletableFuture.class);
-    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, schemaResponseInBytes)).when(mockTransportFuture).get();
-    doReturn(mockTransportFuture).when(mockTransportClient)
-        .get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "1");
-    mockValueFuture = mock(CompletableFuture.class);
-    doReturn(schemaResponseInBytes).when(mockValueFuture).get();
-    doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
 
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
         ClientConfig.defaultSpecificClientConfig(STORE_NAME, TestValueRecord.class));
@@ -138,14 +125,41 @@ public class TestAvroStoreClient {
 
     byte[] testValueInBytes = StoreClientTestUtils.serializeRecord(testValue, TestValueRecord.SCHEMA$);
 
+    // Test deserialization when only v1 is known
+    RecordDeserializer genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
     Object genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
     Assert.assertTrue(genericTestValue instanceof GenericData.Record);
-    //we are supposed to get the default value for the missing field
-    Assert.assertEquals(((GenericData.Record) genericTestValue).get("int_field"), 10);
+    Assert.assertNull(((GenericData.Record) genericTestValue).get("int_field"),
+        "we are not supposed to get the default value for the missing field since we have never seen schema v2 yet");
+
+    // Test deserialization when only v2 is also known
+    genericStoreClient.getDataRecordDeserializer(2); // Just to become aware of that schema
+    genericRecordDeserializer = genericStoreClient.getDataRecordDeserializer(1);
+    genericTestValue = genericRecordDeserializer.deserialize(testValueInBytes);
+    Assert.assertTrue(genericTestValue instanceof GenericData.Record);
+    Assert.assertEquals(((GenericData.Record) genericTestValue).get("int_field"), 10,
+        "we are supposed to get the default value for the missing field");
 
     Assert.assertTrue(specificRecordDeserializer.deserialize(testValueInBytes) instanceof TestValueRecord);
 
     specificStoreClient.close();
+  }
+
+  private void setupSchemaResponse(int schemaId, Schema schema)
+      throws IOException, ExecutionException, InterruptedException {
+    byte[] schemaResponseInBytes =
+        StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, schemaId, schema.toString());
+    setupSchemaResponse(schemaResponseInBytes, SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + schemaId);
+  }
+
+  private void setupSchemaResponse(byte[] response, String path)
+      throws IOException, ExecutionException, InterruptedException {
+    CompletableFuture<TransportClientResponse> mockTransportFuture = mock(CompletableFuture.class);
+    doReturn(new TransportClientResponse(-1, CompressionStrategy.NO_OP, response)).when(mockTransportFuture).get();
+    CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
+    doReturn(response).when(mockValueFuture).get();
+    doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
+    doReturn(mockTransportFuture).when(mockTransportClient).get(path);
   }
 
   @Test
