@@ -306,12 +306,12 @@ public class AvroGenericStoreClientImplTest {
         } catch (ExecutionException e) {
           Throwable cause = e.getCause();
           boolean causeOfCorrectType = cause instanceof VeniceClientException;
-          boolean correctMessage = cause.getMessage().contains("Failed to get latest value schema for store: test_store");
+          boolean correctMessage = cause.getMessage().contains("Failed to get value schema for store: test_store and id: 2");
           if (!causeOfCorrectType || !correctMessage) {
             LOGGER.error("Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: " + entry.getKey(), e);
           }
           Assert.assertTrue(causeOfCorrectType, "Expected to get a VeniceClientException but instead got a " + cause.getClass().getSimpleName());
-          Assert.assertTrue(correctMessage,"Expected to get an exception message containing '[...] latest value schema [...]', but instead got the following message:" + cause.getMessage());
+          Assert.assertTrue(correctMessage,"Expected to get an exception message containing 'Failed to get value schema [...]', but instead got the following message:" + cause.getMessage());
           continue;
         } catch (Throwable t) {
           LOGGER.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
