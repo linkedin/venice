@@ -62,25 +62,26 @@ public class IntegrationTestUtils {
 
     VeniceProperties clusterProperties = new PropertyBuilder()
 
-    // Helix-related config
-    .put(ZOOKEEPER_ADDRESS, zkAddress)
+        // Helix-related config
+        .put(ZOOKEEPER_ADDRESS, zkAddress)
 
-    // Kafka-related config
-    .put(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 65536)
-    .put(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100)
-    .put(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3)
-    .put(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000)
-    .put(KAFKA_BOOTSTRAP_SERVERS, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress())
-    .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+        // Kafka-related config
+        .put(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 65536)
+        .put(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100)
+        .put(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3)
+        .put(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000)
+        .put(KAFKA_BOOTSTRAP_SERVERS, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress())
+        .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
 
-    // Other configs
-    .put(CLUSTER_NAME, clusterName)
-    .put(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString())
-    .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
-    .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
-    .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString())
-    .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false)
-    .put(PARTICIPANT_MESSAGE_STORE_ENABLED, true).build();
+        // Other configs
+        .put(CLUSTER_NAME, clusterName)
+        .put(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString())
+        .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
+        .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+        .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString())
+        .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false)
+//        .put(PARTICIPANT_MESSAGE_STORE_ENABLED, true)
+        .build();
 
     return clusterProperties;
   }

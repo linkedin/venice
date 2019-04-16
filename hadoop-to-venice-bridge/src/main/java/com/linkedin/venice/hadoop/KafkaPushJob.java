@@ -413,8 +413,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         runningJob = jc.runJob(pbnjJobConf);
       }
     } catch (Exception e) {
-      checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
       logger.error("Failed to run job.", e);
+      checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
       closeVeniceWriter();
       try {
         stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);

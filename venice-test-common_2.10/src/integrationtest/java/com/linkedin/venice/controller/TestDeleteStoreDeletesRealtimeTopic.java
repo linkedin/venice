@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -90,7 +91,8 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         .setEnableWrites(false));
 
     //delete store
-    controllerClient.deleteStore(storeName);
+    TrackableControllerResponse response = controllerClient.deleteStore(storeName);
+    Assert.assertFalse(response.isError(), "Received an error on the delete store command: " + response.getError() + ".");
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       return controllerClient.getStore(storeName).isError(); //error because store no longer exists
     });

@@ -33,6 +33,7 @@ import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.protocol.Errors;
 import org.apache.log4j.Logger;
 
 
@@ -52,6 +53,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public static final String CLOSE_TIMEOUT_MS = VENICE_WRITER_CONFIG_PREFIX + "close.timeout.ms";
   public static final String CHECK_SUM_TYPE = VENICE_WRITER_CONFIG_PREFIX + "checksum.type";
   public static final String ENABLE_CHUNKING = VENICE_WRITER_CONFIG_PREFIX + "chunking.enabled";
+  public static final String MAX_ATTEMPTS_WHEN_TOPIC_MISSING = VENICE_WRITER_CONFIG_PREFIX + "max.attemps.when.topic.missing";
+  public static final String SLEEP_TIME_MS_WHEN_TOPIC_MISSING = VENICE_WRITER_CONFIG_PREFIX + "sleep.time.ms.when.topic.missing";
 
   /**
    * Chunk size. Default: {@value DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES}
@@ -75,7 +78,24 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * This controls the Kafka producer's close timeout.
    */
   public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+
+  /**
+   * Default checksum type. N.B.: Only MD5 (and having no checksums) supports checkpointing mid-checksum.
+   */
   public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
+
+  /**
+   * Default number of attempts when trying to produce to a Kafka topic and an exception is caught saying
+   * the topic is missing.
+   */
+  public static final int DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING = 30;
+
+  /**
+   * Sleep time in between retry attempts when a topic is missing. Under default settings, the writer will
+   * stall 30 * 10 seconds = 300 seconds = 5 minutes (assuming the failure from Kafka is instantaneous,
+   * which of course it isn't, therefore this is a minimum stall time, not a max).
+   */
+  public static final int DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING = 10 * Time.MS_PER_SECOND;
 
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
@@ -85,12 +105,15 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private final Time time;
   private final VenicePartitioner partitioner;
   private final int numberOfPartitions;
-  /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
-  private final Map<Integer, Segment> segmentsMap = new HashMap<>();
   private final int closeTimeOut;
   private final CheckSumType checkSumType;
   private final boolean isChunkingEnabled;
   private final int maxSizeForUserPayloadPerMessageInBytes;
+  private final int maxAttemptsWhenTopicMissing;
+  private final long sleepTimeMsWhenTopicMissing;
+
+  /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
+  private final Map<Integer, Segment> segmentsMap = new HashMap<>();
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
 
@@ -118,6 +141,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
           + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
           + ENABLE_CHUNKING + " is true");
     }
+    this.maxAttemptsWhenTopicMissing = props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
+    this.sleepTimeMsWhenTopicMissing = props.getInt(SLEEP_TIME_MS_WHEN_TOPIC_MISSING, DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING);
 
     try {
       this.producer = producerWrapperSupplier.get();
@@ -339,13 +364,18 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     producer.flush();
   }
 
-  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {
-    return sendMessage(key, value, partition, new KafkaMessageCallback(key, value, logger));
+  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
+    return sendMessage(key, value, partition, callback, true);
   }
 
-
-  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
-    segmentsMap.get(partition).addToCheckSum(key, value);
+  /**
+   * @param updateCheckSum if true, the K/V content will be added to the partition's segment's checksum
+   *                       if false, the checksum update is omitted, which is the right thing to do during retries
+   */
+  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback, boolean updateCheckSum) {
+    if (updateCheckSum) {
+      segmentsMap.get(partition).addToCheckSum(key, value);
+    }
     Callback messageCallback = callback;
     if (null == callback) {
       messageCallback = new KafkaMessageCallback(key, value, logger);
@@ -537,6 +567,17 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   /**
+   * This function sends a control message into the prescribed partition.
+   *
+   * If the Kafka topic does not exist, this function will back off for {@link #sleepTimeMsWhenTopicMissing}
+   * ms and try again for a total of {@link #maxAttemptsWhenTopicMissing} attempts. Note that this back off
+   * and retry behavior does not happen in {@link #sendMessage(KafkaKey, KafkaMessageEnvelope, int, Callback)}
+   * because that function returns a {@link Future}, and it is {@link Future#get()} which throws the relevant
+   * exception. In any case, the topic should be seeded with a {@link ControlMessageType#START_OF_SEGMENT}
+   * at first, and therefore, there should be no cases where a topic has not been created yet and we attempt
+   * to write a data message first, prior to a control message. If a topic did disappear later on in the
+   * {@link VeniceWriter}'s lifecycle, then it would be appropriate to let that {@link Future} fail.
+   *
    * @param controlMessage a {@link ControlMessage} instance to persist into Kafka.
    * @param partition the Kafka partition to write to.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
@@ -549,11 +590,34 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, partition);
     kafkaValue.payloadUnion = controlMessage;
-    try {
-      sendMessage(getControlMessageKey(kafkaValue), kafkaValue, partition).get();
-    } catch (InterruptedException|ExecutionException e) {
-      throw new VeniceException("Got an exception while trying to send a control message (" +
-          ControlMessageType.valueOf(controlMessage).name() + ")", e);
+    KafkaKey kafkaKey = getControlMessageKey(kafkaValue);
+
+    int attempt = 1;
+    boolean updateCheckSum = true;
+    while (true) {
+      try {
+        sendMessage(kafkaKey, kafkaValue, partition, null, updateCheckSum).get();
+        return;
+      } catch (InterruptedException|ExecutionException e) {
+        if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
+          /**
+           * Not a super clean way to match the exception, but unfortunately, since it is wrapped inside of an
+           * {@link ExecutionException}, there may be no other way.
+           */
+          String errorMessage = "Caught a UNKNOWN_TOPIC_OR_PARTITION error, attempt "
+              + attempt + "/" + maxAttemptsWhenTopicMissing;
+          if (attempt < maxAttemptsWhenTopicMissing) {
+            attempt++;
+            updateCheckSum = false; // checksum has already been updated, and should not be updated again for retries
+            logger.warn(errorMessage + ", will sleep " + sleepTimeMsWhenTopicMissing + " ms before the next attempt.");
+          } else {
+            throw new VeniceException(errorMessage + ", will bubble up.");
+          }
+        } else {
+          throw new VeniceException("Got an exception while trying to send a control message (" +
+              ControlMessageType.valueOf(controlMessage).name() + ")", e);
+        }
+      }
     }
   }
 
