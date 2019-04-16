@@ -42,6 +42,7 @@ dependencies {
     exclude group: 'org.mockito', module: 'mockito-all'
   }
   implementation libraries.rocksdbjni
+  implementation libraries.linkedinAvroFastserde
 
   implementation project(':venice-common_2.10')
   implementation project(':venice-controller')

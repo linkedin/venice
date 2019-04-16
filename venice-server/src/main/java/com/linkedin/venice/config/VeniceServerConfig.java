@@ -135,6 +135,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean diskHealthCheckServiceEnabled;
 
+  private final boolean computeFastAvroEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -181,6 +183,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
     diskHealthCheckIntervalInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 60)); // 1 minute by default
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
+    computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -322,5 +325,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     } else {
       return new LinkedBlockingQueue<>();
     }
+  }
+
+  public boolean isComputeFastAvroEnabled() {
+    return computeFastAvroEnabled;
   }
 }

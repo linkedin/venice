@@ -2,18 +2,19 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
-import com.linkedin.venice.schema.avro.ComputablePrimitiveFloatList;
+import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
 
 public class DotProductOperator implements ReadComputeOperator {
   @Override
-  public void compute(ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord, Map<String, String> computationErrorMap) {
+  public void compute(ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
+      Map<String, String> computationErrorMap, Map<String, Object> context) {
     DotProduct dotProduct = (DotProduct) op.operation;
     try {
-      ComputablePrimitiveFloatList valueVector = (ComputablePrimitiveFloatList) valueRecord.get(dotProduct.field.toString());
-      ComputablePrimitiveFloatList dotProductParam = (ComputablePrimitiveFloatList) dotProduct.dotProductParam;
+      List<Float> valueVector =  (List<Float>)valueRecord.get(dotProduct.field.toString());
+      List<Float> dotProductParam = dotProduct.dotProductParam;
 
       if (valueVector.size() == 0 || dotProductParam.size() == 0) {
         resultRecord.put(dotProduct.resultFieldName.toString(), 0.0d);
@@ -27,13 +28,7 @@ public class DotProductOperator implements ReadComputeOperator {
       }
 
       // client will make sure that the result field is double type
-      double dotProductResult = 0.0;
-      for (int i = 0; i < dotProductParam.size(); i++) {
-        dotProductResult += dotProductParam.getPrimitive(i) * valueVector.getPrimitive(i);
-      }
-
-      // write to result record
-      resultRecord.put(dotProduct.resultFieldName.toString(), dotProductResult);
+      resultRecord.put(dotProduct.resultFieldName.toString(), ComputeOperationUtils.dotProduct(dotProductParam, valueVector));
     } catch (Exception e) {
       resultRecord.put(dotProduct.resultFieldName.toString(), 0.0d);
       computationErrorMap.put(dotProduct.resultFieldName.toString(), e.getMessage());

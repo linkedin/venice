@@ -18,7 +18,6 @@ import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.queues.FairBlockingQueue;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
@@ -26,14 +25,14 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.apache.log4j.Logger;
 
 
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
+  private static final Logger LOGGER = Logger.getLogger(HttpChannelInitializer.class);
 
   private final ThreadPoolExecutor executor;
   private final ThreadPoolExecutor computeExecutor;
@@ -72,7 +71,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     computeStats = new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE);
 
     storageExecutionHandler = new StorageExecutionHandler(executor, computeExecutor, storeRepository, schemaRepo,
-        metadataRetriever, diskHealthCheckService);
+        metadataRetriever, diskHealthCheckService, serverConfig.isComputeFastAvroEnabled());
+    if (serverConfig.isComputeFastAvroEnabled()) {
+      LOGGER.info("Fast avro for compute is enabled");
+    }
 
     this.sslFactory = sslFactory;
     this.aclHandler = accessController.isPresent()
@@ -117,7 +119,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
       }
     }
     ch.pipeline()
-        .addLast(new RouterRequestHttpHandler(statsHandler))
+        .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.isComputeFastAvroEnabled()))
         .addLast(quotaEnforcer)
         .addLast("storageExecutionHandler", storageExecutionHandler)
         .addLast(new ErrorCatchingHandler());

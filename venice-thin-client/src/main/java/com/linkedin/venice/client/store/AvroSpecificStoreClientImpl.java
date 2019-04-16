@@ -30,7 +30,7 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
     valueClass = clientConfig.getSpecificValueClass();
 
     if (isUseFastAvro()) {
-      FastSerializerDeserializerFactory.verifyWhetherFastSpecificSerializerWorks(valueClass);
+      FastSerializerDeserializerFactory.verifyWhetherFastSpecificDeserializerWorks(valueClass);
     }
   }
 

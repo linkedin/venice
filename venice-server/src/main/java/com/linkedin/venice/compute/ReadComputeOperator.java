@@ -6,5 +6,5 @@ import org.apache.avro.generic.GenericRecord;
 
 
 public interface ReadComputeOperator {
-  void compute(ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord, Map<String, String> computationErrorMap);
+  void compute(ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord, Map<String, String> computationErrorMap, Map<String, Object> context);
 }
