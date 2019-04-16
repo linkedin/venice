@@ -30,10 +30,12 @@ import java.net.URI;
 public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final String API_VERSION = "1";
   private final StatsHandler statsHandler;
+  private final boolean useFastAvro;
 
-  public RouterRequestHttpHandler(StatsHandler handler) {
+  public RouterRequestHttpHandler(StatsHandler handler, boolean useFastAvro) {
     super();
     this.statsHandler = handler;
+    this.useFastAvro = useFastAvro;
   }
 
   @Override
@@ -71,7 +73,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
         case COMPUTE:
           // compute request
           if (req.method().equals(HttpMethod.POST)) {
-            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req);
+            ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);
           } else {

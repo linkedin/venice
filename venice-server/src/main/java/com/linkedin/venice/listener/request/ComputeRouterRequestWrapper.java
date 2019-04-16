@@ -7,12 +7,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.schema.avro.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpRequest;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
@@ -26,7 +26,7 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     this.computeRequest = computeRequest;
   }
 
-  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest) {
+  public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest, boolean useFastAvro) {
     URI fullUri = URI.create(httpRequest.uri());
     String path = fullUri.getRawPath();
     String[] requestParts = path.split("/");
@@ -49,11 +49,16 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     byte[] requestContent = new byte[httpRequest.content().readableBytes()];
     httpRequest.content().readBytes(requestContent);
 
-    RecordDeserializer<ComputeRequestV1> computeRequestDeserializer =
-        ComputableSerializerDeserializerFactory.getComputableAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class);
+    RecordDeserializer<ComputeRequestV1> recordDeserializer;
+    if (useFastAvro) {
+      recordDeserializer = FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class);
+    } else {
+      recordDeserializer = ComputableSerializerDeserializerFactory.getComputableAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$,
+          ComputeRequestV1.class);
+    }
     BinaryDecoder decoder =
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    ComputeRequestV1 computeRequest = computeRequestDeserializer.deserialize(decoder);
+    ComputeRequestV1 computeRequest = recordDeserializer.deserialize(decoder);
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
 

@@ -258,6 +258,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED = "server.disk.health.check.service.enabled";
 
+  /**
+   * Whether to enable fast-avro in compute request path.
+   */
+  public static final String SERVER_COMPUTE_FAST_AVRO_ENABLED = "server.compute.fast.avro.enabled";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

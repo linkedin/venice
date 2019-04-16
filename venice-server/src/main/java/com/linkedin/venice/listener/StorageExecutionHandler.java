@@ -26,11 +26,11 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.schema.avro.ComputablePrimitiveFloatList;
 import com.linkedin.venice.schema.avro.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -95,6 +95,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
   private final Map<Utf8, Schema> computeResultSchemaCache;
 
+  private final boolean fastAvroEnabled;
+
   private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>(){
     {
       put(ComputeOperationType.DOT_PRODUCT.getValue(), new DotProductOperator());
@@ -104,13 +106,15 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
   public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
       @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepo,
-      @NotNull MetadataRetriever metadataRetriever, @NotNull DiskHealthCheckService healthCheckService) {
+      @NotNull MetadataRetriever metadataRetriever, @NotNull DiskHealthCheckService healthCheckService,
+      boolean fastAvroEnabled) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storeRepository = storeRepository;
     this.schemaRepo = schemaRepo;
     this.metadataRetriever = metadataRetriever;
     this.diskHealthCheckService = healthCheckService;
+    this.fastAvroEnabled = fastAvroEnabled;
 
     this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
   }
@@ -287,7 +291,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // Reuse the same value record and result record instances for all values
     GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
     GenericRecord resultRecord = new GenericData.Record(computeResultSchema);
-    RecordSerializer<GenericRecord> resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
+    RecordSerializer<GenericRecord> resultSerializer;
+    if (fastAvroEnabled) {
+      resultSerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(computeResultSchema);
+    } else {
+      resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
+    }
+    Map<String, Object> globalContext = new HashMap<>();
     for (ComputeRouterRequestKeyV1 key : keys) {
       clearFieldsInReusedRecord(resultRecord, computeResultSchema);
       ComputeResponseRecordV1 record = computeResult(store,
@@ -303,7 +313,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      valueRecord,
                                                      resultRecord,
                                                      isChunked,
-                                                     responseWrapper);
+                                                     responseWrapper,
+                                                     globalContext);
       if (null != record) {
         responseWrapper.addRecord(record);
       }
@@ -347,7 +358,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       GenericRecord valueRecord,
       GenericRecord resultRecord,
       boolean isChunked,
-      ComputeResponseWrapper response) {
+      ComputeResponseWrapper response,
+      Map<String, Object> globalContext) {
     // get the raw bytes of the value from the key first
     ByteBuffer keyBuffer;
     if (isChunked) {
@@ -378,11 +390,16 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // deserialize raw byte value to GenericRecord
     long deserializeStartTimeInNS = System.nanoTime();
-    RecordDeserializer<GenericRecord> deserializer =
-        ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(
-            this.schemaRepo.getValueSchema(storeName, record.schemaId).getSchema(), // writer schema
-            latestValueSchema                                                       // reader schema
-        );
+    RecordDeserializer<GenericRecord> deserializer;
+    Schema writerSchema = this.schemaRepo.getValueSchema(storeName, record.schemaId).getSchema();
+    if (fastAvroEnabled) {
+      deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, latestValueSchema);
+    } else {
+      deserializer = ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(
+          writerSchema,       // writer schema
+          latestValueSchema   // reader schema
+      );
+    }
 
     ByteBuffer decompressedData;
     if (compressionStrategy != CompressionStrategy.NO_OP) {
@@ -419,7 +436,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // go through all operation
     for (Object operation : operations) {
       ComputeOperation op = (ComputeOperation) operation;
-      computeOperators.get(op.operationType).compute(op, valueRecord, resultRecord, computationErrorMap);
+      computeOperators.get(op.operationType).compute(op, valueRecord, resultRecord, computationErrorMap, globalContext);
     }
 
     // fill the empty field in result schema

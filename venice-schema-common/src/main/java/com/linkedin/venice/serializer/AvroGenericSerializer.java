@@ -5,7 +5,7 @@ import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.AvroVersion;
-import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.log4j.Logger;
@@ -16,7 +16,7 @@ import java.io.IOException;
 
 public class AvroGenericSerializer<K> implements RecordSerializer<K> {
   private static final Logger logger = Logger.getLogger(AvroGenericSerializer.class);
-  private final GenericDatumWriter<K> datumWriter;
+  private final DatumWriter<K> datumWriter;
 
   static {
     AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
@@ -27,7 +27,7 @@ public class AvroGenericSerializer<K> implements RecordSerializer<K> {
     this(new GenericDatumWriter<>(schema));
   }
 
-  protected AvroGenericSerializer(GenericDatumWriter datumWriter) {
+  protected AvroGenericSerializer(DatumWriter datumWriter) {
     this.datumWriter = datumWriter;
   }
 

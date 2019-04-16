@@ -69,7 +69,12 @@ public class StorageNodeComputeTest {
 
   @BeforeClass
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, false, false);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
+    // Add one more server with fast-avro enabled
+    Properties serverProperties = new Properties();
+    serverProperties.put(ConfigKeys.SERVER_COMPUTE_FAST_AVRO_ENABLED, true);
+    veniceCluster.addVeniceServer(new Properties(), serverProperties);
+
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 1);

@@ -18,9 +18,12 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
   private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
       avroFastSpecificDeserializerMap = new VeniceConcurrentHashMap<>();
 
+  private static Map<Schema, AvroGenericSerializer<Object>>
+      avroFastGenericSerializerMap = new VeniceConcurrentHashMap<>();
+
   // Verify whether fast-avro could generate a fast specific deserializer, but there is no guarantee that
   // the success of all other fast specific deserializer generation in the future.
-  public static void verifyWhetherFastSpecificSerializerWorks(Class<? extends SpecificRecord> specificClass) {
+  public static void verifyWhetherFastSpecificDeserializerWorks(Class<? extends SpecificRecord> specificClass) {
     for (Class<? extends SpecificRecord> c : Arrays.asList(specificClass, MultiGetResponseRecordV1.class)){
       Schema schema = SpecificData.get().getSchema(c);
       try {
@@ -33,7 +36,7 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
 
   // Verify whether fast-avro could generate a fast generic deserializer, but there is no guarantee that
   // the success of all other fast generic deserializer generation in the future.
-  public static void verifyWhetherFastGenericSerializerWorks() {
+  public static void verifyWhetherFastGenericDeserializerWorks() {
     // Leverage the following schema as the input for testing
     Schema schema = MultiGetResponseRecordV1.SCHEMA$;
     try {
@@ -59,4 +62,9 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
         container -> avroFastSpecificDeserializerMap.computeIfAbsent(container,
             k -> new FastAvroSpecificDeserializer<V>(container.writer, container.c, cache, multiGetEnvelopeIterableImpl)));
   }
+
+  public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema) {
+    return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroGenericSerializer<>(s, cache));
+  }
+
 }
