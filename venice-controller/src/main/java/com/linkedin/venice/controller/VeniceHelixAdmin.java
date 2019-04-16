@@ -2581,7 +2581,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
         // our cluster is not too big, so it's not a big deal here.
         messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
-        if (participantMessageStoreRTTMap.containsKey(clusterName)) {
+        if (multiClusterConfigs.getCommonConfig().isParticipantMessageStoreEnabled() &&
+            participantMessageStoreRTTMap.containsKey(clusterName)) {
             VeniceWriter writer =
                 participantMessageWriterMap.computeIfAbsent(clusterName, k -> {
                     int attempts = 0;
