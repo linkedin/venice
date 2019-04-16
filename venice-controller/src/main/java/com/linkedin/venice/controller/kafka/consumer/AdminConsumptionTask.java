@@ -19,6 +19,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
@@ -258,6 +259,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       offsetToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
       largestSucceededExecutionId = UNASSIGNED_VALUE;
+      lastSucceededExecutionId = UNASSIGNED_VALUE;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
       isSubscribed = false;
@@ -429,6 +431,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         producerTrackerMap.get(producerMetadata.producerGUID).overwriteSequenceNumber(
             AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, producerMetadata.messageSequenceNumber);
       }
+      offsetRecordTransformer = Optional.of(getSkipDIVOffsetTransformer(producerMetadata.producerGUID, producerMetadata));
       return true;
     }
 
@@ -454,6 +457,23 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
 
     return true;
+  }
+
+  private OffsetRecordTransformer getSkipDIVOffsetTransformer(GUID producerGUID, ProducerMetadata producerMetadata) {
+    // This method of skipping DIV and manually generating a OffsetRecordTransform only works because segmentation and
+    // checksum are both disabled for the admin channel. Usage of this functionality should be avoided as much as possible.
+    return offsetRecord -> {
+      ProducerPartitionState state = offsetRecord.getProducerPartitionState(producerGUID);
+      if (state != null) {
+        // null check here for completeness since there's no reason to skip DIV for the very first message of a producer.
+        state.messageTimestamp = producerMetadata.messageTimestamp;
+        state.messageSequenceNumber = producerMetadata.messageSequenceNumber;
+        offsetRecord.setProducerPartitionState(producerGUID, state);
+        logger.trace("ProducerPartitionState updated.");
+      }
+
+      return offsetRecord;
+    };
   }
 
   /**
