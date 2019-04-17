@@ -983,7 +983,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return version;
         } catch (Throwable e) {
             int failedVersionNumber = versionNumber;
-            String errorMessage = "version " + failedVersionNumber + " to store " + storeName + " in cluster " + clusterName;
+            String errorMessage = "Failed to add version " + failedVersionNumber + " to store " + storeName + " in cluster " + clusterName;
             logger.error(errorMessage, e);
             try {
                 if (version != null) {
@@ -2062,8 +2062,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
       }
 
       // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
-      monitor.recordPushPreparationDuration(Version.parseStoreFromKafkaTopicName(topic),
-          offlinePushWaitTimeInMilliseconds / 1000);
+      monitor.recordPushPreparationDuration(topic, offlinePushWaitTimeInMilliseconds / 1000);
       throw new VeniceException("After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource '" + topic
           + "' still could not get enough nodes.");
     }

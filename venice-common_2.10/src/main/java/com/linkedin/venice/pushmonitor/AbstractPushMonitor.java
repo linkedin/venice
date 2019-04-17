@@ -572,7 +572,8 @@ public abstract class AbstractPushMonitor
 
   @Override
   public void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond) {
-    aggPushHealthStats.recordPushPrepartionDuration(topic, offlinePushWaitTimeInSecond);
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    aggPushHealthStats.recordPushPrepartionDuration(storeName, offlinePushWaitTimeInSecond);
   }
 
   @Override
