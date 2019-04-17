@@ -209,7 +209,7 @@ public abstract class AbstractPushMonitor
             new Pair<>(offlinePushStatus.checkIncrementalPushStatus(incrementalPushVersion.get()), Optional.empty()) :
             new Pair<>(offlinePushStatus.getCurrentStatus(), offlinePushStatus.getOptionalStatusDetails());
       } else {
-        return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Kafka topic not detected yet."));
+        return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
       }
     }
   }
