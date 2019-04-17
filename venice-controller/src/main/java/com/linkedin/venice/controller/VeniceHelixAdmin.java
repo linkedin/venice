@@ -1410,9 +1410,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         List<String> oldTopicsToTruncate = allTopicsRelatedToThisStore;
         if (!forStoreDeletion) {
-            // For store version deprecation, controller will truncate all the topics without corresponding versions.
+            /**
+             * For store version deprecation, controller will truncate all the topics without corresponding versions and
+             * the version belonging to is smaller than the largest used version of current store.
+             *
+             * The reason to check whether the to-be-deleted version is smaller than the largest used version of current store or not:
+             * 1. Topic could be created either by Kafka MM or addVersion function call (triggered by either
+             * {@link com.linkedin.venice.controller.kafka.TopicMonitor} or
+             * {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask};
+             * 2. If the topic is created by Kafka MM and the actual version creation gets delayed for some reason, the following
+             * scenario could happen (assuming the current version is n):
+             *   a. Topics: store_v(n-2), store_v(n-1), store_v(n), store_v(n+1) could exist at the same time because of the actual
+             *     version creation gets delayed;
+             *   b. The largest used version of current store is (n).
+             * In this scenario, Controller should only deprecate store_v(n-2), instead of both store_v(n-2) and store_v(n+1) [because
+             * of no corresponding store version], since the later one is still valid.
+             */
             oldTopicsToTruncate = allTopicsRelatedToThisStore.stream().
-                filter((topic) -> !currentlyKnownVersionNumbers.contains(Version.parseVersionFromKafkaTopicName(topic)))
+                filter((topic) -> {
+                    int versionForCurrentTopic = Version.parseVersionFromKafkaTopicName(topic);
+                    return !currentlyKnownVersionNumbers.contains(versionForCurrentTopic) &&
+                        versionForCurrentTopic <= store.getLargestUsedVersionNumber();
+                })
                 .collect(Collectors.toList());
         }
 

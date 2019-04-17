@@ -1557,14 +1557,15 @@ public class TestVeniceHelixAdmin {
     for (Store store: stores) {
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
         String topicName = Version.composeKafkaTopic(store.getName(), versionNumber);
-        if (store.equals(storeToCleanUp) && !store.containsVersion(versionNumber)) {
+        if (store.equals(storeToCleanUp) && !store.containsVersion(versionNumber) && versionNumber <= store.getLargestUsedVersionNumber()) {
           Assert.assertTrue(veniceAdmin.isTopicTruncated(topicName), "Topic '" + topicName + "' should be truncated.");
         } else {
           Assert.assertTrue(!veniceAdmin.isTopicTruncated(topicName),
               "Topic '" + topicName + "' should exist when active versions are: " +
                   store.getVersions().stream()
                       .map(version -> Integer.toString(version.getNumber()))
-                      .collect(Collectors.joining(", ")) + ".");
+                      .collect(Collectors.joining(", ")) +
+                  ", and largest used version: " + store.getLargestUsedVersionNumber() + ".");
         }
       }
     }
