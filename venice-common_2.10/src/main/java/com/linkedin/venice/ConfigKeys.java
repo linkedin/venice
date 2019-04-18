@@ -668,7 +668,7 @@ public class ConfigKeys {
    */
   public static final String ROUTER_SINGLEGET_TARDY_LATENCY_MS = "router.singleget.tardy.latency.ms";
   public static final String ROUTER_MULTIGET_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
-  public static final String ROUTER_COMPUTE_TARDY_LATENCY_MS = "router.multiget.tardy.latency.ms";
+  public static final String ROUTER_COMPUTE_TARDY_LATENCY_MS = "router.compute.tardy.latency.ms";
 
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 
