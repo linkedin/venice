@@ -603,9 +603,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
         c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
     if (valueSchemaResponse.isError()) {
-      throw new VeniceException("Fail to validate value schema for store: " + setting.storeName
+      throw new VeniceException("Failed to validate value schema for store: " + setting.storeName
           + "\nError from the server: " + valueSchemaResponse.getError()
-          + "\nSchema in data file: " + schemaInfo.valueSchemaString
+          + "\nSchema for the data file: " + schemaInfo.valueSchemaString
       );
     }
     schemaInfo.valueSchemaId = valueSchemaResponse.getId();

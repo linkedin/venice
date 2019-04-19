@@ -56,7 +56,7 @@ task integrationtest(type: Test) {
 
   description = "Run integration tests for " + project.name;
   useTestNG()
-  testClassesDir = sourceSets.integrationtest.output.classesDir
+  testClassesDirs = project.files(sourceSets.integrationtest.output.classesDirs)
   classpath = sourceSets.integrationtest.runtimeClasspath
   testReportDirName = "integrationtest"
   testResultsDirName = "integrationtest-result"
@@ -88,7 +88,7 @@ task jacocoIntegrationTestReport(type:JacocoReport){
   reports {
     xml.enabled false
     csv.enabled false
-    html.destination "${buildDir}/jacocoIntegrationHtml"
+    html.destination new File("${buildDir}/jacocoIntegrationHtml")
   }
   sourceSets sourceSets.main
 }
