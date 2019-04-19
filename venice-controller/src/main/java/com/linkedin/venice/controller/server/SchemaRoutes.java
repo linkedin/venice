@@ -105,7 +105,8 @@ public class SchemaRoutes {
             responseObject.getName(),
             responseObject.getSchemaStr());
         if (SchemaData.INVALID_VALUE_SCHEMA_ID == valueSchemaId) {
-          throw new VeniceException("Value schema for schema str: " + responseObject.getSchemaStr() + " doesn't exist");
+          throw new VeniceException("Can not find any registered value schema for the store " +
+              responseObject.getName() + " that matches the schema of data being pushed.");
         }
         responseObject.setId(valueSchemaId);
       } catch (Throwable e) {

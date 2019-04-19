@@ -289,7 +289,7 @@ public class TestKafkaPushJob {
    */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*Fail to validate value schema.*")
+      expectedExceptionsMessageRegExp = ".*Failed to validate value schema.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
