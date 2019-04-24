@@ -34,7 +34,9 @@ import java.text.DecimalFormat;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -315,7 +317,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobSetting.enableReducerSpeculativeExecution = props.getBoolean(REDUCER_SPECULATIVE_EXECUTION_ENABLE, false);
     pushJobSetting.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
     pushJobSetting.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
-    pushJobSetting.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 3);
+    pushJobSetting.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -718,93 +720,75 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   /**
-   * TODO: This function needs to be refactored. Its flow is way too convoluted ): - FGV
-   *
    * High level, we want to poll the consumption job status until it errors or is complete.  This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
    * are using a semantic of "poll until all accessible datacenters report success".
    *
-   * If a datacenter is not accessible, we ignore it.  As long as at least one datacenter is able to report success
-   * we are willing to mark the job as successful.  If any datacenters report an explicit error status, we throw an
-   * exception and fail the job.
+   * If any datacenter report an explicit error status, we throw an exception and fail the job. However, datacenters
+   * with COMPLETED status will be serving new data.
    */
-  private void pollStatusUntilComplete(Optional<String> incrementalPushVersion, ControllerClient controllerClient, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo){
+  private void pollStatusUntilComplete(Optional<String> incrementalPushVersion, ControllerClient controllerClient,
+      PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
     ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
-
-    /** Datacenter-specific details. Stored in memory to avoid printing repetitive details. */
+    // Set of datacenters that have reported a completed status at least once.
+    Set<String> completedDatacenters = new HashSet<>();
+    // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
     Map<String, String> previousExtraDetails = new HashMap<>();
-    /** Overall job details. Stored in memory to avoid printing repetitive details. */
+    // Overall job details. Stored in memory to avoid printing repetitive details.
     String previousOverallDetails = null;
 
-    while (keepChecking){
-      Utils.sleep(5000); /* TODO better polling policy */
-      keepChecking = false;
-      switch (currentStatus) {
-        case COMPLETED: /* batch jobs done */
-        case END_OF_INCREMENTAL_PUSH_RECEIVED: /* incremental push jobs done */
-        case ARCHIVED: /* This shouldn't happen, but presumably wont change on further polls */
-          continue;
-        case ERROR: /* failure to query (treat as connection issue, so we retry */
-        case NOT_CREATED:
-        case NEW:
-        case STARTED:
-        case START_OF_INCREMENTAL_PUSH_RECEIVED:
-        case END_OF_PUSH_RECEIVED:
-        case PROGRESS:
-          JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries, c ->
-              c.queryJobStatus(versionTopicInfo.topic, incrementalPushVersion));
-          /**
-           * Note: {@link JobStatusQueryResponse#isError()} means the status could not be queried.
-           * This may be due to a communication error.
-           */
-          if (response.isError()){
-            throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl + " to query job status, after " + pushJobSetting.controllerStatusPollRetries + " attempts.");
-          } else {
-            printJobStatus(response, previousOverallDetails, previousExtraDetails);
-            ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
-            /* Status of ERROR means that the job status was queried, and the job is in an error status */
-            if (status.equals(ExecutionStatus.ERROR)){
+    while (keepChecking) {
+      Utils.sleep(5000); // TODO better polling policy
+      JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries,
+          c -> c.queryJobStatus(versionTopicInfo.topic, incrementalPushVersion));
+      // response#isError() means the status could not be queried which could be due to a communication error.
+      if (response.isError()) {
+        throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl +
+            " to query job status, after " + pushJobSetting.controllerStatusPollRetries + " attempts.");
+      } else {
+        previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
+        ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
+        Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
+        for (String datacenter : datacenterSpecificInfo.keySet()) {
+          ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
+          if (datacenterStatus.isTerminal()) {
+            if (datacenterStatus.equals(ExecutionStatus.ERROR)) {
               throw new RuntimeException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
             }
-            currentStatus = status;
-            keepChecking = true;
+            completedDatacenters.add(datacenter);
           }
-          break;
-        default:
-          throw new VeniceException("Unexpected status returned by job status poll: " + pushJobSetting.veniceControllerUrl);
+        }
+        if (overallStatus.isTerminal()) {
+          if (completedDatacenters.size() == datacenterSpecificInfo.size()) {
+            // Every known datacenter have successfully reported a completed status at least once.
+            keepChecking = false;
+            logger.info("Successfully pushed " + versionTopicInfo.topic);
+          } else {
+            // One datacenter (could be more) is in an UNKNOWN status and has never successfully reported a completed
+            // status before but the majority of datacenters have completed so we give up on the unreachable datacenter
+            // and start truncating the data topic.
+            throw new RuntimeException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
+          }
+        }
       }
-    }
-    /* At this point either reported success, or had connection issues */
-    if (currentStatus.equals(ExecutionStatus.COMPLETED) || currentStatus.equals(ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED)){
-      logger.info("Successfully pushed");
-    } else {
-      throw new VeniceException("Push failed with execution status: " + currentStatus.toString());
     }
   }
 
-  private void printJobStatus(JobStatusQueryResponse response, String previousOverallDetails, Map<String, String> previousExtraDetails) {
-    String fullStatus = response.getStatus();
-    ExecutionStatus status = ExecutionStatus.valueOf(fullStatus);
-    long messagesConsumed = response.getMessagesConsumed();
-    long messagesAvailable = response.getMessagesAvailable();
-    String logMessage = "Overall status: " + fullStatus;
-    Map<String, String> extraInfo = response.getExtraInfo();
-    if (null != extraInfo && !extraInfo.isEmpty()) {
-      logMessage += ". Specific status: " + extraInfo;
+  private String printJobStatus(JobStatusQueryResponse response, String previousOverallDetails,
+      Map<String, String> previousExtraDetails) {
+    String newOverallDetails = previousOverallDetails;
+    String logMessage = "Specific status: ";
+    Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
+    if (null != datacenterSpecificInfo && !datacenterSpecificInfo.isEmpty()) {
+      logMessage += datacenterSpecificInfo;
     }
-    logMessage += ". Consumed ";
-    if (status != ExecutionStatus.COMPLETED) {
-      double fractionOfMessagesConsumed = (double) messagesConsumed / (double) messagesAvailable;
-      logMessage += "~" + PERCENT_FORMAT.format(fractionOfMessagesConsumed) + " of ";
-    }
-    logMessage += Utils.makeLargeNumberPretty(messagesAvailable) + " total records.";
     logger.info(logMessage);
 
     Optional<String> details = response.getOptionalStatusDetails();
     if (details.isPresent() && detailsAreDifferent(previousOverallDetails, details.get())) {
       logger.info("\t\tNew overall details: " + details.get());
-      previousOverallDetails = details.get();
+      newOverallDetails = details.get();
     }
 
     Optional<Map<String, String>> extraDetails = response.getOptionalExtraDetails();
@@ -821,6 +805,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         }
       }
     }
+    return newOverallDetails;
   }
 
   /**
