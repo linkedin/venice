@@ -3,11 +3,16 @@ package com.linkedin.venice.router.api.path;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
+import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -17,11 +22,13 @@ import io.netty.handler.codec.http.HttpVersion;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
 import static org.mockito.Mockito.*;
 
 public class TestVeniceComputePath {
@@ -59,12 +66,12 @@ public class TestVeniceComputePath {
     return record;
   }
 
-  private BasicFullHttpRequest getComputeHttpRequest(String resourceName, byte[] content) {
+  private BasicFullHttpRequest getComputeHttpRequest(String resourceName, byte[] content, int version) {
     String uri = "/compute/" + resourceName;
 
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, uri,
         Unpooled.wrappedBuffer(content),0, 0);
-    request.headers().add(HttpConstants.VENICE_API_VERSION, VeniceComputePath.EXPECTED_PROTOCOL.getProtocolVersion());
+    request.headers().add(HttpConstants.VENICE_API_VERSION, version);
 
     return request;
   }
@@ -104,17 +111,79 @@ public class TestVeniceComputePath {
       Assert.fail("Failed to write bytes to output stream", e);
     }
 
-    BasicFullHttpRequest request = getComputeHttpRequest(resourceName, output.toByteArray());
+    // test all compute request versions
+    for (int version = 1; version <= LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST; version++) {
+      BasicFullHttpRequest request = getComputeHttpRequest(resourceName, output.toByteArray(), version);
 
-    VeniceComputePath computePath = new VeniceComputePath(resourceName, request,
-        getVenicePartitionFinder(-1), 10, false, -1);
-    Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
+      VeniceComputePath computePath =
+          new VeniceComputePath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, false);
+      Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
 
-    ComputeRequestV1 requestInPath = computePath.getComputeRequest();
-    Schema resultSchemaInPath = Schema.parse(requestInPath.resultSchemaStr.toString());
-    Schema expectedResultSchema = Schema.parse(computeRequest.resultSchemaStr.toString());
+      ComputeRequestWrapper requestInPath = computePath.getComputeRequest();
+      Schema resultSchemaInPath = Schema.parse(requestInPath.getResultSchemaStr().toString());
+      Schema expectedResultSchema = Schema.parse(computeRequest.resultSchemaStr.toString());
 
-    Assert.assertTrue(resultSchemaInPath.equals(expectedResultSchema));
-    Assert.assertEquals(requestInPath.operations, computeRequest.operations);
+      Assert.assertTrue(resultSchemaInPath.equals(expectedResultSchema));
+      Assert.assertEquals(requestInPath.getOperations(), computeRequest.operations);
+    }
+  }
+
+  @Test
+  public void testComputeRequestVersionBackwardCompatible() {
+    // generate a version 1 record
+    ComputeRequestV1 computeRequestV1 = new ComputeRequestV1();
+    String resultSchemaStr = "test_result_schema";
+    computeRequestV1.resultSchemaStr = resultSchemaStr;
+    computeRequestV1.operations = new LinkedList<>();
+
+    // Add a dot-product
+    String dotProductField = "dotProductField";
+    String dotProductResultField = "dotProductResultField";
+    List<Float> dotProductParam = new LinkedList<Float>();
+    dotProductParam.add(0.1f);
+
+    ComputeOperation dotProductOperation = new ComputeOperation();
+    dotProductOperation.operationType = ComputeOperationType.DOT_PRODUCT.getValue();
+    DotProduct dotProduct = (DotProduct) ComputeOperationType.DOT_PRODUCT.getNewInstance();
+    dotProduct.field = dotProductField;
+    dotProduct.resultFieldName = dotProductResultField;
+    dotProduct.dotProductParam = dotProductParam;
+    dotProductOperation.operation = dotProduct;
+    computeRequestV1.operations.add(dotProductOperation);
+
+    // Add a cosine-similarity
+    String cosineSimilarityField = "cosineSimilarityField";
+    String cosineSimilarityResultField = "cosineSimilarityResultField";
+    List<Float> cosineSimilarityParam = new LinkedList<Float>();
+    cosineSimilarityParam.add(0.2f);
+
+    ComputeOperation cosineSimilarityOperation = new ComputeOperation();
+    cosineSimilarityOperation.operationType = ComputeOperationType.COSINE_SIMILARITY.getValue();
+    CosineSimilarity cosineSimilarity = (CosineSimilarity) ComputeOperationType.COSINE_SIMILARITY.getNewInstance();
+    cosineSimilarity.field = cosineSimilarityField;
+    cosineSimilarity.resultFieldName = cosineSimilarityResultField;
+    cosineSimilarity.cosSimilarityParam = cosineSimilarityParam;
+    cosineSimilarityOperation.operation = cosineSimilarity;
+    computeRequestV1.operations.add(cosineSimilarityOperation);
+
+    // serialize compute request V1
+    RecordSerializer<ComputeRequestV1> computeRequestV1Serializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema());
+    byte[] serializedComputeRequestV1 = computeRequestV1Serializer.serialize(computeRequestV1);
+
+    // use V2 schema to deserialize
+    RecordDeserializer<ComputeRequestV2> computeRequestV2Deserializer =
+        SerializerDeserializerFactory.getAvroSpecificDeserializer(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema(), ComputeRequestV2.class);
+    ComputeRequestV2 computeRequestV2 = computeRequestV2Deserializer.deserialize(serializedComputeRequestV1);
+
+    // check contents in the deserialized v2 record are the same as the contents in v1 record
+    Assert.assertEquals(computeRequestV2.resultSchemaStr.toString(), resultSchemaStr);
+    ComputeOperation computeOperation1 = (ComputeOperation) computeRequestV2.operations.get(0);
+    Assert.assertEquals(computeOperation1.operationType, ComputeOperationType.DOT_PRODUCT.getValue());
+    Assert.assertEquals(computeOperation1.operation, dotProduct);
+
+    ComputeOperation computeOperation2 = (ComputeOperation) computeRequestV2.operations.get(1);
+    Assert.assertEquals(computeOperation2.operationType, ComputeOperationType.COSINE_SIMILARITY.getValue());
+    Assert.assertEquals(computeOperation2.operation, cosineSimilarity);
   }
 }

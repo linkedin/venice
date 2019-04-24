@@ -1,13 +1,16 @@
-package com.linkedin.venice.schema.avro;
+package com.linkedin.venice.serializer;
 
 import java.io.IOException;
+import java.util.Collection;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.ResolvingDecoder;
 import org.apache.avro.specific.SpecificDatumReader;
 
 
-public class ComputableSpecificDatumReader<T> extends SpecificDatumReader<T> {
-  public ComputableSpecificDatumReader(Schema writer, Schema reader) {
+public class ComputableGenericDatumReader<T> extends GenericDatumReader<T> {
+  public ComputableGenericDatumReader(Schema writer, Schema reader) {
     super(writer, reader);
   }
 

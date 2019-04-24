@@ -506,6 +506,11 @@ public class ConfigKeys {
   public static final String ROUTER_STREAMING_ENABLED = "router.streaming.enabled";
 
   /**
+   * Whether to enable fast-avro in router;
+   */
+  public static final String ROUTER_COMPUTE_FAST_AVRO_ENABLED = "router.compute.fast.avro.enabled";
+
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */

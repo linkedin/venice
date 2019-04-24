@@ -1,13 +1,10 @@
 package com.linkedin.venice.listener.request;
 
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.schema.avro.ComputableSerializerDeserializerFactory;
-import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -16,14 +13,16 @@ import java.net.URI;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
+import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
+
 
 public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<ComputeRouterRequestKeyV1>{
-  private final ComputeRequestV1 computeRequest;
+  private final ComputeRequestWrapper computeRequestWrapper;
 
-  private ComputeRouterRequestWrapper(String resourceName, ComputeRequestV1 computeRequest,
+  private ComputeRouterRequestWrapper(String resourceName, ComputeRequestWrapper computeRequestWrapper,
                                       Iterable<ComputeRouterRequestKeyV1> keys, HttpRequest request) {
     super(resourceName, keys, request);
-    this.computeRequest = computeRequest;
+    this.computeRequestWrapper = computeRequestWrapper;
   }
 
   public static ComputeRouterRequestWrapper parseComputeRequest(FullHttpRequest httpRequest, boolean useFastAvro) {
@@ -36,33 +35,28 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     String resourceName = requestParts[2];
 
     // Validate API version
-    String apiVersion = httpRequest.headers().get(HttpConstants.VENICE_API_VERSION);
-    if (null == apiVersion) {
+    String apiVersionStr = httpRequest.headers().get(HttpConstants.VENICE_API_VERSION);
+    if (null == apiVersionStr) {
       throw new VeniceException("Header: " + HttpConstants.VENICE_API_VERSION + " is missing");
     }
-    int expectedApiVersion = ReadAvroProtocolDefinition.COMPUTE_ROUTER_REQUEST_V1.getProtocolVersion();
-    if (Integer.parseInt(apiVersion) != expectedApiVersion) {
-      throw new VeniceException("Expected API version: " + expectedApiVersion + ", but received: " + apiVersion);
+    int apiVersion = Integer.parseInt(apiVersionStr);
+    if (apiVersion <= 0 || apiVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
+      throw new VeniceException("Compute API version " + apiVersion + " is invalid. "
+          + "Latest version is " + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
     }
 
     // TODO: xplore the possibility of streaming in the request bytes, and processing it in pipelined fashion
     byte[] requestContent = new byte[httpRequest.content().readableBytes()];
     httpRequest.content().readBytes(requestContent);
 
-    RecordDeserializer<ComputeRequestV1> recordDeserializer;
-    if (useFastAvro) {
-      recordDeserializer = FastSerializerDeserializerFactory.getFastAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$, ComputeRequestV1.class);
-    } else {
-      recordDeserializer = ComputableSerializerDeserializerFactory.getComputableAvroSpecificDeserializer(ComputeRequestV1.SCHEMA$,
-          ComputeRequestV1.class);
-    }
+    ComputeRequestWrapper computeRequestWrapper = new ComputeRequestWrapper(apiVersion);
     BinaryDecoder decoder =
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    ComputeRequestV1 computeRequest = recordDeserializer.deserialize(decoder);
+    computeRequestWrapper.deserialize(decoder, useFastAvro, !useFastAvro);
 
     Iterable<ComputeRouterRequestKeyV1> keys = parseKeys(decoder);
 
-    return new ComputeRouterRequestWrapper(resourceName, computeRequest, keys, httpRequest);
+    return new ComputeRouterRequestWrapper(resourceName, computeRequestWrapper, keys, httpRequest);
   }
 
   private static Iterable<ComputeRouterRequestKeyV1> parseKeys(BinaryDecoder decoder) {
@@ -72,8 +66,8 @@ public class ComputeRouterRequestWrapper extends MultiKeyRouterRequestWrapper<Co
     return deserializer.deserializeObjects(decoder);
   }
 
-  public ComputeRequestV1 getComputeRequest() {
-    return computeRequest;
+  public ComputeRequestWrapper getComputeRequest() {
+    return computeRequestWrapper;
   }
 
   public String toString() {

@@ -73,6 +73,7 @@ public class VeniceRouterConfig {
   private int nettyClientMaxAggregatedObjectLength;
   private boolean decompressOnClient;
   private boolean streamingEnabled;
+  private boolean computeFastAvroEnabled;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -164,6 +165,7 @@ public class VeniceRouterConfig {
     nettyClientMaxAggregatedObjectLength = props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20); // 20MB by default; change it according to the max response size
     decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, false);
     streamingEnabled = props.getBoolean(ROUTER_STREAMING_ENABLED, false);
+    computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -372,6 +374,10 @@ public class VeniceRouterConfig {
 
   public boolean isStreamingEnabled() {
     return streamingEnabled;
+  }
+
+  public boolean isComputeFastAvroEnabled() {
+    return computeFastAvroEnabled;
   }
 
   /**

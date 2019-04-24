@@ -2,7 +2,7 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.avro.fastserde.PrimitiveFloatList;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.schema.avro.ComputablePrimitiveFloatList;
+import com.linkedin.venice.serializer.ComputablePrimitiveFloatList;
 import java.util.List;
 
 

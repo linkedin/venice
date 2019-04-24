@@ -24,7 +24,8 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"
-  "venice-schema-common/src/main/resources/avro/ComputeRequest/*"
+  "venice-schema-common/src/main/resources/avro/ComputeRequest/v1/*"
+  "venice-schema-common/src/main/resources/avro/ComputeRequest/v2/*"
   "venice-schema-common/src/main/resources/avro/ComputeResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
   "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"
@@ -40,6 +41,7 @@ CODE_GEN_PATH=(
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-controller/src/main/java"
+  "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
   "venice-schema-common/src/main/java"
@@ -63,9 +65,10 @@ FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[11]}/com/linkedin/venice/read/protocol/request/client/*.java"
   "${CODE_GEN_PATH[12]}/com/linkedin/venice/read/protocol/request/router/*.java"
   "${CODE_GEN_PATH[13]}/com/linkedin/venice/compute/protocol/request/*.java"
-  "${CODE_GEN_PATH[14]}/com/linkedin/venice/compute/protocol/response/*.java"
-  "${CODE_GEN_PATH[15]}/com/linkedin/venice/compute/protocol/request/router/*.java"
-  "${CODE_GEN_PATH[16]}/com/linkedin/venice/read/protocol/response/streaming/*.java"
+  "${CODE_GEN_PATH[14]}/com/linkedin/venice/compute/protocol/request/*.java"
+  "${CODE_GEN_PATH[15]}/com/linkedin/venice/compute/protocol/response/*.java"
+  "${CODE_GEN_PATH[16]}/com/linkedin/venice/compute/protocol/request/router/*.java"
+  "${CODE_GEN_PATH[17]}/com/linkedin/venice/read/protocol/response/streaming/*.java"
 )
 
 if [[ $# < 1 ]]; then
