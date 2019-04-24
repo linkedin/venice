@@ -1,4 +1,4 @@
-package com.linkedin.venice.schema.avro;
+package com.linkedin.venice.serializer;
 
 import java.io.IOException;
 import java.util.AbstractList;

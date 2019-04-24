@@ -3,11 +3,11 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.CosineSimilarityOperator;
 import com.linkedin.venice.compute.DotProductOperator;
 import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
@@ -26,10 +26,10 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.schema.avro.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -270,15 +270,15 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     // deserialize all value to the latest schema
     Schema latestValueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();
-    ComputeRequestV1 computeRequest = request.getComputeRequest();
+    ComputeRequestWrapper computeRequestWrapper = request.getComputeRequest();
 
     // try to get the result schema from the cache
-    Utf8 computeResultSchemaStr = (Utf8) computeRequest.resultSchemaStr;
+    Utf8 computeResultSchemaStr = (Utf8) computeRequestWrapper.getResultSchemaStr();
     Schema computeResultSchema = computeResultSchemaCache.get(computeResultSchemaStr);
     if (computeResultSchema == null) {
       computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
       // sanity check on the result schema
-      ComputeUtils.checkResultSchema(computeResultSchema, latestValueSchema, (List) computeRequest.operations);
+      ComputeUtils.checkResultSchema(computeResultSchema, latestValueSchema, (List) computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
 
@@ -311,7 +311,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      key.keyBytes,
                                                      key.keyIndex,
                                                      key.partitionId,
-                                                     computeRequest.operations,
+                                                     computeRequestWrapper.getOperations(),
                                                      compressionStrategy,
                                                      latestValueSchema,
                                                      computeResultSchema,

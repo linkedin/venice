@@ -3,7 +3,7 @@ package com.linkedin.venice.router.api.path;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
@@ -22,29 +22,27 @@ import javax.annotation.Nonnull;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 
+import static com.linkedin.venice.compute.ComputeRequestWrapper.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKeyV1> {
-  private static final String ROUTER_REQUEST_VERSION = Integer.toString(
-      ReadAvroProtocolDefinition.COMPUTE_ROUTER_REQUEST_V1.getProtocolVersion());
-
-  public static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1;
-
   // Compute request is useless for now in router, until we support ranking in the future.
-  private final ComputeRequestV1 computeRequest;
+  private final ComputeRequestWrapper computeRequestWrapper;
   private final byte[] requestContent;
   private final int computeRequestLengthInBytes;
 
+  private final int computeRequestVersion;
+
   public VeniceComputePath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
-      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs)
+      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs, boolean useFastAvro)
       throws RouterException {
     super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
 
-    // Validate API version
-    int apiVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
-    if (apiVersion != EXPECTED_PROTOCOL.getProtocolVersion()) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
-          BAD_REQUEST, "Expected api version: " + EXPECTED_PROTOCOL.getProtocolVersion() + ", but received: " + apiVersion);
+    // Get API version
+    computeRequestVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
+    if (computeRequestVersion <= 0 || computeRequestVersion > LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()), BAD_REQUEST,
+          "Compute API version " + computeRequestVersion + " is invalid. Latest version is " + LATEST_SCHEMA_VERSION_FOR_COMPUTE_REQUEST);
     }
 
     Iterable<ByteBuffer> keys = null;
@@ -55,11 +53,10 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
      * The first part of the request content from client is the ComputeRequest which contains an array of operations
      * and the result schema string for now; deserialize the first part and record the length of the first part
      */
-    RecordDeserializer<ComputeRequestV1> computeRequestDeserializer =
-        SerializerDeserializerFactory.getAvroSpecificDeserializer(EXPECTED_PROTOCOL.getSchema(), ComputeRequestV1.class);
+    computeRequestWrapper = new ComputeRequestWrapper(computeRequestVersion);
     BinaryDecoder decoder =
         OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(requestContent, 0, requestContent.length);
-    computeRequest = computeRequestDeserializer.deserialize(decoder);
+    computeRequestWrapper.deserialize(decoder, useFastAvro);
     try {
       // record the length of the serialized ComputeRequest
       computeRequestLengthInBytes = requestContent.length - decoder.inputStream().available();
@@ -77,12 +74,14 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   }
 
   private VeniceComputePath(String resourceName, Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey, ComputeRequestV1 computeRequest, byte[] requestContent,
-      int computeRequestLengthInBytes, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
+      Map<Integer, RouterKey> keyIdxToRouterKey, ComputeRequestWrapper computeRequestWrapper, byte[] requestContent,
+      int computeRequestLengthInBytes, int computeRequestVersion, boolean smartLongTailRetryEnabled,
+      int smartLongTailRetryAbortThresholdMs) {
     super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey);
-    this.computeRequest = computeRequest;
+    this.computeRequestWrapper = computeRequestWrapper;
     this.requestContent = requestContent;
     this.computeRequestLengthInBytes = computeRequestLengthInBytes;
+    this.computeRequestVersion = computeRequestVersion;
     setPartitionKeys(routerKeyMap.keySet());
   }
 
@@ -113,7 +112,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   protected VeniceComputePath fixRetryRequestForSubPath(Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
       Map<Integer, RouterKey> keyIdxToRouterKey) {
     VeniceComputePath subPath = new VeniceComputePath(getResourceName(), routerKeyMap, keyIdxToRouterKey,
-        this.computeRequest, this.requestContent, this.computeRequestLengthInBytes,
+        this.computeRequestWrapper, this.requestContent, this.computeRequestLengthInBytes, this.computeRequestVersion,
         isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs());
     subPath.setupRetryRelatedInfo(this);
     return subPath;
@@ -146,12 +145,12 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
 
   @Override
   public String getVeniceApiVersionHeader() {
-    return ROUTER_REQUEST_VERSION;
+    return String.valueOf(computeRequestVersion);
   }
 
   // for testing
-  protected ComputeRequestV1 getComputeRequest() {
-    return computeRequest;
+  protected ComputeRequestWrapper getComputeRequest() {
+    return computeRequestWrapper;
   }
 
   // for testing

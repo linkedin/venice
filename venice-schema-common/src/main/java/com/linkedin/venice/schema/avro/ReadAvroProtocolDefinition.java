@@ -1,6 +1,7 @@
 package com.linkedin.venice.schema.avro;
 
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestKeyV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -52,6 +53,14 @@ public enum ReadAvroProtocolDefinition {
    * the keys that will be computed on, represented by COMPUTE_REQUEST_CLIENT_KEY_V1.
    */
   COMPUTE_REQUEST_V1(1, Optional.of(ComputeRequestV1.class), Optional.of(ComputeRequestV1.SCHEMA$)),
+
+  /**
+   * Compute request v2.
+   *
+   * Version 2 includes support for Hadamard Product.
+   */
+  COMPUTE_REQUEST_V2(2, Optional.of(ComputeRequestV2.class), Optional.of(ComputeRequestV2.SCHEMA$)),
+
   /**
    * Response record for compute v1
    */
