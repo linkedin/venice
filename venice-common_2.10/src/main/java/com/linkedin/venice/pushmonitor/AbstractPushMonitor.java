@@ -92,7 +92,7 @@ public abstract class AbstractPushMonitor
 
         // Check the status for running pushes. In case controller missed some notification during the failover, we
         // need to update it based on current routing data.
-        if (offlinePushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+        if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
           String topic = offlinePushStatus.getKafkaTopic();
           if (routingDataRepository.containsKafkaTopic(topic)) {
             routingDataRepository.subscribeRoutingDataChange(topic, this);
@@ -404,7 +404,7 @@ public abstract class AbstractPushMonitor
         }
 
         Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(pushStatus, partitionAssignment);
-        if (!status.getFirst().equals(pushStatus.getCurrentStatus())) {
+        if (!status.getFirst().equals(pushStatus.getCurrentStatus()) && status.getFirst().isTerminal()) {
           logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
           handleOfflinePushUpdate(pushStatus, status.getFirst(), status.getSecond());
         }
@@ -485,8 +485,12 @@ public abstract class AbstractPushMonitor
     }
   }
 
+  /**
+   * This method will unsubscribe external view changes and is intended to be called when the statues are terminable.
+   */
   protected void handleOfflinePushUpdate(OfflinePushStatus pushStatus, ExecutionStatus status, Optional<String> statusDetails) {
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
+
     if (status.equals(ExecutionStatus.COMPLETED)) {
       handleCompletedPush(pushStatus);
     } else if (status.equals(ExecutionStatus.ERROR)) {
