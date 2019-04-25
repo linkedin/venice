@@ -59,7 +59,7 @@ public class StoresRoutes {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
-        AdminSparkServer.validateParams(request, CLUSTER_HELATH_STORES.getParams(), admin);
+        AdminSparkServer.validateParams(request, CLUSTER_HEALTH_STORES.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
         Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);

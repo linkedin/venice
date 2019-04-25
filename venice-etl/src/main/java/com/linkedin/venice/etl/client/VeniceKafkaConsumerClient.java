@@ -166,7 +166,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     Map<String, ControllerClient> clusterToControllerClient = new HashMap<>();
     for (String veniceStoreName: veniceStoreNames) {
       ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrls, veniceStoreName);
-      if(clusterDiscoveryResponse.isError()){
+      if (clusterDiscoveryResponse.isError()) {
         throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
       } else {
         String clusterName = clusterDiscoveryResponse.getCluster();

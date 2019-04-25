@@ -47,7 +47,7 @@ public class TestControllerClient {
   }
   @Test
   public void testObjectMapperIgnoringUnknownProperties() throws IOException {
-    ObjectMapper objectMapper = ControllerClient.getObjectMapper();
+    ObjectMapper objectMapper = ControllerTransport.getObjectMapper();
     String field1Value = "field1_value";
     String jsonStr = "{\"field1\":\"" + field1Value + "\",\"field3\":\"" + field1Value + "\"}";
     TestJsonObject jsonObject = objectMapper.readValue(jsonStr, TestJsonObject.class);
@@ -74,7 +74,7 @@ public class TestControllerClient {
 
       String controllerUrlWithSpaceAtBeginning = "   http://" + mockController.getAddress();
       ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrlWithSpaceAtBeginning);
-      String masterControllerUrl = controllerClient.getMasterControllerUrl(controllerUrlWithSpaceAtBeginning);
+      String masterControllerUrl = controllerClient.getMasterControllerUrl();
       Assert.assertEquals(masterControllerUrl, fakeMasterControllerUrl);
     }
   }
@@ -92,7 +92,7 @@ public class TestControllerClient {
     mockController.addResponseForUriPattern(uriPattern,
         constructMasterControllerResponse(veniceClusterName, fakeMasterControllerUri));
     try(D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress())) {
-      String masterControllerUrl = d2ControllerClient.getMasterControllerUrl(mockController.getZkAddress());
+      String masterControllerUrl = d2ControllerClient.getMasterControllerUrl();
       Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
     }
   }
@@ -116,7 +116,7 @@ public class TestControllerClient {
       D2ClientUtils.startClient(d2Client);
       try (D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName,
           d2Client)) {
-        String masterControllerUrl = d2ControllerClient.getMasterControllerUrl(mockController.getZkAddress());
+        String masterControllerUrl = d2ControllerClient.getMasterControllerUrl();
         Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
       }
     } finally {

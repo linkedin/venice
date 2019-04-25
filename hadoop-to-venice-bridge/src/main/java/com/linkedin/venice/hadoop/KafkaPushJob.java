@@ -591,7 +591,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
       String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
       logger.error(briefErrorMessage +
-          "\n\t\tController URLs: " + controllerClient.getUrlsToFindMasterController() +
+          "\n\t\tController URLs: " + controllerClient.getControllerDiscoveryUrls() +
           "\n\t\tschema defined in HDFS: \t" + schemaInfo.keySchemaString +
           "\n\t\tschema defined in Venice: \t" + keySchemaResponse.getSchemaStr());
       throw new VeniceException(briefErrorMessage);

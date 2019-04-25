@@ -100,7 +100,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(LIST_CHILD_CLUSTERS.getPath(), ControllerRoutes.getChildControllers(admin));
     httpService.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
-    httpService.get(CLUSTER_HELATH_STORES.getPath(), StoresRoutes.getAllStoresStatuses(admin));
+    httpService.get(CLUSTER_HEALTH_STORES.getPath(), StoresRoutes.getAllStoresStatuses(admin));
     httpService.get(STORE.getPath(), StoresRoutes.getStore(admin));
 
     httpService.get(JOB.getPath(), JobRoutes.jobStatus(admin));

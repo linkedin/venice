@@ -1,69 +1,103 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.QueryParams;
+import com.linkedin.venice.controllerapi.ControllerTransport;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.http.message.BasicNameValuePair;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.controllerapi.ControllerRoute.REQUEST_TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public class TestBackupControllerResponse {
   @Test
-  public void backupControllerThrows421()
-      throws Exception {
-
+  public void backupControllerThrows421() throws Exception {
     String clusterName = "backupControllerThrows421";
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-
-
-
-    //Start 2 controllers.
+    ControllerTransport transport = new ControllerTransport();
     VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(clusterName, kafka);
     VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(clusterName, kafka);
 
     Thread.sleep(2000);
-    CloseableHttpAsyncClient httpClient = HttpAsyncClients.createDefault();
-    httpClient.start();
-    // Find the url for slave controller
-    String controllerUrl = controller1.isMasterController(clusterName)?controller2.getControllerUrl():controller1.getControllerUrl();
 
-    final HttpPost post = new HttpPost(controllerUrl + REQUEST_TOPIC.getPath());
-    List<NameValuePair> params = new ArrayList<NameValuePair>();
-    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
-    post.setEntity(new UrlEncodedFormEntity(params));
+    VeniceControllerWrapper nonMasterController = !controller1.isMasterController(clusterName) ? controller1 : controller2;
+    try {
+      transport.request(
+          nonMasterController.getControllerUrl(),
+          REQUEST_TOPIC,
+          new QueryParams().add(CLUSTER, clusterName),
+          VersionCreationResponse.class);
+    } catch (VeniceHttpException e) {
+      Assert.assertEquals(e.getHttpStatusCode(), HttpConstants.SC_MISDIRECTED_REQUEST);
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception", e);
+    }
 
-    HttpResponse response = httpClient.execute(post, null).get();
-    int responseStatus = response.getStatusLine().getStatusCode();
-    Assert.assertEquals(responseStatus, HttpConstants.SC_MISDIRECTED_REQUEST);
+    try {
+      transport.request(
+          nonMasterController.getControllerUrl(),
+          JOB,
+          new QueryParams().add(CLUSTER, clusterName),
+          VersionCreationResponse.class);
+    } catch (VeniceHttpException e) {
+      Assert.assertEquals(e.getHttpStatusCode(), HttpConstants.SC_MISDIRECTED_REQUEST);
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception", e);
+    }
 
-    List<NameValuePair> queryParams = new ArrayList<>();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + JOB.getPath() + "?" + queryString);
-    HttpResponse response2 = httpClient.execute(get, null).get();
+    try {
+      int timeoutMs = 1;
+      transport.request(
+          controller1.getControllerUrl(),
+          JOB,
+          new QueryParams().add(CLUSTER, clusterName),
+          VersionCreationResponse.class,
+          timeoutMs);
+      Assert.fail("Expected TimeoutException did not happen");
+    } catch (TimeoutException e) {
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception", e);
+    }
 
-    int responseStatus2 = response2.getStatusLine().getStatusCode();
-    Assert.assertEquals(responseStatus2, HttpConstants.SC_MISDIRECTED_REQUEST);
+    try {
+      String invalidControllerUrl = "http://0.0.0.0";
+      transport.request(
+          invalidControllerUrl,
+          JOB,
+          new QueryParams().add(CLUSTER, clusterName),
+          VersionCreationResponse.class);
+      Assert.fail("Expected ExecutionException did not happen");
+    } catch (ExecutionException e) {
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception", e);
+    }
 
-    httpClient.close();
+
+    String deadControllerUrl = controller1.getControllerUrl();
     controller1.close();
     controller2.close();
+    try {
+      transport.request(
+          deadControllerUrl,
+          JOB,
+          new QueryParams().add(CLUSTER, clusterName),
+          VersionCreationResponse.class);
+      Assert.fail("Expected ExecutionException did not happen");
+    } catch (ExecutionException e) {
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception", e);
+    }
+
+    transport.close();
     kafka.close();
   }
 }

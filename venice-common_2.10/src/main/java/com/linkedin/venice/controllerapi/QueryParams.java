@@ -8,11 +8,10 @@ import java.util.stream.Collectors;
 import org.apache.http.NameValuePair;
 import org.apache.http.message.BasicNameValuePair;
 
-
 /**
  * A simple container with builder functions to sugar-coat the code a bit.
  */
-class QueryParams {
+public class QueryParams {
   protected final Map<String, String> params;
 
   public QueryParams(Map<String, String> initialParams) {
