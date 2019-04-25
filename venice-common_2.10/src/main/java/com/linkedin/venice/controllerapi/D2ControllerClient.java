@@ -8,7 +8,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import java.nio.charset.StandardCharsets;
 
-
 public class D2ControllerClient extends ControllerClient{
   private final static String D2_SCHEME = "d2://";
   private final static String DUMMY_URL_WHEN_USING_D2_CLIENT = "http://fake.host";
@@ -16,7 +15,6 @@ public class D2ControllerClient extends ControllerClient{
   private final String d2ServiceName;
   private final D2Client d2Client;
   private final boolean externalD2Client;
-
 
   public D2ControllerClient(String d2ServiceName, String clusterName, String d2ZKHost) {
     /**
@@ -39,12 +37,13 @@ public class D2ControllerClient extends ControllerClient{
     this.externalD2Client = true;
   }
 
-
   @Override
-  protected String getMasterControllerUrl(String urlsToFindMasterController) {
-    MasterControllerResponse controllerResponse = d2ClientGet(d2Client, d2ServiceName,
+  protected String discoverMasterController() {
+    MasterControllerResponse controllerResponse = d2ClientGet(
+        this.d2Client,
+        this.d2ServiceName,
         ControllerRoute.MASTER_CONTROLLER.getPath(),
-        newParams(getClusterName()),
+        newParams(),
         MasterControllerResponse.class);
     return controllerResponse.getUrl();
   }
@@ -55,12 +54,11 @@ public class D2ControllerClient extends ControllerClient{
     try {
       RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);
       String responseBody = response.getEntity().asString(StandardCharsets.UTF_8);
-      return mapper.readValue(responseBody, responseClass);
+      return ControllerTransport.getObjectMapper().readValue(responseBody, responseClass);
     } catch (Exception e) {
       throw new VeniceException("Failed to get response for url: " + requestPath + " with D2 Client", e);
     }
   }
-
 
   public static D2ServiceDiscoveryResponse discoverCluster(D2Client d2Client, String d2ServiceName, String storeName) {
     return d2ClientGet(d2Client, d2ServiceName, ControllerRoute.CLUSTER_DISCOVERY.getPath(),

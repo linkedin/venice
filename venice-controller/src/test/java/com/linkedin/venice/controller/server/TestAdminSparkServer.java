@@ -732,8 +732,8 @@ public class TestAdminSparkServer {
   }
 
   @Test(timeOut = TIME_OUT)
-  public void controllerCLientCanUploadPushProperties() {
-    String storeName = "controllerCLientCanUploadPushProperties";
+  public void controllerClientCanUploadPushProperties() {
+    String storeName = "controllerClientCanUploadPushProperties";
     int version = 1;
     Properties p = new Properties();
     for(int i=0;i<100;i++){
@@ -750,8 +750,6 @@ public class TestAdminSparkServer {
         PushJobStatus.SUCCESS, 1000, "test-push-id", "");
     // expected to fail because the push job status topic/store is not created (no parent controller in the cluster).
     Assert.assertEquals(jobStatusUploadResponse.isError(), true);
-    Assert.assertEquals(jobStatusUploadResponse.getName(), storeName);
-    Assert.assertEquals(jobStatusUploadResponse.getVersion(), version);
   }
 
   private void deleteStore(String storeName){

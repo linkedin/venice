@@ -6,143 +6,98 @@ import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Collections;
+
 import java.util.List;
 import java.util.Optional;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Arrays;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
+import java.util.Collections;
+import java.util.stream.Collectors;
 import java.util.function.Function;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.HttpHeaders;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpRequestBase;
-import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
+
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ExecutionException;
+
+import java.io.Closeable;
+import java.nio.charset.StandardCharsets;
+
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
+import org.apache.http.client.utils.URLEncodedUtils;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public class ControllerClient implements Closeable {
-  private String masterControllerUrl;
   private String clusterName;
-  private String urlsToFindMasterController;
-  private String localHostname;
+  private String localHostName;
+  private String masterControllerUrl;
+  private List<String> controllerDiscoveryUrls;
 
-  private static final int ADMIN_REQUEST_TIMEOUT_MIN = 10;
-  protected final static ObjectMapper mapper = getObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
 
-  protected static ObjectMapper getObjectMapper() {
-    ObjectMapper objectMapper = new ObjectMapper();
-    // Ignore unknown properties when deserializing json-encoded string
-    objectMapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-
-    return objectMapper;
-  }
-
   /**
-   * @param urlsToFindMasterController comma-delimited urls to find master controller.
+   * @param discoveryUrls comma-delimited urls to find master controller.
    */
-  public ControllerClient(String clusterName, String urlsToFindMasterController) {
-    if(Utils.isNullOrEmpty(urlsToFindMasterController)) {
-      throw new VeniceException("urlsToFindMasterController: "+ urlsToFindMasterController +" is not valid");
+  public ControllerClient(String clusterName, String discoveryUrls) {
+    if (Utils.isNullOrEmpty(discoveryUrls)) {
+      throw new VeniceException("Controller discovery url list is empty: " + discoveryUrls);
     }
 
     this.clusterName = clusterName;
-    this.urlsToFindMasterController = urlsToFindMasterController;
-    this.localHostname = Utils.getHostName();
-    if (logger.isDebugEnabled()) {
-      logger.debug("Parsed hostname as: " + localHostname);
+    this.localHostName = Utils.getHostName();
+    this.controllerDiscoveryUrls = Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
+    if (this.controllerDiscoveryUrls.isEmpty()) {
+      throw new VeniceException("Controller discovery url list is empty");
     }
-  }
-
-  protected void refreshControllerUrl(){
-    String controllerUrl = getMasterControllerUrl(urlsToFindMasterController);
-    if (controllerUrl.endsWith("/")){
-      this.masterControllerUrl = controllerUrl.substring(0, controllerUrl.length()-1);
-    } else {
-      this.masterControllerUrl = controllerUrl;
-    }
-    logger.debug("Identified controller URL: " + this.masterControllerUrl + " from url: " + urlsToFindMasterController);
+    logger.debug("Parsed hostname as: " + this.localHostName);
   }
 
   @Override
   public void close() {
   }
 
-  protected String getMasterControllerUrl(String urlsToFindMasterController){
-    List<String> urlList = Arrays.asList(urlsToFindMasterController.split(","));
-    Collections.shuffle(urlList);
-    Throwable lastException = null;
-    for (String url : urlList) {
-      try {
-        String responseBody = getRequest(url, ControllerRoute.MASTER_CONTROLLER.getPath(), newParams());
-        MasterControllerResponse controllerResponse = mapper.readValue(responseBody, MasterControllerResponse.class);
-        if (controllerResponse.isError()) {
-          throw new VeniceException("Received error response: [" + mapper.writeValueAsString(controllerResponse) + "] from url: " + url);
-        }
+  protected String discoverMasterController() {
+    List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
+    Collections.shuffle(urls);
 
-        return controllerResponse.getUrl();
-      } catch (Exception e) {
-        logger.warn("Failed to get controller URL from url: " + url, e);
-        lastException = e;
+    Exception lastException = null;
+    try (ControllerTransport transport = new ControllerTransport()) {
+      for (String url : urls) {
+        try {
+          String masterUrl = transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), MasterControllerResponse.class).getUrl();
+          logger.info("Discovered master controller + " + masterUrl + " from " + url);
+          return masterUrl;
+        } catch (Exception e) {
+          logger.warn("Unable to discover master controller from " + url, e);
+          lastException = e;
+        }
       }
     }
-    String errMessage = "Could not get controller url from urls: " + urlsToFindMasterController;
-    if (null != lastException) {
-      throw new VeniceException(errMessage + " -- " + lastException.getMessage(), lastException);
-    } else {
-      throw new VeniceException(errMessage);
-    }
+    String message = "Unable to discover master controller from " + this.controllerDiscoveryUrls;
+    logger.error(message, lastException);
+    throw new VeniceException(message, lastException);
   }
 
   public StoreResponse getStore(String storeName) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName);
-      String responseJson = getRequest(ControllerRoute.STORE.getPath(), params);
-      return mapper.readValue(responseJson, StoreResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting store: " + storeName, e), new StoreResponse());
-    }
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.STORE, params, StoreResponse.class);
   }
 
   @Deprecated
-  public static StoreResponse getStore(String urlsToFindMasterController, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(clusterName,urlsToFindMasterController)){
+  public static StoreResponse getStore(String urlsToFindMasterController, String clusterName, String storeName) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)) {
       return client.getStore(storeName);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting store: " + storeName, e), new StoreResponse());
     }
   }
 
   public StorageEngineOverheadRatioResponse getStorageEngineOverheadRatio(String storeName) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName);
-      String responseJson = getRequest(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), params);
-      return mapper.readValue(responseJson, StorageEngineOverheadRatioResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting store: " + storeName, e), new StorageEngineOverheadRatioResponse());
-    }
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO, params, StorageEngineOverheadRatioResponse.class);
   }
 
   /**
@@ -158,19 +113,13 @@ public class ControllerClient implements Closeable {
    */
   public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType,
       String pushJobId, boolean sendStartOfPush) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(STORE_SIZE, Long.toString(storeSize))
-          .add(PUSH_JOB_ID, pushJobId)
-          .add(PUSH_TYPE, pushType.toString())
-          .add(SEND_START_OF_PUSH, sendStartOfPush);
-      String responseJson = postRequest(ControllerRoute.REQUEST_TOPIC.getPath(), params);
-      return mapper.readValue(responseJson, VersionCreationResponse.class);
-    } catch (Exception e){
-      return handleError(
-          new VeniceException("Error requesting topic for store: " + storeName, e), new VersionCreationResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(STORE_SIZE, Long.toString(storeSize))
+        .add(PUSH_JOB_ID, pushJobId)
+        .add(PUSH_TYPE, pushType.toString())
+        .add(SEND_START_OF_PUSH, sendStartOfPush);
+    return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }
 
   /**
@@ -183,162 +132,93 @@ public class ControllerClient implements Closeable {
    * @param partitionCount of the original push.
    * @return
    */
-  public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
-      int partitionCount) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(PUSH_JOB_ID, pushJobId)
-          .add(VERSION, version)
-          .add(PARTITION_COUNT, partitionCount);
-      String responseJson = postRequest(ControllerRoute.ADD_VERSION.getPath(), params);
-      return mapper.readValue(responseJson, VersionResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error adding version " + version + " and starting ingestion for store "
-          + storeName, e), new VersionResponse());
-    }
+  public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version, int partitionCount) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(PUSH_JOB_ID, pushJobId)
+        .add(VERSION, version)
+        .add(PARTITION_COUNT, partitionCount);
+    return request(ControllerRoute.ADD_VERSION, params, VersionResponse.class);
   }
 
   public ControllerResponse uploadPushProperties(String storeName, int version, Properties properties) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, version);
-      for (Object key : properties.keySet()) {
-        params.add(key.toString(), properties.getProperty(key.toString()));
-      }
-      String responseJson = postRequest(ControllerRoute.OFFLINE_PUSH_INFO.getPath(), params);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error uploading the push properties for store: " + storeName, e),
-          new ControllerResponse());
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version);
+    for (Object key : properties.keySet()) {
+      params.add(key.toString(), properties.getProperty(key.toString()));
     }
+    return request(ControllerRoute.OFFLINE_PUSH_INFO, params, ControllerResponse.class);
   }
 
-  public ControllerResponse writeEndOfPush(String storeName, int version){
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, version);
-      String responseJson = postRequest(ControllerRoute.END_OF_PUSH.getPath(), params);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e){
-      return handleError(
-          new VeniceException("Error generating End Of Push for store: " + storeName, e), new ControllerResponse());
-    }
+  public ControllerResponse writeEndOfPush(String storeName, int version) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version);
+    return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
   }
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(PUSH_JOB_ID, pushJobId)
-          .add(STORE_SIZE, Long.toString(storeSize));
-      String responseJson = postRequest(ControllerRoute.EMPTY_PUSH.getPath(), params);
-      return mapper.readValue(responseJson, VersionCreationResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error generating empty push for store: " + storeName, e), new VersionCreationResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(PUSH_JOB_ID, pushJobId)
+        .add(STORE_SIZE, Long.toString(storeSize));
+    return request(ControllerRoute.EMPTY_PUSH, params, VersionCreationResponse.class);
   }
 
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(OWNER, owner)
-          .add(KEY_SCHEMA, keySchema)
-          .add(VALUE_SCHEMA, valueSchema);
-      String responseJson = postRequest(ControllerRoute.NEW_STORE.getPath(), params);
-      return mapper.readValue(responseJson, NewStoreResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error creating store: " + storeName, e), new NewStoreResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(OWNER, owner)
+        .add(KEY_SCHEMA, keySchema)
+        .add(VALUE_SCHEMA, valueSchema);
+    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String srcClusterName) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(CLUSTER, this.clusterName)
-          .add(CLUSTER_SRC, srcClusterName);
-      String responseJson = postRequest(ControllerRoute.MIGRATE_STORE.getPath(), params);
-      return mapper.readValue(responseJson, StoreMigrationResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error migrating store: " + storeName
-                  + " from: " + srcClusterName + " to: " + this.clusterName, e),
-          new StoreMigrationResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(CLUSTER_SRC, srcClusterName);
+    return request(ControllerRoute.MIGRATE_STORE, params, StoreMigrationResponse.class);
   }
 
   /**
    * This commmand should be sent to src controller, not dest controler
    */
   public StoreMigrationResponse abortMigration(String storeName, String destClusterName) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(CLUSTER, this.clusterName)
-          .add(CLUSTER_DEST, destClusterName);
-      String responseJson = postRequest(ControllerRoute.ABORT_MIGRATION.getPath(), params);
-      return mapper.readValue(responseJson, StoreMigrationResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error aborting store migration: " + storeName
-              + " from: " + this.clusterName + " to: " + destClusterName, e),
-          new StoreMigrationResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(CLUSTER_DEST, destClusterName);
+    return request(ControllerRoute.ABORT_MIGRATION, params, StoreMigrationResponse.class);
   }
 
   public TrackableControllerResponse deleteStore(String storeName) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName);
-      String responseJson = postRequest(ControllerRoute.DELETE_STORE.getPath(), queryParams);
-      return mapper.readValue(responseJson, TrackableControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error deleting store : " + storeName, e),
-          new TrackableControllerResponse());
-    }
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
   }
 
-
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, version);
-      String responseJson = postRequest(ControllerRoute.SET_VERSION.getPath(), params);
-      return mapper.readValue(responseJson, VersionResponse.class);
-    } catch(Exception e){
-      return handleError(new VeniceException("Error setting version.  Storename: " + storeName + " Version: " + version), new VersionResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version);
+    return request(ControllerRoute.SET_VERSION, params, VersionResponse.class);
   }
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
-    try {
-      String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-      int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-
-      QueryParams queryParams = newParams()
-          .add(TOPIC, kafkaTopic) // TODO: remove once the controller is deployed to handle store and version instead
-          .add(NAME, store)
-          .add(VERSION, versionNumber);
-      String responseJson = postRequest(ControllerRoute.KILL_OFFLINE_PUSH_JOB.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error killing job for topic: " + kafkaTopic + " in cluster: " + clusterName, e), new ControllerResponse());
-    }
+    String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    QueryParams params = newParams()
+        .add(TOPIC, kafkaTopic) // TODO: remove once the controller is deployed to handle store and version instead
+        .add(NAME, store)
+        .add(VERSION, versionNumber);
+    return request(ControllerRoute.KILL_OFFLINE_PUSH_JOB, params, ControllerResponse.class);
   }
 
-  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV){
-    try {
-      QueryParams queryParams = newParams()
-          .add(OFFSET, offset)
-          .add(SKIP_DIV, skipDIV);
-      String responseJson = postRequest(ControllerRoute.SKIP_ADMIN.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error skipping admin message in cluster: " + clusterName, e), new ControllerResponse());
-    }
+  public ControllerResponse skipAdminMessage(String offset, boolean skipDIV) {
+    QueryParams params = newParams()
+        .add(OFFSET, offset)
+        .add(SKIP_DIV, skipDIV);
+    return request(ControllerRoute.SKIP_ADMIN, params, ControllerResponse.class);
   }
 
   public <R extends ControllerResponse> R retryableRequest(int totalAttempts, Function<ControllerClient, R> request) {
@@ -348,14 +228,14 @@ public class ControllerClient implements Closeable {
   /**
    * Useful for pieces of code which want to have a test mocking the result of the function that's passed in...
    */
-  public static <R extends ControllerResponse> R retryableRequest(ControllerClient client, int totalAttempts, Function<ControllerClient, R> request){
-    if (totalAttempts < 1){
+  public static <R extends ControllerResponse> R retryableRequest(ControllerClient client, int totalAttempts, Function<ControllerClient, R> request) {
+    if (totalAttempts < 1) {
       throw new VeniceException("Querying with retries requires at least one attempt, called with " + totalAttempts + " attempts");
     }
     int currentAttempt = 1;
     while (true) {
       R response = request.apply(client);
-      if (!response.isError() || currentAttempt == totalAttempts){
+      if (!response.isError() || currentAttempt == totalAttempts) {
         return response;
       } else {
         logger.warn("Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: " + response.getError());
@@ -370,20 +250,13 @@ public class ControllerClient implements Closeable {
   }
 
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
-    try {
-      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-      int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, version);
-      if (incrementalPushVersion.isPresent()) {
-        queryParams.add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion.get());
-      }
-      String responseJson = getRequest(ControllerRoute.JOB.getPath(), queryParams);
-      return mapper.readValue(responseJson, JobStatusQueryResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error querying job status for topic: " + kafkaTopic, e), new JobStatusQueryResponse());
-    }
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version)
+        .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, 60 * Time.MS_PER_SECOND);
   }
 
   /**
@@ -398,48 +271,22 @@ public class ControllerClient implements Closeable {
    */
   public PushJobStatusUploadResponse uploadPushJobStatus(String storeName, int version, PushJobStatus status,
       long jobDurationInMs, String pushJobId, String message) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(CLUSTER, clusterName)
-          .add(NAME, storeName)
-          .add(VERSION, version)
-          .add(PUSH_JOB_STATUS, status.name())
-          .add(PUSH_JOB_DURATION, jobDurationInMs)
-          .add(PUSH_JOB_ID, pushJobId)
-          .add(MESSAGE, message);
-      String responseJson = postRequest(ControllerRoute.UPLOAD_PUSH_JOB_STATUS.getPath(), queryParams);
-      return mapper.readValue(responseJson, PushJobStatusUploadResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error uploading job status", e), new PushJobStatusUploadResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version)
+        .add(PUSH_JOB_STATUS, status.name())
+        .add(PUSH_JOB_DURATION, jobDurationInMs)
+        .add(PUSH_JOB_ID, pushJobId)
+        .add(MESSAGE, message);
+    return request(ControllerRoute.UPLOAD_PUSH_JOB_STATUS, params, PushJobStatusUploadResponse.class);
   }
 
   public MultiStoreResponse queryStoreList() {
-    try {
-      String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath());
-      return mapper.readValue(responseJson, MultiStoreResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing store for cluster: " + clusterName, e), new MultiStoreResponse());
-    }
-  }
-
-  @Deprecated
-  public static MultiStoreResponse listStores(String urlsToFindMasterController, String clusterName){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryStoreList();
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing store for cluster: " + clusterName, e), new MultiStoreResponse());
-    }
+    return request(ControllerRoute.LIST_STORES, newParams(), MultiStoreResponse.class);
   }
 
   public MultiStoreStatusResponse listStoresStatuses() {
-    try {
-      String responseJson = getRequest(ControllerRoute.CLUSTER_HELATH_STORES.getPath());
-      return mapper.readValue(responseJson, MultiStoreStatusResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error listing store status for cluster: " + clusterName, e),
-          new MultiStoreStatusResponse());
-    }
+    return request(ControllerRoute.CLUSTER_HEALTH_STORES, newParams(),  MultiStoreStatusResponse.class);
   }
 
   public ControllerResponse enableStoreWrites(String storeName, boolean enable) {
@@ -454,337 +301,171 @@ public class ControllerClient implements Closeable {
     return enableStore(storeName, enable, READ_WRITE_OPERATION);
   }
 
-  private ControllerResponse enableStore(String storeName, boolean enable, String operation){
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(STATUS, enable)
-          .add(OPERATION, operation);
-      String responseJson = postRequest(ControllerRoute.ENABLE_STORE.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e){
-      String msg = enable ?
-          "Could not enable store for " + operation + " :" + storeName :
-          "Could not disable store for" + operation + " :" + storeName;
-      return handleError(new VeniceException(msg, e), new ControllerResponse());
-    }
+  private ControllerResponse enableStore(String storeName, boolean enable, String operation) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(STATUS, enable)
+        .add(OPERATION, operation);
+    return request(ControllerRoute.ENABLE_STORE, params, ControllerResponse.class);
   }
 
   public MultiVersionResponse deleteAllVersions(String storeName) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName);
-      String responseJson = postRequest(ControllerRoute.DELETE_ALL_VERSIONS.getPath(), queryParams);
-      return mapper.readValue(responseJson, MultiVersionResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error deleting all version for store : " + storeName, e),
-          new MultiVersionResponse());
-    }
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.DELETE_ALL_VERSIONS, params, MultiVersionResponse.class);
   }
 
   public VersionResponse deleteOldVersion(String storeName, int versionNum) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, versionNum);
-      String responseJson = postRequest(ControllerRoute.DELETE_OLD_VERSION.getPath(), queryParams);
-      return mapper.readValue(responseJson, VersionResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error deleting version:" + versionNum + " for store : " + storeName, e),
-          new VersionResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, versionNum);
+    return request(ControllerRoute.DELETE_OLD_VERSION, params, VersionResponse.class);
   }
 
   public NodeStatusResponse isNodeRemovable(String instanceId) {
-    return singleNodeOperation(instanceId, ControllerRoute.NODE_REMOVABLE.getPath(), HttpGet.METHOD_NAME, NodeStatusResponse.class);
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
+    return request(ControllerRoute.NODE_REMOVABLE, params, NodeStatusResponse.class);
   }
 
   public ControllerResponse addNodeIntoWhiteList(String instanceId) {
-    return singleNodeOperation(instanceId, ControllerRoute.WHITE_LIST_ADD_NODE.getPath(), HttpPost.METHOD_NAME, ControllerResponse.class);
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
+    return request(ControllerRoute.WHITE_LIST_ADD_NODE, params, ControllerResponse.class);
   }
 
   public ControllerResponse removeNodeFromWhiteList(String instanceId) {
-    return singleNodeOperation(instanceId, ControllerRoute.WHITE_LIST_REMOVE_NODE.getPath(), HttpPost.METHOD_NAME, ControllerResponse.class);
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
+    return request(ControllerRoute.WHITE_LIST_REMOVE_NODE, params, ControllerResponse.class);
   }
 
   public ControllerResponse removeNodeFromCluster(String instanceId) {
-    return singleNodeOperation(instanceId, ControllerRoute.REMOVE_NODE.getPath(), HttpPost.METHOD_NAME, ControllerResponse.class);
-  }
-
-  /**
-   * Generic method to process all operations against the single node.
-   */
-  private <T extends ControllerResponse> T singleNodeOperation(String instanceId, String path, String method,
-      Class<T> responseType) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(STORAGE_NODE_ID, instanceId);
-      String responseJson = null;
-      if (method.equals(HttpGet.METHOD_NAME)) {
-        responseJson = getRequest(path, queryParams);
-      } else if (method.equals(HttpPost.METHOD_NAME)) {
-        responseJson = postRequest(path, queryParams);
-      } else {
-        throw new VeniceUnsupportedOperationException(method);
-      }
-      return mapper.readValue(responseJson, responseType);
-    } catch (Exception e) {
-      try {
-        return handleError(new VeniceException("Could not complete the operation on the node: " + instanceId, e),
-            responseType.newInstance());
-      } catch (IllegalAccessException | InstantiationException reflectException) {
-        String errorMsg = "Could not create response of type:" + responseType.getName();
-        logger.error(errorMsg, reflectException);
-        throw new VeniceException(errorMsg, reflectException);
-      }
-    }
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
+    return request(ControllerRoute.REMOVE_NODE, params, ControllerResponse.class);
   }
 
   public MultiNodeResponse listStorageNodes() {
-    try {
-      String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath());
-      return mapper.readValue(responseJson, MultiNodeResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
-    }
+    return request(ControllerRoute.LIST_NODES, newParams(), MultiNodeResponse.class);
   }
 
   public MultiNodesStatusResponse listInstancesStatuses() {
-    try {
-      String responseJson = getRequest(ControllerRoute.ClUSTER_HEALTH_INSTANCES.getPath());
-      return mapper.readValue(responseJson, MultiNodesStatusResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
-    }
+    return request(ControllerRoute.ClUSTER_HEALTH_INSTANCES, newParams(), MultiNodesStatusResponse.class);
   }
 
   public MultiReplicaResponse listReplicas(String storeName, int version) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, version);
-      String responseJson = getRequest(ControllerRoute.LIST_REPLICAS.getPath(), params);
-      return mapper.readValue(responseJson, MultiReplicaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing replicas for store: " + storeName + " version: " + version, e), new MultiReplicaResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version);
+    return request(ControllerRoute.LIST_REPLICAS, params, MultiReplicaResponse.class);
   }
 
   public MultiReplicaResponse listStorageNodeReplicas(String instanceId) {
-    try {
-      QueryParams params = newParams()
-          .add(STORAGE_NODE_ID, instanceId);
-      String responseJson = getRequest(ControllerRoute.NODE_REPLICAS.getPath(), params);
-      return mapper.readValue(responseJson, MultiReplicaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
-    }
+    QueryParams params = newParams().add(STORAGE_NODE_ID, instanceId);
+    return request(ControllerRoute.NODE_REPLICAS, params, MultiReplicaResponse.class);
   }
 
   public ChildAwareResponse listChildControllers(String clusterName) {
-    try {
-      QueryParams params = newParams().add(CLUSTER, clusterName);
-      String responseJson = getRequest(ControllerRoute.LIST_CHILD_CLUSTERS.getPath(), params);
-      return mapper.readValue(responseJson, ChildAwareResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error listing child controllers for cluster: " + clusterName, e), new ChildAwareResponse());
-    }
+    QueryParams params = newParams().add(CLUSTER, clusterName);
+    return request(ControllerRoute.LIST_CHILD_CLUSTERS, params, ChildAwareResponse.class);
   }
 
-
-  /* SCHEMA */
   public SchemaResponse getKeySchema(String storeName) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName);
-      String responseJson = getRequest(ControllerRoute.GET_KEY_SCHEMA.getPath(), queryParams);
-      return mapper.readValue(responseJson, SchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting key schema for store: " + storeName, e), new SchemaResponse());
-    }
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_KEY_SCHEMA, params, SchemaResponse.class);
   }
 
   public SchemaResponse addValueSchema(String storeName, String valueSchemaStr) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(VALUE_SCHEMA, valueSchemaStr);
-      String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
-      return mapper.readValue(responseJson, SchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VALUE_SCHEMA, valueSchemaStr);
+    return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
   public PartitionResponse setStorePartitionCount(String storeName, String partitionNum) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(PARTITION_COUNT, partitionNum);
-      String responseJson = postRequest(ControllerRoute.SET_PARTITION_COUNT.getPath(), queryParams);
-      return mapper.readValue(responseJson, PartitionResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error updating partition number: " + partitionNum + " for store: " + storeName, e), new PartitionResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(PARTITION_COUNT, partitionNum);
+    return request(ControllerRoute.SET_PARTITION_COUNT, params, PartitionResponse.class);
   }
 
   public OwnerResponse setStoreOwner(String storeName, String owner) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(OWNER, owner);
-      String responseJson = postRequest(ControllerRoute.SET_OWNER.getPath(), queryParams);
-      return mapper.readValue(responseJson, OwnerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error updating owner info: " + owner + " for store: " + storeName, e), new OwnerResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(OWNER, owner);
+    return request(ControllerRoute.SET_OWNER, params, OwnerResponse.class);
   }
 
-  public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
-    try {
-      QueryParams queryParams = addCommonParams(params)
-          .add(NAME, storeName);
-      String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error updating tore: " + storeName, e), new ControllerResponse());
-    }
+  public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams queryParams) {
+    QueryParams params = addCommonParams(queryParams).add(NAME, storeName);
+    return request(ControllerRoute.UPDATE_STORE, params, ControllerResponse.class);
   }
 
   public SchemaResponse getValueSchema(String storeName, int valueSchemaId) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(SCHEMA_ID, valueSchemaId);
-      String responseJson = getRequest(ControllerRoute.GET_VALUE_SCHEMA.getPath(), queryParams);
-      return mapper.readValue(responseJson, SchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting value schema for schema id: " + valueSchemaId + " for store: " + storeName, e), new SchemaResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(SCHEMA_ID, valueSchemaId);
+    return request(ControllerRoute.GET_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
   public SchemaResponse getValueSchemaID(String storeName, String valueSchemaStr) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName)
-          .add(VALUE_SCHEMA, valueSchemaStr);
-      String responseJson = postRequest(ControllerRoute.GET_VALUE_SCHEMA_ID.getPath(), queryParams);
-      return mapper.readValue(responseJson, SchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting value schema for schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
-    }
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VALUE_SCHEMA, valueSchemaStr);
+    return request(ControllerRoute.GET_VALUE_SCHEMA_ID, params, SchemaResponse.class);
   }
 
   public MultiSchemaResponse getAllValueSchema(String storeName) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(NAME, storeName);
-      String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
-      return mapper.readValue(responseJson, MultiSchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
-    }
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_ALL_VALUE_SCHEMA, params, MultiSchemaResponse.class);
   }
 
   public AdminCommandExecutionResponse getAdminCommandExecution(long executionId) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(EXECUTION_ID, executionId);
-      String responseJson = getRequest(ControllerRoute.EXECUTION.getPath(), queryParams);
-      return mapper.readValue(responseJson, AdminCommandExecutionResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error getting execution: " + executionId, e),
-          new AdminCommandExecutionResponse());
-    }
+    QueryParams params = newParams().add(EXECUTION_ID, executionId);
+    return request(ControllerRoute.EXECUTION, params, AdminCommandExecutionResponse.class);
   }
 
   public LastSucceedExecutionIdResponse getLastSucceedExecutionId() {
-    try {
-      String responseJson = getRequest(ControllerRoute.LAST_SUCCEED_EXECUTION_ID.getPath());
-      return mapper.readValue(responseJson, LastSucceedExecutionIdResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error getting the last succeed execution Id", e),
-          new LastSucceedExecutionIdResponse());
-    }
+    return request(ControllerRoute.LAST_SUCCEED_EXECUTION_ID, newParams(), LastSucceedExecutionIdResponse.class);
   }
 
   public ControllerResponse enableThrotting(boolean isThrottlingEnabled) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(STATUS, isThrottlingEnabled);
-      String responseJson = postRequest(ControllerRoute.ENABLE_THROTTLING.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error enabling the throttling feature.", e), new ControllerResponse());
-    }
+    QueryParams params = newParams().add(STATUS, isThrottlingEnabled);
+    return request(ControllerRoute.ENABLE_THROTTLING, params, ControllerResponse.class);
   }
 
   public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtion) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(STATUS, isMaxCapacityProtion);
-      String responseJson = postRequest(ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error enabling the max capacity protection feature.", e),
-          new ControllerResponse());
-    }
+    QueryParams params = newParams().add(STATUS, isMaxCapacityProtion);
+    return request(ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION, params, ControllerResponse.class);
   }
 
   public ControllerResponse enableQuotaRebalanced(boolean isQuotaRebalanced, int expectRouterCount) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(STATUS, isQuotaRebalanced)
-          .add(EXPECTED_ROUTER_COUNT, expectRouterCount);
-      String responseJson = postRequest(ControllerRoute.ENABLE_QUOTA_REBALANCED.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error enabling the quota rebalanced feature.", e),
-          new ControllerResponse());
-    }
+    QueryParams params = newParams()
+        .add(STATUS, isQuotaRebalanced)
+        .add(EXPECTED_ROUTER_COUNT, expectRouterCount);
+    return request(ControllerRoute.ENABLE_QUOTA_REBALANCED, params, ControllerResponse.class);
   }
 
   public RoutersClusterConfigResponse getRoutersClusterConfig() {
-    try {
-      String responseJson = getRequest(ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG.getPath());
-      return mapper.readValue(responseJson, RoutersClusterConfigResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error getting the routers cluster config.", e),
-          new RoutersClusterConfigResponse());
-    }
+    return request(ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG, newParams(), RoutersClusterConfigResponse.class);
   }
 
   public MigrationPushStrategyResponse getMigrationPushStrategies() {
-    try {
-      String responseJson = getRequest(ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath());
-      return mapper.readValue(responseJson, MigrationPushStrategyResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error getting migration push strategies.", e),
-          new MigrationPushStrategyResponse());
-    }
+    return request(ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES, newParams(), MigrationPushStrategyResponse.class);
   }
 
   public ControllerResponse setMigrationPushStrategy(String voldemortStoreName, String pushStrategy) {
-    try {
-      QueryParams queryParams = newParams()
-          .add(VOLDEMORT_STORE_NAME, voldemortStoreName)
-          .add(PUSH_STRATEGY, pushStrategy);
-      String responseJson = getRequest(ControllerRoute.SET_MIGRATION_PUSH_STRATEGY.getPath(), queryParams);
-      return mapper.readValue(responseJson, MigrationPushStrategyResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error getting migration push strategies.", e),
-          new ControllerResponse());
-    }
+    QueryParams params = newParams()
+        .add(VOLDEMORT_STORE_NAME, voldemortStoreName)
+        .add(PUSH_STRATEGY, pushStrategy);
+    return request(ControllerRoute.SET_MIGRATION_PUSH_STRATEGY, params, MigrationPushStrategyResponse.class);
   }
 
-  public MultiVersionStatusResponse listBootstrappingVersions(){
-    try {
-      String responseJson = getRequest(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS.getPath());
-      return mapper.readValue(responseJson, MultiVersionStatusResponse.class);
-    }catch (Exception e){
-      return handleError(new VeniceException("Error listing bootstrapping versions.", e),
-          new MultiVersionStatusResponse());
-    }
+  public MultiVersionStatusResponse listBootstrappingVersions() {
+    return request(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS, newParams(), MultiVersionStatusResponse.class);
+  }
+
+  public ControllerResponse sendEndOfPush(String storeName, String version) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version);
+    return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
   }
 
   protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {
@@ -796,41 +477,39 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName);
   }
 
-  public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
-    return this.discoverCluster(urlsToFindMasterController, storeName);
+  public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName) {
+    try (ControllerClient client = new ControllerClient("*", discoveryUrls)) {
+      return client.discoverCluster(storeName);
+    }
   }
 
-  public static D2ServiceDiscoveryResponse discoverCluster(String veniceUrls, String storeName) {
-    List<String> urlList = Arrays.asList(veniceUrls.split(","));
+  public D2ServiceDiscoveryResponse discoverCluster(String storeName) {
+    List<String> urls = new ArrayList<>(this.controllerDiscoveryUrls);
+    Collections.shuffle(urls);
+
     Exception lastException = null;
-    for (String url : urlList) {
-      try {
-        QueryParams queryParams = getQueryParamsToDiscoverCluster(storeName);
-        String responseJson = getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath(), queryParams);
-        return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
-      } catch (Exception e) {
+    try (ControllerTransport transport = new ControllerTransport()) {
+      for (String url : urls) {
         try {
-          logger.debug("Met error to discover cluster from: " + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + ", try "
-              + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + "/" + storeName + "...", e);
           // Because the way to get parameter is different between controller and router, in order to support query cluster
-          // from both cluster and router, we send the path "/discover_cluster?storename=$storename" at first, if it does
+          // from both cluster and router, we send the path "/discover_cluster?storename=$storeName" at first, if it does
           // not work, try "/discover_cluster/$storeName"
-          String responseJson =
-              getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName, new QueryParams());
-          return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
-        } catch (Exception exception) {
-          lastException = exception;
-          continue;
+          try {
+            QueryParams params = getQueryParamsToDiscoverCluster(storeName);
+            return transport.request(url, ControllerRoute.CLUSTER_DISCOVERY, params, D2ServiceDiscoveryResponse.class);
+          } catch (VeniceHttpException e) {
+            String routerPath = ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName;
+            return transport.executeGet(url, routerPath, new QueryParams(), D2ServiceDiscoveryResponse.class);
+          }
+        } catch (Exception e) {
+          logger.warn("Unable to discover cluster for store " + storeName + " from " + url, e);
+          lastException = e;
         }
       }
     }
-    String errorMsg = "Error discovering cluster from urls: " + veniceUrls;
-    if (lastException != null) {
-      lastException = new VeniceException(errorMsg, lastException);
-    } else {
-      lastException = new VeniceException(errorMsg);
-    }
-    return handleError(lastException, new D2ServiceDiscoveryResponse());
+
+    String message = "Unable to discover cluster for store " + storeName + " from " + this.controllerDiscoveryUrls;
+    return makeErrorResponse(message, lastException, D2ServiceDiscoveryResponse.class);
   }
 
   /***
@@ -838,131 +517,72 @@ public class ControllerClient implements Closeable {
    * a new list of NameValuePair objects for making HTTP requests.
    * @return
    */
-  private QueryParams newParams(){
+  protected QueryParams newParams() {
     return addCommonParams(new QueryParams());
   }
 
-  /**
-   * Add global parameters and also set the clustername parameter to the passed in value.
-   * @param clusterName
-   * @return
-   */
-  protected QueryParams newParams(String clusterName){
-    return addCommonParams(new QueryParams(), clusterName);
-  }
-
   private QueryParams addCommonParams(QueryParams params) {
-    return addCommonParams(params, clusterName);
-  }
-
-  private QueryParams addCommonParams(QueryParams params, String clusterName) {
     return params
-        .add(HOSTNAME, localHostname)
-        .add(CLUSTER, clusterName);
+        .add(HOSTNAME, this.localHostName)
+        .add(CLUSTER, this.clusterName);
   }
 
-  private String getRequest(String path)
-      throws ExecutionException, InterruptedException {
-    return getRequest(path, newParams());
+  protected static String encodeQueryParams(QueryParams params) {
+    return URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
   }
 
-  private String getRequest(String path, QueryParams params)
-      throws ExecutionException, InterruptedException {
-    refreshControllerUrl();
-    return getRequest(masterControllerUrl, path, params);
+  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
+    return request(route, params, responseType, 600 * Time.MS_PER_SECOND);
   }
 
-  protected static String encodeQueryParams(QueryParams queryParams) {
-    return URLEncodedUtils.format(queryParams.getNameValuePairs(), StandardCharsets.UTF_8);
-  }
+  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType, int timeoutMs) {
+    Exception lastException = null;
+    try (ControllerTransport transport = new ControllerTransport()) {
+      for (int attempt = 0; attempt < 10; ++attempt) {
+        try {
+          return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs);
+        } catch (ExecutionException | TimeoutException e) {
+          // Controller is unreachable. Let's wait for a new master to be elected.
+          // Total wait time should be at least master election time (~30 seconds)
+          Utils.sleep(5 * Time.MS_PER_SECOND);
+          lastException = e;
+        } catch (VeniceHttpException e) {
+          if (e.getHttpStatusCode() != HttpConstants.SC_MISDIRECTED_REQUEST) {
+            throw e;
+          }
+          // Master controller has changed. Let's try one more time, no need to wait.
+          lastException = e;
+        }
 
-  private static String getRequest(String url, String path, QueryParams params)
-      throws ExecutionException, InterruptedException {
-    url = url.trim();
-    String queryString = encodeQueryParams(params);
-    final HttpGet get = new HttpGet(url + path + "?" + queryString);
-    return getJsonFromHttp(get, false);
-  }
-
-  private String postRequest(String path, QueryParams params)
-      throws UnsupportedEncodingException, ExecutionException, InterruptedException {
-    return postRequest(path, params, 10);
-  }
-
-  private String postRequest(String path, QueryParams params, int retriesLeftForNonMasterController)
-      throws UnsupportedEncodingException, ExecutionException, InterruptedException {
-    try {
-      refreshControllerUrl();
-    } catch (VeniceException e) {
-      if (retriesLeftForNonMasterController > 0) {
-        Utils.sleep(500);
-        logger.warn("Failed to refresh master controller URL. Will retry up to " + retriesLeftForNonMasterController + " more times.", e);
-        return postRequest(path, params, retriesLeftForNonMasterController - 1);
+        logger.info("Retrying controller request" +
+            ", attempt=" + attempt +
+            ", controller=" + this.masterControllerUrl +
+            ", route=" + route.getPath() +
+            ", params=" + params.getNameValuePairs() +
+            ", timeout=" + timeoutMs,
+            lastException);
       }
-      throw e;
-    }
-    final HttpPost post = new HttpPost(masterControllerUrl + path);
-    post.setEntity(new UrlEncodedFormEntity(params.getNameValuePairs()));
-    try {
-      boolean throwForNonMasterController = retriesLeftForNonMasterController > 0;
-      return getJsonFromHttp(post, throwForNonMasterController);
-    } catch (VeniceHttpException e) {
-      if (e.getHttpStatusCode() == HttpConstants.SC_MISDIRECTED_REQUEST && retriesLeftForNonMasterController > 0) {
-        logger.warn("Failed to reach master controller " + masterControllerUrl + ". Will retry up to " + retriesLeftForNonMasterController + " more times.", e);
-        Utils.sleep(500);
-        return postRequest(path, params, retriesLeftForNonMasterController - 1);
-      }
-      throw e;
-    }
-  }
-
-  private static <R extends ControllerResponse> R handleError(Exception e, R errorResponse){
-    String message = e.getMessage();
-    if (e.getCause() != null) {
-      message += " -- " + e.getCause().getMessage();
-    }
-    logger.error(message, e);
-    errorResponse.setError(message);
-    return errorResponse;
-  }
-
-  private static String getJsonFromHttp(HttpRequestBase httpRequest, boolean throwForNonMasterController) {
-    HttpResponse response = null;
-    try(CloseableHttpAsyncClient httpClient =
-        HttpAsyncClients
-        .custom()
-        .setDefaultRequestConfig(
-            RequestConfig
-            .custom()
-            .setSocketTimeout((int) TimeUnit.MINUTES.toMillis(ADMIN_REQUEST_TIMEOUT_MIN))
-            .build())
-        .build()){
-      httpClient.start();
-      if (!httpClient.isRunning()) {
-        throw new VeniceException("httpClient is not running!");
-      }
-      response = httpClient.execute(httpRequest, null).get();
     } catch (Exception e) {
-      String msg = "Exception making HTTP request: " + e.getMessage();
-      logger.error(msg, e);
-      throw new VeniceException(msg, e);
+      lastException = e;
     }
-    if (response.getStatusLine().getStatusCode() == HttpConstants.SC_MISDIRECTED_REQUEST && throwForNonMasterController) {
-      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST);
-    }
-    String responseBody;
-    try (InputStream bodyStream = response.getEntity().getContent()) {
-      responseBody = IOUtils.toString(bodyStream);
-    } catch (IOException e) {
-      throw new VeniceException(e);
-    }
-    String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
-    if (contentType.startsWith(HttpConstants.JSON)) {
-      return responseBody;
-    } else { //non JSON response
-      String msg = "controller returns with content-type " + contentType + ": " + responseBody;
-      logger.error(msg);
-      throw new VeniceException(msg);
+
+    String message = "Unable to make controller request" +
+        ", controller=" + this.masterControllerUrl +
+        ", route=" + route.getPath() +
+        ", params=" + params.getNameValuePairs() +
+        ", timeout=" + timeoutMs;
+    return makeErrorResponse(message, lastException, responseType);
+  }
+
+  private <T extends ControllerResponse> T makeErrorResponse(String message, Exception exception, Class<T> responseType) {
+    logger.error(message, exception);
+    try {
+      T response = responseType.newInstance();
+      response.setError(message + ", " +  exception.getMessage());
+      return response;
+    } catch (InstantiationException | IllegalAccessException e) {
+      logger.error("Unable to instantiate controller response " + responseType.getName(), e);
+      throw new VeniceException(message, exception);
     }
   }
 
@@ -971,25 +591,11 @@ public class ControllerClient implements Closeable {
   }
 
   public String getMasterControllerUrl() {
-    refreshControllerUrl();
-    return masterControllerUrl;
+    this.masterControllerUrl = discoverMasterController();
+    return this.masterControllerUrl;
   }
 
-  public String getUrlsToFindMasterController() {
-    return urlsToFindMasterController;
-  }
-
-  public ControllerResponse sendEndOfPush(String storeName, String version) {
-    try {
-      QueryParams params = newParams()
-          .add(NAME, storeName)
-          .add(VERSION, version)
-          .add(CLUSTER, this.clusterName);
-      String responseJson = postRequest(ControllerRoute.END_OF_PUSH.getPath(), params);
-      return mapper.readValue(responseJson, ControllerResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Failed to send END_OF_PUSH message to " + storeName + "_v" + version , e),
-          new ControllerResponse());
-    }
+  public Collection<String> getControllerDiscoveryUrls() {
+    return this.controllerDiscoveryUrls;
   }
 }
