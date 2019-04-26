@@ -586,11 +586,18 @@ public class TestVeniceHelixAdmin {
               + " mode, but received: " + e);
         }
       }
+      Admin.OfflinePushStatusInfo
+          statusInfo = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 101));
+      Assert.assertEquals(statusInfo.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
+      Assert.assertTrue(statusInfo.getStatusDetails().get().contains("in maintenance mode"));
+
       // disable maintenance mode
       veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
       // try to add same version again
       veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
       Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
+      statusInfo = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 101));
+      Assert.assertEquals(statusInfo.getExecutionStatus(), ExecutionStatus.STARTED);
     } finally {
       veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
     }

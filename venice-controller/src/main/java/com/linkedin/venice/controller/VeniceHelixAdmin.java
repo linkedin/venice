@@ -2252,7 +2252,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
         Pair<ExecutionStatus, Optional<String>> statusAndDetails =
             monitor.getPushStatusAndDetails(kafkaTopic, incrementalPushVersion);
-        return new OfflinePushStatusInfo(statusAndDetails.getFirst(), statusAndDetails.getSecond());
+        ExecutionStatus executionStatus = statusAndDetails.getFirst();
+        Optional<String> details = statusAndDetails.getSecond();
+        if (executionStatus.equals(ExecutionStatus.NOT_CREATED)) {
+            StringBuilder moreDetailsBuilder = new StringBuilder(details.isPresent() ? details.get() + " and " : "");
+            // Check whether cluster is in maintenance mode or not
+            if (isClusterInMaintenanceMode(clusterName)) {
+                moreDetailsBuilder.append("Cluster: ")
+                    .append(clusterName)
+                    .append(" is in maintenance mode");
+            } else {
+                moreDetailsBuilder.append("Version creation for topic: ")
+                    .append(kafkaTopic)
+                    .append(" got delayed");
+            }
+            details = Optional.of(moreDetailsBuilder.toString());
+        }
+        return new OfflinePushStatusInfo(executionStatus, details);
     }
 
     @Override
