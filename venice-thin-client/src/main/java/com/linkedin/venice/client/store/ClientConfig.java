@@ -18,33 +18,35 @@ public class ClientConfig<T extends SpecificRecord> {
   private static final String HTTPS = "https";
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
 
+  // Basic settings
   private String storeName;
-
   private String veniceURL;
-
   private Class<T> specificValueClass = null;
+  private boolean isVsonClient = false;
 
-  //D2 specific settings
+  // D2 specific settings
   private boolean isD2Routing = false;
   private String d2ServiceName = DEFAULT_D2_SERVICE_NAME;
   private String d2BasePath = DEFAULT_D2_ZK_BASE_PATH;
   private int d2ZkTimeout = DEFAULT_ZK_TIMEOUT_MS;
   private D2Client d2Client = null;
+
+  // Performance-related settings
   private MetricsRepository metricsRepository = null;
   private Executor deserializationExecutor = null;
-  private boolean isVsonClient = false;
   private BatchDeserializerType batchDeserializerType = BatchDeserializerType.BLOCKING;
   private AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl = AvroGenericDeserializer.IterableImpl.BLOCKING;
   private int onDemandDeserializerNumberOfRecordsPerThread = 250;
   private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
   private int alwaysOnDeserializerQueueCapacity = 10000;
   private boolean useFastAvro = false;
-  private Time time = new SystemTime();
 
-  //https specific settings
+  // Security settings
   private boolean isHttps = false;
   private SSLEngineComponentFactory sslEngineComponentFactory = null;
 
+  // Test settings
+  private Time time = new SystemTime();
 
   public static ClientConfig defaultGenericClientConfig(String storeName) {
     return new ClientConfig(storeName);
@@ -61,25 +63,37 @@ public class ClientConfig<T extends SpecificRecord> {
   }
 
   public static <V extends SpecificRecord> ClientConfig<V> cloneConfig(ClientConfig<V> config) {
-    ClientConfig<V> newConfig = new ClientConfig<>();
-    newConfig.setSpecificValueClass(config.getSpecificValueClass())
-             .setStoreName(config.getStoreName())
-             .setVeniceURL(config.getVeniceURL())
-             .setD2Routing(config.isD2Routing())
-             .setD2ServiceName(config.getD2ServiceName())
-             .setD2BasePath(config.getD2BasePath())
-             .setD2ZkTimeout(config.getD2ZkTimeout())
-             .setD2Client(config.getD2Client())
-             .setHttps(config.isHttps)
-             .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
-             .setMetricsRepository(config.getMetricsRepository())
-             .setVsonClient(config.isVsonClient)
-             .setBatchDeserializerType(config.batchDeserializerType)
-             .setMultiGetEnvelopeIterableImpl(config.multiGetEnvelopeIterableImpl)
-             .setOnDemandDeserializerNumberOfRecordsPerThread(config.onDemandDeserializerNumberOfRecordsPerThread)
-             .setAlwaysOnDeserializerNumberOfThreads(config.alwaysOnDeserializerNumberOfThreads)
-             .setAlwaysOnDeserializerQueueCapacity(config.alwaysOnDeserializerQueueCapacity)
-             .setUseFastAvro(config.useFastAvro);
+    ClientConfig<V> newConfig = new ClientConfig<V>()
+
+        // Basic settings
+        .setStoreName(config.getStoreName())
+        .setVeniceURL(config.getVeniceURL())
+        .setSpecificValueClass(config.getSpecificValueClass())
+        .setVsonClient(config.isVsonClient())
+
+        // D2 specific settings
+        .setD2Routing(config.isD2Routing())
+        .setD2ServiceName(config.getD2ServiceName())
+        .setD2BasePath(config.getD2BasePath())
+        .setD2ZkTimeout(config.getD2ZkTimeout())
+        .setD2Client(config.getD2Client())
+
+        // Performance-related settings
+        .setMetricsRepository(config.getMetricsRepository())
+        .setDeserializationExecutor(config.getDeserializationExecutor())
+        .setBatchDeserializerType(config.getBatchDeserializerType())
+        .setMultiGetEnvelopeIterableImpl(config.getMultiGetEnvelopeIterableImpl())
+        .setOnDemandDeserializerNumberOfRecordsPerThread(config.getOnDemandDeserializerNumberOfRecordsPerThread())
+        .setAlwaysOnDeserializerNumberOfThreads(config.getAlwaysOnDeserializerNumberOfThreads())
+        .setAlwaysOnDeserializerQueueCapacity(config.getAlwaysOnDeserializerQueueCapacity())
+        .setUseFastAvro(config.isUseFastAvro())
+
+        // Security settings
+        .setHttps(config.isHttps())
+        .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
+
+        // Test settings
+        .setTime(config.getTime());
 
     return newConfig;
   }
@@ -94,7 +108,7 @@ public class ClientConfig<T extends SpecificRecord> {
     return storeName;
   }
 
-  public ClientConfig setStoreName(String storeName) {
+  public ClientConfig<T> setStoreName(String storeName) {
     this.storeName = storeName;
     return this;
   }
