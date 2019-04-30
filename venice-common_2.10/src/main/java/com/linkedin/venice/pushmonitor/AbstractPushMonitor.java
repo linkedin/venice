@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,6 +23,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.apache.log4j.Logger;
 
 
@@ -52,7 +55,7 @@ public abstract class AbstractPushMonitor
 
   private final Object lock;
 
-  private Map<String, OfflinePushStatus> topicToPushMap;
+  private Map<String, OfflinePushStatus> topicToPushMap = new ConcurrentHashMap<>();
 
   private Optional<TopicReplicator> topicReplicator = Optional.empty();
 
@@ -71,8 +74,6 @@ public abstract class AbstractPushMonitor
     // the synchronized keyword to lock on the OfflinePushMonitor itself, then we have a deadlock
     // condition for any use of the storeCleaner.
     this.lock = storeCleaner;
-
-    this.topicToPushMap = new HashMap<>();
   }
 
   @Override
@@ -202,16 +203,14 @@ public abstract class AbstractPushMonitor
 
   @Override
   public Pair<ExecutionStatus, Optional<String>> getPushStatusAndDetails(String topic, Optional<String> incrementalPushVersion) {
-    synchronized (lock) {
-      if (topicToPushMap.containsKey(topic)) {
-        OfflinePushStatus offlinePushStatus = topicToPushMap.get(topic);
-        return incrementalPushVersion.isPresent() ?
-            new Pair<>(offlinePushStatus.checkIncrementalPushStatus(incrementalPushVersion.get()), Optional.empty()) :
-            new Pair<>(offlinePushStatus.getCurrentStatus(), offlinePushStatus.getOptionalStatusDetails());
-      } else {
-        return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
-      }
+    OfflinePushStatus pushStatus = this.topicToPushMap.get(topic);
+    if (pushStatus == null) {
+      return new Pair<>(ExecutionStatus.NOT_CREATED, Optional.of("Offline job hasn't been created yet."));
     }
+    if (incrementalPushVersion.isPresent()) {
+      return new Pair<>(pushStatus.checkIncrementalPushStatus(incrementalPushVersion.get()), Optional.empty());
+    }
+    return new Pair<>(pushStatus.getCurrentStatus(), pushStatus.getOptionalStatusDetails());
   }
 
   @Override
@@ -229,23 +228,14 @@ public abstract class AbstractPushMonitor
 
   @Override
   public Map<String, Long> getOfflinePushProgress(String topic) {
-    synchronized (lock) {
-      if (!topicToPushMap.containsKey(topic)) {
-        return Collections.emptyMap();
-      }
-      Map<String, Long> progressMap =  topicToPushMap.get(topic).getProgress();
-      Set<String> liveInstances = routingDataRepository.getLiveInstancesMap().keySet();
-      Iterator<String> replicaIdIterator = progressMap.keySet().iterator();
-      // Filter the progress map to remove replicas of disconnected storage node.
-      while (replicaIdIterator.hasNext()) {
-        String replicaId = replicaIdIterator.next();
-        String instanceId = ReplicaStatus.getInstanceIdFromReplicaId(replicaId);
-        if (!liveInstances.contains(instanceId)) {
-          replicaIdIterator.remove();
-        }
-      }
-      return progressMap;
+    OfflinePushStatus pushStatus = this.topicToPushMap.get(topic);
+    if (pushStatus == null) {
+      return Collections.emptyMap();
     }
+    Map<String, Long> progress = new HashMap<>(pushStatus.getProgress());
+    Set<String> liveInstances = this.routingDataRepository.getLiveInstancesMap().keySet();
+    progress.keySet().removeIf(replicaId -> !liveInstances.contains(ReplicaStatus.getInstanceIdFromReplicaId(replicaId)));
+    return progress;
   }
 
   @Override
@@ -371,17 +361,18 @@ public abstract class AbstractPushMonitor
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
     synchronized (lock) {
       // TODO more fine-grained concurrency control here, might lock on push level instead of lock the whole map.
-      OfflinePushStatus offlinePushStatus = topicToPushMap.get(topic);
-      if (offlinePushStatus == null) {
+      OfflinePushStatus pushStatus = this.topicToPushMap.get(topic);
+      if (pushStatus == null) {
         logger.error("Can not find Offline push for topic:" + topic + ", ignore the partition status change notification.");
         return;
-      } else {
-        // On controller side, partition status is read only. It could be only updated by storage node.
-        offlinePushStatus.setPartitionStatus(partitionStatus);
-        onPartitionStatusChange(offlinePushStatus);
-
-
       }
+
+      // On controller side, partition status is read only. It could be only updated by storage node.
+      pushStatus = pushStatus.clonePushStatus();
+      pushStatus.setPartitionStatus(partitionStatus);
+      this.topicToPushMap.put(pushStatus.getKafkaTopic(), pushStatus);
+
+      onPartitionStatusChange(pushStatus);
     }
   }
 
