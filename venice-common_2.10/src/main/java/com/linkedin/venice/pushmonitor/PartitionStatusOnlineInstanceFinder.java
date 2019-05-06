@@ -44,14 +44,22 @@ public class PartitionStatusOnlineInstanceFinder
   }
 
   @Override
-  public synchronized void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
-    if (!topicToPartitionMap.containsKey(topic) || routingDataRepository.getPartitionAssignments(topic) == null) {
-      logger.info("Instance finder received unknown partition status notification. Topic: " + topic + ", Partition id: "
-          + partitionStatus.getPartitionId()  + ". Will ignore.");
-    } else {
-      OfflinePushStatus.setPartitionStatus(topicToPartitionMap.get(topic), partitionStatus, topic,
-          routingDataRepository.getPartitionAssignments(topic).getExpectedNumberOfPartitions());
+  public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
+    List<PartitionStatus> statusList = topicToPartitionMap.get(kafkaTopic);
+    if (statusList == null) {
+      logger.info("Instance finder received unknown partition status notification." +
+          " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId() + ". Will ignore.");
+      return;
     }
+    if (routingDataRepository.containsKafkaTopic(kafkaTopic)) {
+      if (partitionStatus.getPartitionId() >= routingDataRepository.getNumberOfPartitions(kafkaTopic)) {
+        logger.error("Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
+      }
+    } else {
+      logger.warn("Instance finder received partition status notification for topic unkown to RoutingDataRepository." +
+          " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId());
+    }
+    OfflinePushStatus.setPartitionStatus(statusList, partitionStatus, kafkaTopic);
   }
 
   /**
