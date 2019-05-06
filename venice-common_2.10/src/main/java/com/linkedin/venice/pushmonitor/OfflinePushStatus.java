@@ -117,17 +117,10 @@ public class OfflinePushStatus {
   }
 
   /**
-   *
    * @param partitionStatusList a list of partitions ordered by partition id
    * @param newPartitionStatus the new partition status
    */
-  public static void setPartitionStatus(List<PartitionStatus> partitionStatusList, PartitionStatus newPartitionStatus,
-      String kafkaTopic, int numberOfPartition) {
-    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= numberOfPartition) {
-      throw new VeniceException(
-          "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
-    }
-
+  public static void setPartitionStatus(List<PartitionStatus> partitionStatusList, PartitionStatus newPartitionStatus, String kafkaTopic) {
     if (newPartitionStatus instanceof ReadOnlyPartitionStatus) {
       partitionStatusList.set(newPartitionStatus.getPartitionId(), newPartitionStatus);
     } else {
@@ -136,7 +129,11 @@ public class OfflinePushStatus {
   }
 
   public void setPartitionStatus(PartitionStatus partitionStatus) {
-    setPartitionStatus(partitionStatuses, partitionStatus, kafkaTopic, numberOfPartition);
+    if (partitionStatus.getPartitionId() < 0 || partitionStatus.getPartitionId() >= numberOfPartition) {
+      throw new VeniceException(
+          "Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
+    }
+    setPartitionStatus(partitionStatuses, partitionStatus, kafkaTopic);
     updateStatusDetails();
   }
 
@@ -272,8 +269,7 @@ public class OfflinePushStatus {
   }
 
   public OfflinePushStatus clonePushStatus() {
-    OfflinePushStatus clonePushStatus =
-        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    OfflinePushStatus clonePushStatus = new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     clonePushStatus.setCurrentStatus(currentStatus);
     clonePushStatus.setStatusDetails(statusDetails.orElse(null));
     // Status history is append-only. So here we don't need to deep copy each object in this list. Simply copy the list
@@ -283,6 +279,7 @@ public class OfflinePushStatus {
     // copy list is enough here.
     clonePushStatus.setPartitionStatuses(new ArrayList<>(partitionStatuses));
     clonePushStatus.setPushProperties(new HashMap<>(pushProperties));
+    clonePushStatus.setIncrementalPushVersion(incrementalPushVersion);
     return clonePushStatus;
   }
 
