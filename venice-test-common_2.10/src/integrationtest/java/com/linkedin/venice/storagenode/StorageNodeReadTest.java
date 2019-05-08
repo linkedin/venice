@@ -134,7 +134,7 @@ public class StorageNodeReadTest {
    *    {@link #pushSyntheticData(String, String, int, VeniceClusterWrapper, VeniceWriter, int)} so it is not
    *    clear why that would be the case. TODO: Debug why the offset occasionally shows as zero
    */
-  @Test (timeOut = 10 * Time.MS_PER_SECOND, retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(timeOut = 10 * Time.MS_PER_SECOND, retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -247,7 +247,7 @@ public class StorageNodeReadTest {
     }
   }
 
-  @Test (timeOut = 20000)
+  @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testVersionedBdbSpaceMetrics() throws Exception {
     // create a new version
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 1024);
@@ -310,7 +310,6 @@ public class StorageNodeReadTest {
       Assert.assertTrue(map.containsKey("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat"));
       Assert.assertTrue(map.get("." + storeName + "_future--bdb_space_size_in_bytes.SpaceSizeStat").value() < 0.0);
     }
-
   }
 
   private void assertDiskSpaceStat(MetricsRepository metricsRepository, String versionName) {
