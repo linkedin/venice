@@ -41,6 +41,7 @@ public class StoreInfo {
     storeInfo.setReadComputationEnabled(store.isReadComputationEnabled());
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
+    storeInfo.setBackupStrategy(store.getBackupStrategy());
 
     return storeInfo;
   }
@@ -169,6 +170,11 @@ public class StoreInfo {
    * for upcoming version.
    */
   private boolean leaderFollowerModelEnabled = false;
+
+  /**
+   * Strategies to store backup versions of a store.
+   */
+  private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
 
   public StoreInfo() {
   }
@@ -404,6 +410,14 @@ public class StoreInfo {
 
   public boolean isLeaderFollowerModelEnabled() {
     return leaderFollowerModelEnabled;
+  }
+
+  public void setBackupStrategy(BackupStrategy value) {
+    backupStrategy = value;
+  }
+
+  public BackupStrategy getBackupStrategy() {
+    return backupStrategy;
   }
 
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {

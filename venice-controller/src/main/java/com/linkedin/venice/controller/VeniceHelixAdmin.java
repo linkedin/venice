@@ -36,6 +36,7 @@ import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
@@ -66,8 +67,8 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -931,12 +932,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
-
         Version version = null;
         OfflinePushStrategy strategy;
         boolean isLeaderFollowerStateModel = false;
         VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
         boolean logCompaction = false;
+        BackupStrategy backupStrategy;
 
         try {
             resources.lockForMetadataOperation();
@@ -958,6 +959,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (store.getPartitionCount() == 0) {
                         store.setPartitionCount(numberOfPartitions);
                     }
+                    backupStrategy = store.getBackupStrategy();
                     if (versionNumber == VERSION_ID_UNSET) {
                         // No version supplied, generate a new version. This could happen either in the parent
                         // controller or local Samza jobs.
@@ -1018,6 +1020,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
                     waitUntilNodesAreAssignedForResource(clusterName, version.kafkaTopicName(), strategy,
                         getVeniceHelixResource(clusterName).getConfig().getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
+
+                    // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
+                    if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
+                        try {
+                            retireOldStoreVersions(clusterName, storeName, true);
+                        } catch (Throwable t) {
+                            String errorMessage =
+                                "Failed to delete previous backup version while pushing " + versionNumber + " to store "
+                                    + storeName + " in cluster " + clusterName;
+                            logger.error(errorMessage, t);
+                        }
+                    }
                 }
             } finally {
                 resources.unlockForMetadataOperation();
@@ -1317,7 +1331,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * Delete version from cluster, removing all related resources
      */
     @Override
-    public void  deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
+    public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         resources.lockForMetadataOperation();
         try {
@@ -1352,27 +1366,42 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void retireOldStoreVersions(String clusterName, String storeName) {
-        logger.info("Retiring old versions for store: " + storeName);
+    public void retireOldStoreVersions(String clusterName, String storeName, boolean deleteBackupOnStartPush) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         resources.lockForMetadataOperation();
         try {
             HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             Store store = storeRepository.getStore(storeName);
-            List<Version> versionsToDelete = store.retrieveVersionsToDelete(minNumberOfStoreVersionsToPreserve);
+
+            //  if deleteBackupOnStartPush is true decrement minNumberOfStoreVersionsToPreserve by one
+            // as newly started push is considered as another version. the code in retrieveVersionsToDelete
+            // will not return any store if we pass minNumberOfStoreVersionsToPreserve during push
+            int numVersionToPreserve = minNumberOfStoreVersionsToPreserve - (deleteBackupOnStartPush ? 1 : 0);
+            List<Version> versionsToDelete = store.retrieveVersionsToDelete(numVersionToPreserve);
+            if (versionsToDelete.size() == 0) {
+                return;
+            }
+
+            if (store.getBackupStrategy() == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
+                logger.info("Deleting backup versions as the new push started for upcoming version for store : " + storeName);
+            } else {
+                logger.info("Retiring old versions after successful push for store : " + storeName);
+
+            }
+
             for (Version version : versionsToDelete) {
                 deleteOneStoreVersion(clusterName, storeName, version.getNumber());
-                logger.info("Retired store:" + store.getName() + " version:" + version.getNumber());
+                logger.info("Retired store: " + store.getName() + " version:" + version.getNumber());
             }
             logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
 
             truncateOldKafkaTopics(store, false);
-        }finally {
+        } finally {
             resources.unlockForMetadataOperation();
         }
     }
 
-    /***
+    /**
      * Delete the version specified from the store and return the deleted version.
      */
     protected Optional<Version> deleteVersionFromStoreRepository(String clusterName, String storeName, int versionNumber) {
@@ -1812,6 +1841,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setBackupStrategy(String clusterName, String storeName,
+        BackupStrategy backupStrategy) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setBackupStrategy(backupStrategy);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1873,7 +1910,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> writeComputationEnabled,
         Optional<Boolean> readComputationEnabled,
         Optional<Integer> bootstrapToOnlineTimeoutInHours,
-        Optional<Boolean> leaderFollowerModelEnabled) {
+        Optional<Boolean> leaderFollowerModelEnabled,
+        Optional<BackupStrategy> backupStrategy) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -1994,6 +2032,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (leaderFollowerModelEnabled.isPresent()) {
                 setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled.get());
+            }
+
+            if (backupStrategy.isPresent()) {
+                setBackupStrategy(clusterName, storeName, backupStrategy.get());
             }
 
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);

@@ -196,6 +196,10 @@ public class Store {
    */
   private boolean leaderFollowerModelEnabled = false;
 
+  /**
+   * Strategies to store backup versions.
+   */
+  private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
@@ -503,6 +507,14 @@ public class Store {
     version.get().setBufferReplayEnabledForHybrid(enabled);
   }
 
+  public BackupStrategy getBackupStrategy() {
+    return backupStrategy;
+  }
+
+  public void setBackupStrategy(BackupStrategy value) {
+    backupStrategy = value;
+  }
+
   /**
    * Add a version into store.
    *
@@ -723,6 +735,7 @@ public class Store {
     result = 31 * result + (readComputationEnabled ? 1 : 0);
     result = 31 * result + bootstrapToOnlineTimeoutInHours;
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
+    result = 31 * result + backupStrategy.hashCode();
     return result;
   }
 
@@ -761,6 +774,7 @@ public class Store {
     if (readComputationEnabled != store.readComputationEnabled) return false;
     if (bootstrapToOnlineTimeoutInHours != store.bootstrapToOnlineTimeoutInHours) return false;
     if (leaderFollowerModelEnabled != store.leaderFollowerModelEnabled) return false;
+    if (backupStrategy != store.backupStrategy) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -799,6 +813,7 @@ public class Store {
     clonedStore.setReadComputationEnabled(readComputationEnabled);
     clonedStore.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
     clonedStore.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
+    clonedStore.setBackupStrategy(backupStrategy);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

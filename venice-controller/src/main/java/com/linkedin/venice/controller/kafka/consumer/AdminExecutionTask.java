@@ -27,6 +27,7 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -323,7 +324,8 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.writeComputationEnabled),
         Optional.of(message.readComputationEnabled),
         Optional.of(message.bootstrapToOnlineTimeoutInHours),
-        Optional.of(message.leaderFollowerModelEnabled));
+        Optional.of(message.leaderFollowerModelEnabled),
+        Optional.of(BackupStrategy.fromInt(message.compressionStrategy)));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

@@ -36,6 +36,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -225,7 +226,8 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> writeComputationEnabled,
         Optional<Boolean> readComputationEnabled,
         Optional<Integer> bootstrapToOnlineTimeoutInHours,
-        Optional<Boolean> leaderFollowerModelEnabled) {
+        Optional<Boolean> leaderFollowerModelEnabled,
+        Optional<BackupStrategy> backupStategy) {
       if (hybridOffsetLagThreshold.isPresent() && hybridRewindSeconds.isPresent()) {
         doReturn(true).when(store).isHybrid();
       }

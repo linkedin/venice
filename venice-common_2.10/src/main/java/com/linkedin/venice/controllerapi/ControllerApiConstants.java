@@ -66,6 +66,9 @@ public class ControllerApiConstants {
   public static final String LEADER_FOLLOWER_MODEL_ENABLED = "leader_follower_model_enabled";
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
 
+  public static final String BACKUP_STRATEGY = "backup_strategy";
+
+
   public static final String SKIP_DIV = "skip_div";
 
   private ControllerApiConstants(){}

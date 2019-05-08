@@ -64,6 +64,7 @@ public enum Arg {
   BOOTSTRAP_TO_ONLINE_TIMEOUT("bootstrap-to-online-timeout", "btot", true, "Set the maximum number of hours allowed for the store to transition from bootstrap to online"),
   LEADER_FOLLOWER_MODEL_ENABLED("leader-follower-model-enabled", "lf", true, "whether or not to use L/F Helix transition model for upcoming version"),
   SKIP_DIV("skip-div", "div", true, "Whether or not to only skip DIV for skip admin"),
+  BACKUP_STRATEGY("backup-strategy", "bus", true, "Strategies to preserve backup versions, eg KEEP_MIN_VERSIONS, DELETE_ON_NEW_PUSH_START. Default is KEEP_MIN_VERSIONS"),
 
   FILTER_JSON("filter-json", "ftj", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),

@@ -41,7 +41,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     getMonitor().loadAllPushes();
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
-        .retireOldStoreVersions(anyString(), anyString());
+        .retireOldStoreVersions(anyString(), anyString(), eq(false));
     Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
