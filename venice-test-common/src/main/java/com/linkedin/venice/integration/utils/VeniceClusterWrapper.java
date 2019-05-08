@@ -97,7 +97,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName, String clusterToD2,
       int numberOfControllers, int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize,
       boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica,
-      boolean sslToStorageNodes, boolean sslToKafka) {
+      boolean sslToStorageNodes, boolean sslToKafka, Properties extraProperties) {
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
@@ -108,7 +108,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       for (int i = 0; i < numberOfControllers; i++) {
         VeniceControllerWrapper veniceControllerWrapper =
             ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
-                delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, true, new Properties());
+                delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, sslToKafka, true, extraProperties);
         veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
       }
 
@@ -157,7 +157,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   static ServiceProvider<VeniceClusterWrapper> generateService(String clusterName, int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
+      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
+      boolean sslToKafka, Properties extraProperties) {
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
     BrooklinWrapper brooklinWrapper = null;
@@ -173,7 +174,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        */
       return generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, null, numberOfControllers,
           numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
-          delayToReblanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
+          delayToReblanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, extraProperties);
     } catch (Exception e) {
       IOUtils.closeQuietly(zkServerWrapper);
       IOUtils.closeQuietly(kafkaBrokerWrapper);

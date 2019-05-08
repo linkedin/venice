@@ -54,6 +54,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
   private final int topicDeletionStatusPollIntervalMs;
+  private final boolean adminHelixMessagingChannelEnabled;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -111,8 +112,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.addVersionViaAdminProtocol = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false);
     this.addVersionViaTopicMonitor = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, true);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
+    this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
+    if (!adminHelixMessagingChannelEnabled && !participantMessageStoreEnabled) {
+      throw new VeniceException("Cannot perform kill push job if both " + ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED
+          + " and " + PARTICIPANT_MESSAGE_STORE_ENABLED + " are set to false");
+    }
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
-
     this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
   }
 
@@ -235,6 +240,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public int getTopicDeletionStatusPollIntervalMs() {
     return topicDeletionStatusPollIntervalMs;
   }
+
+  public boolean isAdminHelixMessagingChannelEnabled() { return  adminHelixMessagingChannelEnabled; }
 
   /**
    * @param clusterPros list of child controller uris

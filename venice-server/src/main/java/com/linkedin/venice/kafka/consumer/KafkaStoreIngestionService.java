@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
@@ -8,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
+import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -25,6 +27,7 @@ import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 
@@ -33,11 +36,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import io.tehuti.metrics.MetricsRepository;
+import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -54,6 +59,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaStoreIngestionService.class);
+
+  private static final long WAIT_THREAD_TO_STOP_TIMEOUT_MS = 10000;
 
   private final StoreRepository storeRepository;
   private final VeniceConfigLoader veniceConfigLoader;
@@ -89,13 +96,18 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
   private final AtomicBoolean isRunning;
 
+  private ParticipantStoreConsumptionTask participantStoreConsumptionTask = null;
+
+  private Thread participantStoreConsumptionTaskThread = null;
+
   public KafkaStoreIngestionService(StoreRepository storeRepository,
                                     VeniceConfigLoader veniceConfigLoader,
                                     StorageMetadataService storageMetadataService,
                                     ReadOnlyStoreRepository metadataRepo,
                                     ReadOnlySchemaRepository schemaRepo,
                                     MetricsRepository metricsRepository,
-                                    Optional<SchemaReader> schemaReader) {
+                                    Optional<SchemaReader> schemaReader,
+                                    Optional<ClientConfig> clientConfig) {
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
@@ -131,6 +143,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * keep the reference of this {@link StoreBufferServiceStats} variable.
      */
     new StoreBufferServiceStats(metricsRepository, this.storeBufferService);
+    if (clientConfig.isPresent()) {
+      String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
+      participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(clusterName, this,
+          new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
+          ClientConfig.cloneConfig(clientConfig.get()), serverConfig.getParticipantMessageConsumptionDelayMs());
+      ThreadFactory threadFactory = new DaemonThreadFactory(ParticipantStoreConsumptionTask.class.getSimpleName());
+      participantStoreConsumptionTaskThread = threadFactory.newThread(participantStoreConsumptionTask);
+    } else {
+      logger.info("Unable to start participant store consumption task because client config is not provided, jobs "
+          + "may not be killed if admin helix messaging channel is disabled");
+    }
   }
 
   /**
@@ -144,7 +167,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     isRunning.set(true);
 
     storeBufferService.start();
-
+    if (participantStoreConsumptionTaskThread != null) {
+      participantStoreConsumptionTaskThread.start();
+    }
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
     // process that needs to finish before the KafkaStoreIngestionService can be considered
     // started, so we are done with the start up process.
@@ -188,6 +213,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   public void stopInner() throws Exception {
     logger.info("Shutting down Kafka consumer service");
     isRunning.set(false);
+
+    IOUtils.closeQuietly(participantStoreConsumptionTask);
+    if (participantStoreConsumptionTaskThread != null) {
+      participantStoreConsumptionTaskThread.join(WAIT_THREAD_TO_STOP_TIMEOUT_MS);
+      if (participantStoreConsumptionTaskThread.isAlive()) {
+        participantStoreConsumptionTaskThread.interrupt();
+      }
+    }
 
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
 
@@ -318,15 +351,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public synchronized void killConsumptionTask(VeniceStoreConfig veniceStore) {
-    String topic = veniceStore.getStoreName();
-    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+  public synchronized void killConsumptionTask(String topicName) {
+    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.kill();
-      topicNameToIngestionTaskMap.remove(topic);
-      logger.info("Killed consumption task for Topic " + topic);
+      topicNameToIngestionTaskMap.remove(topicName);
+      logger.info("Killed consumption task for Topic " + topicName);
     } else {
-      logger.warn("Ignoring kill signal for Topic " + topic);
+      logger.warn("Ignoring kill signal for Topic " + topicName);
     }
   }
 
@@ -350,6 +382,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
+  }
+
+  @Override
+  public Set<String> getIngestingTopics() {
+    return topicNameToIngestionTaskMap.keySet();
   }
 
   /**

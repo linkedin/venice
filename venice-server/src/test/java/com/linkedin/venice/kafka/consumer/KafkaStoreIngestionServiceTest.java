@@ -63,6 +63,7 @@ public class KafkaStoreIngestionServiceTest {
        mockmetadataRepo,
        mockSchemaRepo,
        new MetricsRepository(),
+       Optional.empty(),
        Optional.empty());
 
    String mockStoreName = "test";

@@ -216,7 +216,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       //push is failed, stop consumption.
       logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message
           .getMessageId());
-      ingestionService.killConsumptionTask(storeConfig);
+      ingestionService.killConsumptionTask(storeConfig.getStoreName());
       logger.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
     } else {
       logger.info("Ignore the kill message for topic:" + message.getKafkaTopic());

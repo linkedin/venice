@@ -80,7 +80,6 @@ public class IntegrationTestUtils {
         .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
         .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString())
         .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false)
-//        .put(PARTICIPANT_MESSAGE_STORE_ENABLED, true)
         .build();
 
     return clusterProperties;
