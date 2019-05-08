@@ -158,7 +158,8 @@ public class VeniceServer {
         metadataRepo,
         schemaRepo,
         metricsRepository,
-        schemaReader);
+        schemaReader,
+        clientConfigForConsumer);
 
     AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     storageService.setAggBdbStorageEngineStats(bdbStorageEngineStats);

@@ -732,7 +732,7 @@ public class ConfigKeys {
   public static final String PUSH_MONITOR_TYPE = "push.monitor.type";
 
   /**
-   * Flag to enable the participant message store.
+   * Flag to enable the participant message store setup and write operations to the store.
    */
   public static final String PARTICIPANT_MESSAGE_STORE_ENABLED = "participant.message.store.enabled";
 
@@ -741,4 +741,15 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME = "controller.system.schema.cluster.name";
 
+  /**
+   * Flag to enable the controller to send kill push job helix messages to the storage node upon consuming kill push job
+   * admin messages.
+   */
+  public static final String ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED = "admin.helix.messaging.channel.enabled";
+
+  /**
+   * Minimum delay between each cycle where the storage node polls the participant message store to see if any of its
+   * ongoing push job has been killed.
+   */
+  public static final String PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS = "participant.message.consumption.delay.ms";
 }

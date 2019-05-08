@@ -234,7 +234,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
-    if (multiClusterConfigs.getCommonConfig().isParticipantMessageStoreEnabled()) {
+    if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
       asyncSetupForInternalRTStore(clusterName, ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName),
           PARTICIPANT_MESSAGE_STORE_DESCRIPTOR, ParticipantMessageKey.SCHEMA$.toString(),
           ParticipantMessageValue.SCHEMA$.toString(), PARTICIPANT_MESSAGE_STORE_PARTITION_NUM);

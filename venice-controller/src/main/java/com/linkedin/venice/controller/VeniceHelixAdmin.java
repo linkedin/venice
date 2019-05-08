@@ -95,7 +95,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.commons.io.IOUtils;
@@ -312,7 +311,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         List<String> partitionNames = new ArrayList<>();
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         admin.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
-        if (multiClusterConfigs.getCommonConfig().isParticipantMessageStoreEnabled()) {
+        if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
             participantMessageStoreRTTMap.put(clusterName,
                 Version.composeRealTimeTopic(ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName)));
         }
@@ -2731,8 +2730,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to resource,
         // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
         // our cluster is not too big, so it's not a big deal here.
-        messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
-        if (multiClusterConfigs.getCommonConfig().isParticipantMessageStoreEnabled() &&
+        if (multiClusterConfigs.getConfigForCluster(clusterName).isAdminHelixMessagingChannelEnabled()) {
+          messageChannel.sendToStorageNodes(clusterName, new KillOfflinePushMessage(kafkaTopic), kafkaTopic, retryCount);
+        }
+        if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled() &&
             participantMessageStoreRTTMap.containsKey(clusterName)) {
             VeniceWriter writer =
                 participantMessageWriterMap.computeIfAbsent(clusterName, k -> {
