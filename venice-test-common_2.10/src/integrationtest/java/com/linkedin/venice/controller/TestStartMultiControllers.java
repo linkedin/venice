@@ -4,94 +4,73 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Utils;
-import java.util.Map;
+
 import java.util.concurrent.TimeUnit;
+
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.ExternalView;
+
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestStartMultiControllers {
-  public static final long TEST_TIME_OUT_MS = 15000l;
-
   /**
-   * Test could we start multiple controllers, especially the number of controller is larger than the required number of
-   * one cluster. Make sure the extra controller could be started as normal but do not join the cluster which is full.
-   * Then after failing one of controller in that cluster, the controller which did not join would join the cluster
-   * instead.
+   * Test that we can start multiple controllers, especially when number of controllers exceeds required number for a
+   * cluster. Make sure that the extra controller can be started and will join the cluster if one of the controllers fail.
    */
-  //TODO see if there was a Helix change that makes this non-deterministic, not a super high priority as long as we
-  // never have more than 3 controllers deployed
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
-  public void testStartControllersMoreThanRequiredForOneCluster()
-      throws Exception {
-    int numberOfControler = 4;
-    // Start a cluster with 4 controllers but the cluster only need 3 controller by default.
-    VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(numberOfControler, 1, 1);
-    String clusterName = cluster.getClusterName();
-    String partitionName = HelixUtils.getPartitionName(clusterName, 0);
-    SafeHelixManager manager = new SafeHelixManager(
-        new ZKHelixManager(clusterName, "testStartControllersMoreThanRequiredForOneCluster", InstanceType.SPECTATOR,
-            cluster.getZk().getAddress()));
-    manager.connect();
-    //Assert there are 3 controllers join the cluster.
-    ExternalView externalView = getExternViewOfCluster(cluster, manager);
-    String externalViewString = externalView.getStateMap(partitionName).toString();
-    Assert.assertEquals(externalView.getStateMap(partitionName).keySet().size(), 3, "Found too many controllers in external view: " + externalViewString);
+  @Test
+  public void testStartMoreThanRequiredControllersForOneCluster() throws Exception {
+    final int minControllerCount = 3;
+    final int controllerCount = minControllerCount + 1;
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(controllerCount, 1, 1)) {
 
-    VeniceControllerWrapper controllerNotInCluster = null;
-    Map<String, String> controllerToStateMap = getExternViewOfCluster(cluster, manager).getStateMap(partitionName);
-    //Find the one which did not join the cluster and test whether it can get master controller correctly.
-    for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
-      String instanceId = Utils.getHelixNodeIdentifier(controller.getPort());
+      SafeHelixManager helixManager = new SafeHelixManager(new ZKHelixManager(
+          cluster.getClusterName(), TestUtils.getUniqueString(), InstanceType.SPECTATOR, cluster.getZk().getAddress()));
 
-      if (!controllerToStateMap.containsKey(instanceId)) {
-        // The controller which did not join the cluster.
-        String masterInstanceId = controller.getVeniceAdmin().getMasterController(clusterName).getNodeId();
-        controllerNotInCluster = controller;
-        Assert.assertEquals(masterInstanceId,
-            Utils.getHelixNodeIdentifier(cluster.getMasterVeniceController().getPort()),
-            "Controller that did not join cluster can not get the master controller correctly");
-        break;
+      try {
+        helixManager.connect();
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          Assert.assertTrue(getActiveControllerCount(helixManager) >= minControllerCount,
+              "Not enough active controllers in the cluster");
+        });
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          int masterControllerCount = 0;
+          for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
+            if (controller.isMasterControllerForControllerCluster()) {
+              masterControllerCount++;
+            }
+          }
+          Assert.assertEquals(masterControllerCount, 1, "There should be only one master controller in the cluster");
+        });
+
+        VeniceControllerWrapper oldMasterController = cluster.getMasterVeniceController();
+        cluster.stopMasterVeniceControler();
+
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+          Assert.assertTrue(getActiveControllerCount(helixManager) >= minControllerCount,
+              "Not enough active controllers in the cluster");
+        });
+
+        Assert.assertNotSame(cluster.getMasterVeniceController(), oldMasterController);
+
+      } finally {
+        helixManager.disconnect();
       }
     }
-    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS, () -> {
-      int masterControllerCntForControllerCluster = 0;
-      for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
-        if (controller.isMasterControllerForControllerCluster()) {
-          masterControllerCntForControllerCluster++;
-        }
-      }
-      Assert.assertEquals(masterControllerCntForControllerCluster, 1, "There should be only one"
-          + " master controller for controller cluster");
-    });
-    String instanceIdOfControllerNotInCluster = Utils.getHelixNodeIdentifier(controllerNotInCluster.getPort());
-    //Stop master controller and make sure the controller which did not join in is join in cluster right now.
-    cluster.stopMasterVeniceControler();
-    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
-      ExternalView exView = getExternViewOfCluster(cluster, manager);
-      return exView.getStateMap(partitionName).containsKey(instanceIdOfControllerNotInCluster);
-    });
-
-    manager.disconnect();
-    cluster.close();
   }
 
-  private ExternalView getExternViewOfCluster(VeniceClusterWrapper cluster, SafeHelixManager manager) {
-    String clusterName = cluster.getClusterName();
-    String controllerClusterName = "venice-controllers";
-    // Check whether enough controller has been assigned.
-
-    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
-    ExternalView externalView = manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
-
-    return externalView;
+  private int getActiveControllerCount(SafeHelixManager helixManager) {
+    String clusterName = helixManager.getClusterName();
+    String partitionName = HelixUtils.getPartitionName(clusterName, 0);
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder("venice-controllers");
+    ExternalView view = helixManager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+    return view.getStateMap(partitionName).size();
   }
 }
