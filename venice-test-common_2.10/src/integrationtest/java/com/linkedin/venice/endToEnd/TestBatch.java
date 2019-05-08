@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
@@ -159,6 +160,20 @@ public abstract class TestBatch {
     }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testEarlyDeleteBackupStore() throws Exception {
+    testBatchStoreMultiVersionPush(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+      return new Pair<>(recordSchema.getField("id").schema(),
+          recordSchema.getField("name").schema());
+    }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
+      //test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+    }, new UpdateStoreQueryParams().setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START));
+  }
+
   @Test
   public void testIncrementalPush() throws Exception {
     String storeName = testBatchStore(inputDir -> {
@@ -180,7 +195,7 @@ public abstract class TestBatch {
       for (int i = 51; i <= 150; i++) {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
       }
-    }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -203,11 +218,16 @@ public abstract class TestBatch {
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
       UpdateStoreQueryParams storeParms) throws Exception {
-    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms);
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, false);
+  }
+
+  private String testBatchStoreMultiVersionPush(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
+      UpdateStoreQueryParams storeParms) throws Exception {
+    return testBatchStore(inputFileWriter, extraProps, dataValidator, null, storeParms, true);
   }
 
   private String testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator,
-      String existingStore, UpdateStoreQueryParams storeParms) throws Exception {
+      String existingStore, UpdateStoreQueryParams storeParms, boolean multiPushJobs) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = Utils.isNullOrEmpty(existingStore) ? TestUtils.getUniqueString("store") : existingStore;
@@ -223,6 +243,14 @@ public abstract class TestBatch {
 
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
     job.run();
+
+    if (multiPushJobs) {
+      job = new KafkaPushJob("Test Batch push job 2", props);
+      job.run();
+
+      job = new KafkaPushJob("Test Batch push job 3", props);
+      job.run();
+    }
 
     MetricsRepository metricsRepository = new MetricsRepository();
 

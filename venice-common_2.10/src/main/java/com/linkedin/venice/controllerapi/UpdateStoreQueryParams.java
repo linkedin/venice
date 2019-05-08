@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Map;
@@ -45,7 +46,9 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setReadComputationEnabled(srcStore.isReadComputationEnabled())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
-            .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled());
+            .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
+            .setBackupStrategy(srcStore.getBackupStrategy());
+
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -219,6 +222,15 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(LEADER_FOLLOWER_MODEL_ENABLED);
   }
 
+
+  public UpdateStoreQueryParams setBackupStrategy(BackupStrategy backupStrategy) {
+    params.put(BACKUP_STRATEGY, backupStrategy.name());
+    return this;
+  }
+
+  public Optional<BackupStrategy> getBackupStrategy() {
+    return Optional.ofNullable(params.get(BACKUP_STRATEGY)).map(BackupStrategy::valueOf);
+  }
 
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {

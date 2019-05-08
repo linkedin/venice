@@ -508,7 +508,7 @@ public abstract class AbstractPushMonitor
     // If we met some error to retire the old version, we should not throw the exception out to fail this operation,
     // because it will be collected once a new push is completed for this store.
     try {
-      storeCleaner.retireOldStoreVersions(clusterName, storeName);
+      storeCleaner.retireOldStoreVersions(clusterName, storeName, false);
     } catch (Exception e) {
       logger.warn("Could not retire the old versions for store: " + storeName + " in cluster: " + clusterName, e);
     }
