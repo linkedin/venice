@@ -638,47 +638,39 @@ public class Store {
       return new ArrayList<>();
     }
 
+    // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion
+    int lastElementIndex = versions.size() - 1;
     List<Version> versionsToDelete = new ArrayList<>();
 
-    // Ignore the last version from considering it for delete.
-    // If a version gets deleted the same version number will be generated for the next version
-    // in the current code. Due to timing and synchronization issues as well as reasoning
-    // this case is difficult to handle.
-    // TODO : but this still wastes the space on storage node by preserving the highest version
-    // regardless of its state. It can be solved better by always incrementing the versions
-    // and never re-using it.
-
-    // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion
-    int lastElementIndex =  versions.size() - 1;
-    Version latestVersion = versions.get(lastElementIndex);
-    if(VersionStatus.preserveLastFew(latestVersion.getStatus())) {
-      // Last version is always preserved and it can be archived, reduce the number of versions to preserveLastFew by 1.
-      curNumVersionsToPreserve --;
-    }
-
-    for(int i = lastElementIndex - 1;i >= 0 ; i --){
+    /**
+     * The current version need not be the last largest version (eg we rolled back to a earlier version).
+     * The versions which can be deleted are:
+     *     a) ONLINE versions except the current version given we preserve numVersionsToPreserve versions.
+     *     b) ERROR version (ideally should not be there as AbstractPushmonitor#handleErrorPush deletes those)
+     *     c) STARTED versions if its not the last one and the store is not migrating.
+     */
+    for (int i = lastElementIndex; i >= 0; i--) {
       Version version = versions.get(i);
-      // Error Versions are deleted immediately
-      if(VersionStatus.canDelete(version.getStatus())) {
+
+      if (version.getNumber() == currentVersion) { // currentVersion is always preserved
+        curNumVersionsToPreserve--;
+      } else if (VersionStatus.canDelete(version.getStatus())) {  // ERROR versions are always deleted
         versionsToDelete.add(version);
-      } else if (VersionStatus.preserveLastFew(version.getStatus())) {
-        if(curNumVersionsToPreserve > 0) {
-          curNumVersionsToPreserve --;
+      } else if (VersionStatus.ONLINE.equals(version.getStatus())) {
+        if (curNumVersionsToPreserve > 0) { // keep the minimum number of version to preserve
+          curNumVersionsToPreserve--;
         } else {
           versionsToDelete.add(version);
         }
-      } else if (VersionStatus.STARTED.equals(version.getStatus())){
+      } else if (VersionStatus.STARTED.equals(version.getStatus()) && (i != lastElementIndex) && !isMigrating()) {
         // For the non-last started version, if it's not the current version(STARTED version should not be the current
-        // version, just prevent some edge cases here.), we should delete it. As on our logic, there should not be any
-        // concurrent push, so the non-last push is either completed or failed. If it's stuck in STARTED, it means
-        // somehow the controller did not update the version status properly.
-        if(version.getNumber() != currentVersion){
-          versionsToDelete.add(version);
-        }
+        // version, just prevent some edge cases here.), we should delete it only if the store is not migrating
+        // as during store migration are there are concurrent pushes with STARTED version.
+        // So if the store is not migrating, it's stuck in STARTED, it means somehow the controller did not update the version status properly.
+        versionsToDelete.add(version);
       }
       // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in the future.
     }
-
     return versionsToDelete;
   }
 
