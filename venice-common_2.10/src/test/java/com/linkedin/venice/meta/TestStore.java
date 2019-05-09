@@ -86,7 +86,6 @@ public class TestStore {
     }
   }
 
-
   @Test
   public void testRetrieveVersionsToDelete() {
     Store store = TestUtils.createTestStore("retrieveDeleteStore", "owner", System.currentTimeMillis());
@@ -104,31 +103,34 @@ public class TestStore {
     Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "one version is active and the last version should be preserved, nothing to delete.");
 
     version2.setStatus(VersionStatus.ONLINE);
+    store.setCurrentVersion(2);
+
     assertVersionsEquals(store, 1, Arrays.asList(version1), "two version active, one should be deleted");
     Assert.assertEquals(store.retrieveVersionsToDelete(2).size(), 0, "Only two active versions, nothing to delete");
 
     // Add one more version in error.
     Version version3 = new Version(store.getName(), 3);
     store.addVersion(version3);
+
     assertVersionsEquals(store, 1, Arrays.asList(version1), "two version active, one should be deleted");
 
     version3.setStatus(VersionStatus.ERROR);
-    assertVersionsEquals( store, 1, Arrays.asList(version1), "highest version is never deleted");
+
+    assertVersionsEquals( store, 1, Arrays.asList(version1, version3), "error version should be deleted");
 
     Version version4 = new Version(store.getName(), 4);
     store.addVersion(version4);
-
     version4.setStatus(VersionStatus.ERROR);
-    assertVersionsEquals(store, 2, Arrays.asList(version3), "lower error versions should be deleted.");
 
-    assertVersionsEquals( store, 1, Arrays.asList(version1, version3), "lower active and error version should be deleted");
+    assertVersionsEquals(store, 2, Arrays.asList(version3, version4), "error versions should be deleted.");
+    assertVersionsEquals( store, 1, Arrays.asList(version1, version3, version4), "lower active and 2 error version should be deleted");
 
     Version version5 = new Version(store.getName(), 5);
     store.addVersion(version5);
+    store.setCurrentVersion(5);
     version5.setStatus(VersionStatus.ONLINE);
 
     assertVersionsEquals(store, 2, Arrays.asList(version1, version3, version4), "delete all but 2 active versions");
-
     assertVersionsEquals( store, 5, Arrays.asList(version3 , version4),"delete all error versions");
   }
 
