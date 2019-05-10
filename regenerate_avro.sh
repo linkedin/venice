@@ -110,4 +110,6 @@ for (( i=0; i<${#FULL_CODE_GEN_PATH[@]}; i++ )); do
   java -jar $AVRO_TOOLS_JAR compile schema ${AVRO_SCHEMAS_PATH[i]} ${CODE_GEN_PATH[i]}
 done
 
+# Don't generate class: com.linkedin.venice.kafka.protocol.GUID.java since it contains changes required to support Avro-1.8
+git checkout -- venice-common/src/main/java/com/linkedin/venice/kafka/protocol/GUID.java
 echo "Done!"
