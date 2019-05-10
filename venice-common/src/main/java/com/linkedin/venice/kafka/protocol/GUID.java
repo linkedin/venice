@@ -10,4 +10,5 @@ package com.linkedin.venice.kafka.protocol;
 public class GUID extends org.apache.avro.specific.SpecificFixed {
   public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"fixed\",\"name\":\"GUID\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"size\":16}");
   public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
+  public org.apache.avro.Schema getSchema() { return SCHEMA$; }
 }
