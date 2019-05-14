@@ -213,6 +213,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             logger.info("Last offset: " + lastOffset.toDetailedString() + "\nProducerTracker: "
                 + producerTrackerMap.get(undelegatedRecords.peek().value().producerMetadata.producerGUID));
             failingOffset = undelegatedRecords.peek().offset();
+            stats.recordFailedAdminConsumption();
             break;
           }
           updateLastOffset(undelegatedRecords.poll().offset());
@@ -289,7 +290,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
         tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(),
             lastSucceededExecutionIdMap.getOrDefault(entry.getKey(), lastSucceededExecutionId), entry.getValue(), admin,
-            executionIdAccessor, isParentController));
+            executionIdAccessor, isParentController, stats));
         stores.add(entry.getKey());
       }
     }
@@ -362,7 +363,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue() < smallestOffset) {
               smallestOffset = problematicStore.getValue();
             }
-            stats.recordFailedAdminConsumption();
           }
           lastSucceededExecutionId = lowestSucceededExecutionId;
           // Ensure failingOffset from the delegateMessage is not overwritten.

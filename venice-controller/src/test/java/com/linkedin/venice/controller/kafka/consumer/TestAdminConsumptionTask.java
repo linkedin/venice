@@ -4,6 +4,7 @@ import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -21,6 +22,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
@@ -841,7 +843,7 @@ public class TestAdminConsumptionTask {
   }
 
   @Test
-  public void testSkipDIV() throws InterruptedException, ExecutionException, TimeoutException {
+  public void testSkipDIV() throws InterruptedException, ExecutionException, TimeoutException, IOException {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     // Let the admin consumption task process some admin messages
@@ -877,6 +879,36 @@ public class TestAdminConsumptionTask {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 4L));
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testRetriableConsumptionException()
+      throws InterruptedException, ExecutionException, TimeoutException, IOException {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+    executor.submit(task);
+    String mockPushJobId = "mock push job id";
+    int versionNumber = 1;
+    int numberOfPartitions = 1;
+    doThrow(new VeniceOperationAgainstKafkaTimedOut("Mocking kafka topic creation timeout"))
+        .when(admin)
+        .addVersionAndStartIngestion(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions);
+    Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes,
+        getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(task.getFailingOffset(), offset));
+    // The add version message is expected to fail with retriable VeniceOperationAgainstKafkaTimeOut exception and the
+    // corresponding code path for handling retriable exceptions should have been executed.
+    verify(stats, atLeastOnce()).recordFailedRetriableAdminConsumption();
+    verify(stats, never()).recordFailedAdminConsumption();
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema, long executionId) {
@@ -904,6 +936,22 @@ public class TestAdminConsumptionTask {
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
     adminMessage.payloadUnion = killJob;
+    adminMessage.executionId = executionId;
+    return adminOperationSerializer.serialize(adminMessage);
+  }
+
+  private byte[] getAddVersionMessage(String clusterName, String storeName, String pushJobId, int versionNum,
+      int numberOfPartitions, long executionId) {
+    AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
+    addVersion.clusterName = clusterName;
+    addVersion.storeName = storeName;
+    addVersion.pushJobId = pushJobId;
+    addVersion.versionNum = versionNum;
+    addVersion.numberOfPartitions = numberOfPartitions;
+
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.ADD_VERSION.getValue();
+    adminMessage.payloadUnion = addVersion;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
   }

@@ -17,6 +17,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -65,7 +66,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-
+import static org.mockito.Mockito.*;
 
 /**
  * Test cases for VeniceHelixAdmin
@@ -565,6 +566,29 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
+  public void testAddVersionAndStartIngestionTopicCreationTimeout() {
+    TopicManager mockedTopicManager = mock(TopicManager.class);
+    doThrow(new VeniceOperationAgainstKafkaTimedOut("mock timeout"))
+        .when(mockedTopicManager)
+        .createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any(), eq(true));
+    veniceAdmin.setTopicManager(mockedTopicManager);
+    String storeName = "test-store";
+    String pushJobId = "test-push-job-id";
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", keySchema, valueSchema);
+    for (int i = 0; i < 5; i ++) {
+      // Mimic the retry behavior by the admin consumption task.
+      Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class,
+          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1));
+    }
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
+    reset(mockedTopicManager);
+    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
+        "There should only be exactly one version added to the test-store");
+  }
+
+  @Test
   public void testAddVersionWhenClusterInMaintenanceMode() throws Exception {
     stopParticipants();
     startParticipant(true, nodeId); //because we need the new version NOT to transition directly to "online" for the
@@ -921,21 +945,21 @@ public class TestVeniceHelixAdmin {
       Assert.fail("Store has been disabled, can not accept a new version");
     } catch (VeniceException e) {
     }
-    Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     try {
       veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
       Assert.fail("Store has been disabled, can not accept a new version");
     } catch (VeniceException e) {
     }
-    Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     try {
       veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
       Assert.fail("Store has been disabled, can not accept a new version");
     } catch (VeniceException e) {
     }
-    Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     veniceAdmin.setStoreWriteability(clusterName, storeName, true);
 
@@ -1645,6 +1669,8 @@ public class TestVeniceHelixAdmin {
     properties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, maxNumberOfPartition);
     properties.put(DEFAULT_PARTITION_SIZE, 100);
     properties.put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
+    properties.put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true);
+    properties.put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false);
 
     return properties;
   }

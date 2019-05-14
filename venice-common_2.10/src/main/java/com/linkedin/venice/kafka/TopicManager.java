@@ -70,6 +70,7 @@ public class TopicManager implements Closeable {
   private static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
   private static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
   protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
 
@@ -114,6 +115,11 @@ public class TopicManager implements Closeable {
     createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty());
   }
 
+  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction,
+      Optional<Integer> minIsr) {
+    createTopic(topicName, numPartitions, replication, eternal, logCompaction, minIsr, true);
+  }
+
   /**
    * Create a topic, and block until the topic is created, with a default timeout of
    * {@value #DEFAULT_KAFKA_OPERATION_TIMEOUT_MS}, after which this function will throw a VeniceException.
@@ -126,15 +132,18 @@ public class TopicManager implements Closeable {
    * @param logCompaction whether to enable log compaction on the topic
    * @param minIsr if present, will apply the specified min.isr to this topic,
    *               if absent, Kafka cluster defaults will be used
+   * @param useFastKafkaOperationTimeout if false, normal kafka operation timeout will be used,
+   *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
-  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction, Optional<Integer> minIsr) {
+  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction,
+      Optional<Integer> minIsr, boolean useFastKafkaOperationTimeout) {
     long retentionTimeMs;
     if (eternal) {
       retentionTimeMs = ETERNAL_TOPIC_RETENTION_POLICY_MS;
     }  else {
       retentionTimeMs = DEFAULT_TOPIC_RETENTION_POLICY_MS;
     }
-    createTopic(topicName, numPartitions, replication, retentionTimeMs, logCompaction, minIsr);
+    createTopic(topicName, numPartitions, replication, retentionTimeMs, logCompaction, minIsr, useFastKafkaOperationTimeout);
   }
 
 
@@ -149,8 +158,13 @@ public class TopicManager implements Closeable {
    * @param logCompaction whether to enable log compaction on the topic
    * @param minIsr if present, will apply the specified min.isr to this topic,
    *               if absent, Kafka cluster defaults will be used
+   * @param useFastKafkaOperationTimeout if false, normal kafka operation timeout will be used,
+   *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
-  public void createTopic(String topicName, int numPartitions, int replication, long retentionTimeMs, boolean logCompaction, Optional<Integer> minIsr) {
+  public void createTopic(String topicName, int numPartitions, int replication, long retentionTimeMs,
+      boolean logCompaction, Optional<Integer> minIsr, boolean useFastKafkaOperationTimeout) {
+    int actualKafkaOperationTimeoutMs =
+        useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs;
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     try {
       Properties topicProperties = new Properties();
@@ -176,17 +190,18 @@ public class TopicManager implements Closeable {
           AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
             asyncCreateOperationSucceeded = true;
         } catch (InvalidReplicationFactorException e) {
-          if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
+          if (System.currentTimeMillis() > startTime + actualKafkaOperationTimeoutMs) {
             throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.", e);
           } else {
-            logger.error("Kafka failed to kick off topic creation because it appears to be under-replicated... Will treat it as a transient error and attempt to ride over it.", e);
+            logger.info("Kafka failed to kick off topic creation because it appears to be under-replicated... Will treat it as a transient error and attempt to ride over it.", e);
             Utils.sleep(200);
           }
         }
       }
       while (!containsTopic(topicName, numPartitions)) {
-        if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
-          throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ".  Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.");
+        if (System.currentTimeMillis() > startTime + actualKafkaOperationTimeoutMs) {
+          throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName
+              + ".  Topic still did not pass all the checks after " + kafkaOperationTimeoutMs + "ms.");
         }
         Utils.sleep(200);
       }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -31,6 +32,7 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
@@ -221,6 +223,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
         this.adapterSerializer = new HelixAdapterSerializer();
         veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
+
         this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(),
             multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(), veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
@@ -279,6 +282,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public HelixAdapterSerializer getAdapterSerializer() {
         return adapterSerializer;
     }
+
+    // For testing purpose.
+    void setTopicManager(TopicManager topicManager) { this.topicManager = topicManager; }
 
     @Override
     public synchronized void start(String clusterName) {
@@ -655,10 +661,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         params.setLargestUsedVersionNumber(0);
         this.updateStore(destClusterName, storeName, params);   // update cloned store in destination cluster
         if (multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled()) {
-            // Start bootstrapping in destination cluster for online versions in the source cluster.
-            // TODO partitionCount should really be moved to version level as mentioned in addVersion in VeniceHelixAdmin
-            // This is okay for now because store migration currently disables all update store operations.
-            int partitionCount = srcStore.getPartitionCount();
             List<Version> sourceOnlineVersions = srcStore
                 .getVersions()
                 .stream()
@@ -667,6 +669,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 .collect(Collectors.toList());
             for (Version version : sourceOnlineVersions) {
                 try {
+                    int partitionCount = topicManager.getPartitions(version.kafkaTopicName()).size();
                     addVersionAndStartIngestion(destClusterName, storeName, version.getPushJobId(), version.getNumber(),
                         partitionCount);
                 } catch (Exception e) {
@@ -815,17 +818,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected final static int VERSION_ID_UNSET = -1;
 
+    /**
+     * This method is used when {@code addVersion} is invoked from the parent controller or directly by the endpoint on
+     * the child controller. These invocations expect the topic creation for the new version to be synchronized or
+     * blocking. Therefore, the internal {@code addVersion} is called with {@code useFastKafkaOperationTimeout} = false.
+     * @param clusterName of the store.
+     * @param storeName of the store.
+     * @param versionNumber of the corresponding push.
+     * @param numberOfPartition of the new version.
+     * @param replicationFactor for the new push.
+     * @return
+     */
     @Override
-    public synchronized Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition, int replicationFactor) {
-        return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition, replicationFactor, true, false);
+    public synchronized Version addVersion(String clusterName, String storeName, int versionNumber,
+        int numberOfPartition, int replicationFactor) {
+        return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition,
+            replicationFactor, true, false, false);
     }
 
+    /**
+     * This is a wrapper method for {@code addVersion} but performs additional feature flag check and operations for add
+     * version via the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an
+     * add version message. Other invocations of this method is for store migration and only when add version via admin
+     * protocol is enabled.
+     * @param clusterName of the store.
+     * @param storeName of the store.
+     * @param pushJobId of the corresponding push.
+     * @param versionNumber of the new version.
+     * @param numberOfPartitions for the new push.
+     */
     @Override
     public void addVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions) {
         if (!multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled()) {
             // No op, add version via admin protocol is disabled.
-            return;
+            throw new VeniceUnsupportedOperationException(ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL + "");
         }
         Store store = getStore(clusterName, storeName);
         if (null == store) {
@@ -837,7 +864,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " for store " + storeName + " in cluster " + clusterName);
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-                getReplicationFactor(clusterName, storeName), true, false);
+                getReplicationFactor(clusterName, storeName), true, false, true);
             if (store.isMigrating()) {
                 try {
                     StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
@@ -877,10 +904,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for
+     * TODO: refactor this method, currently it's overloaded with behaviors of the parent and child controller.
+     * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
+     * Add version is a multi step process and the order of execution and behavior for some of these steps are made
+     * different on purpose depending on how it's invoked. Parent controller's add version will update the store's
+     * versions before creating the topic. Child controller on the other hand will create the topic first before
+     * updating the store's versions.
      */
-    protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
-        int numberOfPartitions, int replicationFactor, boolean whetherStartOfflinePush, boolean sendStartOfPush) {
+    protected Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
+        int numberOfPartitions, int replicationFactor, boolean whetherStartOfflinePush, boolean sendStartOfPush,
+        boolean useFastKafkaOperationTimeout) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -899,7 +932,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             resources.lockForMetadataOperation();
             try {
                 repository.lock();
-                int newTopicPartitionCount = 0;
                 try {
                     Store store = repository.getStore(storeName);
                     if (store == null) {
@@ -911,24 +943,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (store.isIncrementalPushEnabled()) {
                         logCompaction = clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled();
                     }
-                    strategy = store.getOffLinePushStrategy();
+                    // Update default partition count if it have not been assigned.
+                    //TODO: persist numberOfPartitions at the version level
+                    if (store.getPartitionCount() == 0) {
+                        store.setPartitionCount(numberOfPartitions);
+                    }
                     if (versionNumber == VERSION_ID_UNSET) {
-                        // No Version supplied, generate new version.
+                        // No version supplied, generate a new version. This could happen either in the parent
+                        // controller or local Samza jobs.
                         version = store.increaseVersion(pushJobId);
                     } else {
                         if (store.containsVersion(versionNumber)) {
                             throwVersionAlreadyExists(storeName, versionNumber);
                         }
                         version = new Version(storeName, versionNumber, pushJobId);
+                    }
+                    repository.updateStore(store);
+                } finally {
+                    repository.unLock();
+                }
+
+                topicManager.createTopic(
+                    version.kafkaTopicName(),
+                    numberOfPartitions,
+                    clusterConfig.getKafkaReplicationFactor(),
+                    true,
+                    logCompaction,
+                    clusterConfig.getMinIsr(),
+                    useFastKafkaOperationTimeout
+                );
+
+                repository.lock();
+                try {
+                    Store store = repository.getStore(storeName);
+                    strategy = store.getOffLinePushStrategy();
+                    if (!store.containsVersion(version.getNumber())) {
                         store.addVersion(version);
                     }
                     if (version.isLeaderFollowerModelEnabled()) {
                         isLeaderFollowerStateModel = true;
-                    }
-                    // Update default partition count if it have not been assigned.
-                    if (store.getPartitionCount() == 0) {
-                        store.setPartitionCount(
-                            numberOfPartitions); //TODO, persist numberOfPartitions at the version level
                     }
                     // Disable buffer replay for hybrid according to cluster config
                     if (store.isHybrid() && clusterConfig.isSkipBufferRelayForHybrid()) {
@@ -936,29 +989,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
                           version.getNumber() + " in cluster: " + clusterName);
                     }
-                    newTopicPartitionCount = store.getPartitionCount();
                     repository.updateStore(store);
                     logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
                 } finally {
                     repository.unLock();
                 }
-
-                // Check to catch any unexpected modification of the partition count, can be removed once partition
-                // count is moved to the version level.
-                if (newTopicPartitionCount != numberOfPartitions) {
-                    throwPartitionCountMismatch(clusterName, storeName, versionNumber, numberOfPartitions,
-                        newTopicPartitionCount);
-                }
-
-                checkControllerMastership(clusterName);
-                topicManager.createTopic(
-                    version.kafkaTopicName(),
-                    newTopicPartitionCount,
-                    clusterConfig.getKafkaReplicationFactor(),
-                    true,
-                    logCompaction,
-                    clusterConfig.getMinIsr()
-                );
 
                 if (sendStartOfPush) {
                     // Note this will use default values for "sorted", "chunked" and "compressionStrategy" properties.
@@ -967,9 +1002,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
 
                 if (whetherStartOfflinePush) {
-                    // TODO: there could be some problem here since topic creation is an async op, which means the new topic
-                    // may not exist, When storage node is trying to consume the new created topic.
-
                     // We need to prepare to monitor before creating helix resource.
                     startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor,
                         strategy);
@@ -982,6 +1014,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             return version;
         } catch (Throwable e) {
+            if (useFastKafkaOperationTimeout && e instanceof VeniceOperationAgainstKafkaTimedOut) {
+                // Expected and retriable exception skip error handling within VeniceHelixAdmin and let the caller to
+                // handle the exception.
+                throw e;
+            }
             int failedVersionNumber = versionNumber;
             String errorMessage = "Failed to add version " + failedVersionNumber + " to store " + storeName + " in cluster " + clusterName;
             logger.error(errorMessage, e);
@@ -1037,7 +1074,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return isIncrementalPush ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                offlinePush, sendStartOfPush);
+                offlinePush, sendStartOfPush, false);
     }
 
     /**
@@ -1131,7 +1168,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     clusterConfig.getKafkaReplicationFactor(),
                     store.getHybridStoreConfig().getRetentionTimeInMs(),
                     false, // RT topics are never compacted
-                    clusterConfig.getMinIsr()
+                    clusterConfig.getMinIsr(),
+                    false
                 );
                 //TODO: if there is an online version from a batch push before this store was hybrid then we won't start
                 // replicating to it.  A new version must be created.
