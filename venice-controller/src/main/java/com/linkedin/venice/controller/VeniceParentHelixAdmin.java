@@ -702,7 +702,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     mayThrottleTopicCreation(timer);
     Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
-        numberOfPartition, replicationFactor, false, false);
+        numberOfPartition, replicationFactor, false, false, false);
     cleanupHistoricalVersions(clusterName, storeName);
     createOfflinePushStatus(clusterName, storeName, newVersion.getNumber(), numberOfPartition, replicationFactor);
     return newVersion;

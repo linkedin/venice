@@ -1676,7 +1676,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
     doReturn(new Version(storeName, 1)).when(internalAdmin)
-        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false);
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false , false);
     List<String> names = new ArrayList<>();
     int count = VeniceParentHelixAdmin.MAX_PUSH_STATUS_PER_STORE_TO_KEEP+1;
     for(int i=0;i<count;i++){

@@ -23,7 +23,10 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
@@ -46,11 +49,13 @@ public class AdminExecutionTask implements Callable<Void> {
   private final Logger logger;
   private final String clusterName;
   private final String storeName;
-  private long lastSucceededExecutionId;
   private final Queue<Pair<Long, AdminOperation>> internalTopic;
   private final VeniceHelixAdmin admin;
-  private ExecutionIdAccessor executionIdAccessor;
+  private final ExecutionIdAccessor executionIdAccessor;
   private final boolean isParentController;
+  private final AdminConsumptionStats stats;
+
+  private long lastSucceededExecutionId;
 
   AdminExecutionTask(
       Logger logger,
@@ -60,7 +65,8 @@ public class AdminExecutionTask implements Callable<Void> {
       Queue<Pair<Long, AdminOperation>> internalTopic,
       VeniceHelixAdmin admin,
       ExecutionIdAccessor executionIdAccessor,
-      boolean isParentController) {
+      boolean isParentController,
+      AdminConsumptionStats stats) {
     this.logger = logger;
     this.clusterName = clusterName;
     this.storeName = storeName;
@@ -69,6 +75,7 @@ public class AdminExecutionTask implements Callable<Void> {
     this.admin = admin;
     this.executionIdAccessor = executionIdAccessor;
     this.isParentController = isParentController;
+    this.stats = stats;
   }
 
   @Override
@@ -82,8 +89,16 @@ public class AdminExecutionTask implements Callable<Void> {
       } catch (Exception e) {
         // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
         // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
-        logger.error("Error when processing admin message for store " + storeName + " with offset " + offset
-            + " and execution id " + adminOperation.executionId, e);
+        String logMessage = "when processing admin message for store " + storeName + " with offset " + offset
+            + " and execution id " + adminOperation.executionId;
+        if (e instanceof VeniceRetriableException) {
+          // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
+          stats.recordFailedRetriableAdminConsumption();
+          logger.info("Retriable exception thrown " + logMessage, e);
+        } else {
+          stats.recordFailedAdminConsumption();
+          logger.error("Error " + logMessage, e);
+        }
         throw e;
       }
     }
@@ -367,7 +382,10 @@ public class AdminExecutionTask implements Callable<Void> {
     String pushJobId = message.pushJobId.toString();
     int versionNumber = message.versionNum;
     int numberOfPartitions = message.numberOfPartitions;
-
-    admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions);
+    try {
+      admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions);
+    } catch (UnsupportedOperationException unsupportedOperationException) {
+      // No op and ignore the add version message since add version via admin protocol is disabled
+    }
   }
 }
