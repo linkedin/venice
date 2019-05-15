@@ -201,42 +201,31 @@ public class TestAdminSparkServer {
     Assert.assertEquals(sr1.getSchemaStr(), keySchemaStr);
   }
 
+  private String formatSchema(String schema) {
+    return new Schema.Parser().parse(schema).toString();
+  }
+
   @Test(timeOut = TIME_OUT)
   public void controllerClientManageValueSchema() {
     String storeToCreate = TestUtils.getUniqueString("newTestStore");
     String keySchemaStr = "\"string\"";
-    String schema1 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
-        "                }\n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
-        "           ]\n" +
-        "        }";
-    String schema2 = "{\n" +
-        "           \"type\": \"record\",\n" +
-        "           \"name\": \"KeyRecord\",\n" +
-        "           \"fields\" : [\n" +
-        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
-        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
-        "               {\n" +
-        "                 \"name\": \"Suit\", \n" +
-        "                 \"type\": {\n" +
-        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"CLUBS\", \"HEART\"]\n" +
-        "                } \n" +
-        "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\", \"default\": 123 }" +
-        "           ]\n" +
-        "        }";
-    String schema3 = "abc";
-    String schema4 = "\"string\"";
+    String schemaPrefix = "        {\n" + "           \"type\": \"record\",\n" + "           \"name\": \"KeyRecord\",\n"
+        + "           \"fields\" : [\n"
+        + "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n"
+        + "               {\"name\": \"company\", \"type\": \"string\"},\n" + "               {\n"
+        + "                 \"name\": \"Suit\", \n" + "                 \"type\": {\n"
+        + "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n"
+        + "                }\n" + "              },\n";
+
+    String schemaSuffix = "           ]\n" + "        }";
+    String salaryFieldWithoutDefault = "               {\"name\": \"salary\", \"type\": \"long\"}\n";
+
+    String salaryFieldWithDefault = "               {\"name\": \"salary\", \"type\": \"long\", \"default\": 123 }\n";
+
+    String schema1 = formatSchema(schemaPrefix + salaryFieldWithoutDefault + schemaSuffix);
+    String schema2 = formatSchema(schemaPrefix + salaryFieldWithDefault + schemaSuffix);
+    String invalidSchema = "abc";
+    String incompatibleSchema = "\"string\"";
 
     // Add value schema to non-existed store
     SchemaResponse sr0 = controllerClient.addValueSchema(storeToCreate, schema1);
@@ -256,15 +245,15 @@ public class TestAdminSparkServer {
     Assert.assertFalse(sr3.isError());
     Assert.assertEquals(sr3.getId(), 2);
     // Add invalid schema
-    SchemaResponse sr4 = controllerClient.addValueSchema(storeToCreate, schema3);
+    SchemaResponse sr4 = controllerClient.addValueSchema(storeToCreate, invalidSchema);
     Assert.assertTrue(sr4.isError());
     // Add incompatible schema
-    SchemaResponse sr5 = controllerClient.addValueSchema(storeToCreate, schema4);
+    SchemaResponse sr5 = controllerClient.addValueSchema(storeToCreate, incompatibleSchema);
     Assert.assertTrue(sr5.isError());
 
     // Formatted schema string
-    String formattedSchemaStr1 = Schema.parse(schema1).toString();
-    String formattedSchemaStr2 = Schema.parse(schema2).toString();
+    String formattedSchemaStr1 = formatSchema(schema1);
+    String formattedSchemaStr2 = formatSchema(schema2);
     // Get schema by id
     SchemaResponse sr6 = controllerClient.getValueSchema(storeToCreate, 1);
     Assert.assertFalse(sr6.isError());
@@ -283,9 +272,9 @@ public class TestAdminSparkServer {
     SchemaResponse sr10 = controllerClient.getValueSchemaID(storeToCreate, schema2);
     Assert.assertFalse(sr10.isError());
     Assert.assertEquals(sr10.getId(), 2);
-    SchemaResponse sr11 = controllerClient.getValueSchemaID(storeToCreate, schema3);
+    SchemaResponse sr11 = controllerClient.getValueSchemaID(storeToCreate, invalidSchema);
     Assert.assertTrue(sr11.isError());
-    SchemaResponse sr12 = controllerClient.getValueSchemaID(storeToCreate, schema4);
+    SchemaResponse sr12 = controllerClient.getValueSchemaID(storeToCreate, incompatibleSchema);
     Assert.assertTrue(sr12.isError());
 
     // Get all value schema
@@ -297,6 +286,38 @@ public class TestAdminSparkServer {
     Assert.assertEquals(schemas[0].getSchemaStr(), formattedSchemaStr1);
     Assert.assertEquals(schemas[1].getId(), 2);
     Assert.assertEquals(schemas[1].getSchemaStr(), formattedSchemaStr2);
+
+    // Add way more schemas, to test for the bug where we ordered schemas lexicographically: 1, 10, 11, 2, 3, ...
+    String[] allSchemas = new String[100];
+    allSchemas[0] = schema1;
+    allSchemas[1] = schema2;
+    String prefixForLotsOfSchemas = schemaPrefix + salaryFieldWithDefault;
+
+    for (int i = 3; i < allSchemas.length; i++) {
+      prefixForLotsOfSchemas += "," +
+          "               {\"name\": \"newField" + i + "\", \"type\": \"long\", \"default\": 123 }\n";
+      String schema = formatSchema(prefixForLotsOfSchemas + schemaSuffix);
+      allSchemas[i - 1] = schema;
+      SchemaResponse sr = controllerClient.addValueSchema(storeToCreate, schema);
+      Assert.assertFalse(sr.isError());
+      Assert.assertEquals(sr.getId(), i);
+
+      // At each new schema we create, we test that the ordering is correct
+      MultiSchemaResponse msr2 = controllerClient.getAllValueSchema(storeToCreate);
+      Assert.assertFalse(msr2.isError());
+      MultiSchemaResponse.Schema[] schemasFromController = msr2.getSchemas();
+      Assert.assertEquals(schemasFromController.length, i,
+          "getAllValueSchema request should return " + i + " schemas.");
+
+      for (int j = 1; j <= i; j++) {
+        Assert.assertEquals(schemasFromController[j - 1].getId(), j,
+            "getAllValueSchema request should return the right schema ID for item " + j
+                + " after " + i + " schemas have been created.");
+        Assert.assertEquals(schemasFromController[j - 1].getSchemaStr(), allSchemas[j - 1],
+            "getAllValueSchema request should return the right schema string for item " + j
+                + " after " + i + " schemas have been created.");
+      }
+    }
   }
 
   @Test(timeOut = TIME_OUT)
