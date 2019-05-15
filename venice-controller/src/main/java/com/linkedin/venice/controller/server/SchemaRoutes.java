@@ -9,6 +9,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
+import java.util.Comparator;
+import java.util.stream.Collectors;
 import spark.Route;
 
 import java.util.Collection;
@@ -126,7 +128,11 @@ public class SchemaRoutes {
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
-        Collection<SchemaEntry> valueSchemaEntries = admin.getValueSchemas(responseObject.getCluster(), responseObject.getName());
+        Collection<SchemaEntry> valueSchemaEntries =
+            admin.getValueSchemas(responseObject.getCluster(), responseObject.getName())
+                .stream()
+                .sorted(Comparator.comparingInt(SchemaEntry::getId))
+                .collect(Collectors.toList());
 
         int schemaNum = valueSchemaEntries.size();
         MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
