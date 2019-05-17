@@ -328,12 +328,15 @@ public class StorageNodeReadTest {
 
   @Test
   public void testDiskHealthCheckService() throws Exception  {
-    Properties serverProperties = new Properties();
-    serverProperties.put(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10); // set health check interval to 10 seconds
-    VeniceServerWrapper serverWrapper = veniceCluster.addVeniceServer(serverProperties);
-    String testServerAddr = serverWrapper.getAddress();
+    VeniceServerWrapper serverWrapper = null;
+    CloseableHttpAsyncClient client = null;
+    try {
+      Properties serverProperties = new Properties();
+      serverProperties.put(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10); // set health check interval to 10 seconds
+      serverWrapper = veniceCluster.addVeniceServer(serverProperties);
+      String testServerAddr = serverWrapper.getAddress();
 
-    try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
+      client = HttpAsyncClients.createDefault();
       client.start();
 
       HttpResponse response = sendHeartbeatRequest(client, testServerAddr);
@@ -343,6 +346,14 @@ public class StorageNodeReadTest {
       Thread.sleep(TimeUnit.SECONDS.toMillis(15));
       response = sendHeartbeatRequest(client, testServerAddr);
       Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
+    } finally {
+      if (serverWrapper != null) {
+        /**
+         * Stop and remove the new server from the test cluster after this unit test.
+         */
+        veniceCluster.removeVeniceServer(serverWrapper.getPort());
+      }
+      IOUtils.closeQuietly(client);
     }
   }
 

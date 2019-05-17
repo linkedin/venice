@@ -353,6 +353,17 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return effectedReplicas;
   }
 
+  /**
+   * Stop and remove a venice server from the cluster
+   * @param port Port number that the server is listening on.
+   * @return
+   */
+  public synchronized List<Replica> removeVeniceServer(int port) {
+    List<Replica> effectedReplicas = stopVeniceServer(port);
+    veniceServerWrappers.remove(port);
+    return effectedReplicas;
+  }
+
   public synchronized void restartVeniceServer(int port){
     restartVeniceComponent(veniceServerWrappers, port);
   }
