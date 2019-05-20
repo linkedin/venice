@@ -12,7 +12,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.participant.protocol.ParticipantMessageStoreUtils;
+import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.utils.TestUtils;

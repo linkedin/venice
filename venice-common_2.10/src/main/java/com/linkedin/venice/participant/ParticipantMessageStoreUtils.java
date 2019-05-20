@@ -1,4 +1,4 @@
-package com.linkedin.venice.participant.protocol;
+package com.linkedin.venice.participant;
 
 public class ParticipantMessageStoreUtils {
   private static final String STORE_NAME_FORMAT = "__participant_message_store_cluster_%s__";

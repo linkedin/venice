@@ -55,7 +55,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.participant.protocol.ParticipantMessageStoreUtils;
+import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -1442,11 +1442,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public void truncateKafkaTopic(String kafkaTopicName) {
-        if (getTopicManager().containsTopic(kafkaTopicName)) {
+        /**
+         * Topic truncation doesn't care about whether the topic actually exists in Kafka Broker or not since
+         * the truncation will only update the topic metadata in Kafka Zookeeper.
+         * This logic is used to avoid the scenario that the topic exists in Kafka Zookeeper, but not fully ready in
+         * Kafka Broker yet.
+         */
+        if (getTopicManager().containsTopicInKafkaZK(kafkaTopicName)) {
             getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs);
             logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
         } else {
-            logger.info("Topic: " + kafkaTopicName + " doesn't exist, will skip the truncation");
+            logger.info("Topic: " + kafkaTopicName + " doesn't exist in Kafka Zookeeper, will skip the truncation");
         }
     }
 

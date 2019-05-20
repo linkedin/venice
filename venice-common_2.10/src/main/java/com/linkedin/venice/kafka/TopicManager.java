@@ -381,6 +381,15 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * Check whether the topic exists in Kafka ZK or not.
+   * This function is only being used by {@literal VeniceHelixAdmin#truncateKafkaTopic} right now,
+   * since topic truncation doesn't care about whether the topic actually exists in Kafka broker or not.
+   */
+  public boolean containsTopicInKafkaZK(String topic) {
+    return AdminUtils.topicExists(getZkUtils(), topic);
+  }
+
+  /**
    * This is an extensive check to mitigate an edge-case where a topic is only created in ZK but not in the brokers.
    *
    * @return true if the topic exists and all its partitions have at least one in-sync replica
