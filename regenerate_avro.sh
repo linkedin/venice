@@ -20,7 +20,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common_2.10/src/main/resources/avro/ChunkedKeySuffix/*"
   "venice-common_2.10/src/main/resources/avro/ParticipantMessage/ParticipantMessageKey/*"
   "venice-common_2.10/src/main/resources/avro/ParticipantMessage/ParticipantMessageValue/v1/*"
-  "venice-controller/src/main/resources/avro/AdminOperation/v27/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v28/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"
