@@ -26,7 +26,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -387,7 +387,7 @@ public class AdminExecutionTask implements Callable<Void> {
     int numberOfPartitions = message.numberOfPartitions;
     try {
       admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions);
-    } catch (UnsupportedOperationException unsupportedOperationException) {
+    } catch (VeniceUnsupportedOperationException unsupportedOperationException) {
       // No op and ignore the add version message since add version via admin protocol is disabled
     }
   }
