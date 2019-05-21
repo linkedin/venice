@@ -342,53 +342,49 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         true,
         () -> transportClient.post(getStorageRequestPath(), MULTI_GET_HEADER_MAP, multiGetBody),
         (response, throwable, responseDeserializationComplete) -> {
-          if (null != throwable) {
-            valueFuture.completeExceptionally(throwable);
-          }
-          if (null == response) {
-            // Even all the keys don't exist in Venice, multi-get should receive empty result instead of 'null'
-            valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for multi-get request"));
-          }
-          if (!response.isSchemaIdValid()) {
-            valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for multi-get request!"));
-          }
-
-          long preResponseEnvelopeDeserialization = System.nanoTime();
-          CompressionStrategy compressionStrategy = response.getCompressionStrategy();
-          RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(response.getSchemaId());
-          Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(response.getBody()));
-          /**
-           * We cache the deserializers by schema ID in order to avoid the unnecessary lookup in
-           * {@link SerializerDeserializerFactory}, which introduces small performance issue with
-           * {@link Schema#hashCode} in avro-1.4, which is doing hash code calculation every time.
-           *
-           * It is possible that multiple envelopeDeserializer threads could try to access the cache,
-           * so we use {@link VeniceConcurrentHashMap}.
-           */
-          Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
           try {
-            batchGetDeserializer.deserialize(
-                valueFuture,
-                records,
-                keyList,
-                (resultMap, record) -> {
-                  int keyIndex = record.keyIndex;
-                  if (keyIndex >= keyList.size() || keyIndex < 0) {
-                    valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIndex + " doesn't have a corresponding key"));
-                  }
-                  RecordDeserializer<V> dataDeserializer = deserializerCache.computeIfAbsent(record.schemaId,
-                      id -> getDataRecordDeserializer(id));
-                  long decompressionStartTime = System.nanoTime();
-                  ByteBuffer data = decompressRecord(compressionStrategy, record.value);
-                  decompressionTime.add(System.nanoTime() - decompressionStartTime);
-                  resultMap.put(keyList.get(keyIndex), dataDeserializer.deserialize(data));
-                },
-                responseDeserializationComplete,
-                stats,
-                preResponseEnvelopeDeserialization
-            );
+            if (null != throwable) {
+              // Error response, such as 400 or 5xx will be handled here.
+              valueFuture.completeExceptionally(throwable);
+            } else if (null == response) {
+              // Even all the keys don't exist in Venice, multi-get should receive empty result instead of 'null'
+              valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for multi-get request"));
+            } else if (!response.isSchemaIdValid()) {
+              valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for multi-get request!"));
+            } else {
+              long preResponseEnvelopeDeserialization = System.nanoTime();
+              CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+              RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(response.getSchemaId());
+              Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(response.getBody()));
+              /**
+               * We cache the deserializers by schema ID in order to avoid the unnecessary lookup in
+               * {@link SerializerDeserializerFactory}, which introduces small performance issue with
+               * {@link Schema#hashCode} in avro-1.4, which is doing hash code calculation every time.
+               *
+               * It is possible that multiple deserializer threads could try to access the cache,
+               * so we use {@link VeniceConcurrentHashMap}.
+               */
+              Map<Integer, RecordDeserializer<V>> deserializerCache = new VeniceConcurrentHashMap<>();
+              batchGetDeserializer.deserialize(valueFuture, records, keyList, (resultMap, record) -> {
+                int keyIndex = record.keyIndex;
+                if (keyIndex >= keyList.size() || keyIndex < 0) {
+                  valueFuture.completeExceptionally(new VeniceClientException("Key index: " + keyIndex + " doesn't have a corresponding key"));
+                }
+                RecordDeserializer<V> dataDeserializer = deserializerCache.computeIfAbsent(record.schemaId, id -> getDataRecordDeserializer(id));
+                long decompressionStartTime = System.nanoTime();
+                ByteBuffer data = decompressRecord(compressionStrategy, record.value);
+                decompressionTime.add(System.nanoTime() - decompressionStartTime);
+                resultMap.put(keyList.get(keyIndex), dataDeserializer.deserialize(data));
+              }, responseDeserializationComplete, stats, preResponseEnvelopeDeserialization);
+            }
           } catch (Exception e) {
-            valueFuture.completeExceptionally(e);
+            if (! valueFuture.isDone()) {
+              valueFuture.completeExceptionally(e);
+            } else {
+              // Defensive code
+              logger.error("Received exception after completing the `valueFuture` for batch-get request", e);
+              throw e;
+            }
           }
           return null;
         });
@@ -521,47 +517,44 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         true,
         () -> transportClient.post(getComputeRequestPath(), COMPUTE_HEADER_MAP, serializedFullComputeRequest),
         (clientResponse, throwable, responseDeserializationComplete) -> {
-          if (null != throwable) {
-            handleStoreExceptionInternally(throwable);
-          }
-          if (null == clientResponse) {
-            // Even all the keys don't exist in Venice, compute should receive empty result instead of 'null'
-            throw new VeniceClientException("TransportClient should not return null for compute request");
-          }
-
-          if (!clientResponse.isSchemaIdValid()) {
-            throw new VeniceClientException("No valid schema id received for compute request!");
-          }
-          int responseSchemaId = clientResponse.getSchemaId();
-          long preResponseEnvelopeDeserialization = System.nanoTime();
-
-          RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
-          Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
-          RecordDeserializer<GenericRecord> dataDeserializer = getComputeResultRecordDeserializer(resultSchema);
-
           try {
-            computeDeserializer.deserialize(
-                valueFuture,
-                records,
-                keyList,
-                (resultMap, envelope) -> {
-                  int keyIdx = envelope.keyIndex;
-                  if (keyIdx >= keyList.size() || keyIdx < 0) {
-                    throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
-                  }
-                  GenericRecord value = dataDeserializer.deserialize(envelope.value);
-                  /**
-                   * Wrap up the returned {@link GenericRecord} to throw exception when retrieving some failed
-                   * computation.
-                   */
-                  resultMap.put(keyList.get(keyIdx), ComputeGenericRecord.wrap(value));
-                },
-                responseDeserializationComplete,
-                stats,
-                preResponseEnvelopeDeserialization
-            );
+            if (null != throwable) {
+              // Error response, such as 400 or 5xx will be handled here.
+              valueFuture.completeExceptionally(throwable);
+            } else if (null == clientResponse) {
+              // Even all the keys don't exist in Venice, compute should receive empty result instead of 'null'
+              valueFuture.completeExceptionally(new VeniceClientException("TransportClient should not return null for compute request"));
+            } else if (!clientResponse.isSchemaIdValid()) {
+              valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for compute request!"));
+            } else {
+              int responseSchemaId = clientResponse.getSchemaId();
+              long preResponseEnvelopeDeserialization = System.nanoTime();
+
+              RecordDeserializer<ComputeResponseRecordV1> deserializer = getComputeResponseRecordDeserializer(responseSchemaId);
+              Iterable<ComputeResponseRecordV1> records = deserializer.deserializeObjects(new ByteBufferOptimizedBinaryDecoder(clientResponse.getBody()));
+              RecordDeserializer<GenericRecord> dataDeserializer = getComputeResultRecordDeserializer(resultSchema);
+
+              computeDeserializer.deserialize(valueFuture, records, keyList, (resultMap, envelope) -> {
+                int keyIdx = envelope.keyIndex;
+                if (keyIdx >= keyList.size() || keyIdx < 0) {
+                  throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
+                }
+                GenericRecord value = dataDeserializer.deserialize(envelope.value);
+                /**
+                 * Wrap up the returned {@link GenericRecord} to throw exception when retrieving some failed
+                 * computation.
+                 */
+                resultMap.put(keyList.get(keyIdx), ComputeGenericRecord.wrap(value));
+              }, responseDeserializationComplete, stats, preResponseEnvelopeDeserialization);
+            }
           } catch (Exception e) {
-            valueFuture.completeExceptionally(e);
+            if (! valueFuture.isDone()) {
+              valueFuture.completeExceptionally(e);
+            } else {
+              // Defensive code
+              logger.error("Received exception after completing the `valueFuture` for compute request", e);
+              throw e;
+            }
           }
 
           return null;
@@ -695,8 +688,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * data chunks even with the data chunk contains partial record in a non-blocking way.
    *
    * The envelope deserialization will happen in TransportClient thread pool (R2 thread pool for example if using
-   * {@link D2TransportClient}, and the record deserialization will happen in Venice thread pool: {@link #deserializationExecutor},
-   * and application's callback will be executed in application's executor: {@link StreamingCallback#getExecutor()}.
+   * {@link D2TransportClient}, and both the record deserialization and application's callback will be executed in
+   * Venice thread pool: {@link #deserializationExecutor},
    *
    * @param <ENVELOPE>
    * @param <K>

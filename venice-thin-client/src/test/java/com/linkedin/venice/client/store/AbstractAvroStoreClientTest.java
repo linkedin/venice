@@ -240,4 +240,20 @@ public class AbstractAvroStoreClientTest {
     }
     Assert.assertNull(computeResult.get("key2"));
   }
+
+  @Test (timeOut = 3000, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*mock_exception.*")
+  public void testComputeReceiveNon200Response() throws ExecutionException, InterruptedException {
+    TransportClient mockTransportClient = mock(TransportClient.class);
+    CompletableFuture<TransportClientResponse> transportFuture = new CompletableFuture<>();
+    transportFuture.completeExceptionally(new VeniceClientException("mock_exception"));
+
+    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
+    String storeName = "test_store";
+    SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
+        false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
+    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.empty(), 0)
+        .project("int_field")
+        .execute(keys);
+    computeFuture.get();
+  }
 }
