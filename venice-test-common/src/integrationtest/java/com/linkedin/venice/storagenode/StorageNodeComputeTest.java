@@ -166,40 +166,15 @@ public class StorageNodeComputeTest {
         keySet.add("unknown_key");
         List<Float> p = Arrays.asList(100.0f, 0.1f);
         List<Float> cosP = Arrays.asList(123.4f, 5.6f);
-        Map<String, GenericRecord> computeResult = (Map<String, GenericRecord>) storeClient.compute()
+        Map<String, GenericRecord> computeResult = storeClient.compute()
             .project("id")
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
             .execute(keySet)
             /**
-             * Background around this timeout:
-             *
-             * This is a test which re-uses the same store multiple times, pushes and then queries data,
-             * but does not wait for the routers to be updated before querying the data. Obviously, the
-             * test itself can be fixed by adding retries, but in this case, it seems that it uncovers a
-             * real issue: the client should not time out, but rather, then router's exception should be
-             * propagated back to the client and the client should fail fast.
-             *
-             * The router sees one of two exceptions:
-             *
-             * 1. In the first few iterations, if the router has not seen even one store-version yet, then
-             *    it fails with this:
-             *
-             *    com.linkedin.venice.exceptions.VeniceNoHelixResourceException: There is no version for store 'venice-store-1557853651072-1905802900'.  Please push data to that store
-             *
-             * 2. In later iterations, if the router is hanging on to an old store-version which is 2 or
-             *    more versions behind the current one, and the version the router knows about got deleted
-             *    on the SN, then it fails with this:
-             *
-             *    com.linkedin.venice.exceptions.VeniceNoHelixResourceException: Resource 'venice-store-1557853651072-1905802900_v10' does not exist
-             *
-             * Setting the timeout here helps make the test fail faster, otherwise, the test failure is
-             * confusing, indicating that it timed out waiting for some resources to close (which seems
-             * inaccurate).
-             *
-             * TODO: Find out why some requests time out instead of failing fast.
+             * Added 2s timeout as a safety net as ideally each request should take sub-second.
              */
-            .get(5, TimeUnit.SECONDS);
+            .get(2, TimeUnit.SECONDS);
         Assert.assertEquals(computeResult.size(), 10);
         for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
           int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
@@ -263,7 +238,11 @@ public class StorageNodeComputeTest {
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
-      return currentVersion == pushVersion;
+       // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
+       if (currentVersion == pushVersion) {
+         veniceCluster.refreshAllRouterMetaData();
+       }
+       return currentVersion == pushVersion;
     });
   }
 }

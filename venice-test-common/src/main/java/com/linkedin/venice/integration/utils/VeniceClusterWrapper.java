@@ -1,4 +1,5 @@
 package com.linkedin.venice.integration.utils;
+
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -8,7 +9,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
@@ -31,9 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
 
 
@@ -217,6 +216,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public synchronized VeniceRouterWrapper getRandomVeniceRouter() {
     // TODO might use D2 to get router in the future
     return getRandomRunningVeniceComponent(veniceRouterWrappers);
+  }
+
+  public synchronized void refreshAllRouterMetaData() {
+    veniceRouterWrappers.values()
+        .stream()
+        .filter(ProcessWrapper::isRunning)
+        .map(VeniceRouterWrapper::getMetaDataRepository)
+        .collect(Collectors.toList())
+        .forEach(HelixReadOnlyStoreRepository::refresh);
   }
 
   public synchronized VeniceControllerWrapper getMasterVeniceController() {
