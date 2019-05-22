@@ -271,7 +271,7 @@ public class TopicManager implements Closeable {
   public Map<String, Long> getAllTopicRetentions() {
     scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
     Map<String, Long> topicRetentions = new HashMap<>();
-    Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.asJavaMap(allTopicConfigs);
+    Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.mapAsJavaMap(allTopicConfigs);
     allTopicConfigsJavaMap.forEach( (topic, topicProperties) -> {
       if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
         topicRetentions.put(topic, Long.valueOf(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG)));
