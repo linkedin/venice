@@ -33,6 +33,7 @@ dependencies {
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.bdbJe
   implementation libraries.helix
+  implementation libraries.kafkaClients
   implementation libraries.netty
   implementation libraries.asyncHttpClient
   implementation libraries.tehuti
