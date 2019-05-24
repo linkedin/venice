@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.ApacheKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -27,6 +28,8 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 
+import static com.linkedin.venice.kafka.protocol.enums.MessageType.*;
+
 
 /**
  * The design consideration to consume in admin tool directly instead of letting controller to
@@ -43,7 +46,7 @@ public class DumpAdminMessages {
     public String operationType;
     public String adminOperation;
     public String publishTimeStamp;
-    String producerMetadata;
+    public String producerMetadata;
   }
 
   public static List<AdminOperationInfo> dumpAdminMessages(String kafkaUrl, String clusterName,
@@ -71,22 +74,34 @@ public class DumpAdminMessages {
           KafkaMessageEnvelope messageEnvelope = record.value();
           // check message type
           MessageType messageType = MessageType.valueOf(messageEnvelope);
-          if (MessageType.PUT != messageType) {
-            continue;
+          switch (messageType) {
+            case PUT:
+              if (++curMsgCnt > messageCnt) {
+                break;
+              }
+              Put put = (Put) messageEnvelope.payloadUnion;
+              AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
+              AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
+              adminOperationInfo.offset = record.offset();
+              adminOperationInfo.schemaId = put.schemaId;
+              adminOperationInfo.adminOperation = adminMessage.toString();
+              adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
+              adminOperationInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+              adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
+              adminOperations.add(adminOperationInfo);
+              break;
+            case CONTROL_MESSAGE:
+              AdminOperationInfo adminControlMessageInfo = new AdminOperationInfo();
+              adminControlMessageInfo.offset = record.offset();
+              adminControlMessageInfo.schemaId = -1;
+              adminControlMessageInfo.operationType = CONTROL_MESSAGE.toString();
+              adminControlMessageInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
+              adminControlMessageInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
+              adminOperations.add(adminControlMessageInfo);
+              break;
+            default:
+              continue;
           }
-          if (++curMsgCnt > messageCnt) {
-            break;
-          }
-          Put put = (Put) messageEnvelope.payloadUnion;
-          AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
-          AdminOperationInfo adminOperationInfo = new AdminOperationInfo();
-          adminOperationInfo.offset = record.offset();
-          adminOperationInfo.schemaId = put.schemaId;
-          adminOperationInfo.adminOperation = adminMessage.toString();
-          adminOperationInfo.operationType = AdminMessageType.valueOf(adminMessage).name();
-          adminOperationInfo.publishTimeStamp = dateFormat.format(new Date(messageEnvelope.producerMetadata.messageTimestamp));
-          adminOperationInfo.producerMetadata = messageEnvelope.producerMetadata.toString();
-          adminOperations.add(adminOperationInfo);
         }
         if (curMsgCnt > messageCnt) {
           break;
