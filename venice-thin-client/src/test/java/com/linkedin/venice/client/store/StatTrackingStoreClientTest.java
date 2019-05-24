@@ -5,9 +5,11 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -28,6 +30,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -304,14 +308,18 @@ public class StatTrackingStoreClientTest {
     Map<String, ? extends Metric> metrics = repository.metrics();
     String storeMetricPrefix = "." + storeName;
 
+
     Metric requestMetric = metrics.get(storeMetricPrefix + "--compute_request.OccurrenceRate");
     Metric healthyRequestMetric = metrics.get(storeMetricPrefix + "--compute_healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(storeMetricPrefix + "--compute_unhealthy_request.OccurrenceRate");
-    Metric deserializationMetric = metrics.get(storeMetricPrefix + "--compute_response_deserialization_time.50thPercentile");
+    Metric deserializationMetric = metrics.get(storeMetricPrefix + "--compute_response_deserialization_time.Avg");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
     Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
+    // Added some delay to fix the flakiness since it seems the metric window will be missed if the delay between
+    // metric recording and metric retrieval in the unit test.
+    Utils.sleep(3);
     Assert.assertTrue(deserializationMetric.value() > 0.0);
   }
 
@@ -325,7 +333,7 @@ public class StatTrackingStoreClientTest {
       }
 
       @Override
-      public void batchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+      public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
         if (callback instanceof TrackingStreamingCallback) {
           TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
           Utils.sleep(5);
@@ -344,7 +352,7 @@ public class StatTrackingStoreClientTest {
     for (int i = 0; i < 10; ++i) {
       keys.add("key_" + i);
     }
-    statTrackingStoreClient.batchGet(keys, new StreamingCallback<String, GenericRecord>() {
+    statTrackingStoreClient.streamingBatchGet(keys, new StreamingCallback<String, GenericRecord>() {
       @Override
       public void onRecordReceived(String key, GenericRecord value) {
         // do nothing
@@ -380,7 +388,7 @@ public class StatTrackingStoreClientTest {
       }
 
       @Override
-      public void batchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+      public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
         if (callback instanceof TrackingStreamingCallback) {
           TrackingStreamingCallback<K ,V> trackingStreamingCallback = (TrackingStreamingCallback)callback;
           Utils.sleep(5);
@@ -399,7 +407,7 @@ public class StatTrackingStoreClientTest {
     for (int i = 0; i < 10; ++i) {
       keys.add("key_" + i);
     }
-    statTrackingStoreClient.batchGet(keys, new StreamingCallback<String, GenericRecord>() {
+    statTrackingStoreClient.streamingBatchGet(keys, new StreamingCallback<String, GenericRecord>() {
       @Override
       public void onRecordReceived(String key, GenericRecord value) {
         // do nothing
@@ -424,4 +432,110 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(duplicateKeyMetric.value() > 0.0);
     Assert.assertTrue(responseWith500.value() > 0.0);
   }
+
+  @Test
+  public void multiGetStreamTestForPartialResponse() throws InterruptedException, ExecutionException, TimeoutException {
+    class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
+      private final VeniceClientException veniceException;
+      public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
+          boolean needSchemaReader, Executor deserializationExecutor, VeniceClientException veniceException) {
+        super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+        this.veniceException = veniceException;
+      }
+
+      @Override
+      public void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) {
+        Thread callbackThread = new Thread(() -> {
+          for (int i = 0; i < 10; i += 2) {
+            callback.onRecordReceived((K) ("key_" + i), (V) mock(GenericRecord.class));
+            callback.onRecordReceived((K) ("key_" + (i + 1)), null);
+            Utils.sleep(3);
+          }
+          if (callback instanceof TrackingStreamingCallback) {
+            TrackingStreamingCallback<K, V> trackingStreamingCallback = (TrackingStreamingCallback) callback;
+            Utils.sleep(5);
+            trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+          }
+          // Never complete, so the timeout should always happen
+        });
+        callbackThread.start();
+      }
+    }
+
+    String storeName = TestUtils.getUniqueString("test_store");
+    InternalAvroStoreClient innerClient = new StoreClientForMultiGetStreamTest(mock(TransportClient.class),
+        storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
+    MetricsRepository repository = new MetricsRepository();
+    StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        innerClient, ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < 10; ++i) {
+      keys.add("key_" + i);
+    }
+    VeniceResponseMap result = statTrackingStoreClient.streamingBatchGet(keys).get(30, TimeUnit.MILLISECONDS);
+    Assert.assertTrue(!result.isFullResponse());
+    Assert.assertTrue(result.size() > 0);
+    Assert.assertTrue(result.getNonExistingKeys().size() > 0);
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    String storeMetricPrefix = "." + storeName;
+    Metric timedOutRequestMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_app_timed_out_request.OccurrenceRate");
+    Metric timedOutRequestResultRatioMetric = metrics.get(storeMetricPrefix + "--multiget_streaming_app_timed_out_request_result_ratio.Avg");
+    Assert.assertTrue(timedOutRequestMetric.value() > 0);
+    Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
+  }
+
+
+  @Test
+  public void computeStreamTestForPartialResponse() throws InterruptedException, ExecutionException, TimeoutException {
+    class StoreClientForComputeStreamTest<K> extends SimpleStoreClient<K, GenericRecord> {
+      private final VeniceClientException veniceException;
+      public StoreClientForComputeStreamTest(TransportClient transportClient, String storeName,
+          boolean needSchemaReader, Executor deserializationExecutor, VeniceClientException veniceException) {
+        super(transportClient, storeName, needSchemaReader, deserializationExecutor);
+        this.veniceException = veniceException;
+      }
+
+      @Override
+      public void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+          StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS) {
+        Thread callbackThread = new Thread(() -> {
+          for (int i = 0; i < 10; i += 2) {
+            callback.onRecordReceived((K) ("key_" + i), mock(GenericRecord.class));
+            callback.onRecordReceived((K) ("key_" + (i + 1)), null);
+            Utils.sleep(3);
+          }
+          if (callback instanceof TrackingStreamingCallback) {
+            TrackingStreamingCallback<K, org.apache.avro.generic.GenericRecord> trackingStreamingCallback = (TrackingStreamingCallback) callback;
+            Utils.sleep(5);
+            trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
+          }
+          // Never complete, so the timeout should always happen
+        });
+        callbackThread.start();
+      }
+    }
+
+    String storeName = TestUtils.getUniqueString("test_store");
+    InternalAvroStoreClient innerClient = new StoreClientForComputeStreamTest(mock(TransportClient.class),
+        storeName, false, AbstractAvroStoreClient.getDefaultDeserializationExecutor(), new VeniceClientHttpException(500));
+    MetricsRepository repository = new MetricsRepository();
+    StatTrackingStoreClient<String, GenericRecord> statTrackingStoreClient = new StatTrackingStoreClient<>(
+        innerClient, ClientConfig.defaultGenericClientConfig(storeName).setMetricsRepository(repository));
+    Set<String> keys = new HashSet<>();
+    for (int i = 0; i < 10; ++i) {
+      keys.add("key_" + i);
+    }
+    VeniceResponseMap
+        result = statTrackingStoreClient.compute().project("int_field").streamingExecute(keys).get(30, TimeUnit.MILLISECONDS);
+    Assert.assertFalse(result.isFullResponse());
+    Assert.assertTrue(result.size() > 0);
+    Assert.assertTrue(result.getNonExistingKeys().size() > 0);
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    String storeMetricPrefix = "." + storeName;
+    Metric timedOutRequestMetric = metrics.get(storeMetricPrefix + "--compute_streaming_app_timed_out_request.OccurrenceRate");
+    Metric timedOutRequestResultRatioMetric = metrics.get(storeMetricPrefix + "--compute_streaming_app_timed_out_request_result_ratio.Avg");
+    Assert.assertTrue(timedOutRequestMetric.value() > 0);
+    Assert.assertTrue(timedOutRequestResultRatioMetric.value() > 0);
+  }
+
 }

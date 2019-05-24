@@ -141,8 +141,9 @@ public class AbstractAvroStoreClientTest {
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats clientStats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE);
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(clientStats), 0)
+    ClientStats stats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE);
+    ClientStats streamingStats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING);
+    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
         .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
@@ -207,8 +208,9 @@ public class AbstractAvroStoreClientTest {
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats clientStats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE);
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(clientStats), 0)
+    ClientStats stats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE);
+    ClientStats streamingStats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING);
+    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
         .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
@@ -251,7 +253,7 @@ public class AbstractAvroStoreClientTest {
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
-    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.empty(), 0)
+    CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.empty(), Optional.empty(), 0)
         .project("int_field")
         .execute(keys);
     computeFuture.get();

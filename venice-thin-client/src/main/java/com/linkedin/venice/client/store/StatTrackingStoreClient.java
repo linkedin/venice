@@ -5,6 +5,9 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
 import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -15,8 +18,10 @@ import io.tehuti.utils.Time;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
@@ -62,7 +67,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     singleGetStats.recordRequestKeyCount(1);
     CompletableFuture<V> statFuture = innerFuture.handle(
         (BiFunction<? super V, Throwable, ? extends V>) getStatCallback(singleGetStats, startTimeInNS));
-    return statFuture;
+    return AppTimeOutTrackingCompletableFuture.track(statFuture, singleGetStats);
   }
 
   @Override
@@ -75,7 +80,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     return statFuture;
   }
 
-
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     long startTimeInNS = System.nanoTime();
@@ -83,15 +87,20 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     multiGetStats.recordRequestKeyCount(keys.size());
     CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
         (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(multiGetStats, startTimeInNS));
-    return statFuture;
+    return AppTimeOutTrackingCompletableFuture.track(statFuture, multiGetStats);
   }
 
 
-  public CompletableFuture<Map<K, V>> streamBatchGet(Set<K> keys) throws VeniceClientException {
-    CompletableFuture<Map<K, V>> resultFuture = new CompletableFuture<>();
-    batchGet(keys, new StreamingCallback<K, V>() {
-      Map<K, V> resultMap = new VeniceConcurrentHashMap<>();
+  @Override
+  public CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
+    Map<K, V> resultMap = new VeniceConcurrentHashMap<>(keys.size());
+    Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
 
+    VeniceResponseCompletableFuture<VeniceResponseMap<K, V>> resultFuture = new VeniceResponseCompletableFuture<>(
+        () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
+        keys.size(),
+        Optional.of(multiGetStreamingStats));
+    streamingBatchGet(keys, new StreamingCallback<K, V>() {
       @Override
       public void onRecordReceived(K key, V value) {
         if (value != null) {
@@ -99,6 +108,8 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
            * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
            */
           resultMap.put(key, value);
+        } else {
+          nonExistingKeyList.add(key);
         }
       }
 
@@ -107,7 +118,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         if (exception.isPresent()) {
           resultFuture.completeExceptionally(exception.get());
         } else {
-          resultFuture.complete(resultMap);
+          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, true));
         }
       }
     });
@@ -167,10 +178,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   @Override
-  public void batchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     long preRequestTimeInNS = System.nanoTime();
     multiGetStreamingStats.recordRequestKeyCount(keys.size());
-    super.batchGet(keys, new StatTrackingStreamingCallback<>(callback, multiGetStreamingStats, keys.size(), preRequestTimeInNS));
+    super.streamingBatchGet(keys, new StatTrackingStreamingCallback<>(callback, multiGetStreamingStats, keys.size(), preRequestTimeInNS));
   }
 
   @Override
@@ -209,7 +220,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
      * to pass {@link StatTrackingStoreClient}, so that {@link #compute(ComputeRequestV1, Set, Schema, Optional, long)}
      * will be invoked when serving 'compute' request.
      */
-    return super.compute(Optional.of(computeStats), this, startTimeInNS);
+    return super.compute(Optional.of(computeStats), Optional.of(computeStreamingStats), this, startTimeInNS);
   }
 
 

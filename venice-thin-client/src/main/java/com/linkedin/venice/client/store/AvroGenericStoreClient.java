@@ -3,6 +3,8 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.annotation.Experimental;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 
+import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import java.io.Closeable;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +43,43 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
   CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException;
 
   /**
+   * Get the values associated with the given keys and return them in a map of keys to values.
+   *
+   * When time-out happens for the following invocation:
+   * {@code streamingBatchGet(keys).get(waitingTime, unit); }
+   * This function will return the available response instead of throwing a {@link java.util.concurrent.TimeoutException}.
+   * It means this function could return either full response or partial response.
+   *
+   * This experimental feature is subject to backwards-incompatible changes in the future.
+   *
+   * @param keys
+   * @return
+   * @throws VeniceClientException
+   */
+  @Experimental
+  default CompletableFuture<VeniceResponseMap<K, V>> streamingBatchGet(Set<K> keys) throws VeniceClientException {
+    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
+        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+  }
+
+
+  /**
+   * Streaming interface for {@link #batchGet(Set)}.
+   * You can find more info in {@link StreamingCallback}.
+   *
+   * This experimental feature is subject to backwards-incompatible changes in the future.
+   *
+   * @param keys
+   * @param callback
+   * @throws VeniceClientException
+   */
+  @Experimental
+  default void streamingBatchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
+        "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
+  }
+
+  /**
    * This experimental feature is subject to backwards-incompatible changes and may even be removed in the future.
    * @return
    */
@@ -49,6 +88,7 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
     throw new VeniceClientException("Please use CachingVeniceStoreClientFactory#getAndStartAvroGenericStoreClient() " +
         "or VeniceGenericStoreClientFactory#createInstance() to generate a Venice avro generic client");
   }
+
 
   void start() throws VeniceClientException;
 

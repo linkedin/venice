@@ -42,13 +42,10 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
     return batchGet(keys, Optional.empty(), 0);
   }
 
-  public abstract void batchGet(final Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException;
-
   @Override
   public ComputeRequestBuilder<K> compute() throws VeniceClientException {
-    return compute(Optional.empty(), 0);
+    return compute(Optional.empty(), Optional.empty(), 0);
   }
-
 
   public abstract CompletableFuture<V> get(final K key, final Optional<ClientStats> stats,
       final long preRequestTimeInNS) throws VeniceClientException;
@@ -59,11 +56,11 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
   public abstract CompletableFuture<byte[]> getRaw(final String requestPath, final Optional<ClientStats> stats,
       final long preRequestTimeInNS);
 
-  public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats,
+  public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final long preRequestTimeInNS) throws VeniceClientException;
 
   // The following function allows to pass one compute store client
-  public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats,
+  public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS) throws VeniceClientException;
 
   public abstract CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
@@ -96,9 +93,5 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
       throw (VeniceClientException)throwable;
     }
     throw new VeniceClientException(throwable);
-  }
-
-  public boolean streamingSupported() {
-    return false;
   }
 }
