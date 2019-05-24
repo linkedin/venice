@@ -3,6 +3,9 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
@@ -20,8 +23,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.codehaus.jackson.node.JsonNodeFactory;
@@ -34,9 +39,11 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
  * This class is used to build a {@link ComputeRequestV1} object according to the specification,
  * and this class will invoke {@link AbstractAvroStoreClient} to send the 'compute' request to
  * backend.
+ *
+ * This class is package-private on purpose.
  * @param <K>
  */
-public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
+class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   /**
    * Error map field can not be a static variable; after setting the error map field in a schema, the position of the
    * field will be updated, so the next time when we set the field in a new schema, it would fail because
@@ -55,15 +62,18 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
   private final InternalAvroStoreClient storeClient;
   private final String resultSchemaName;
   private final Optional<ClientStats> stats;
+  private final Optional<ClientStats> streamingStats;
   private Set<String> projectFields = new HashSet<>();
   private List<DotProduct> dotProducts = new LinkedList<>();
   private List<CosineSimilarity> cosineSimilarities = new LinkedList<>();
 
-  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient, Optional<ClientStats> stats) {
-    this(latestValueSchema, storeClient, stats, new SystemTime());
+  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats, Optional<ClientStats> streamingStats) {
+    this(latestValueSchema, storeClient, stats, streamingStats, new SystemTime());
   }
 
-  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient, Optional<ClientStats> stats, Time time) {
+  public AvroComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
+      Optional<ClientStats> stats, Optional<ClientStats> streamingStats, Time time) {
     if (latestValueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceClientException("Only value schema with 'RECORD' type is supported");
     }
@@ -75,6 +85,7 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
     this.latestValueSchema = latestValueSchema;
     this.storeClient = storeClient;
     this.stats = stats;
+    this.streamingStats = streamingStats;
     this.resultSchemaName = ComputeUtils.removeAvroIllegalCharacter(storeClient.getStoreName()) + "_VeniceComputeResult";
   }
 
@@ -224,14 +235,25 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
     // Generate ComputeRequest object
     ComputeRequestV1 computeRequest = generateComputeRequest(resultSchema.getSecond());
 
-    return storeClient.compute(computeRequest, keys, resultSchema.getFirst(), stats, preRequestTimeInNS);
+    CompletableFuture<Map<K, GenericRecord>> computeFuture = storeClient.compute(computeRequest, keys,
+        resultSchema.getFirst(), stats, preRequestTimeInNS);
+    if (stats.isPresent()) {
+      return AppTimeOutTrackingCompletableFuture.track(computeFuture, stats.get());
+    }
+    return computeFuture;
   }
 
-  public CompletableFuture<Map<K, GenericRecord>> streamExecute(Set<K> keys) {
-    CompletableFuture<Map<K, GenericRecord>> resultFuture = new CompletableFuture<>();
-    execute(keys, new StreamingCallback<K, GenericRecord>() {
-      Map<K, GenericRecord> resultMap = new VeniceConcurrentHashMap<>();
 
+  @Override
+  public CompletableFuture<VeniceResponseMap<K, GenericRecord>> streamingExecute(Set<K> keys) {
+    Map<K, GenericRecord> resultMap = new VeniceConcurrentHashMap<>(keys.size());
+    Queue<K> nonExistingKeyList = new ConcurrentLinkedQueue<>();
+    VeniceResponseCompletableFuture<VeniceResponseMap<K, GenericRecord>>
+        resultFuture = new VeniceResponseCompletableFuture<>(
+        () -> new VeniceResponseMapImpl(resultMap, nonExistingKeyList, false),
+        keys.size(),
+        streamingStats);
+    streamingExecute(keys, new StreamingCallback<K, GenericRecord>() {
       @Override
       public void onRecordReceived(K key, GenericRecord value) {
         if (value != null) {
@@ -239,6 +261,8 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
            * {@link java.util.concurrent.ConcurrentHashMap#put} won't take 'null' as the value.
            */
           resultMap.put(key, value);
+        } else {
+          nonExistingKeyList.add(key);
         }
       }
 
@@ -247,15 +271,16 @@ public class AvroComputeRequestBuilder<K> implements ComputeRequestBuilder<K> {
         if (exception.isPresent()) {
           resultFuture.completeExceptionally(exception.get());
         } else {
-            resultFuture.complete(resultMap);
-          }
+          resultFuture.complete(new VeniceResponseMapImpl(resultMap, nonExistingKeyList, true));
         }
+      }
     });
 
     return resultFuture;
   }
 
-  public void execute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
+  @Override
+  public void streamingExecute(Set<K> keys, StreamingCallback<K, GenericRecord> callback) throws VeniceClientException {
     long preRequestTimeInNS = time.nanoseconds();
     Pair<Schema,String> resultSchema = getResultSchema();
     // Generate ComputeRequest object

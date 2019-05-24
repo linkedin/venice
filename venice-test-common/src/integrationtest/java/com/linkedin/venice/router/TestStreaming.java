@@ -3,12 +3,13 @@ package com.linkedin.venice.router;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.AvroComputeRequestBuilder;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.ComputeRequestBuilder;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
+import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
@@ -210,7 +211,7 @@ public class TestStreaming {
         final AtomicInteger totalMultiGetResultCnt = new AtomicInteger(0);
         // Streaming batch-get
         CountDownLatch latch = new CountDownLatch(1);
-        trackingStoreClient.batchGet(keySet, new StreamingCallback<String, Object>() {
+        trackingStoreClient.streamingBatchGet(keySet, new StreamingCallback<String, Object>() {
 
           @Override
           public void onRecordReceived(String key, Object value) {
@@ -239,7 +240,7 @@ public class TestStreaming {
         verifyMultiGetResult(finalMultiGetResultMap);
 
         // test batch-get with streaming as the internal implementation
-        CompletableFuture<Map<String, Object>> resultFuture = trackingStoreClient.streamBatchGet(keySet);
+        CompletableFuture<Map<String, Object>> resultFuture = trackingStoreClient.streamingBatchGet(keySet);
         Map<String, Object> multiGetResultMap = resultFuture.get();
         // Regular batch-get API won't return non-existing keys
         Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - 1);
@@ -248,8 +249,9 @@ public class TestStreaming {
         AtomicInteger computeResultCnt = new AtomicInteger(0);
         Map<String, GenericRecord> finalComputeResultMap = new VeniceConcurrentHashMap<>();
         CountDownLatch computeLatch = new CountDownLatch(1);
-        AvroComputeRequestBuilder<String> computeRequestBuilder = (AvroComputeRequestBuilder<String>)trackingStoreClient.compute().project("int_field");
-        computeRequestBuilder.execute(keySet, new StreamingCallback<String, GenericRecord>() {
+        ComputeRequestBuilder<String>
+            computeRequestBuilder = trackingStoreClient.compute().project("int_field");
+        computeRequestBuilder.streamingExecute(keySet, new StreamingCallback<String, GenericRecord>() {
           @Override
           public void onRecordReceived(String key, GenericRecord value) {
             computeResultCnt.incrementAndGet();
@@ -272,7 +274,7 @@ public class TestStreaming {
         Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - 1); // Without non-existing key
         verifyComputeResult(finalComputeResultMap);
         // Test compute with streaming implementation
-        CompletableFuture<Map<String, GenericRecord>> computeFuture = computeRequestBuilder.streamExecute(keySet);
+        CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture = computeRequestBuilder.streamingExecute(keySet);
         Map<String, GenericRecord> computeResultMap = computeFuture.get();
         Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - 1);
         verifyComputeResult(computeResultMap);

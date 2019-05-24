@@ -212,8 +212,8 @@ public class StoreClientPerfTest {
 
   private static class TestComputeRequestBuilder extends AvroComputeRequestBuilder<String> {
     public TestComputeRequestBuilder(Schema latestValueSchema, InternalAvroStoreClient storeClient,
-        Optional<ClientStats> stats, long preRequestTimeInNS) {
-      super(latestValueSchema, storeClient, stats);
+        Optional<ClientStats> stats, Optional<ClientStats> streamingStats, long preRequestTimeInNS) {
+      super(latestValueSchema, storeClient, stats, streamingStats);
     }
 
     public Pair<Schema, String> getResultSchema() {
@@ -239,6 +239,7 @@ public class StoreClientPerfTest {
       TestComputeRequestBuilder testComputeRequestBuilder = new TestComputeRequestBuilder(
           client.getLatestValueSchema(),
           (InternalAvroStoreClient) client,
+          Optional.empty(),
           Optional.empty(),
           0);
       Collection<String> fieldNames = valueSchema.getFields().stream()

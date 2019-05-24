@@ -1,14 +1,9 @@
 package com.linkedin.venice.client.store.streaming;
 
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import java.util.Optional;
-import java.util.concurrent.Executor;
 
 
 public abstract class StreamingCallback<K, V> {
-
-  public StreamingCallback() {
-  }
 
   /**
    * This function will be invoked when some records are ready to be consumed.

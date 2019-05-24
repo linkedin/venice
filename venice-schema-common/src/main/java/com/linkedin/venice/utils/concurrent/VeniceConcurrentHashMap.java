@@ -5,6 +5,13 @@ import java.util.function.Function;
 
 
 public class VeniceConcurrentHashMap<K, V> extends ConcurrentHashMap<K, V> {
+  public VeniceConcurrentHashMap() {
+    super();
+  }
+
+  public VeniceConcurrentHashMap(int initialCapacity) {
+    super(initialCapacity);
+  }
 
   /**
    * The native `computeIfAbsent` function implemented in Java could have contention when

@@ -474,14 +474,14 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, final long preRequestTimeInNS) {
-    return compute(stats, this, preRequestTimeInNS);
+  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats, final long preRequestTimeInNS) {
+    return compute(stats, streamingStats, this, preRequestTimeInNS);
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final InternalAvroStoreClient computeStoreClient,
-      final long preRequestTimeInNS)  {
-    return new AvroComputeRequestBuilder<>(getLatestValueSchema(), computeStoreClient, stats);
+  public ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
+      final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS)  {
+    return new AvroComputeRequestBuilder<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
   }
 
 
@@ -877,7 +877,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public void batchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
     if (handleCallbackForEmptyKeySet(keys, callback)) {
       // empty key set
       return;
@@ -932,10 +932,5 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)
         )
     );
-  }
-
-  @Override
-  public boolean streamingSupported() {
-    return transportClient instanceof D2TransportClient;
   }
 }

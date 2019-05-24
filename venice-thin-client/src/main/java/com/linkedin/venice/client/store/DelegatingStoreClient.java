@@ -47,15 +47,15 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, long preRequestTimeInNS)
+  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats, long preRequestTimeInNS)
       throws VeniceClientException {
-    return innerStoreClient.compute(stats, preRequestTimeInNS);
+    return innerStoreClient.compute(stats, streamingStats, preRequestTimeInNS);
   }
 
   @Override
-  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, InternalAvroStoreClient computeStoreClient,
-      long preRequestTimeInNS) throws VeniceClientException {
-    return innerStoreClient.compute(stats, computeStoreClient, preRequestTimeInNS);
+  public ComputeRequestBuilder<K> compute(Optional<ClientStats> stats, Optional<ClientStats> streamingStats,
+      InternalAvroStoreClient computeStoreClient, long preRequestTimeInNS) throws VeniceClientException {
+    return innerStoreClient.compute(stats, streamingStats, computeStoreClient, preRequestTimeInNS);
   }
 
   @Override
@@ -76,8 +76,8 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public void batchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
-    innerStoreClient.batchGet(keys, callback);
+  public void streamingBatchGet(Set<K> keys, StreamingCallback<K, V> callback) throws VeniceClientException {
+    innerStoreClient.streamingBatchGet(keys, callback);
   }
 
   @Override
@@ -118,10 +118,5 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   // for testing
   public InternalAvroStoreClient<K, V> getInnerStoreClient() {
     return this.innerStoreClient;
-  }
-
-  @Override
-  public boolean streamingSupported() {
-    return innerStoreClient.streamingSupported();
   }
 }

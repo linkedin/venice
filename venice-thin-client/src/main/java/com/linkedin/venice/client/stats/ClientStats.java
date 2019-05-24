@@ -10,6 +10,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
 import io.tehuti.metrics.stats.Rate;
@@ -40,6 +41,8 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor streamingResponseTimeToReceive90PctRecord;
   private final Sensor streamingResponseTimeToReceive95PctRecord;
   private final Sensor streamingResponseTimeToReceive99PctRecord;
+  private final Sensor appTimedOutRequestSensor;
+  private final Sensor appTimedOutRequestResultRatioSensor;
 
   public ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
@@ -116,6 +119,18 @@ public class ClientStats extends AbstractVeniceHttpStats {
     streamingResponseTimeToReceive90PctRecord = registerSensorWithDetailedPercentiles("response_tt90pr", new Avg());
     streamingResponseTimeToReceive95PctRecord = registerSensorWithDetailedPercentiles("response_tt95pr", new Avg());
     streamingResponseTimeToReceive99PctRecord = registerSensorWithDetailedPercentiles("response_tt99pr", new Avg());
+
+    /**
+     * Metrics to track the timed-out requests.
+     * Just to be aware of that the timeout request here is not actually D2 timeout, but just the timeout when Venice
+     * customers are retrieving Venice response in this way:
+     * client.streamingBatchGet(keys).get(timeout, unit);
+     *
+     * This timeout behavior could actually happen before the D2 timeout, which is specified/configured in a different way.
+     */
+    appTimedOutRequestSensor = registerSensor("app_timed_out_request", new OccurrenceRate());
+    appTimedOutRequestResultRatioSensor = registerSensorWithDetailedPercentiles("app_timed_out_request_result_ratio",
+        new Avg(), new Min(), new Max());
   }
 
   public void recordRequest() {
@@ -204,5 +219,13 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordStreamingResponseTimeToReceive99PctRecord(double latency) {
     streamingResponseTimeToReceive99PctRecord.record(latency);
+  }
+
+  public void recordAppTimedOutRequest() {
+    appTimedOutRequestSensor.record();
+  }
+
+  public void recordAppTimedOutRequestResultRatio(double ratio) {
+    appTimedOutRequestResultRatioSensor.record(ratio);
   }
 }
