@@ -7,20 +7,15 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controller.kafka.validation.AdminProducerTracker;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
-import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.ProducerMetadata;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -99,19 +94,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final ExecutorService executorService;
   private final long processingCycleTimeoutInMs;
   /**
-   * Once an admin command is processed, the id would be updated accordingly. It represents a kind of comparable
-   * progress of admin topic consumption among all controllers.
+   * Once all admin messages in a cycle is processed successfully, the id would be updated together with the offset.
+   * It represents a kind of comparable progress of admin topic consumption among all controllers.
    */
   private volatile long lastSucceededExecutionId = UNASSIGNED_VALUE;
+  /**
+   * The execution id of the last message that was delegated to a store's queue. Used for DIV check when fetching
+   * messages from the admin topic.
+   */
+  private long lastDelegatedExecutionId = UNASSIGNED_VALUE;
+  /**
+   * The largest execution id for messages that were processed successfully in a cycle.
+   */
   private long largestSucceededExecutionId = UNASSIGNED_VALUE;
   private Map<String, Long> lastSucceededExecutionIdMap;
-  // Used to store state info to offset record
-  private Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
-
-  /**
-   * Keeps track of every upstream producer this consumer task has seen so far.
-   */
-  private final Map<GUID, AdminProducerTracker> producerTrackerMap;
 
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
@@ -141,7 +137,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.executionIdAccessor = executionIdAccessor;
     this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
 
-    this.producerTrackerMap = new HashMap<>();
     this.storeAdminOperationsMapWithOffset = new HashMap<>();
     this.problematicStores = new HashMap<>();
     this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS,
@@ -207,13 +202,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           try {
             delegateMessage(undelegatedRecords.peek());
           } catch (DataValidationException e) {
-            // Very unlikely but exceptions like DataValidationException could be thrown here.
+            // Very unlikely but DataValidationException could be thrown here.
             logger.error("Admin consumption task is blocked due to DataValidationException with offset "
                 + undelegatedRecords.peek().offset(), e);
-            logger.info("Last offset: " + lastOffset.toDetailedString() + "\nProducerTracker: "
-                + producerTrackerMap.get(undelegatedRecords.peek().value().producerMetadata.producerGUID));
             failingOffset = undelegatedRecords.peek().offset();
             stats.recordFailedAdminConsumption();
+            stats.recordAdminTopicDIVErrorReportCount();
             break;
           }
           updateLastOffset(undelegatedRecords.poll().offset());
@@ -233,26 +227,17 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void subscribe() {
     lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     lastPersistedOffset = lastOffset.getOffset();
-    // First let's try to restore the state retrieved from the OffsetManager
-    lastOffset.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
-      GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
-      AdminProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
-      if (null == producerTracker) {
-        producerTracker = new AdminProducerTracker(producerGuid, topic);
-      }
-      producerTracker.setPartitionState(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, entry.getValue());
-      producerTrackerMap.put(producerGuid, producerTracker);
-    });
+    lastDelegatedExecutionId = executionIdAccessor.getLastSucceededExecutionId(clusterName);
     // Subscribe the admin topic
     consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     isSubscribed = true;
-    logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
+    logger.info("Subscribe to topic name: " + topic + ", with offset: " + lastOffset.getOffset()
+        + " and execution id: " + lastDelegatedExecutionId);
   }
 
   private void unSubscribe() {
     if (isSubscribed) {
       consumer.unSubscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-      offsetRecordTransformer = Optional.empty();
       storeAdminOperationsMapWithOffset.clear();
       problematicStores.clear();
       undelegatedRecords.clear();
@@ -260,6 +245,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       offsetToSkip = UNASSIGNED_VALUE;
       offsetToSkipDIV = UNASSIGNED_VALUE;
       largestSucceededExecutionId = UNASSIGNED_VALUE;
+      lastDelegatedExecutionId = UNASSIGNED_VALUE;
       lastSucceededExecutionId = UNASSIGNED_VALUE;
       stats.recordPendingAdminMessagesCount(UNASSIGNED_VALUE);
       stats.recordStoresWithPendingAdminMessagesCount(UNASSIGNED_VALUE);
@@ -334,10 +320,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         }
         if (problematicStores.isEmpty()) {
           // All admin operations were successfully executed or skipped.
-          // 1. Persist the latest offset (cluster wide) to ZK.
+          // 1. Clear the failing offset.
           // 2. Set the cluster wide lastSucceededExecutionId to the largest (latest) execution id.
-          // 3. Clear the failing offset.
-          persistLastOffset();
+          // 3. Persist the latest execution id and offset (cluster wide) to ZK.
           if (largestSucceededExecutionId > lastSucceededExecutionId) {
             lastSucceededExecutionId = largestSucceededExecutionId;
           }
@@ -345,37 +330,28 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (failingOffset <= lastOffset.getOffset()) {
             failingOffset = UNASSIGNED_VALUE;
           }
+          persistLastExecutionIdAndLastOffset();
         } else {
           // One or more stores encountered problems while executing their admin operations.
           // 1. Do not persist the latest offset (cluster wide) to ZK.
-          // 2. Set the cluster wide lastSucceededExecutionId to the smallest succeeded execution id amongst the
-          //    problematic stores.
-          // 3. Find and set the smallest failing offset amongst the problematic stores.
-          long lowestSucceededExecutionId = largestSucceededExecutionId;
+          // 2. Find and set the smallest failing offset amongst the problematic stores.
           long smallestOffset = UNASSIGNED_VALUE;
 
           for (Map.Entry<String, Long> problematicStore : problematicStores.entrySet()) {
-            long succeededExecutionId =
-                newLastSucceededExecutionIdMap.getOrDefault(problematicStore.getKey(), lastSucceededExecutionId);
-            if (succeededExecutionId < lowestSucceededExecutionId) {
-              lowestSucceededExecutionId = succeededExecutionId;
-            }
             if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue() < smallestOffset) {
               smallestOffset = problematicStore.getValue();
             }
           }
-          lastSucceededExecutionId = lowestSucceededExecutionId;
           // Ensure failingOffset from the delegateMessage is not overwritten.
           if (failingOffset <= lastOffset.getOffset()) {
             failingOffset = smallestOffset;
           }
         }
-        executionIdAccessor.updateLastSucceededExecutionId(clusterName, lastSucceededExecutionId);
         stats.recordPendingAdminMessagesCount(pendingAdminMessagesCount);
         stats.recordStoresWithPendingAdminMessagesCount(storesWithPendingAdminMessagesCount);
       } else {
         // in situations when we skipped a blocking message (while delegating) and no other messages are queued up.
-        persistLastOffset();
+        persistLastExecutionIdAndLastOffset();
       }
     }
   }
@@ -410,83 +386,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   /**
-   * This function is used to check whether current message is valid to process.
-   * If some significant DIV issue happens, this function will throw exception.
-   *
-   * @param record
-   * @return
-   *  false : we can safely skip current message.
-   *  true : normal admin message, which should be processed.
-   */
-  private boolean checkAndValidateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    if (checkOffsetToSkip(record.offset()) || !shouldProcessRecord(record)) {
-      return false;
-    }
-
-    if (checkOffsetToSkipDIV(record.offset())) {
-      ProducerMetadata producerMetadata = record.value().producerMetadata;
-      if (producerTrackerMap.containsKey(producerMetadata.producerGUID)) {
-        // Overwrite the sequence number on skip. The assumption here is that checksum is disabled and the segment
-        // number will always remain 0 for the admin topic.
-        producerTrackerMap.get(producerMetadata.producerGUID).overwriteSequenceNumber(
-            AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, producerMetadata.messageSequenceNumber);
-      }
-      offsetRecordTransformer = Optional.of(getSkipDIVOffsetTransformer(producerMetadata.producerGUID, producerMetadata));
-      return true;
-    }
-
-    KafkaKey kafkaKey = record.key();
-    KafkaMessageEnvelope kafkaValue = record.value();
-    try {
-      final GUID producerGUID = kafkaValue.producerMetadata.producerGUID;
-      AdminProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
-      if (producerTracker == null) {
-        producerTracker = new AdminProducerTracker(producerGUID, topic);
-        producerTrackerMap.put(producerGUID, producerTracker);
-      }
-      offsetRecordTransformer = Optional.of(
-          producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue, false));
-    } catch (DuplicateDataException e) {
-      logger.info("Skipping a duplicate record in topic: " + topic + "', offset: " + record.offset());
-      // Not persisting the cluster wide offset because there might be a failing messages with a lower offset.
-      return false;
-    } catch (DataValidationException dve) {
-      logger.error("Received data validation error", dve);
-      stats.recordAdminTopicDIVErrorReportCount();
-      throw dve;
-    }
-
-    return true;
-  }
-
-  private OffsetRecordTransformer getSkipDIVOffsetTransformer(GUID producerGUID, ProducerMetadata producerMetadata) {
-    // This method of skipping DIV and manually generating a OffsetRecordTransform only works because segmentation and
-    // checksum are both disabled for the admin channel. Usage of this functionality should be avoided as much as possible.
-    return offsetRecord -> {
-      ProducerPartitionState state = offsetRecord.getProducerPartitionState(producerGUID);
-      if (state != null) {
-        // null check here for completeness since there's no reason to skip DIV for the very first message of a producer.
-        state.messageTimestamp = producerMetadata.messageTimestamp;
-        state.messageSequenceNumber = producerMetadata.messageSequenceNumber;
-        offsetRecord.setProducerPartitionState(producerGUID, state);
-        logger.trace("ProducerPartitionState updated.");
-      }
-
-      return offsetRecord;
-    };
-  }
-
-  /**
    * This method groups {@link AdminOperation}s by their corresponding store.
    * @param record The {@link ConsumerRecord} containing the {@link AdminOperation}.
    */
   private void delegateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    if (!checkAndValidateMessage(record)) {
+    if (checkOffsetToSkip(record.offset()) || !shouldProcessRecord(record)) {
       return;
     }
     KafkaKey kafkaKey = record.key();
     KafkaMessageEnvelope kafkaValue = record.value();
-
     if (kafkaKey.isControlMessage()) {
       logger.debug("Received control message: " + kafkaValue);
       return;
@@ -494,14 +402,39 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // check message type
     MessageType messageType = MessageType.valueOf(kafkaValue);
     if (MessageType.PUT != messageType) {
-      throw new VeniceException("Received unknown message type: " + messageType);
+      throw new VeniceException("Received unexpected message type: " + messageType);
     }
     Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminOperation = deserializer.deserialize(put.putValue.array(), put.schemaId);
     logger.debug("Received admin message: " + adminOperation);
+    try {
+      checkAndValidateMessage(adminOperation, record.offset());
+    } catch (DuplicateDataException e) {
+      // Previous processed message, safe to skip
+      logger.info(e.getMessage());
+      return;
+    }
     String storeName = extractStoreName(adminOperation);
     storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
     storeAdminOperationsMapWithOffset.get(storeName).add(new Pair<>(record.offset(), adminOperation));
+  }
+
+  private void checkAndValidateMessage(AdminOperation message, long offset) {
+    long incomingExecutionId = message.executionId;
+    if (checkOffsetToSkipDIV(offset) || lastDelegatedExecutionId == UNASSIGNED_VALUE) {
+      lastDelegatedExecutionId = incomingExecutionId;
+      return;
+    }
+    if (incomingExecutionId == lastDelegatedExecutionId + 1) {
+      // Expected behavior
+      lastDelegatedExecutionId++;
+    } else if (incomingExecutionId <= lastDelegatedExecutionId) {
+      throw new DuplicateDataException("Skipping message with execution id: " + incomingExecutionId
+          + " because last delegated execution id was: " + lastDelegatedExecutionId);
+    } else {
+      throw new MissingDataException("Last delegated execution id was: " + lastDelegatedExecutionId
+          + " ,but incoming execution id is: " + incomingExecutionId);
+    }
   }
 
   /**
@@ -532,13 +465,11 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void persistLastOffset() {
+  private void persistLastExecutionIdAndLastOffset() {
+    executionIdAccessor.updateLastSucceededExecutionId(clusterName, lastSucceededExecutionId);
     if (lastPersistedOffset == lastOffset.getOffset()) {
       // offset did not change from previously persisted value
       return;
-    }
-    if (offsetRecordTransformer.isPresent()) {
-      lastOffset = offsetRecordTransformer.get().transform(lastOffset);
     }
     offsetManager.put(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     lastPersistedOffset = lastOffset.getOffset();

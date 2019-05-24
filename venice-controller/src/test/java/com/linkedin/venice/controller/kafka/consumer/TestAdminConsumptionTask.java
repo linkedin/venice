@@ -28,6 +28,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -822,9 +823,6 @@ public class TestAdminConsumptionTask {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
     OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    ProducerPartitionState partitionState = offsetRecord.getProducerPartitionState(veniceWriter.getProducerGUID());
-    partitionState.messageSequenceNumber = partitionState.messageSequenceNumber + 2;
-    offsetRecord.setProducerPartitionState(veniceWriter.getProducerGUID(), partitionState);
     offsetRecord.setOffset(offset);
     offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
     executionIdAccessor.updateLastSucceededExecutionId(clusterName, 4L);
@@ -853,32 +851,18 @@ public class TestAdminConsumptionTask {
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 2L));
-    // Manipulate the consumption task to force a DIV error
-    doReturn(false).when(admin).isMasterController(clusterName);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(task.getLastSucceededExecutionId(), -1L));
-    OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    ProducerPartitionState partitionState = offsetRecord.getProducerPartitionState(veniceWriter.getProducerGUID());
-    int sequenceNumber = partitionState.messageSequenceNumber;
-    partitionState.messageSequenceNumber = sequenceNumber - 1;
-    offsetRecord.setProducerPartitionState(veniceWriter.getProducerGUID(), partitionState);
-    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
-    doReturn(true).when(admin).isMasterController(clusterName);
     // New admin messages should fail with DIV error
-    Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
+    Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(task.getFailingOffset(), offset));
     // Skip the DIV check, make sure the sequence number is updated and new admin messages can also be processed
     task.skipMessageDIVWithOffset(offset);
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID)
-            .getProducerPartitionState(veniceWriter.getProducerGUID()).messageSequenceNumber, sequenceNumber + 1));
-    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 4L));
+        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 5L));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -906,6 +890,34 @@ public class TestAdminConsumptionTask {
     // corresponding code path for handling retriable exceptions should have been executed.
     verify(stats, atLeastOnce()).recordFailedRetriableAdminConsumption();
     verify(stats, never()).recordFailedAdminConsumption();
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testWithMessageRewind() throws IOException, InterruptedException {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false, stats, 10000);
+    executor.submit(task);
+    String topicName = Version.composeKafkaTopic(storeName, 1);
+    byte[][] messages = new byte[10][];
+    int i = 0;
+    for (int id = 1; id < 11; id++) {
+      messages[i] = getKillOfflinePushJobMessage(clusterName, topicName, id);
+      veniceWriter.put(emptyKeyBytes, messages[i], AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+      i++;
+    }
+    // Mimic rewind.
+    for (i = 4; i < 10; i++) {
+      veniceWriter.put(emptyKeyBytes, messages[i], AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    }
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 10L));
+    // Duplicate messages from the rewind should be skipped.
+    verify(admin, times(10)).killOfflinePush(clusterName, topicName);
+    verify(stats, never()).recordFailedAdminConsumption();
+    verify(stats, never()).recordAdminTopicDIVErrorReportCount();
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
