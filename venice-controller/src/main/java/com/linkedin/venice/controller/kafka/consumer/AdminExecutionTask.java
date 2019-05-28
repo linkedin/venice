@@ -325,7 +325,7 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.readComputationEnabled),
         Optional.of(message.bootstrapToOnlineTimeoutInHours),
         Optional.of(message.leaderFollowerModelEnabled),
-        Optional.of(BackupStrategy.fromInt(message.compressionStrategy)));
+        Optional.of(BackupStrategy.fromInt(message.backupStrategy)));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
