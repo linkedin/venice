@@ -70,7 +70,7 @@ public class ControllerClient implements Closeable {
       for (String url : urls) {
         try {
           String masterUrl = transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), MasterControllerResponse.class).getUrl();
-          logger.info("Discovered master controller + " + masterUrl + " from " + url);
+          logger.info("Discovered master controller " + masterUrl + " from " + url);
           return masterUrl;
         } catch (Exception e) {
           logger.warn("Unable to discover master controller from " + url, e);
