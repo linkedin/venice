@@ -1043,7 +1043,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // handle the exception.
                 throw e;
             }
-            int failedVersionNumber = version.getNumber();
+            int failedVersionNumber = versionNumber;
             String errorMessage = "Failed to add version " + failedVersionNumber + " to store " + storeName + " in cluster " + clusterName;
             logger.error(errorMessage, e);
             try {
@@ -1061,7 +1061,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException(errorMessage + ". Detailed stack trace: " + ExceptionUtils.stackTraceToString(e), e);
         }
     }
-
 
     protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber, String statusDetails){
         // Mark offline push job as Error and clean up resources because add version failed.
