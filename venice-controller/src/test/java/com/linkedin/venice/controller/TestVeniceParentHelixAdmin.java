@@ -967,6 +967,10 @@ public class TestVeniceParentHelixAdmin {
     MigrationPushStrategyResponse pushStrategyResponse = controllerClient.getMigrationPushStrategies();
     Assert.assertEquals(pushStrategyResponse.getStrategies().get(voldemortStoreName), pushStrategy);
 
+    // Update backup strategy
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getBackupStrategy(), BackupStrategy.DELETE_ON_NEW_PUSH_START);
     // Update chunking
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setChunkingEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
