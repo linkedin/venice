@@ -48,11 +48,14 @@ import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.router.stats.SecurityStats;
+
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
@@ -348,7 +351,6 @@ public class RouterServer extends AbstractVeniceService {
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
         routerStats, metricsRepository, storageNodeClient);
 
-
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS,
         config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
@@ -444,7 +446,8 @@ public class RouterServer extends AbstractVeniceService {
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
 
-    VerifySslHandler nonSecureSSLEnforcement = new VerifySslHandler(config.isEnforcingSecureOnly());
+    SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
+    VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
     router = Router.builder(scatterGather)
         .name("VeniceRouterHttp")
         .resourceRegistry(registry)
@@ -455,25 +458,25 @@ public class RouterServer extends AbstractVeniceService {
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+          pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
           pipeline.addLast("MetadataHandler", metaDataHandler);
-          pipeline.addLast("VerifySSLHandler", nonSecureSSLEnforcement);
           addStreamingHandler(pipeline);
         })
         .idleTimeout(3, TimeUnit.HOURS)
         .build();
 
-    VerifySslHandler verifySsl = new VerifySslHandler();
+    VerifySslHandler verifySslHandler = new VerifySslHandler(securityStats);
     RouterAclHandler aclHandler = accessController.isPresent() ? new RouterAclHandler(accessController.get(), metadataRepository) : null;
     SSLInitializer sslInitializer = sslFactory.isPresent() ? new SSLInitializer(sslFactory.get()) : null;
-    Consumer<ChannelPipeline> noop = pipeline -> {;};
+    Consumer<ChannelPipeline> noop = pipeline -> {};
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
-      pipeline.addLast("SSL Verifier", verifySsl);
+      pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       addStreamingHandler(pipeline);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
-      pipeline.addLast("SSL Verifier", verifySsl);
+      pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("RouterAclHandler", aclHandler);
       addStreamingHandler(pipeline);
