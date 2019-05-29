@@ -17,6 +17,7 @@ import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Properties;
@@ -111,44 +112,42 @@ public class TestRouter {
 
   @Test
   public void testRouterWithSsl() throws ExecutionException, InterruptedException, IOException {
-    ZkServerWrapper zk = ServiceFactory.getZkServer();
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties());
-    SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
-    SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
-    CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom()
-        .setSSLStrategy(sslSessionStrategy)
-        .build();
-    try {
-      httpclient.start();
-      String address = router.getHost() + ":" + router.getSslPort();
-      HttpGet request = new HttpGet("https://" + address + ControllerRoute.MASTER_CONTROLLER.getPath());
-      HttpResponse response = httpclient.execute(request, null).get();
-      String jsonContent = IOUtils.toString(response.getEntity().getContent());
-      MasterControllerResponse controllerResponse = new ObjectMapper().readValue(jsonContent, MasterControllerResponse.class);
+    try (
+        ZkServerWrapper zk = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
 
-      Assert.assertEquals(controllerResponse.getCluster(), router.getClusterName());
-    } finally {
-      httpclient.close();
+      SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+      SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
+      try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setSSLStrategy(sslSessionStrategy).build()) {
+
+        httpClient.start();
+        HttpGet request = new HttpGet("https://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.MASTER_CONTROLLER.getPath());
+        HttpResponse response = httpClient.execute(request, null).get();
+        String jsonContent = IOUtils.toString(response.getEntity().getContent());
+        MasterControllerResponse controllerResponse = new ObjectMapper().readValue(jsonContent, MasterControllerResponse.class);
+        Assert.assertEquals(controllerResponse.getCluster(), router.getClusterName());
+      }
+
+      MetricsRepository metrics = router.getMetricsRepository();
+      Assert.assertEquals(metrics.getMetric(".security--ssl_error.Count").value(), 0.);
     }
-    router.close();
-    zk.close();
   }
 
   @Test
   public void routerWithSslRefusesNonSecureCommunication() throws ExecutionException, InterruptedException, IOException {
-    ZkServerWrapper zk = ServiceFactory.getZkServer();
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties());
-    CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom().build();
-    try {
-      httpclient.start();
-      String address = router.getHost() + ":" + router.getSslPort();
-      HttpGet request = new HttpGet("http://" + address + ControllerRoute.MASTER_CONTROLLER.getPath());
-      HttpResponse response = httpclient.execute(request, null).get();
-      Assert.assertEquals(response.getStatusLine().getStatusCode(), 403);
-    } finally {
-      httpclient.close();
+    try (
+        ZkServerWrapper zk = ServiceFactory.getZkServer();
+        MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties())) {
+
+      try (CloseableHttpAsyncClient httpClient = HttpAsyncClients.createDefault()) {
+        httpClient.start();
+        HttpGet request = new HttpGet("http://" + router.getHost() + ":" + router.getSslPort() + ControllerRoute.MASTER_CONTROLLER.getPath());
+        HttpResponse response = httpClient.execute(request, null).get();
+        Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_FORBIDDEN);
+      }
+
+      MetricsRepository metrics = router.getMetricsRepository();
+      Assert.assertEquals(metrics.getMetric(".security--ssl_error.Count").value(), 1.);
     }
-    router.close();
-    zk.close();
   }
 }

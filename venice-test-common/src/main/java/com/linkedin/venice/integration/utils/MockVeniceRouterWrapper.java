@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 
 import java.util.ArrayList;
@@ -153,5 +154,9 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
   private static int sslPortFromPort(int port) {
     return port + 1;
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return service.getMetricsRepository();
   }
 }
