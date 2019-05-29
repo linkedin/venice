@@ -434,4 +434,44 @@ public class TestVeniceDelegateMode {
       }
     });
   }
+
+  @Test
+  public void testRequestNotChoosingSlowHost() throws RouterException {
+    byte[] keyBytes = {'a', 'b', 'c'};
+    RouterKey key = new RouterKey(keyBytes);
+    List<Instance> hosts = new ArrayList<>(3);
+    hosts.add(Instance.fromNodeId("host1_8435"));
+    hosts.add(Instance.fromNodeId("host2_8435"));
+    hosts.add(Instance.fromNodeId("host3_8435"));
+
+    Instance firstPickHost = VeniceDelegateMode.chooseHostByKey(key, hosts);
+    VenicePath path = mock(VenicePath.class);
+
+    // Test VeniceDelegateMode should choose the first pick host when no host is slow
+    doReturn(true).when(path).canRequestStorageNode(any());
+
+    Instance chosenHost = VeniceDelegateMode.avoidSlowHost(path, key, hosts);
+    Assert.assertEquals(chosenHost, firstPickHost);
+
+
+    // Test VeniceDelegateMode should choose the fast host when the first pick host and some other hosts are slow
+    Instance fastHost = null;
+    int fastHostNumber = hosts.size() - 1;
+    // first pick host can not be the fast host
+    doReturn(false).when(path).canRequestStorageNode(firstPickHost.getNodeId());
+    for (Instance host: hosts) {
+      if (host.equals(firstPickHost)) {
+        continue;
+      }
+      if (fastHostNumber > 1) {
+        doReturn(false).when(path).canRequestStorageNode(host.getNodeId());
+        --fastHostNumber;
+      } else {
+        fastHost = host;
+      }
+    }
+
+    chosenHost = VeniceDelegateMode.avoidSlowHost(path, key, hosts);
+    Assert.assertEquals(chosenHost, fastHost);
+  }
 }
