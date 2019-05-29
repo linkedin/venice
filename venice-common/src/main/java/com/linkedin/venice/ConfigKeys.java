@@ -280,6 +280,7 @@ public class ConfigKeys {
   public static final String LISTENER_SSL_PORT = "listener.ssl.port";
   public static final String CLIENT_TIMEOUT = "client.timeout";
   public static final String HEARTBEAT_TIMEOUT =  "heartbeat.timeout";
+  public static final String HEARTBEAT_CYCLE =  "heartbeat.cycle";
   public static final String MAX_READ_CAPCITY = "max.read.capacity";
   public static final String SSL_TO_STORAGE_NODES = "sslToStorageNodes";
   /**
@@ -514,6 +515,16 @@ public class ConfigKeys {
    * Whether to enable fast-avro in router;
    */
   public static final String ROUTER_COMPUTE_FAST_AVRO_ENABLED = "router.compute.fast.avro.enabled";
+
+  /**
+   * Socket timeout config for the connection manager from router to server
+   */
+  public static final String ROUTER_SOCKET_TIMEOUT = "router.socket.timeout";
+
+  /**
+   * Timeout for building a new connection from router to server
+   */
+  public static final String ROUTER_CONNECTION_TIMEOUT = "router.connection.timeout";
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

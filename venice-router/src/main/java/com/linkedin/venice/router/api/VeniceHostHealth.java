@@ -3,18 +3,17 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
-import com.linkedin.venice.utils.ExpiringSet;
-import java.util.concurrent.TimeUnit;
+import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import org.apache.log4j.Logger;
 
 
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private static final Logger logger = Logger.getLogger(VeniceHostHealth.class);
-  private static final long UNHEALTHY_SECONDS = 20L;
 
-  private ExpiringSet<String> slowPartitionHosts = new ExpiringSet<>(UNHEALTHY_SECONDS, TimeUnit.SECONDS);
-  private ExpiringSet<String> unhealthyHosts = new ExpiringSet<>(UNHEALTHY_SECONDS, TimeUnit.SECONDS);
+  private Set<String> slowPartitionHosts = new ConcurrentSkipListSet<>();
+  private Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
 
   private final LiveInstanceMonitor liveInstanceMonitor;
 
@@ -32,7 +31,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   public void setPartitionAsSlow(Instance hostName, String partitionName){
     String identifier = hostPartitionString(hostName, partitionName);
     slowPartitionHosts.add(identifier);
-    logger.info(identifier + " is slow, marking as unhealthy for " + UNHEALTHY_SECONDS + " seconds");
+    logger.info(identifier + " is slow, marking as unhealthy until it passes the next health check.");
   }
 
   /**
@@ -43,7 +42,21 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   public void setHostAsUnhealthy(Instance hostName){
     String identifier = hostName.getUrl();
     unhealthyHosts.add(identifier);
-    logger.info("Marking " + identifier + " as unhealthy for " + UNHEALTHY_SECONDS + " seconds");
+    logger.info("Marking " + identifier + " as unhealthy until it passes the next health check.");
+  }
+
+  /**
+   * If the host is marked as unhealthy before, remove it from the unhealthy host set and log this
+   * status change.
+   *
+   * @param hostname
+   */
+  public void setHostAsHealthy(Instance hostname) {
+    String identifier = hostname.getUrl();
+    if (unhealthyHosts.contains(identifier)) {
+      unhealthyHosts.remove(identifier);
+      logger.info("Marking " + identifier + " back to healthy host");
+    }
   }
 
   @Override

@@ -78,7 +78,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     clientPool = new ArrayList<>();
     for (int i = 0; i < clientPoolSize; ++i) {
       CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient,
-          totalMaxConnPerClient, sslFactory, dnsResolver, Optional.of(poolStats));
+          totalMaxConnPerClient, config.getSocketTimeout(), config.getConnectionTimeout(), sslFactory, dnsResolver, Optional.of(poolStats));
       client.start();
       clientPool.add(client);
     }

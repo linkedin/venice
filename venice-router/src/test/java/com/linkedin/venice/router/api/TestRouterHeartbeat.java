@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -30,6 +31,16 @@ public class TestRouterHeartbeat {
     return mockLiveInstanceMonitor;
   }
 
+  public static VeniceRouterConfig mockVeniceRouterConfig() {
+    VeniceRouterConfig mockConfig = mock(VeniceRouterConfig.class);
+    doReturn(500d).when(mockConfig).getHeartbeatTimeoutMs();
+    doReturn(100l).when(mockConfig).getHeartbeatCycleMs();
+    doReturn(1000).when(mockConfig).getSocketTimeout();
+    doReturn(3000).when(mockConfig).getConnectionTimeout();
+
+    return mockConfig;
+  }
+
   @Test
   public void heartBeatMarksUnreachableNodes()
       throws Exception {
@@ -42,7 +53,9 @@ public class TestRouterHeartbeat {
     VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor);
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, 1, TimeUnit.SECONDS, 500, Optional.empty());
+
+    VeniceRouterConfig config = mockVeniceRouterConfig();
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
     heartbeat.start();
 
     // Since the heartbeat is querying an instance that wont respond, we expect it to tell the health monitor that the
@@ -66,10 +79,12 @@ public class TestRouterHeartbeat {
     Instance dummyInstance = Instance.fromNodeId(nodeId);
     Set<Instance> instanceSet = new HashSet<>();
     instanceSet.add(dummyInstance);
+
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor);
 
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, 100, TimeUnit.MILLISECONDS, 500, Optional.empty());
+    VeniceRouterConfig config = mockVeniceRouterConfig();
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
     heartbeat.start();
 
     // our instance should stay healthy since it responds to the health check.

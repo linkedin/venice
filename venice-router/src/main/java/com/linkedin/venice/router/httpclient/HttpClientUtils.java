@@ -2,7 +2,10 @@ package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
+import java.io.IOException;
 import java.net.SocketAddress;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -27,6 +30,7 @@ import static com.linkedin.venice.HttpConstants.*;
 
 
 public class HttpClientUtils {
+  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static SSLIOSessionStrategy getSslStrategy(SSLEngineComponentFactory sslFactory) {
     SSLContext sslContext = sslFactory.getSSLContext();
@@ -35,9 +39,10 @@ public class HttpClientUtils {
   }
 
   public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal,
-      Optional<SSLEngineComponentFactory> sslFactory, Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
+      int socketTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
     PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(ioThreadNum, maxConnPerRoute,
-        maxConnTotal, sslFactory, dnsResolver, poolStats);
+        maxConnTotal, socketTimeout, connectionTimeout, sslFactory, dnsResolver, poolStats);
     if (poolStats.isPresent()) {
       poolStats.get().addConnectionPoolManager(connectionManager);
     }
@@ -74,19 +79,37 @@ public class HttpClientUtils {
       @Override
       public void failed(SessionRequest request) {
         actualCallback.failed(request);
-        LOGGER.warn("Session request to " + request.getRemoteAddress() + " failed");
+        logSessionFailure(request.getRemoteAddress().toString(), request.getException(), "failed");
       }
 
       @Override
       public void timeout(SessionRequest request) {
         actualCallback.timeout(request);
-        LOGGER.warn("Session request to " + request.getRemoteAddress() + " timed out");
+        logSessionFailure(request.getRemoteAddress().toString(), request.getException(), "timeout");
       }
 
       @Override
       public void cancelled(SessionRequest request) {
         actualCallback.cancelled(request);
-        LOGGER.warn("Session request to " + request.getRemoteAddress() + " cancelled");
+        logSessionFailure(request.getRemoteAddress().toString(), request.getException(), "cancelled");
+      }
+
+      /**
+       * Log the actual exception when there is a failure in the channel between router and server; only log
+       * the same exception once a minute to avoid flooding the router log.
+       *
+       * @param remoteHost
+       * @param e
+       * @param failureType
+       */
+      private static void logSessionFailure(String remoteHost, Exception e, String failureType) {
+        if (e != null) {
+          if (!filter.isRedundantException(remoteHost, e)) {
+            LOGGER.warn("Session request to " + remoteHost + " " + failureType + ": ", e);
+          }
+        } else {
+          LOGGER.warn("Session request to " + remoteHost + " " + failureType);
+        }
       }
     }
 
@@ -109,10 +132,13 @@ public class HttpClientUtils {
   }
 
   public static PoolingNHttpClientConnectionManager createConnectionManager(int ioThreadNum, int perRoute, int total,
-      Optional<SSLEngineComponentFactory> sslFactory, Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
+      int soTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
         .setSoKeepAlive(true)
         .setIoThreadCount(ioThreadNum)
+        .setSoTimeout(soTimeout)
+        .setConnectTimeout(connectionTimeout)
         .build();
     ConnectingIOReactor ioReactor = null;
     try {
@@ -142,15 +168,14 @@ public class HttpClientUtils {
   }
 
   /**
-   * This function is only being used in RouterHeartbeat code, and we should not use cached dns resolver
-   * since we would like to the unhealthy node to be reported correctly.
+   * This function is only being used in test cases.
    * @param maxConnPerRoute
    * @param maxConnTotal
    * @param sslFactory
    * @return
    */
   public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, sslFactory, Optional.empty(), Optional.empty());
+    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, 10000, 10000, sslFactory, Optional.empty(), Optional.empty());
   }
 
   /**

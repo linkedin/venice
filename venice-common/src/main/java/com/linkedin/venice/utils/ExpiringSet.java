@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
-import java.util.concurrent.ConcurrentHashMap;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 
@@ -10,11 +11,11 @@ import java.util.function.BiFunction;
  */
 public class ExpiringSet<T> {
   // Map from element to the expiration time for that element
-  private ConcurrentHashMap<T, Long> internalMap;
+  private Map<T, Long> internalMap;
   private long millisTTL;
 
   public ExpiringSet(long ttl, TimeUnit unit){
-    internalMap = new ConcurrentHashMap<>();
+    internalMap = new VeniceConcurrentHashMap<>();
     this.millisTTL = unit.toMillis(ttl);
   }
 
@@ -24,6 +25,10 @@ public class ExpiringSet<T> {
 
   public void add(T element, long ttl, TimeUnit unit){
     internalMap.put(element, System.currentTimeMillis() + unit.toMillis(ttl));
+  }
+
+  public void remove(T element) {
+    internalMap.remove(element);
   }
 
   public boolean contains(T element){

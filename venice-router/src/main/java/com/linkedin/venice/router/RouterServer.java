@@ -352,8 +352,7 @@ public class RouterServer extends AbstractVeniceService {
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
         routerStats, metricsRepository, storageNodeClient);
 
-    heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS,
-        config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
+    heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,

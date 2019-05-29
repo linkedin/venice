@@ -8,6 +8,7 @@ import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.TestUtils;
@@ -26,6 +27,8 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.mockito.Mockito;
+
+import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
 import static org.mockito.Mockito.*;
 
 import org.testng.Assert;
@@ -164,8 +167,8 @@ public class TestHostFinder {
     // mock HeartBeat
     FullHttpResponse goodHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), goodHealthResponse);
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, 100, TimeUnit.MILLISECONDS, 500, Optional
-        .empty());
+    VeniceRouterConfig mockConfig = mockVeniceRouterConfig();
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty());
     heartbeat.start();
 
     // the HostFinder should find host now
