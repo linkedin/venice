@@ -510,7 +510,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
-            logger.info("Putting store:" + storeName + " into graveyard");
+            logger.info("Putting store: " + storeName + " into graveyard");
             storeGraveyard.putStoreIntoGraveyard(clusterName, storeRepository.getStore(storeName));
             // Helix will remove all data under this store's znode including key and value schemas.
             resources.getMetadataRepository().deleteStore(storeName);
@@ -799,7 +799,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throwStoreDoesNotExist(clusterName, storeName);
         }
         if (store.isEnableReads() || store.isEnableWrites()) {
-            String errorMsg = "Unable to delete the entire store or versions for store:" + storeName
+            String errorMsg = "Unable to delete the entire store or versions for store: " + storeName
                 + ". Store has not been disabled. Both read and write need to be disabled before deleting.";
             logger.error(errorMsg);
             throw new VeniceException(errorMsg);
@@ -1002,7 +1002,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                           version.getNumber() + " in cluster: " + clusterName);
                     }
                     repository.updateStore(store);
-                    logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
+                    logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
                 } finally {
                     repository.unLock();
                 }
@@ -1405,7 +1405,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     protected Optional<Version> deleteVersionFromStoreRepository(String clusterName, String storeName, int versionNumber) {
         HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        logger.info("Deleting version " + versionNumber + " in Store:" + storeName + " in cluster:" + clusterName);
+        logger.info("Deleting version " + versionNumber + " in Store: " + storeName + " in cluster: " + clusterName);
         Version deletedVersion = null;
         storeRepository.lock();
         try {

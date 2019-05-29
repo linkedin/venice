@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
-
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
@@ -33,12 +32,12 @@ import org.apache.avro.generic.GenericRecord;
  * @param <V>
  */
 public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
-  public static String STAT_VENICE_CLIENT_NAME = "venice_client";
-  public static String STAT_SCHEMA_READER = "schema_reader";
+  private static String STAT_VENICE_CLIENT_NAME = "venice_client";
+  private static String STAT_SCHEMA_READER = "schema_reader";
 
   //TODO: do we want it to be configurable?
   //TODO: we should use a different timeout for multi-get
-  public static final int TIMEOUT_IN_SECOND = 5;
+  private static final int TIMEOUT_IN_SECOND = 5;
 
   private final ClientStats singleGetStats;
   private final ClientStats multiGetStats;
@@ -122,10 +121,18 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         }
       }
     });
-
     return resultFuture;
   }
 
+  public void recordRetryCount(RequestType requestType) {
+    if (requestType == RequestType.SINGLE_GET) {
+      singleGetStats.recordRequestRetryCount();
+    } else if (requestType == RequestType.MULTI_GET) {
+      multiGetStats.recordRequestRetryCount();
+    } else if (requestType == RequestType.COMPUTE) {
+      computeStats.recordRequestRetryCount();
+    }
+  }
 
   private static class StatTrackingStreamingCallback<K, V> extends TrackingStreamingCallback<K, V> {
     private final ClientStats stats;

@@ -40,6 +40,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
   private int alwaysOnDeserializerQueueCapacity = 10000;
   private boolean useFastAvro = false;
+  private boolean retryOnRouterError = false;
 
   // Security settings
   private boolean isHttps = false;
@@ -87,6 +88,7 @@ public class ClientConfig<T extends SpecificRecord> {
         .setAlwaysOnDeserializerNumberOfThreads(config.getAlwaysOnDeserializerNumberOfThreads())
         .setAlwaysOnDeserializerQueueCapacity(config.getAlwaysOnDeserializerQueueCapacity())
         .setUseFastAvro(config.isUseFastAvro())
+        .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
 
         // Security settings
         .setHttps(config.isHttps())
@@ -305,6 +307,15 @@ public class ClientConfig<T extends SpecificRecord> {
   public ClientConfig<T> setUseFastAvro(boolean useFastAvro) {
     this.useFastAvro = useFastAvro;
     return this;
+  }
+
+  public ClientConfig<T> setRetryOnRouterError(boolean value) {
+    this.retryOnRouterError = value;
+    return this;
+  }
+
+  public boolean isRetryOnRouterErrorEnabled() {
+    return retryOnRouterError;
   }
 
   public Time getTime() {

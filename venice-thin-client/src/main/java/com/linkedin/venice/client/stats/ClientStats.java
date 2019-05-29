@@ -25,10 +25,11 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor unhealthyRequestLatencySensor;
   private final Map<Integer, Sensor> httpStatusSensorMap = new VeniceConcurrentHashMap<>();
   private final Sensor requestKeyCountSensor;
+  private final Sensor requestRetryCountSensor;
   private final Sensor successRequestKeyCountSensor;
+  private final Sensor successRequestDuplicateKeyCountSensor;
   private final Sensor successRequestKeyRatioSensor;
   private final Sensor successRequestRatioSensor;
-  private final Sensor successRequestDuplicateKeyCountSensor;
   private final Sensor requestSerializationTime;
   private final Sensor requestSubmissionToResponseHandlingTime;
   private final Sensor responseDeserializationTime;
@@ -53,16 +54,17 @@ public class ClientStats extends AbstractVeniceHttpStats {
      */
     Rate request = new OccurrenceRate();
     Rate healthyRequest = new OccurrenceRate();
+    Rate requestRetryCount = new OccurrenceRate();
 
     requestSensor = registerSensor("request", request);
     healthySensor = registerSensor("healthy_request", healthyRequest);
+    requestRetryCountSensor = registerSensor("request_retry_count", requestRetryCount);
     unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
     healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg());
     unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg());
 
     successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.SimpleRatioStat(healthyRequest, request));
-
     Rate requestKeyCount = new Rate();
     Rate successRequestKeyCount = new Rate();
     requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
@@ -71,7 +73,6 @@ public class ClientStats extends AbstractVeniceHttpStats {
     successRequestDuplicateKeyCountSensor = registerSensor("success_request_duplicate_key_count", new Rate());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
-
     /**
      * The time it took to serialize the request, to be sent to the router. This is done in a blocking fashion
      * on the caller's thread.
@@ -163,6 +164,10 @@ public class ClientStats extends AbstractVeniceHttpStats {
 
   public void recordRequestKeyCount(int keyCount) {
     requestKeyCountSensor.record(keyCount);
+  }
+
+  public void recordRequestRetryCount() {
+    requestRetryCountSensor.record();
   }
 
   public void recordSuccessRequestKeyCount(int successKeyCount) {

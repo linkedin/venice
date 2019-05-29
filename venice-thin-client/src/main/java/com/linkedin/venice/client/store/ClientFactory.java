@@ -6,13 +6,8 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
-import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class ClientFactory {
@@ -33,7 +28,13 @@ public class ClientFactory {
       internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig);
     }
 
-    StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<K, V>(internalClient, clientConfig);
+    AvroGenericStoreClient<K, V> client;
+
+    if (clientConfig.isRetryOnRouterErrorEnabled()) {
+      client = new RetriableStoreClient<>(internalClient, clientConfig);
+    } else {
+      client = new StatTrackingStoreClient<>(internalClient, clientConfig);
+    }
 
     return client;
   }
@@ -47,7 +48,15 @@ public class ClientFactory {
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getSpecificAvroClient(ClientConfig<V> clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient = new AvroSpecificStoreClientImpl<>(transportClient, clientConfig);
-    SpecificStatTrackingStoreClient<K, V> client = new SpecificStatTrackingStoreClient<K, V>(avroClient, clientConfig);
+
+    AvroSpecificStoreClient<K, V> client;
+
+    if (clientConfig.isRetryOnRouterErrorEnabled()) {
+      client = new SpecificRetriableStoreClient<>(avroClient, clientConfig);
+    } else {
+      client = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig);
+    }
+
     return client;
   }
 
