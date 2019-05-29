@@ -92,7 +92,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           "Read request throttle has not been setup yet");
     }
     P path = scatter.getPath();
-    if (! (path instanceof VenicePath)) {
+    if (!  (path instanceof VenicePath)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
           "VenicePath is expected, but received " + path.getClass());
     }
@@ -155,7 +155,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         H finalHost = host;
         hosts.removeIf(aHost -> !aHost.equals(finalHost));
       }
-      if (! (host instanceof Instance)) {
+      if (!  (host instanceof Instance)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
             INTERNAL_SERVER_ERROR, "Ready-to-serve host must be an 'Instance'");
       }
@@ -209,7 +209,12 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         @Nonnull String requestMethod, @Nonnull String resourceName, @Nonnull PartitionFinder<K> partitionFinder,
         @Nonnull HostFinder<H, R> hostFinder, @Nonnull HostHealthMonitor<H> hostHealthMonitor, @Nonnull R roles,
         Metrics metrics) throws RouterException {
-      K key = scatter.getPath().getPartitionKey();
+      P path = scatter.getPath();
+      if (!  (path instanceof VenicePath)) {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
+            "VenicePath is expected, but received " + path.getClass());
+      }
+      K key = path.getPartitionKey();
       String partitionName = partitionFinder.findPartitionName(resourceName, key);
       List<H> hosts = hostFinder.findHosts(requestMethod, resourceName, partitionName, hostHealthMonitor, roles);
       SortedSet<K> keySet = new TreeSet<>();
@@ -223,7 +228,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
          * distributed to all the replicas of that partition; besides, it's guaranteed that the same key will always
          * go to the same host unless some hosts are down/stopped.
          */
-        H host = chooseHostByKey(key, hosts);
+        H host = avoidSlowHost((VenicePath)path, key, hosts);
         scatter.addOnlineRequest(new ScatterGatherRequest<>(Arrays.asList(host), keySet, partitionName));
       } else {
         scatter.addOnlineRequest(new ScatterGatherRequest<>(hosts, keySet, partitionName));
@@ -273,7 +278,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         @Nonnull HostFinder<H, R> hostFinder, @Nonnull HostHealthMonitor<H> hostHealthMonitor, @Nonnull R roles,
         Metrics metrics) throws RouterException {
       P path = scatter.getPath();
-      if (! (path instanceof VenicePath)) {
+      if (!  (path instanceof VenicePath)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
             "VenicePath is expected, but received " + path.getClass());
       }
@@ -311,7 +316,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
              * to all the hosts; besides, it's guaranteed that the same key will always go to the same host unless
              * some hosts are down/stopped.
              */
-            H host = chooseHostByKey(key, hosts);
+            H host = avoidSlowHost((VenicePath)path, key, hosts);
             /**
              * Using {@link HashMap#get} and checking whether the result is null or not
              * is faster than {@link HashMap#containsKey(Object)} and {@link HashMap#get}
@@ -346,9 +351,43 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     }
   }
 
-  public static <H, K> H chooseHostByKey(K key, List<H> hosts) {
+  protected static <H, K> H chooseHostByKey(K key, List<H> hosts) {
     int hostsSize = hosts.size();
     int chosenIndex = Math.abs(key.hashCode()) % hostsSize;
     return hosts.get(chosenIndex);
+  }
+
+  /**
+   * If the first chosen host is slow, choose another replica that is not in the
+   * slow hosts set; if all replicas are slow, abort the retry request.
+   *
+   * @param path
+   * @param key
+   * @param hosts a list of replica
+   * @param <H> {@link Instance}
+   * @return
+   */
+  protected static <H, K> H avoidSlowHost(VenicePath path, K key, List<H> hosts) throws RouterException {
+    H host = chooseHostByKey(key, hosts);
+    if (!  (host instanceof Instance)) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
+          INTERNAL_SERVER_ERROR, "The chosen host is not an 'Instance'");
+    }
+    Instance firstPickHost = (Instance) host;
+    if (path.canRequestStorageNode(firstPickHost.getNodeId())) {
+      return host;
+    }
+
+    /**
+     * If the first pick is a slow host, find another replica that is not slow.
+     */
+    for (H h : hosts) {
+      if (!firstPickHost.equals(h) && path.canRequestStorageNode(((Instance)h).getNodeId())) {
+        return h;
+      }
+    }
+
+    throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
+        SERVICE_UNAVAILABLE, "Retry request aborted! Could not find any healthy replica.", RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_SLOW_ROUTE);
   }
 }
