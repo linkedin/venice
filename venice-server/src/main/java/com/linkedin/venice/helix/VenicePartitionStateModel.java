@@ -10,6 +10,7 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -45,6 +46,9 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     private final VeniceStateModelFactory.StateModelNotifier notifier;
     private final ReadOnlyStoreRepository readOnlyStoreRepository;
 
+    private final static AtomicInteger partitionNumberFromOfflineToBootstrap = new AtomicInteger(0);
+    private final static AtomicInteger partitionNumberFromBootstrapToOnline = new AtomicInteger(0);
+
     public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
         @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
         VeniceStateModelFactory.StateModelNotifier notifier, ReadOnlyStoreRepository readOnlyStoreRepository) {
@@ -61,6 +65,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
 
     @Transition(to = HelixState.ONLINE_STATE, from = HelixState.BOOTSTRAP_STATE)
     public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context) {
+        partitionNumberFromBootstrapToOnline.incrementAndGet();
         executeStateTransition(message, context, () -> {
             try {
                 int bootstrapToOnlineTimeoutInHours;
@@ -83,14 +88,17 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
                 throw new VeniceException(errorMsg, e);
             }
         });
+        partitionNumberFromBootstrapToOnline.decrementAndGet();
     }
 
     @Transition(to = HelixState.BOOTSTRAP_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
+        partitionNumberFromOfflineToBootstrap.incrementAndGet();
         executeStateTransition(message, context, () -> {
             setupNewStorePartition();
             notifier.startConsumption(message.getResourceName(), getPartition());
         });
+        partitionNumberFromOfflineToBootstrap.decrementAndGet();
     }
 
     /**
@@ -132,5 +140,13 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
             // TODO stop is an async operation, we need to ensure that it's really stopped before state transition is completed.
             getStoreIngestionService().stopConsumption(getStoreConfig(), getPartition());
         });
+    }
+
+    public static int getNumberOfPartitionsFromOfflineToBootstrap() {
+        return partitionNumberFromOfflineToBootstrap.get();
+    }
+
+    public static int getNumberOfPartitionsFromBootstrapToOnline() {
+        return partitionNumberFromBootstrapToOnline.get();
     }
 }

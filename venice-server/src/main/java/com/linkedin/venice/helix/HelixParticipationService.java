@@ -9,6 +9,7 @@ import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
+import com.linkedin.venice.stats.ParticipantStateStats;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
@@ -88,6 +89,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     onlineOfflineParticipantModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
         initHelixStateTransitionThreadPool(veniceConfigLoader.getVeniceServerConfig().getMaxOnlineOfflineStateTransitionThreadNumber(),
             "venice-O/O-state-transition", metricsRepository, "Venice_ST_thread_pool"), helixReadOnlyStoreRepository);
+    new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
+
     leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(storeIngestionService, storageService,
         veniceConfigLoader, initHelixStateTransitionThreadPool(veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
         "venice-L/F-state-transition", metricsRepository, "Venice_L/F_ST_thread_pool"));
