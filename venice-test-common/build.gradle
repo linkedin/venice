@@ -60,7 +60,6 @@ task integrationtest(type: Test) {
   testReportDirName = "integrationtest"
   testResultsDirName = "integrationtest-result"
   jacoco {
-    append = false
     destinationFile = file("$buildDir/jacoco/integrationtest.exec")
   }
 

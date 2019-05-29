@@ -1,3 +1,5 @@
+evaluationDependsOn(':venice-test-common')
+
 dependencies {
   implementation project (':venice-common')
   implementation libraries.kafkaClients
