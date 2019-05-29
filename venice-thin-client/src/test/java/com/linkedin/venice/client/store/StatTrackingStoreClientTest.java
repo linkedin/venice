@@ -27,9 +27,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -40,10 +43,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-
+import static com.linkedin.venice.client.store.InternalAvroStoreClient.*;
 import static org.mockito.Mockito.*;
 
 public class StatTrackingStoreClientTest {
@@ -146,7 +146,7 @@ public class StatTrackingStoreClientTest {
     mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
       try {
         Thread.sleep(50);
-        InternalAvroStoreClient.handleStoreExceptionInternally(throwable);
+        handleStoreExceptionInternally(throwable);
       } catch (InterruptedException e) {
         e.printStackTrace();
       }
