@@ -13,6 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.router.api.VeniceHostHealth.*;
 
 
 /**
@@ -26,7 +27,8 @@ public class VeniceRouterConfig {
   private int port;
   private int sslPort;
   private int clientTimeoutMs;
-  private int heartbeatTimeoutMs;
+  private double heartbeatTimeoutMs;
+  private long heartbeatCycleMs;
   private boolean sslToStorageNodes;
   private long maxReadCapacityCu;
   private int longTailRetryForSingleGetThresholdMs;
@@ -74,6 +76,8 @@ public class VeniceRouterConfig {
   private boolean decompressOnClient;
   private boolean streamingEnabled;
   private boolean computeFastAvroEnabled;
+  private int socketTimeout;
+  private int connectionTimeout;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -92,7 +96,8 @@ public class VeniceRouterConfig {
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
     clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); //10s
-    heartbeatTimeoutMs = props.getInt(HEARTBEAT_TIMEOUT, 10000); //10s
+    heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1)); // 1 minute
+    heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by default.
     maxReadCapacityCu = props.getLong(MAX_READ_CAPCITY, 100000); //100000 CU
     longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
@@ -166,6 +171,9 @@ public class VeniceRouterConfig {
     decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, false);
     streamingEnabled = props.getBoolean(ROUTER_STREAMING_ENABLED, false);
     computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
+
+    socketTimeout = props.getInt(ROUTER_SOCKET_TIMEOUT, 10000); // 10s
+    connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 10000); // 10s
   }
 
   public String getClusterName() {
@@ -200,8 +208,12 @@ public class VeniceRouterConfig {
     return greedyMultiGet;
   }
 
-  public int getHeartbeatTimeoutMs() {
+  public double getHeartbeatTimeoutMs() {
     return heartbeatTimeoutMs;
+  }
+
+  public long getHeartbeatCycleMs() {
+    return heartbeatCycleMs;
   }
 
   public boolean isSslToStorageNodes() {
@@ -378,6 +390,14 @@ public class VeniceRouterConfig {
 
   public boolean isComputeFastAvroEnabled() {
     return computeFastAvroEnabled;
+  }
+
+  public int getSocketTimeout()  {
+    return socketTimeout;
+  }
+
+  public int getConnectionTimeout() {
+    return connectionTimeout;
   }
 
   /**
