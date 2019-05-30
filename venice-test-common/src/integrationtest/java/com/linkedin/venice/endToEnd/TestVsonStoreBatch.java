@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -196,6 +197,16 @@ public class TestVsonStoreBatch {
               .setVeniceURL(veniceCluster.getRandomRouterURL())
       );
 
+      String controllerUrl = veniceCluster.getAllControllersURLs();
+
+      TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT/2, TimeUnit.SECONDS, () -> {
+        int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+        // Refresh router metadata once new version (1 since there is just one push) is pushed, so that the router sees the latest store version.
+        if (currentVersion == 1) {
+          veniceCluster.refreshAllRouterMetaData();
+        }
+        return currentVersion == 1;
+      });
       dataValidator.validate(avroClient, vsonClient, metricsRepository);
     } finally {
       IOUtils.closeQuietly(avroClient);
