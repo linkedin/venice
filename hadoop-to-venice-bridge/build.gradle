@@ -17,10 +17,6 @@ dependencies {
         exclude group: 'javax.servlet'
     }
 
-    // gradle dependencyInsight is not showing any dependency on the slf4j-simple
-    // But if this version is not forced, it causes the slf4j to fail with NoSuchMethodError
-    implementation 'org.slf4j:slf4j-simple:1.6.2'
-
     implementation libraries.log4j
     implementation (libraries.hadoopCommon) {
       // Exclude transitive dependency
@@ -36,26 +32,12 @@ dependencies {
 
     implementation libraries.azkaban
 
-    testCompile project(':venice-controller')
-    testCompile project(':venice-server')
-    testCompile project(':venice-router')
-    testCompile (libraries.mapreduceClientJobClient) {
-        exclude group: 'org.apache.avro'
-        exclude group: 'javax.servlet'
-    }
-
     runtime libraries.commonsConfiguration
     runtime libraries.commonsLang
     runtime libraries.httpCore
     runtime libraries.httpClient
 
-    testCompile project(':venice-brooklin')
-
-    // The log4j2 dependencies are not required when running the test suite in Gradle,
-    // but seem necessary when running in IntelliJ... No idea why, but it doesn't hurt
-    // us to declare it explicitly here, so why not.
     testImplementation libraries.log4j2api
-    testImplementation libraries.log4j2core
 }
 
 configurations {
@@ -83,27 +65,27 @@ jar {
   // from configurations.jarRuntime.collect {
   from configurations.jarRuntime
   // from configurations.implementation
-      .filter {!it.absolutePath.endsWith(".xml")}
-      .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
+      .filter {!it.absolutePath.endsWith('.xml')}
+      .filter {!it.absolutePath.endsWith('.ivy')} // Exclude the ivy file which is introduced by new helix version.
       .collect {
         // filtering hadoop core jars and configs as it clashes with Azkaban
         it.isDirectory() ? it : zipTree(it).matching {
-          // exclude("**/*-default.xml")
-          // exclude("**/*.xml")
-          exclude("**/org/apache/commons/**")
-          exclude("**/org/apache/hadoop/**")
-          exclude("**/com/linkedin/azkaban**")
-          exclude("**/com/linkedin/hadoop**")
-          exclude("**/org/apache/xerces/**")
-          // exclude("*.xml")
-          // exclude("hdfs*.xml")
-          // exclude("mapred*.xml")
-          // exclude("core*.xml")
-          exclude("**/org.apache.hadoop*")
+          // exclude('**/*-default.xml')
+          // exclude('**/*.xml')
+          exclude('**/org/apache/commons/**')
+          exclude('**/org/apache/hadoop/**')
+          exclude('**/com/linkedin/azkaban**')
+          exclude('**/com/linkedin/hadoop**')
+          exclude('**/org/apache/xerces/**')
+          // exclude('*.xml')
+          // exclude('hdfs*.xml')
+          // exclude('mapred*.xml')
+          // exclude('core*.xml')
+          exclude('**/org.apache.hadoop*')
         }
       }
   // override log4j properties for hadoop job
-  from "log4j.properties"
+  from 'log4j.properties'
   exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
 }
 
@@ -113,22 +95,22 @@ task fatJar(type: Jar) {
   zip64 true
   // including all jar runtime dependency jars (fat jar)
   from configurations.runtimeClasspath
-      .filter {!it.absolutePath.endsWith(".xml")}
-      .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
+      .filter {!it.absolutePath.endsWith('.xml')}
+      .filter {!it.absolutePath.endsWith('.ivy')} // Exclude the ivy file which is introduced by new helix version.
       .collect {
         // filtering hadoop core jars and configs as it clashes with Azkaban
         it.isDirectory() ? it : zipTree(it).matching {
-          exclude("**/org/apache/commons/**")
-          exclude("**/org/apache/hadoop/**")
-          exclude("**/com/linkedin/azkaban**")
-          exclude("**/com/linkedin/hadoop**")
-          exclude("**/org/apache/xerces/**")
-          exclude("**/org.apache.hadoop*")
+          exclude('**/org/apache/commons/**')
+          exclude('**/org/apache/hadoop/**')
+          exclude('**/com/linkedin/azkaban**')
+          exclude('**/com/linkedin/hadoop**')
+          exclude('**/org/apache/xerces/**')
+          exclude('**/org.apache.hadoop*')
         }
       }
 
   // override log4j properties for hadoop job
-  from "log4j.properties"
+  from 'log4j.properties'
   exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
 
   dependsOn ':venice-common:jar'
@@ -144,11 +126,10 @@ artifacts {
 task zipAzkabanDev(type: Zip, dependsOn: jar) {
   classifier = 'azkaban-dev'
 
-  from "azkaban-dev-pack/"
+  from 'azkaban-dev-pack/'
   include '*'
 
   from (tasks.jar.archivePath) {
     into 'libs'
   }
 }
-

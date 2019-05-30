@@ -25,7 +25,7 @@ jar {
 }
 
 dependencies {
-  implementation (libraries.routerLnkd){ // for SSL Initializer
+  implementation (libraries.routerLnkd) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
@@ -38,7 +38,7 @@ dependencies {
   implementation libraries.asyncHttpClient
   implementation libraries.tehuti
   implementation libraries.commonsIo
-  implementation (libraries.netty4Lnkd){
+  implementation (libraries.netty4Lnkd) {
     exclude group: 'javax.servlet'
     exclude group: 'org.mockito', module: 'mockito-all'
   }
@@ -47,18 +47,9 @@ dependencies {
 
   implementation project(':venice-common')
   implementation project(':venice-controller')
-  implementation (project(':venice-thin-client')){
+  implementation (project(':venice-thin-client')) {
     exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
   }
 
-  testCompile (project(':venice-router')){
-    exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
-  }
-  testCompile project(':venice-brooklin')
-
-  testCompile 'commons-io:commons-io:2.4'
-  testCompile libraries.tehuti
-
-  testCompile project(':venice-test-common')
-  testCompile project(':venice-router')
+  testImplementation project(':venice-router')
 }

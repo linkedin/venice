@@ -10,7 +10,7 @@ task buildJar(type: Jar) {
 
 configurations.implementation {
   exclude group: "org.apache.kafka"
-  exclude group: 'org.mortbay.jetty', module:'servlet-api'
+  exclude group: 'org.mortbay.jetty', module: 'servlet-api'
 }
 
 configurations.all {
@@ -41,7 +41,6 @@ sourceSets {
 configurations {
   integrationtestCompile.extendsFrom testImplementation
   integrationtestRuntime.extendsFrom testRuntime
-
 }
 
 task integrationtest(type: Test) {
@@ -82,7 +81,7 @@ task integrationtest(type: Test) {
   }
 }
 
-task jacocoIntegrationTestReport(type:JacocoReport){
+task jacocoIntegrationTestReport(type:JacocoReport) {
   dependsOn integrationtest
   executionData file("$buildDir/jacoco/integrationtest.exec")
   reports {
@@ -115,7 +114,7 @@ dependencies {
   implementation libraries.azkaban
   implementation libraries.brooklinKafka
   implementation libraries.brooklinKafkaTransport
-  implementation (libraries.d2){
+  implementation (libraries.d2) {
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
     // this will introduce another different mockito-all version
     exclude group: 'org.mockito', module: 'mockito-all'

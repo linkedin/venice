@@ -212,7 +212,6 @@ task unitTests {
   dependsOn 'hadoop-to-venice-bridge:build'
   dependsOn 'venice-schema-common:build'
   dependsOn 'venice-consumer:build'
-
   dependsOn 'venice-common:buildJar'
   dependsOn 'venice-server:installDist'
   dependsOn 'venice-controller:installDist'
@@ -221,7 +220,6 @@ task unitTests {
   dependsOn 'venice-admin-tool:build'
   dependsOn 'venice-test-common:build'
   dependsOn 'venice-samza:build'
-
   dependsOn 'venice-etl:build'
 }
 
