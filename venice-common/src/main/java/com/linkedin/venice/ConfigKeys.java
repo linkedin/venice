@@ -151,6 +151,12 @@ public class ConfigKeys {
 
   public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
   public static final String ENABLE_TOPIC_REPLICATOR_SSL = "controller.enable.topic.replicator.ssl";
+
+  /**
+   * Sleep interval for polling topic deletion status from ZK.
+   */
+  public static final String TOPIC_DELETION_STATUS_POLL_INTERVAL_MS = "topic.deletion.status.poll.interval.ms";
+
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";

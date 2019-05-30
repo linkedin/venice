@@ -24,6 +24,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static org.mockito.Mockito.*;
 
 public class TopicManagerTest {
@@ -52,7 +53,8 @@ public class TopicManagerTest {
   public void setup() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
-    manager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    manager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
   }
 
   @AfterClass

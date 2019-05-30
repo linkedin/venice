@@ -77,6 +77,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static org.mockito.Mockito.*;
 
 
@@ -373,7 +374,8 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT * 6)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     topicManager.createTopic(adminTopic, 1, 1, true);
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);

@@ -40,6 +40,8 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
+import static com.linkedin.venice.ConfigConstants.*;
+
 
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
@@ -58,6 +60,7 @@ public class TopicManager implements Closeable {
   private final int sessionTimeoutMs;
   private final int connectionTimeoutMs;
   private final int kafkaOperationTimeoutMs;
+  private final int topicDeletionStatusPollIntervalMs;
   private final VeniceConsumerFactory veniceConsumerFactory;
 
   // Mutable, lazily initialized, state
@@ -67,31 +70,41 @@ public class TopicManager implements Closeable {
 
   private static final Logger logger = Logger.getLogger(TopicManager.class);
   private static final ObjectMapper mapper = new ObjectMapper();
-  private static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  public static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
+  public static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
+  public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
   protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
 
 
   public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
-      VeniceConsumerFactory veniceConsumerFactory) {
+      int topicDeletionStatusPollIntervalMs, VeniceConsumerFactory veniceConsumerFactory) {
     this.zkConnection = zkConnection;
     this.sessionTimeoutMs = sessionTimeoutMs;
     this.connectionTimeoutMs = connectionTimeoutMs;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
+    this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.veniceConsumerFactory = veniceConsumerFactory;
   }
 
-  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, VeniceConsumerFactory veniceConsumerFactory) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs,
+  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, int topicDeletionStatusPollIntervalMS, VeniceConsumerFactory veniceConsumerFactory) {
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs, topicDeletionStatusPollIntervalMS,
         veniceConsumerFactory);
   }
 
+  /**
+   * This constructor is used in server only; server doesn't have access to controller config like
+   * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
+   * in server doesn't use the config mentioned above.
+   *
+   * @param zkConnection
+   * @param veniceConsumerFactory
+   */
   public TopicManager(String zkConnection, VeniceConsumerFactory veniceConsumerFactory) {
     this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        veniceConsumerFactory);
+        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, veniceConsumerFactory);
   }
 
   /**
@@ -257,15 +270,19 @@ public class TopicManager implements Closeable {
    * If the topic doesn't exist, this operation will throw {@link TopicDoesNotExistException}
    * @param topicName
    * @param retentionInMS
+   * @return true if the retention time config of the input topic gets updated; return false if nothing gets updated
    */
-  public synchronized void updateTopicRetention(String topicName, long retentionInMS) {
+  public synchronized boolean updateTopicRetention(String topicName, long retentionInMS) {
     Properties topicProperties = getTopicConfig(topicName);
     String retentionInMSStr = Long.toString(retentionInMS);
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
       AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
+      return true;
     }
+    // Retention time has already been updated for this topic before
+    return false;
   }
 
   public Map<String, Long> getAllTopicRetentions() {
@@ -345,20 +362,30 @@ public class TopicManager implements Closeable {
     }
     ensureTopicIsDeletedAsync(topicName);
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
-    final int SLEEP_MS = 100;
-    final int MAX_TIMES = kafkaOperationTimeoutMs / SLEEP_MS;
+    int MAX_TIMES = kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs;
+    /**
+     * In case we have bad config, MAX_TIMES can not be smaller than {@link #MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES}.
+     */
+    MAX_TIMES = Math.max(MAX_TIMES, MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES);
     final int MAX_CONSUMER_RECREATION_INTERVAL = 100;
     int current = 0;
     int lastConsumerRecreation = 0;
     int consumerRecreationInterval = 5;
     while (++current <= MAX_TIMES) {
-      Utils.sleep(SLEEP_MS);
+      Utils.sleep(topicDeletionStatusPollIntervalMs);
       // Re-create consumer every once in a while, in case it's wedged on some stale state.
       boolean closeAndRecreateConsumer = (current - lastConsumerRecreation) == consumerRecreationInterval;
       if (closeAndRecreateConsumer) {
-        // Exponential back-off: 0.5s, 1s, 2s, 4s, 8s, 10s (max)
+        /**
+         * Exponential back-off:
+         * Recreate the consumer after polling status for 2 times, (2+)4 times, (2+4+)8 times... and maximum 100 times
+         */
         lastConsumerRecreation = current;
-        consumerRecreationInterval = Math.max(consumerRecreationInterval * 2, MAX_CONSUMER_RECREATION_INTERVAL);
+        consumerRecreationInterval = Math.min(consumerRecreationInterval * 2, MAX_CONSUMER_RECREATION_INTERVAL);
+        if (consumerRecreationInterval <= 0) {
+          // In case it overflows
+          consumerRecreationInterval = MAX_CONSUMER_RECREATION_INTERVAL;
+        }
       }
       if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
         logger.info("Topic: " + topicName + " has been deleted after polling " + current + " times");

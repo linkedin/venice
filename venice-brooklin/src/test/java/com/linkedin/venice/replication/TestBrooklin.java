@@ -29,6 +29,8 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
+
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static org.testng.Assert.*;
 
 import org.apache.log4j.Logger;
@@ -47,7 +49,8 @@ public class TestBrooklin {
     String topic = "test-topic";
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     TopicManager topicManager =
-        new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+        new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
 
     //enable ssl
     Properties kafkaSslProps = new Properties();
@@ -77,7 +80,8 @@ public class TestBrooklin {
     String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     TopicReplicator replicator =
         new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
             brooklin.getBrooklinDmsUri(), kafka.getAddress(), dummyVeniceClusterName, "venice-test-service", false,
@@ -180,7 +184,8 @@ public class TestBrooklin {
   @Test
   public void testReflectiveInstantiation() {
 
-    TopicManager topicManager = new TopicManager("some zk connection", TestUtils.getVeniceConsumerFactory("test"));
+    TopicManager topicManager = new TopicManager("some zk connection", DEFAULT_SESSION_TIMEOUT_MS,
+        DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory("test"));
 
     // Main case: trying to instantiate the BrooklinTopicReplicator
     String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();

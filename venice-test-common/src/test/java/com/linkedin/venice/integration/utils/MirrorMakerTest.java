@@ -34,6 +34,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
+
 
 public class MirrorMakerTest {
   private static final Logger LOGGER = Logger.getLogger(MirrorMakerTest.class);
@@ -78,7 +80,8 @@ public class MirrorMakerTest {
       mirrorMaker = ServiceFactory.getKafkaMirrorMaker(sourceKafka, destinationKafka);
 
       TopicManager topicManager =
-          new TopicManager(sourceKafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(sourceKafka.getAddress()));
+          new TopicManager(sourceKafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(sourceKafka.getAddress()));
 
       String topicName = TestUtils.getUniqueString("topic");
       topicManager.createTopic(topicName, 2, 1, false);

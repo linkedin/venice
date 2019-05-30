@@ -1698,8 +1698,8 @@ public class VeniceParentHelixAdmin implements Admin {
     return veniceHelixAdmin.isTopicTruncatedBasedOnRetention(retention);
   }
 
-  public void truncateKafkaTopic(String kafkaTopicName) {
-    veniceHelixAdmin.truncateKafkaTopic(kafkaTopicName);
+  public boolean truncateKafkaTopic(String kafkaTopicName) {
+    return veniceHelixAdmin.truncateKafkaTopic(kafkaTopicName);
   }
 
   @Override
