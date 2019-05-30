@@ -46,6 +46,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -88,7 +89,8 @@ public class TestHybrid {
     });
 
     //And real-time topic should exist now.
-    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
     IOUtils.closeQuietly(topicManager);
 
@@ -410,7 +412,8 @@ public class TestHybrid {
     }
 
     // And real-time topic should not exist since buffer replay is skipped.
-    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     assertFalse(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
     IOUtils.closeQuietly(topicManager);
 

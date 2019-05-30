@@ -18,6 +18,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static org.mockito.Mockito.*;
 
 
@@ -61,7 +62,8 @@ public class TestTopicMonitor {
     mon.start();
 
     int partitionNumber = 4;
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     topicManager.createTopic(storeName + "_v1", partitionNumber, 1); /* topic, partitions, replication */
     topicManager.createTopic(storeName + "_v2", partitionNumber, 1); /* topic, partitions, replication */
     KafkaConsumer<String, String> kafkaClient = getKafkaConsumer(kafka.getAddress());
@@ -103,7 +105,8 @@ public class TestTopicMonitor {
     mon.start();
 
     int partitionNumber = 4;
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     topicManager.createTopic(storeName + "_v2", partitionNumber, 1); /* topic, partitions, replication */
 
     KafkaConsumer<String, String> kafkaClient = getKafkaConsumer(kafka.getAddress());
@@ -154,7 +157,8 @@ public class TestTopicMonitor {
     TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()), stats);
     mon.start();
 
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     topicManager.createTopic(storeNameA + "_v1", partitionNumber, 1); /* topic, partitions, replication */
     topicManager.createTopic(storeNameB + "_v1", partitionNumber, 1); /* topic, partitions, replication */
     KafkaConsumer<String, String> kafkaClient = getKafkaConsumer(kafka.getAddress());

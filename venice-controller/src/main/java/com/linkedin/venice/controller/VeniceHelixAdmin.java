@@ -95,6 +95,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.commons.io.IOUtils;
@@ -231,7 +232,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
 
         this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(),
-            multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(), veniceConsumerFactory);
+                                             multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
+                                             multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
+                                             veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
         this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
@@ -1439,8 +1442,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return getTopicManager().isRetentionBelowTruncatedThreshold(retention, deprecatedJobTopicMaxRetentionMs);
     }
 
+    /**
+     * We don't actually truncate any Kafka topic here; we just update the retention time.
+     * @param kafkaTopicName
+     * @return
+     */
     @Override
-    public void truncateKafkaTopic(String kafkaTopicName) {
+    public boolean truncateKafkaTopic(String kafkaTopicName) {
         /**
          * Topic truncation doesn't care about whether the topic actually exists in Kafka Broker or not since
          * the truncation will only update the topic metadata in Kafka Zookeeper.
@@ -1448,11 +1456,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * Kafka Broker yet.
          */
         if (getTopicManager().containsTopicInKafkaZK(kafkaTopicName)) {
-            getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs);
-            logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
+            if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs)) {
+                // Retention time is updated to "deprecatedJobTopicRetentionMs"; log this topic config changes
+                logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
+                return true;
+            } // otherwise, the retention time config for this topic has already been updated before
         } else {
             logger.info("Topic: " + kafkaTopicName + " doesn't exist in Kafka Zookeeper, will skip the truncation");
         }
+        // return false to indicate the retention config has already been updated before
+        return false;
     }
 
     /**
@@ -1521,9 +1534,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Searched for old topics belonging to store '" + store.getName() + "', and did not find any.");
         } else {
             logger.info("Detected the following old topics to truncate: " + String.join(", ", oldTopicsToTruncate));
-            oldTopicsToTruncate.stream()
-                .forEach(t -> truncateKafkaTopic(t));
-            logger.info("Finished truncating old topics for store '" + store.getName() + "'.");
+            int numberOfNewTopicsMarkedForDelete = 0;
+            for (String t : oldTopicsToTruncate) {
+                if (truncateKafkaTopic(t)) {
+                    ++numberOfNewTopicsMarkedForDelete;
+                }
+            }
+            logger.info(String.format(
+                "Finished truncating old topics for store '%s'. Retention time for %d topics out of %d have been updated.",
+                store.getName(), numberOfNewTopicsMarkedForDelete, oldTopicsToTruncate.size()));
         }
     }
 

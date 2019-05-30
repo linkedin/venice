@@ -474,7 +474,13 @@ public interface Admin extends AutoCloseable, Closeable {
 
     boolean isTopicTruncatedBasedOnRetention(long retention);
 
-    void truncateKafkaTopic(String topicName);
+    /**
+     *
+     * @param topicName
+     * @return false indicates that the truncate operation has already been done before;
+     *         true if it's the first time truncating this topic.
+     */
+    boolean truncateKafkaTopic(String topicName);
 
     void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties);
 

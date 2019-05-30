@@ -25,6 +25,7 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
@@ -82,7 +83,8 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     });
 
     //verify realtime topic exists
-    topicManager = new TopicManager(venice.getKafka().getZkAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    topicManager = new TopicManager(venice.getKafka().getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     Assert.assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
 
     //disable store

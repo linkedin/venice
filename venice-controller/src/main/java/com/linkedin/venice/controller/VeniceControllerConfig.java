@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
@@ -52,6 +53,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean addVersionViaTopicMonitor;
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
+  private final int topicDeletionStatusPollIntervalMs;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -110,6 +112,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.addVersionViaTopicMonitor = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, true);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
+
+    this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
   }
 
   public int getAdminPort() {
@@ -227,6 +231,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public boolean isParticipantMessageStoreEnabled() { return participantMessageStoreEnabled; }
 
   public String getSystemSchemaClusterName() { return systemSchemaClusterName; }
+
+  public int getTopicDeletionStatusPollIntervalMs() {
+    return topicDeletionStatusPollIntervalMs;
+  }
 
   /**
    * @param clusterPros list of child controller uris
