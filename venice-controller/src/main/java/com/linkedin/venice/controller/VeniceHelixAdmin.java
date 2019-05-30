@@ -1043,7 +1043,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // handle the exception.
                 throw e;
             }
-            int failedVersionNumber = versionNumber;
+            int failedVersionNumber = version == null ? versionNumber : version.getNumber();
             String errorMessage = "Failed to add version " + failedVersionNumber + " to store " + storeName + " in cluster " + clusterName;
             logger.error(errorMessage, e);
             try {

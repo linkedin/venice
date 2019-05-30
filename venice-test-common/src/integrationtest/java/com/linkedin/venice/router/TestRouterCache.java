@@ -143,6 +143,10 @@ public abstract class TestRouterCache {
     String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
+      if (currentVersion == pushVersion) {
+        veniceCluster.refreshAllRouterMetaData();
+      }
       return currentVersion == pushVersion;
     });
 
