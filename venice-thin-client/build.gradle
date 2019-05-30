@@ -32,6 +32,7 @@ dependencies {
   implementation project(':venice-schema-common')
 
   testImplementation project(':venice-common')
-  testImplementation libraries.netty
   testImplementation project(':venice-test-common')
+  testImplementation libraries.netty
+  testImplementation libraries.log4j2api
 }

@@ -24,7 +24,6 @@ jar {
 }
 
 dependencies {
-
   // Let's try to keep it clean! (i.e.: alphabetical)
 
   implementation (libraries.avro) {
@@ -44,7 +43,7 @@ dependencies {
     // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
     exclude group: 'com.github.sgroschupf'
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
-    exclude module:'zookeeper'
+    exclude module: 'zookeeper'
   }
 
   implementation libraries.jacksonMapper
@@ -54,7 +53,7 @@ dependencies {
 
   implementation libraries.oss
 
-  implementation (libraries.routerLnkd){ // for SSL Initializer
+  implementation (libraries.routerLnkd) { // for SSL Initializer
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
@@ -74,9 +73,5 @@ dependencies {
   // Test dependencies are allowed to be bulkier.
   testImplementation libraries.kafkaTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
-  testImplementation libraries.zookeeper
   testImplementation project(':venice-controller')
-  testImplementation project(':venice-server')
-  testImplementation project(':venice-router')
-  testImplementation libraries.tehuti
 }
