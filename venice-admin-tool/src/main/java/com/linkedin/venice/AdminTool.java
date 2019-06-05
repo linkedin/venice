@@ -2,7 +2,6 @@ package com.linkedin.venice;
 
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -352,7 +351,7 @@ public class AdminTool {
         }
       }
     }
-    return Command.getCommand(foundCommand);
+    return Command.getCommand(foundCommand, cmd);
   }
 
   private static MultiStoreResponse queryStoreList(CommandLine cmd) {
