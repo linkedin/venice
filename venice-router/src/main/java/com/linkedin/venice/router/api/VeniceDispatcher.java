@@ -173,7 +173,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     // TODO: add metric for this pending request
     if (!pendingRequestThrottler.put()) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(path.getRequestType()),
-          SERVICE_UNAVAILABLE, "The incoming request exceeds pending request threshold, please contact Venice team");
+          SERVICE_UNAVAILABLE, "Maximum number of pending request threshold reached! Please contact Venice team.");
     }
 
     if (logger.isDebugEnabled()) {

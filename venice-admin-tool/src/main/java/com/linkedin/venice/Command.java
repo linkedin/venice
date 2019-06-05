@@ -1,8 +1,12 @@
 package com.linkedin.venice;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.List;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
+import org.apache.commons.cli.CommandLine;
 
 import static com.linkedin.venice.Arg.*;
 
@@ -205,12 +209,24 @@ public enum Command {
     }
   };
 
-  public static Command getCommand(String name) {
+  public static Command getCommand(String name, CommandLine cmdLine) {
     for (Command cmd: values()) {
       if (cmd.commandName.equals(name)) {
         return cmd;
       }
     }
-    throw new VeniceException("No Command found with name: " + name);
+    if (null == name) {
+      List<String> candidateCommands = Arrays.stream(Command.values())
+          .filter(command -> Arrays.stream(command.getRequiredArgs())
+              .allMatch(arg -> cmdLine.hasOption(arg.toString())))
+          .map(commmand -> "--" + commmand.toString())
+          .collect(Collectors.toList());
+      if (!candidateCommands.isEmpty()) {
+        throw new VeniceException("No command found, potential commands compatible with the provided parameters include: "
+            + Arrays.toString(candidateCommands.toArray()));
+      }
+    }
+    String message = name == null ? " No command found, Please specify a command, eg [--describe-store] " : "No Command found with name: " + name;
+    throw new VeniceException(message);
   }
 }
