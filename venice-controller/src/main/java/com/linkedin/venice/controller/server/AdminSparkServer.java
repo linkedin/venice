@@ -80,15 +80,12 @@ public class AdminSparkServer extends AbstractVeniceService {
       if (stats == null) {
         stats = nonclusterSpecificStats;
       }
-      stats.recordRequest();
       long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
       if ((boolean)request.attribute(REQUEST_SUCCEED)) {
         logger.info(audit.successString());
-        stats.recordSuccessfulRequest();
         stats.recordSuccessfulRequestLatency(latency);
       } else {
         logger.info(audit.failureString(response.body()));
-        stats.recordFailedRequest();
         stats.recordFailedRequestLatency(latency);
       }
     });
