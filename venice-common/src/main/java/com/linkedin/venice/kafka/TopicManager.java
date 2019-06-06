@@ -194,7 +194,7 @@ public class TopicManager implements Closeable {
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
       if (logCompaction) {
         topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
-        topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, topicMinLogCompactionLagMs);
+        topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, Long.toString(topicMinLogCompactionLagMs));
       } else {
         topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
       }

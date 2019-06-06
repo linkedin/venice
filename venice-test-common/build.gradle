@@ -44,6 +44,7 @@ configurations {
 }
 
 task integrationtest(type: Test) {
+  maxHeapSize = '4g'
   String forkEveryConfigName = "integrationTest.forkEvery"
   if (project.hasProperty(forkEveryConfigName)) {
     println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"

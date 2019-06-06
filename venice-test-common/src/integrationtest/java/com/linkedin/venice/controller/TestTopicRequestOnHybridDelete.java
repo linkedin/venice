@@ -171,6 +171,8 @@ public class TestTopicRequestOnHybridDelete {
     VersionCreationResponse startedVersion =
         controllerClient.requestTopicForWrites(storeName, 1L, ControllerApiConstants.PushType.BATCH,
             TestUtils.getUniqueString("pushId"), false);
+    Assert.assertFalse(startedVersion.isError(),
+        "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
     Assert.assertEquals(controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertTrue(topicManager.containsTopic(startedVersion.getKafkaTopic()));
 
