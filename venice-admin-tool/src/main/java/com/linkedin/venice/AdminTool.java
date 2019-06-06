@@ -685,7 +685,7 @@ public class AdminTool {
       kafkaTimeOut = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_OPERATION_TIMEOUT)) * Time.MS_PER_SECOND;
     }
     TopicManager topicManager = new TopicManager(zkConnectionString, zkSessionTimeoutMs, zkConnectionTimeoutMs,
-        kafkaTimeOut, topicDeletionStatusPollingInterval, veniceConsumerFactory);
+        kafkaTimeOut, topicDeletionStatusPollingInterval, 0l, veniceConsumerFactory);
     String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
     try {
       topicManager.ensureTopicIsDeletedAndBlock(topicName);

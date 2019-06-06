@@ -50,7 +50,7 @@ public class TestBrooklin {
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     TopicManager topicManager =
         new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
 
     //enable ssl
     Properties kafkaSslProps = new Properties();
@@ -81,7 +81,7 @@ public class TestBrooklin {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+        100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     TopicReplicator replicator =
         new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
             brooklin.getBrooklinDmsUri(), kafka.getAddress(), dummyVeniceClusterName, "venice-test-service", false,
@@ -185,7 +185,7 @@ public class TestBrooklin {
   public void testReflectiveInstantiation() {
 
     TopicManager topicManager = new TopicManager("some zk connection", DEFAULT_SESSION_TIMEOUT_MS,
-        DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory("test"));
+        DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory("test"));
 
     // Main case: trying to instantiate the BrooklinTopicReplicator
     String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();

@@ -897,7 +897,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       recordSize = internalProcessConsumerRecord(record, partitionConsumptionState);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
-      String errorMessage = "Fatal data validation problem with partition " + faultyPartition;
+      String errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
         errorMessage += ". Consumption will be halted.";

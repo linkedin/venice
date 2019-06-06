@@ -61,6 +61,7 @@ public class TopicManager implements Closeable {
   private final int connectionTimeoutMs;
   private final int kafkaOperationTimeoutMs;
   private final int topicDeletionStatusPollIntervalMs;
+  private final long topicMinLogCompactionLagMs;
   private final VeniceConsumerFactory veniceConsumerFactory;
 
   // Mutable, lazily initialized, state
@@ -77,21 +78,30 @@ public class TopicManager implements Closeable {
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
   protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
+  /**
+   * Default setting is that no log compaction should happen for hybrid store version topics
+   * if the messages are produced within 24 hours; otherwise servers could encounter MISSING
+   * data DIV errors for grandfathering jobs which could potentially generate lots of
+   * duplicate keys.
+   */
+  public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
 
 
   public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs, VeniceConsumerFactory veniceConsumerFactory) {
+      int topicDeletionStatusPollIntervalMs, long topicMinLogCompactionLagMs, VeniceConsumerFactory veniceConsumerFactory) {
     this.zkConnection = zkConnection;
     this.sessionTimeoutMs = sessionTimeoutMs;
     this.connectionTimeoutMs = connectionTimeoutMs;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
+    this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
     this.veniceConsumerFactory = veniceConsumerFactory;
   }
 
-  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, int topicDeletionStatusPollIntervalMS, VeniceConsumerFactory veniceConsumerFactory) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs, topicDeletionStatusPollIntervalMS,
-        veniceConsumerFactory);
+  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, int topicDeletionStatusPollIntervalMS,
+      long topicMinLogCompactionLagMS, VeniceConsumerFactory veniceConsumerFactory) {
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs,
+        topicDeletionStatusPollIntervalMS, topicMinLogCompactionLagMS, veniceConsumerFactory);
   }
 
   /**
@@ -104,7 +114,7 @@ public class TopicManager implements Closeable {
    */
   public TopicManager(String zkConnection, VeniceConsumerFactory veniceConsumerFactory) {
     this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, veniceConsumerFactory);
+        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS, veniceConsumerFactory);
   }
 
   /**
@@ -184,6 +194,7 @@ public class TopicManager implements Closeable {
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionTimeMs));
       if (logCompaction) {
         topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_COMPACT);
+        topicProperties.put(TopicConfig.MIN_COMPACTION_LAG_MS_CONFIG, topicMinLogCompactionLagMs);
       } else {
         topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, TopicConfig.CLEANUP_POLICY_DELETE);
       }

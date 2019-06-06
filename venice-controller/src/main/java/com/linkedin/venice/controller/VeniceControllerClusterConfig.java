@@ -20,6 +20,8 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.kafka.TopicManager.*;
+
 
 /**
  * Configuration which is specific to a Venice cluster used by Venice controller.
@@ -80,6 +82,7 @@ public class VeniceControllerClusterConfig {
   private Optional<Integer> minIsr;
   private boolean kafkaLogCompactionForHybridStores;
   private boolean kafkaLogCompactionForIncrementalPushStores;
+  private long kafkaMinLogCompactionLagInMs;
 
   /**
    * Address of zookeeper that kafka used. It may be different from what Helix used.
@@ -116,6 +119,7 @@ public class VeniceControllerClusterConfig {
     minIsr = props.getOptionalInt(KAFKA_MIN_ISR);
     kafkaLogCompactionForHybridStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_HYBRID_STORES, true);
     kafkaLogCompactionForIncrementalPushStores = props.getBoolean(KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES, true);
+    kafkaMinLogCompactionLagInMs = props.getLong(KAFKA_MIN_LOG_COMPACTION_LAG_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS);
     replicaFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
     numberOfPartition = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
@@ -322,6 +326,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isKafkaLogCompactionForIncrementalPushStoresEnabled() {
     return kafkaLogCompactionForIncrementalPushStores;
+  }
+
+  public long getKafkaMinLogCompactionLagInMs() {
+    return kafkaMinLogCompactionLagInMs;
   }
 
   public boolean isSkipBufferRelayForHybrid() {

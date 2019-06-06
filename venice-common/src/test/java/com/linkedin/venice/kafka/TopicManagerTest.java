@@ -54,7 +54,7 @@ public class TopicManagerTest {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
     manager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
   }
 
   @AfterClass
