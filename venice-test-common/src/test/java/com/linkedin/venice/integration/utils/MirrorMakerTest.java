@@ -81,7 +81,7 @@ public class MirrorMakerTest {
 
       TopicManager topicManager =
           new TopicManager(sourceKafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(sourceKafka.getAddress()));
+              DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(sourceKafka.getAddress()));
 
       String topicName = TestUtils.getUniqueString("topic");
       topicManager.createTopic(topicName, 2, 1, false);

@@ -375,7 +375,7 @@ public class TestAdminConsumptionTask {
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     topicManager.createTopic(adminTopic, 1, 1, true);
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);

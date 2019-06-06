@@ -120,6 +120,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicDeletionStatusPollIntervalMs();
   }
 
+  public long getKafkaMinLogCompactionLagInMs() {
+    return getCommonConfig().getKafkaMinLogCompactionLagInMs();
+  }
+
   public int getMinNumberOfUnusedKafkaTopicsToPreserve() {
     return getCommonConfig().getMinNumberOfUnusedKafkaTopicsToPreserve();
   }

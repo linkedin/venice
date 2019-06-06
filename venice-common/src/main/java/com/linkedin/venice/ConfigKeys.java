@@ -81,6 +81,11 @@ public class ConfigKeys {
   public static final String KAFKA_LOG_COMPACTION_FOR_INCREMENTAL_PUSH_STORES = "kafka.log.compaction.for.incremental.push.stores";
 
   /**
+   * For log compaction enabled topics, this config will define the minimum time a message will remain uncompacted in the log.
+   */
+  public static final String KAFKA_MIN_LOG_COMPACTION_LAG_MS = "kafka.min.log.compaction.lag.ms";
+
+  /**
    * The min.isr property to be set at topic creation time. Will not modify already-existing topics.
    *
    * If unset, will use the Kafka cluster's default.
