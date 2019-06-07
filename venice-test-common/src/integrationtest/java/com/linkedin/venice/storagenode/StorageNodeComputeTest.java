@@ -2,15 +2,18 @@ package com.linkedin.venice.storagenode;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AvroComputeRequestBuilderV2;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -30,6 +33,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -166,6 +170,8 @@ public class StorageNodeComputeTest {
         keySet.add("unknown_key");
         List<Float> p = Arrays.asList(100.0f, 0.1f);
         List<Float> cosP = Arrays.asList(123.4f, 5.6f);
+        List<Float> hadamardP = Arrays.asList(135.7f, 246.8f);
+
         Map<String, GenericRecord> computeResult = storeClient.compute()
             .project("id")
             .dotProduct("member_feature", p, "member_score")
@@ -180,15 +186,48 @@ public class StorageNodeComputeTest {
           int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
           // check projection result
           Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
-          // check dotProduct result
-          Assert.assertEquals(entry.getValue().get("member_score"), (double) (p.get(0) * keyIdx + p.get(1) * (keyIdx * 10)));
+          // check dotProduct result; should be double for V1 request
+          Assert.assertEquals(entry.getValue().get("member_score"), (double)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
 
-          // check cosine similarity result
-          double dotProductResult = (double) (cosP.get(0) * (float)keyIdx + cosP.get(1) * (float)(keyIdx * 10));
-          double valueVectorMagnitude = Math.sqrt((double) ((float)keyIdx * (float)keyIdx + ((float)keyIdx * 10.0f) * ((float)keyIdx * 10.0f)));
-          double parameterVectorMagnitude = Math.sqrt((double) (cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+          // check cosine similarity result; should be double for V1 request
+          double dotProductResult = (double) cosP.get(0) * (float)(keyIdx + 1) + cosP.get(1) * (float)((keyIdx + 1) * 10);
+          double valueVectorMagnitude = Math.sqrt((double)((float)(keyIdx + 1) * (float)(keyIdx + 1) + ((float)(keyIdx + 1) * 10.0f) * ((float)(keyIdx + 1) * 10.0f)));
+          double parameterVectorMagnitude = Math.sqrt((double)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
           double expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-          Assert.assertEquals((double)entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001d);
+          Assert.assertEquals((double) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001d);
+        }
+
+        /**
+         * Test Compute Request V2 request using the same key set;
+         *
+         * Generate a V2 compute request builder directly; once V2 compute request becomes
+         * the default behavior, remove this change and use `storeClient.compute()` to generate
+         * V2 compute request builder.
+         */
+        if (! (storeClient instanceof InternalAvroStoreClient)) {
+          throw new VeniceException("storeClient is not an instance of InternalAvroStoreClient; instead, it's " + storeClient.getClass());
+        }
+        AvroComputeRequestBuilderV2<String> requestBuilderV2 =
+            new AvroComputeRequestBuilderV2(Schema.parse(valueSchemaForCompute), (InternalAvroStoreClient)storeClient, Optional.empty(), Optional.empty());
+        Map<String, GenericRecord> computeResultV2 = requestBuilderV2
+            .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
+            .dotProduct("member_feature", p, "member_score")
+            .execute(keySet)
+            /**
+             * Added 2s timeout as a safety net as ideally each request should take sub-second.
+             */
+            .get(2, TimeUnit.SECONDS);
+        Assert.assertEquals(computeResultV2.size(), 10);
+        for (Map.Entry<String, GenericRecord> entry : computeResultV2.entrySet()) {
+          int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
+          // check dotProduct result
+          Assert.assertEquals(entry.getValue().get("member_score"), (float)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+
+          // check hadamard product
+          List<Float> hadamardProductResult = new ArrayList<>(2);
+          hadamardProductResult.add(hadamardP.get(0) * (float)(keyIdx + 1));
+          hadamardProductResult.add(hadamardP.get(1) * (float)((keyIdx + 1) * 10));
+          Assert.assertEquals(entry.getValue().get("hadamard_product_result"), hadamardProductResult);
         }
       }
 
@@ -224,8 +263,8 @@ public class StorageNodeComputeTest {
       value.put("id", valuePrefix + i);
       value.put("name", valuePrefix + i + "_name");
       List<Float> features = new ArrayList<>();
-      features.add(Float.valueOf((float)i));
-      features.add(Float.valueOf((float)(i * 10)));
+      features.add(Float.valueOf((float)(i + 1)));
+      features.add(Float.valueOf((float)((i + 1) * 10)));
       value.put("member_feature", features);
 
       byte[] compressedValue = CompressorFactory.getCompressor(compressionStrategy).compress(valueSerializer.serialize(topic, value));
