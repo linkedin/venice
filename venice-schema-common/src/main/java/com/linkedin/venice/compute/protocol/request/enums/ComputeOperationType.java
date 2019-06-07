@@ -3,6 +3,7 @@ package com.linkedin.venice.compute.protocol.request.enums;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
 import java.util.List;
@@ -12,7 +13,8 @@ import org.apache.avro.generic.GenericRecord;
 
 public enum ComputeOperationType {
   DOT_PRODUCT(0),
-  COSINE_SIMILARITY(1);
+  COSINE_SIMILARITY(1),
+  HADAMARD_PRODUCT(2);
 
   private final int value;
   private static final Map<Integer, ComputeOperationType> OPERATION_TYPE_MAP = getOperationTypeMap();
@@ -27,6 +29,8 @@ public enum ComputeOperationType {
         return new DotProduct();
       case COSINE_SIMILARITY:
         return new CosineSimilarity();
+      case HADAMARD_PRODUCT:
+        return new HadamardProduct();
       default:
         throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }

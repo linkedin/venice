@@ -16,7 +16,7 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientStreamingCallback;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
@@ -60,6 +60,7 @@ import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.streaming.StreamingConstants.*;
 
 
@@ -72,8 +73,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private static final Map<String, String> GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
   private static final Map<String, String> MULTI_GET_HEADER_MAP_FOR_STREAMING;
-  private static final Map<String, String> COMPUTE_HEADER_MAP = new HashMap<>();
-  private static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING;
+  private static final Map<String, String> COMPUTE_HEADER_MAP_V2 = new HashMap<>();
+  private static final Map<String, String> COMPUTE_HEADER_MAP_V1 = new HashMap<>();
+  private static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
+  private static final Map<String, String> COMPUTE_HEADER_MAP_FOR_STREAMING_V1;
 
   static {
     /**
@@ -90,14 +93,20 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION,
         Integer.toString(CompressionStrategy.GZIP.getValue()));
 
-    COMPUTE_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
+    COMPUTE_HEADER_MAP_V2.put(HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V2.getProtocolVersion()));
+
+    COMPUTE_HEADER_MAP_V1.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getProtocolVersion()));
 
     MULTI_GET_HEADER_MAP_FOR_STREAMING = new HashMap<>(MULTI_GET_HEADER_MAP);
     MULTI_GET_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
 
-    COMPUTE_HEADER_MAP_FOR_STREAMING = new HashMap<>(COMPUTE_HEADER_MAP);
-    COMPUTE_HEADER_MAP_FOR_STREAMING.put(HttpConstants.VENICE_STREAMING, "1");
+    COMPUTE_HEADER_MAP_FOR_STREAMING_V2 = new HashMap<>(COMPUTE_HEADER_MAP_V2);
+    COMPUTE_HEADER_MAP_FOR_STREAMING_V2.put(HttpConstants.VENICE_STREAMING, "1");
+
+    COMPUTE_HEADER_MAP_FOR_STREAMING_V1 = new HashMap<>(COMPUTE_HEADER_MAP_V1);
+    COMPUTE_HEADER_MAP_FOR_STREAMING_V1.put(HttpConstants.VENICE_STREAMING, "1");
 
     AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
@@ -113,8 +122,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   protected RecordSerializer<K> keySerializer = null;
   // Multi-get request serializer
   protected RecordSerializer<ByteBuffer> multiGetRequestSerializer;
-  // Compute request serializer
-  protected RecordSerializer<ComputeRequestV1> computeRequestSerializer;
   protected RecordSerializer<ByteBuffer> computeRequestClientKeySerializer;
 
   private RecordDeserializer<StreamingFooterRecordV1> streamingFooterRecordDeserializer;
@@ -253,8 +260,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     // init compute request serializer
     this.computeRequestClientKeySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
         ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
-    this.computeRequestSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
-        ReadAvroProtocolDefinition.COMPUTE_REQUEST_V1.getSchema());
 
     if (useFastAvro) {
       this.streamingFooterRecordDeserializer =
@@ -481,41 +486,44 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS)  {
-    return new AvroComputeRequestBuilder<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
+    return new AvroComputeRequestBuilderV1<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
   }
 
 
-  private byte[] serializeComputeRequest(List<K> keyList, ComputeRequestV1 computeRequest) {
+  private byte[] serializeComputeRequest(List<K> keyList, byte[] serializedComputeRequest) {
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
     keyList.stream().forEach(key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))));
-    // Serialize the compute request
-    byte[] serializedComputeRequest = computeRequestSerializer.serialize(computeRequest);
     return  computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }
   /**
-   * This function is only being used by {@link AvroComputeRequestBuilder#execute(Set)}.
+   * This function is only being used by {@link AvroComputeRequestBuilderV1#execute(Set)}.
    *
-   * @param computeRequest
+   * @param computeRequestWrapper
    * @param keys
    * @param resultSchema
    * @param stats
    * @param preRequestTimeInNS
    * @return
    */
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
+  @Override
+  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
       Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) {
     if (keys.isEmpty()) {
       return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_COMPUTE;
     }
     List<K> keyList = new ArrayList<>(keys);
-    byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, computeRequest);
+    byte[] serializedComputeRequest = computeRequestWrapper.serialize();
+    byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, serializedComputeRequest);
     CompletableFuture<Map<K, GenericRecord>> valueFuture = new CompletableFuture();
+    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V1)
+        ? COMPUTE_HEADER_MAP_V1
+        : COMPUTE_HEADER_MAP_V2;
 
     requestSubmissionWithStatsHandling(
         stats,
         preRequestTimeInNS,
         true,
-        () -> transportClient.post(getComputeRequestPath(), COMPUTE_HEADER_MAP, serializedFullComputeRequest),
+        () -> transportClient.post(getComputeRequestPath(), headerMap, serializedFullComputeRequest),
         (clientResponse, throwable, responseDeserializationComplete) -> {
           try {
             if (null != throwable) {
@@ -906,7 +914,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS) throws VeniceClientException
   {
     if (handleCallbackForEmptyKeySet(keys, callback)) {
@@ -914,11 +922,15 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       return;
     }
     List<K> keyList = new ArrayList<>(keys);
-    byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, computeRequest);
+    byte[] serializedComputeRequest = computeRequestWrapper.serialize();
+    byte[] serializedFullComputeRequest = serializeComputeRequest(keyList, serializedComputeRequest);
+    final Map<String, String> headerMap = (computeRequestWrapper.getComputeRequestVersion() == COMPUTE_REQUEST_VERSION_V1)
+        ? COMPUTE_HEADER_MAP_FOR_STREAMING_V1
+        : COMPUTE_HEADER_MAP_FOR_STREAMING_V2;
 
     RecordDeserializer<GenericRecord> computeResultRecordDeserializer = getComputeResultRecordDeserializer(resultSchema);
 
-    transportClient.streamPost(getComputeRequestPath(), COMPUTE_HEADER_MAP_FOR_STREAMING, serializedFullComputeRequest,
+    transportClient.streamPost(getComputeRequestPath(), headerMap, serializedFullComputeRequest,
         new StoreClientStreamingCallback<>(
             keyList,
             callback,

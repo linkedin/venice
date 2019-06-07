@@ -7,42 +7,44 @@ import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.compute.ComputeOperationUtils.*;
 
 
 public class CosineSimilarityOperator implements ReadComputeOperator {
   @Override
-  public void compute(ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
+  public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
       Map<String, String> computationErrorMap, Map<String, Object> context) {
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
+    boolean useV1 = computeRequestVersion == COMPUTE_REQUEST_VERSION_V1;
     try {
       List<Float> valueVector = (List<Float>) valueRecord.get(cosineSimilarity.field.toString());
       List<Float> cosSimilarityParam = cosineSimilarity.cosSimilarityParam;
 
       if (valueVector.size() == 0 || cosSimilarityParam.size() == 0) {
-        resultRecord.put(cosineSimilarity.resultFieldName.toString(), 0.0d);
+        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, 0.0d, null);
         return;
       } else if (valueVector.size() != cosSimilarityParam.size()) {
-        resultRecord.put(cosineSimilarity.resultFieldName.toString(), 0.0d);
+        putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, 0.0d, 0.0f);
         computationErrorMap.put(cosineSimilarity.resultFieldName.toString(),
             "Failed to compute because size of dot product parameter is: " + cosineSimilarity.cosSimilarityParam.size() +
                 " while the size of value vector(" + cosineSimilarity.field.toString() + ") is: " + valueVector.size());
         return;
       }
 
-      double dotProductResult = ComputeOperationUtils.dotProduct(cosSimilarityParam, valueVector);
-      double valueVectorSquaredL2Norm = ComputeOperationUtils.squaredL2Norm(valueVector);
-      double cosSimilarityParamSquaredL2Norm;
+      float dotProductResult = ComputeOperationUtils.dotProduct(cosSimilarityParam, valueVector);
+      float valueVectorSquaredL2Norm = ComputeOperationUtils.squaredL2Norm(valueVector);
+      float cosSimilarityParamSquaredL2Norm;
       // Build the context as we go though all the computations
       // The following caching is assuming the float vector is immutable, which is the case for compute.
-      IdentityHashMap<List<Float>, Double> cachedSquareL2Norm = (IdentityHashMap<List<Float>, Double>)context.get(
+      IdentityHashMap<List<Float>, Float> cachedSquareL2Norm = (IdentityHashMap<List<Float>, Float>)context.get(
           CACHED_SQUARED_L2_NORM_KEY);
       if (cachedSquareL2Norm == null) {
         // Build the cached identity map
         cachedSquareL2Norm = new IdentityHashMap<>();
         context.put(CACHED_SQUARED_L2_NORM_KEY, cachedSquareL2Norm);
       }
-      Double cachedResult = cachedSquareL2Norm.get(cosSimilarityParam);
+      Float cachedResult = cachedSquareL2Norm.get(cosSimilarityParam);
       if (cachedResult != null) {
         cosSimilarityParamSquaredL2Norm = cachedResult;
       } else {
@@ -52,9 +54,10 @@ public class CosineSimilarityOperator implements ReadComputeOperator {
       }
 
       // write to result record
-      resultRecord.put(cosineSimilarity.resultFieldName.toString(), dotProductResult / Math.sqrt(valueVectorSquaredL2Norm * cosSimilarityParamSquaredL2Norm));
+      double cosineSimilarityResult = dotProductResult / Math.sqrt(valueVectorSquaredL2Norm * cosSimilarityParamSquaredL2Norm);
+      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, cosineSimilarityResult, (float)cosineSimilarityResult);
     } catch (Exception e) {
-      resultRecord.put(cosineSimilarity.resultFieldName.toString(), 0.0d);
+      putResult(resultRecord, cosineSimilarity.resultFieldName.toString(), useV1, 0.0d, 0.0f);
       computationErrorMap.put(cosineSimilarity.resultFieldName.toString(), e.getMessage());
     }
   }

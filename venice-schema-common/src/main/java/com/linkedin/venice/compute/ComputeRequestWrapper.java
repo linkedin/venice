@@ -1,11 +1,13 @@
 package com.linkedin.venice.compute;
 
+import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV2;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import java.util.HashMap;
 import java.util.List;
@@ -18,7 +20,7 @@ import org.apache.avro.specific.SpecificRecord;
 /**
  * ComputeRequestWrapper is the formal way of evolving compute request version;
  * the general idea is to keep schemas and request classes for all versions.
- * 
+ *
  * Compute request will specify its own version in the request header and backend
  * will deserialize the compute request using the corresponding version class and
  * schema.
@@ -38,6 +40,12 @@ public class ComputeRequestWrapper {
       put(2, ComputeRequestV2.class);
     }
   };
+  private static final Map<Integer, RecordSerializer> SERIALIZER_MAP = new HashMap<Integer, RecordSerializer>() {
+    {
+      put(1, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV1.SCHEMA$));
+      put(2, SerializerDeserializerFactory.getAvroGenericSerializer(ComputeRequestV2.SCHEMA$));
+    }
+  };
 
   private RecordDeserializer getDeserializer(boolean useFastAvro, boolean useComputableAvro) {
     if (useFastAvro) {
@@ -54,6 +62,20 @@ public class ComputeRequestWrapper {
 
   public ComputeRequestWrapper(int version) {
     this.version = version;
+    switch (version) {
+      case 1:
+        computeRequest = new ComputeRequestV1();
+        break;
+      case 2:
+        computeRequest = new ComputeRequestV2();
+        break;
+      default:
+        throw new VeniceException("Compute request version " + version + " is not support yet.");
+    }
+  }
+
+  public byte[] serialize() {
+    return SERIALIZER_MAP.get(version).serialize(computeRequest);
   }
 
   public void deserialize(BinaryDecoder decoder, boolean useFastAvro) {
@@ -62,7 +84,11 @@ public class ComputeRequestWrapper {
 
   public void deserialize(BinaryDecoder decoder, boolean useFastAvro, boolean useComputableAvro) {
     RecordDeserializer deserializer = getDeserializer(useFastAvro, useComputableAvro);
-    this.computeRequest = deserializer.deserialize(decoder);
+    this.computeRequest = deserializer.deserialize(computeRequest, decoder);
+  }
+
+  public int getComputeRequestVersion() {
+    return version;
   }
 
   public CharSequence getResultSchemaStr() {
@@ -71,6 +97,19 @@ public class ComputeRequestWrapper {
         return ((ComputeRequestV1)computeRequest).resultSchemaStr;
       case 2:
         return ((ComputeRequestV2)computeRequest).resultSchemaStr;
+      default:
+        throw new VeniceException("Compute request version " + version + " is not support yet.");
+    }
+  }
+
+  public void setResultSchemaStr(String resultSchemaStr) {
+    switch (version) {
+      case 1:
+        ((ComputeRequestV1)computeRequest).resultSchemaStr = resultSchemaStr;
+        break;
+      case 2:
+        ((ComputeRequestV2)computeRequest).resultSchemaStr = resultSchemaStr;
+        break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }
@@ -87,6 +126,19 @@ public class ComputeRequestWrapper {
         return ((ComputeRequestV1)computeRequest).operations;
       case 2:
         return ((ComputeRequestV2)computeRequest).operations;
+      default:
+        throw new VeniceException("Compute request version " + version + " is not support yet.");
+    }
+  }
+
+  public void setOperations(List<Object> operations) {
+    switch (version) {
+      case 1:
+        ((ComputeRequestV1)computeRequest).operations = operations;
+        break;
+      case 2:
+        ((ComputeRequestV2)computeRequest).operations = operations;
+        break;
       default:
         throw new VeniceException("Compute request version " + version + " is not support yet.");
     }

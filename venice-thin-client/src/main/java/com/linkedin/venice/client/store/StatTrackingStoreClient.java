@@ -8,7 +8,7 @@ import com.linkedin.venice.client.store.streaming.TrackingStreamingCallback;
 import com.linkedin.venice.client.store.streaming.VeniceResponseCompletableFuture;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.streaming.VeniceResponseMapImpl;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.LatencyUtils;
@@ -185,10 +185,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   @Override
-  public void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException {
     computeStreamingStats.recordRequestKeyCount(keys.size());
-    super.compute(computeRequest, keys, resultSchema,
+    super.compute(computeRequestWrapper, keys, resultSchema,
         new StatTrackingStreamingCallback<>(callback, computeStreamingStats, keys.size(), preRequestTimeInNS),
         preRequestTimeInNS);
   }
@@ -217,7 +217,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
     /**
      * Here, we have to use {@link #compute(Optional, InternalAvroStoreClient, long)}
-     * to pass {@link StatTrackingStoreClient}, so that {@link #compute(ComputeRequestV1, Set, Schema, Optional, long)}
+     * to pass {@link StatTrackingStoreClient}, so that {@link #compute(ComputeRequestWrapper, Set, Schema, Optional, long)}
      * will be invoked when serving 'compute' request.
      */
     return super.compute(Optional.of(computeStats), Optional.of(computeStreamingStats), this, startTimeInNS);
@@ -225,9 +225,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
 
   @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
+  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
       Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
-    CompletableFuture<Map<K, GenericRecord>> innerFuture = super.compute(computeRequest, keys, resultSchema,
+    CompletableFuture<Map<K, GenericRecord>> innerFuture = super.compute(computeRequestWrapper, keys, resultSchema,
         stats, preRequestTimeInNS);
     computeStats.recordRequestKeyCount(keys.size());
     CompletableFuture<Map<K, GenericRecord>> statFuture = innerFuture.handle(

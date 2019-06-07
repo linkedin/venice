@@ -6,6 +6,7 @@ import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.CosineSimilarityOperator;
 import com.linkedin.venice.compute.DotProductOperator;
+import com.linkedin.venice.compute.HadamardProductOperator;
 import com.linkedin.venice.compute.ReadComputeOperator;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
@@ -102,6 +103,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     {
       put(ComputeOperationType.DOT_PRODUCT.getValue(), new DotProductOperator());
       put(ComputeOperationType.COSINE_SIMILARITY.getValue(), new CosineSimilarityOperator());
+      put(ComputeOperationType.HADAMARD_PRODUCT.getValue(), new HadamardProductOperator());
     }
   };
 
@@ -278,7 +280,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     if (computeResultSchema == null) {
       computeResultSchema = Schema.parse(computeResultSchemaStr.toString());
       // sanity check on the result schema
-      ComputeUtils.checkResultSchema(computeResultSchema, latestValueSchema, (List) computeRequestWrapper.getOperations());
+      ComputeUtils.checkResultSchema(computeResultSchema, latestValueSchema, computeRequestWrapper.getComputeRequestVersion(), (List) computeRequestWrapper.getOperations());
       computeResultSchemaCache.putIfAbsent(computeResultSchemaStr, computeResultSchema);
     }
 
@@ -311,6 +313,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      key.keyBytes,
                                                      key.keyIndex,
                                                      key.partitionId,
+                                                     computeRequestWrapper.getComputeRequestVersion(),
                                                      computeRequestWrapper.getOperations(),
                                                      compressionStrategy,
                                                      latestValueSchema,
@@ -358,6 +361,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       ByteBuffer key,
       final int keyIndex,
       int partition,
+      int computeRequestVersion,
       List<Object> operations,
       CompressionStrategy compressionStrategy,
       Schema latestValueSchema,
@@ -453,7 +457,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // go through all operation
     for (Object operation : operations) {
       ComputeOperation op = (ComputeOperation) operation;
-      computeOperators.get(op.operationType).compute(op, valueRecord, resultRecord, computationErrorMap, globalContext);
+      computeOperators.get(op.operationType).compute(computeRequestVersion, op, valueRecord, resultRecord, computationErrorMap, globalContext);
     }
 
     // fill the empty field in result schema

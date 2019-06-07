@@ -4,7 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -63,10 +63,10 @@ public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreC
   public abstract ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS) throws VeniceClientException;
 
-  public abstract CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
+  public abstract CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
       Schema resultSchema, Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException;
 
-  public abstract void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+  public abstract void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException;
 
   public Executor getDeserializationExecutor() {

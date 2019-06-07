@@ -9,6 +9,7 @@ import com.linkedin.venice.client.store.streaming.VeniceResponseMap;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -496,7 +497,7 @@ public class StatTrackingStoreClientTest {
       }
 
       @Override
-      public void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+      public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
           StreamingCallback<K, GenericRecord> callback, long preRequestTimeInNS) {
         Thread callbackThread = new Thread(() -> {
           for (int i = 0; i < 10; i += 2) {

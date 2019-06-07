@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.compute.protocol.request.HadamardProduct;
 import com.linkedin.venice.compute.protocol.request.enums.ComputeOperationType;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashSet;
@@ -13,16 +14,19 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.avro.Schema;
 
+import static com.linkedin.venice.VeniceConstants.*;
+
 
 public class ComputeUtils {
   public static final Pattern VALID_AVRO_NAME_PATTERN = Pattern.compile("\\A[A-Za-z_][A-Za-z0-9_]*\\z");
   public static final String ILLEGAL_AVRO_CHARACTER = "[^A-Za-z0-9_]";
   public static final String ILLEGAL_AVRO_CHARACTER_REPLACEMENT = "_";
 
-  public static void checkResultSchema(Schema resultSchema, Schema valueSchema, List<ComputeOperation> operations) {
+  public static void checkResultSchema(Schema resultSchema, Schema valueSchema, int version, List<ComputeOperation> operations) {
     if (resultSchema.getType() != Schema.Type.RECORD || valueSchema.getType() != Schema.Type.RECORD) {
       throw new VeniceException("Compute result schema and value schema must be RECORD type");
     }
+    boolean useV1 = version == COMPUTE_REQUEST_VERSION_V1;
 
     Set<Schema.Field> valueFields = new HashSet<>(valueSchema.getFields());
     Set<String> valueFieldStrings = new HashSet<>();
@@ -36,14 +40,21 @@ public class ComputeUtils {
           if (!valueFieldStrings.contains(dotProduct.field.toString())) {
             throw new VeniceException("The field " + dotProduct.field.toString() + " being operated on is not in value schema");
           }
-          operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), Schema.Type.DOUBLE));
+          operationResultFields.add(new Pair<>(dotProduct.resultFieldName.toString(), useV1 ? Schema.Type.DOUBLE : Schema.Type.UNION));
           break;
         case COSINE_SIMILARITY:
           CosineSimilarity cosineSimilarity = (CosineSimilarity)operation.operation;
           if (!valueFieldStrings.contains(cosineSimilarity.field.toString())) {
             throw new VeniceException("The field " + cosineSimilarity.field.toString() + " being operated on is not in value schema");
           }
-          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(), Schema.Type.DOUBLE));
+          operationResultFields.add(new Pair<>(cosineSimilarity.resultFieldName.toString(), useV1 ? Schema.Type.DOUBLE : Schema.Type.UNION));
+          break;
+        case HADAMARD_PRODUCT:
+          HadamardProduct hadamardProduct = (HadamardProduct)operation.operation;
+          if (!valueFieldStrings.contains(hadamardProduct.field.toString())) {
+            throw new VeniceException("The field " + hadamardProduct.field.toString() + " being operated on is not in value schema");
+          }
+          operationResultFields.add(new Pair<>(hadamardProduct.resultFieldName.toString(), Schema.Type.UNION));
           break;
         default:
           throw new VeniceException("Compute operation type " + operation.operationType + " not supported");

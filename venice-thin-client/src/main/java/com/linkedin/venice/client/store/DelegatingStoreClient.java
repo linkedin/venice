@@ -4,7 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.streaming.StreamingCallback;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
+import com.linkedin.venice.compute.ComputeRequestWrapper;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -59,15 +59,15 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestV1 computeRequest, Set<K> keys,
+  public CompletableFuture<Map<K, GenericRecord>> compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys,
       Schema resultSchema, Optional<ClientStats> stats, long preRequestTimeInNS) throws VeniceClientException {
-    return innerStoreClient.compute(computeRequest, keys, resultSchema, stats, preRequestTimeInNS);
+    return innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, stats, preRequestTimeInNS);
   }
 
   @Override
-  public void compute(ComputeRequestV1 computeRequest, Set<K> keys, Schema resultSchema,
+  public void compute(ComputeRequestWrapper computeRequestWrapper, Set<K> keys, Schema resultSchema,
       StreamingCallback<K, GenericRecord> callback, final long preRequestTimeInNS) throws VeniceClientException {
-    innerStoreClient.compute(computeRequest, keys, resultSchema, callback, preRequestTimeInNS);
+    innerStoreClient.compute(computeRequestWrapper, keys, resultSchema, callback, preRequestTimeInNS);
   }
 
   @Override
