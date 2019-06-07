@@ -20,15 +20,15 @@ apply plugin: 'idea'
 apply plugin: 'eclipse'
 
 // Internal LinkedIn Kafka release
-def internalKafkaGroup = "kafka"
-def internalKafkaVersion = "0.11.1.3"
+def internalKafkaGroup = 'kafka'
+def internalKafkaVersion = '0.11.1.3'
 
 // OSS Kafka release (currently not used)
-def ossKafkaGroup = "org.apache.kafka"
-def ossKafkaVersion = "0.10.1.1"
+def ossKafkaGroup = 'org.apache.kafka'
+def ossKafkaVersion = '0.10.1.1'
 
-def ddsStorageCoreVersion = "5.3.8"
-def gobblinVersion = "1.64.1495"
+def ddsStorageCoreVersion = '5.3.8'
+def gobblinVersion = '1.64.1495'
 
 ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.7.7',
@@ -46,9 +46,9 @@ ext.libraries = [ // Groovy map literal
                   commonsIo: 'commons-io:commons-io:2.4',
                   helix: 'org.apache.helix:helix-core:0.8.4.201',
                   kafka: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion,
-                  kafkaTest: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion+":test",
+                  kafkaTest: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion+':test',
                   kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
-                  kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion+":test",
+                  kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion+':test',
                   // kafka: ossKafkaGroup + ':kafka_2.10:' + ossKafkaVersion,
                   // kafkaClients: ossKafkaGroup + ':kafka-clients:' + ossKafkaVersion,
                   mockito: 'org.mockito:mockito-core:2.18.3',
@@ -129,6 +129,7 @@ subprojects {
      !project.overrideBuildEnvironment) {
      version = '0.1'
   }
+
   repositories {
     ivy {  //TODO: remove this before opensourcing
       url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
@@ -140,7 +141,7 @@ subprojects {
     }
     mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
     maven {
-      url "http://download.oracle.com/maven/"
+      url 'http://download.oracle.com/maven/'
     }
   }
 
@@ -173,22 +174,22 @@ subprojects {
     }
   }
 
-  test {
+  tasks.withType(Test) {
     useTestNG()
 
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
-    maxParallelForks = 2
-    forkEvery = 10
+    maxParallelForks = 5
+    maxHeapSize = '4g'
 
     testLogging {
-      events "started", "failed", "passed", "skipped"
+      events 'started', 'failed', 'passed', 'skipped'
       showStandardStreams = false // to mute the DDS Router's noisy behavior...
       exceptionFormat = 'full'
     }
   }
 
   jacoco {
-    toolVersion = "0.7.6.201602180812"
+    toolVersion = '0.7.6.201602180812'
   }
 
   jacocoTestReport {
@@ -196,7 +197,7 @@ subprojects {
     reports {
       xml.enabled false
       csv.enabled false
-      html.destination new File("${buildDir}/jacocoHtml")
+      html.destination new File("$buildDir/jacocoHtml")
     }
   }
 
