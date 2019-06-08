@@ -12,11 +12,13 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Base64;
-import java.util.Optional;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -27,7 +29,6 @@ import static org.mockito.Mockito.*;
  */
 public class TestVenicePathParser {
   private final int TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ = 100;
-
 
   VeniceVersionFinder getVersionFinder(){
     //Mock objects
@@ -44,6 +45,16 @@ public class TestVenicePathParser {
     RouterStats mockRouterStats = mock(RouterStats.class);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
     return mockRouterStats;
+  }
+
+  @BeforeClass
+  public void setup() {
+    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+  }
+
+  @AfterClass
+  public void tearDown() {
+    RouterExceptionAndTrackingUtils.setRouterStats(null);
   }
 
   @Test
@@ -114,5 +125,4 @@ public class TestVenicePathParser {
     }
 
   }
-
 }
