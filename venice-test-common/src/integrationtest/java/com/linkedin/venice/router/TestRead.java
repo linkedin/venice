@@ -304,7 +304,7 @@ public abstract class TestRead {
         maxMultiGetRequestPartCount = Math.max(maxMultiGetRequestPartCount, metrics.get(".total--multiget_request_part_count.Max").value());
       }
       metrics.forEach( (mName, metric) -> {
-        if (mName.contains("_current--disk_usage_in_bytes")) {
+        if (mName.startsWith(String.format(".%s_current--disk_usage_in_bytes.", storeName))) {
           double value = metric.value();
           Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_BDB_ENVIRONMENT.code, "Got a NULL_BDB_ENVIRONMENT!");
           Assert.assertNotEquals(value, (double) StatsErrorCode.NULL_STORAGE_ENGINE_STATS.code, "Got NULL_STORAGE_ENGINE_STATS!");
