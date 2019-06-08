@@ -12,6 +12,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.HelixUtils;
@@ -19,6 +21,7 @@ import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -32,6 +35,8 @@ import java.util.SortedSet;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -163,6 +168,16 @@ public class TestVeniceDelegateMode {
 
   private VenicePathParser getPathParser() {
     return mock(VenicePathParser.class);
+  }
+
+  @BeforeClass
+  public void setup() {
+    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(new MetricsRepository(), requestType)));
+  }
+
+  @AfterClass
+  public void tearDown() {
+    RouterExceptionAndTrackingUtils.setRouterStats(null);
   }
 
   @Test

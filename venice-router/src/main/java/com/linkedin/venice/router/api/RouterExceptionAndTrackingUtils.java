@@ -32,7 +32,6 @@ public class RouterExceptionAndTrackingUtils {
 
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  @Deprecated
   public static void setRouterStats(RouterStats<AggRouterHttpRequestStats> routerStats) {
     ROUTER_STATS = routerStats;
   }
@@ -125,5 +124,4 @@ public class RouterExceptionAndTrackingUtils {
       }
     }
   }
-
 }
