@@ -81,4 +81,12 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * @return
    */
   boolean isReadComputationEnabled(String name);
+
+  /**
+   * Selective refresh operation which fetches one store from ZK
+   *
+   * @param name store name
+   * @return the newly refreshed store
+   */
+  Store refreshOneStore(String name);
 }

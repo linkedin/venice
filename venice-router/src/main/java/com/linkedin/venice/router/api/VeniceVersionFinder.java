@@ -49,6 +49,11 @@ public class VeniceVersionFinder {
     int metadataCurrentVersion = veniceStore.getCurrentVersion();
     if (!lastCurrentVersion.containsKey(store)){
       lastCurrentVersion.put(store, metadataCurrentVersion);
+      if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
+        /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
+        veniceStore = metadataRepository.refreshOneStore(store);
+        metadataCurrentVersion = veniceStore.getCurrentVersion();
+      }
     }
     if (lastCurrentVersion.get(store).equals(metadataCurrentVersion)){
       stats.recordNotStale();

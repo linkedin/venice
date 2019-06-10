@@ -197,6 +197,51 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     zkClient.subscribeStateChanges(zkStateListener);
   }
 
+  @Override
+  public Store refreshOneStore(String name) {
+    metadataLock.writeLock().lock();
+    try {
+      Store oldStore = storeMap.get(name);
+      Store newStore = dataAccessor.get(rootPath + "/" + name, null, AccessOption.PERSISTENT);
+
+      if ((oldStore == null) && (newStore == null) ||
+          (oldStore != null && oldStore.equals(newStore))) {
+        logger.info("Attempted to selectively refresh one store from Helix but it is identical as before: " + name);
+        // Nothing to update
+        return oldStore;
+      }
+
+      logger.info("Selectively refreshing one store from Helix: " + name);
+
+      Map<String, Store> oldStoreMap = storeMap;
+      Map<String, Store> newStoreMap = new HashMap<>(storeMap);
+      newStoreMap.put(name, newStore);
+
+      long oldStoreReadQuota = null == oldStore ? 0 : oldStore.getReadQuotaInCU();
+      long newStoreReadQuota = null == newStore ? 0 : newStore.getReadQuotaInCU();
+      long newTotalStoreReadQuota = totalStoreReadQuota;
+      if (oldStoreReadQuota != newStoreReadQuota) {
+        newTotalStoreReadQuota = totalStoreReadQuota - oldStoreReadQuota + newStoreReadQuota;
+      }
+
+      // replace the original map
+      storeMap = newStoreMap;
+      totalStoreReadQuota = newTotalStoreReadQuota;
+      triggerAllListeners(oldStoreMap, newStoreMap);
+
+      // Selectively update listeners in the case of added or deleted stores...
+      if (null == oldStore) {
+        dataAccessor.subscribeDataChanges(composeStorePath(name), storeUpdateListener);
+      } else if (null == newStore) {
+        dataAccessor.unsubscribeDataChanges(composeStorePath(name), storeUpdateListener);
+      }
+      logger.info("Finished selectively refreshing one store from Helix: " + name);
+      return newStore;
+    } finally {
+      metadataLock.writeLock().unlock();
+    }
+  }
+
   private void triggerAllListeners(Map<String, Store> oldStores, Map<String, Store> newStores) {
     // Store change
     newStores.entrySet().stream()
