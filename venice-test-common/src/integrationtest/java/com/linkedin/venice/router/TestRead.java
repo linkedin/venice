@@ -42,6 +42,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpOptions;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -51,6 +52,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 
 //TODO: merge TestRead and TestRouterCache.
@@ -379,6 +381,25 @@ public abstract class TestRead {
       Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);
     } catch (Exception e) {
       Assert.fail("Met an exception.", e);
+    }
+  }
+
+  @Test
+  public void testRouterHealthCheck() {
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    try (CloseableHttpAsyncClient client = HttpAsyncClients.createDefault()) {
+      client.start();
+      HttpOptions healthCheckRequest = new HttpOptions(routerUrl);
+      HttpResponse response = client.execute(healthCheckRequest, null).get();
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+          "Router fails to respond to health check.");
+
+      HttpGet healthCheckGetRequest = new HttpGet(routerUrl + "/" + TYPE_HEALTH_CHECK);
+      HttpResponse getResponse = client.execute(healthCheckGetRequest, null).get();
+      Assert.assertEquals(getResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+          "Router fails to respond to health check.");
+    } catch (Exception e) {
+      Assert.fail("Met an exception:", e);
     }
   }
 }
