@@ -50,6 +50,7 @@ import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -448,6 +449,7 @@ public class RouterServer extends AbstractVeniceService {
 
     SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
     VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
+    HealthCheckStats healthCheckStats = new HealthCheckStats(this.metricsRepository, "healthcheck_stats");
     router = Router.builder(scatterGather)
         .name("VeniceRouterHttp")
         .resourceRegistry(registry)
@@ -458,6 +460,7 @@ public class RouterServer extends AbstractVeniceService {
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+          pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
           pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
           pipeline.addLast("MetadataHandler", metaDataHandler);
           addStreamingHandler(pipeline);
@@ -470,12 +473,15 @@ public class RouterServer extends AbstractVeniceService {
     SSLInitializer sslInitializer = sslFactory.isPresent() ? new SSLInitializer(sslFactory.get()) : null;
     Consumer<ChannelPipeline> noop = pipeline -> {};
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
+    HealthCheckHandler secureRouterHealthCheckHander = new HealthCheckHandler(healthCheckStats);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
+      pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       addStreamingHandler(pipeline);
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
+      pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
       pipeline.addLast("RouterAclHandler", aclHandler);
