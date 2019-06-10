@@ -31,6 +31,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
+import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -115,7 +116,7 @@ public class VeniceParentHelixAdmin implements Admin {
   protected final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
-  private final OffsetManager offsetManager;
+  private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
@@ -162,7 +163,8 @@ public class VeniceParentHelixAdmin implements Admin {
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
     this.veniceWriterMap = new ConcurrentHashMap<>();
-    this.offsetManager = new AdminOffsetManager(this.veniceHelixAdmin.getZkClient(), this.veniceHelixAdmin.getAdapterSerializer());
+    this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(this.veniceHelixAdmin.getZkClient(),
+        this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.clusterToLastOffsetMap = new HashMap<>();
     this.asyncSetupEnabledMap = new HashMap<>();
@@ -366,13 +368,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void waitingLastOffsetToBeConsumed(String clusterName) {
-    String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-
     // Blocking until consumer consumes the new message or timeout
     long startTime = SystemTime.INSTANCE.getMilliseconds();
     long lastOffset = clusterToLastOffsetMap.get(clusterName);
     while (true) {
-      long consumedOffset = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getOffset();
+      long consumedOffset = AdminTopicMetadataAccessor.getOffset(adminTopicMetadataAccessor.getMetadata(clusterName));
       if (consumedOffset >= lastOffset) {
         break;
       }

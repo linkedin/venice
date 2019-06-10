@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.admin.InMemoryAdminTopicMetadataAccssor;
 import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
+import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -59,6 +61,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -103,6 +106,7 @@ public class TestAdminConsumptionTask {
   private KafkaConsumerWrapper mockKafkaConsumer;
   private VeniceHelixAdmin admin;
   private OffsetManager offsetManager;
+  private AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private ExecutorService executor;
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
@@ -125,6 +129,7 @@ public class TestAdminConsumptionTask {
     doReturn(true).when(admin).isMasterController(clusterName);
 
     offsetManager = new InMemoryOffsetManager();
+    adminTopicMetadataAccessor = new InMemoryAdminTopicMetadataAccssor();
 
     TopicManager topicManager = mock(TopicManager.class);
     // By default, topic has already been created
@@ -168,12 +173,21 @@ public class TestAdminConsumptionTask {
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
     return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, deepCopyOffsetManager,
-        executionIdAccessor, isParent, stats, 1, adminConsumptionCycleTimeoutMs, 1);
+        adminTopicMetadataAccessor, executionIdAccessor, isParent, stats, 1,
+        adminConsumptionCycleTimeoutMs, 1);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(recordMetadata.offset());
     return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), offsetRecord);
+  }
+
+  private long getLastOffset(String clusterName) {
+    return AdminTopicMetadataAccessor.getOffset(adminTopicMetadataAccessor.getMetadata(clusterName));
+  }
+
+  private long getLastExecutionId(String clusterName) {
+    return AdminTopicMetadataAccessor.getExecutionId(adminTopicMetadataAccessor.getMetadata(clusterName));
   }
 
   @Test (timeOut = TIMEOUT)
@@ -255,7 +269,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+      Assert.assertEquals(getLastOffset(clusterName), 2L);
     });
 
     task.close();
@@ -288,8 +302,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            TestUtils.getOffsetRecord(1)));
+        () -> Assert.assertEquals(getLastOffset(clusterName), 1L));
 
     task.close();
     executor.shutdown();
@@ -333,7 +346,7 @@ public class TestAdminConsumptionTask {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-    Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(-1L));
+    Assert.assertEquals(getLastOffset(clusterName), -1L);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -360,7 +373,7 @@ public class TestAdminConsumptionTask {
 
     // admin throws errors, so record offset means we skipped the message
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
+      Assert.assertEquals(getLastOffset(clusterName), 1L);
     });
 
     task.close();
@@ -421,7 +434,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+      Assert.assertEquals(getLastOffset(clusterName), 2L);
     });
 
     Utils.sleep(1000); // TODO: find a better to wait for AdminConsumptionTask consume the last message.
@@ -488,8 +501,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            TestUtils.getOffsetRecord(2)));
+        () -> Assert.assertEquals(getLastOffset(clusterName), 2L));
 
     task.close();
     executor.shutdown();
@@ -540,13 +552,12 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy,false, stats, 10000);
     executor.submit(task);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            TestUtils.getOffsetRecord(1)));
-    Assert.assertEquals(task.getFailingOffset(), 3L);
+        () -> Assert.assertEquals(getLastOffset(clusterName), 1L));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(task.getFailingOffset(), 3L));
     task.skipMessageWithOffset(3L);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            TestUtils.getOffsetRecord(3)));
+        () -> Assert.assertEquals(getLastOffset(clusterName), 3L));
     task.close();
     executor.shutdownNow();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -557,7 +568,7 @@ public class TestAdminConsumptionTask {
     verify(admin, times(1)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
     verify(admin, never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
     verify(admin, never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
-    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 1L);
+    Assert.assertEquals(getLastExecutionId(clusterName), 1L);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -577,7 +588,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+      Assert.assertEquals(getLastOffset(clusterName), 2L);
     });
 
     task.close();
@@ -613,7 +624,7 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(3));
+      Assert.assertEquals(getLastOffset(clusterName), 3L);
     });
     task.close();
     executor.shutdown();
@@ -640,7 +651,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
+      Assert.assertEquals(getLastOffset(clusterName), 1L);
     });
 
     task.close();
@@ -661,13 +672,15 @@ public class TestAdminConsumptionTask {
       throws Exception {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);
-    for (long executionId = 1; executionId <= 3; executionId++) {
-      veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, executionId),
+    for (long i = 1; i <= 3; i++) {
+      veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, i),
           AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
-      final long offset = executionId;
-      TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID)
-              .equals(TestUtils.getOffsetRecord(offset)));
+      final long executionId = i;
+      TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Map<String, Long> metaData = adminTopicMetadataAccessor.getMetadata(clusterName);
+        return AdminTopicMetadataAccessor.getOffset(metaData) == executionId
+            && AdminTopicMetadataAccessor.getExecutionId(metaData) == executionId;
+      });
 
       Assert.assertEquals(task.getLastSucceededExecutionId(), executionId,
           "After consumption succeed, the last succeed execution id should be updated.");
@@ -726,7 +739,7 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+      Assert.assertEquals(getLastOffset(clusterName), 2L);
     });
 
     task.close();
@@ -775,17 +788,15 @@ public class TestAdminConsumptionTask {
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName2, -1L).longValue(), 4L);
     Assert.assertEquals(
         executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(), -1L);
-    Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-        TestUtils.getOffsetRecord(-1L));
-    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), -1L);
+    Assert.assertEquals(getLastOffset(clusterName), -1L);
+    Assert.assertEquals(getLastExecutionId(clusterName), -1L);
 
     // skip the blocking message
     task.skipMessageWithOffset(1);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            TestUtils.getOffsetRecord(4)));
+        () -> Assert.assertEquals(getLastOffset(clusterName), 4L));
 
-    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 4L);
+    Assert.assertEquals(getLastExecutionId(clusterName), 4L);
     Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).getOrDefault(storeName1, -1L).longValue(), 3L);
     Assert.assertEquals(task.getFailingOffset(), -1L);
     task.close();
@@ -813,7 +824,7 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 2L));
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
     // Mimic a transfer of mastership
     doReturn(false).when(admin).isMasterController(clusterName);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
@@ -824,10 +835,8 @@ public class TestAdminConsumptionTask {
     Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
-    OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-    offsetRecord.setOffset(offset);
-    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
-    executionIdAccessor.updateLastSucceededExecutionId(clusterName, 4L);
+    Map<String, Long> newMetadata = AdminTopicMetadataAccessor.generateMetadataMap(offset, 4L);
+    adminTopicMetadataAccessor.updateMetadata(clusterName, newMetadata);
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 4L);
     // Resubscribe to the admin topic and make sure it can still process new admin messages
     doReturn(true).when(admin).isMasterController(clusterName);
@@ -836,7 +845,45 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 5L));
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 5L));
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testMigrateFromOffsetManagerToMetadataAccessor()
+      throws InterruptedException, ExecutionException, TimeoutException, IOException {
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
+    // Populate the topic with message and mimic the behavior where some message were processed when offset manager was
+    // in use.
+    veniceWriter.put(emptyKeyBytes, getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 3L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    final long offset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    OffsetRecord offsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    offsetRecord.setOffset(offset);
+    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
+    executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, 3L);
+    executionIdAccessor.updateLastSucceededExecutionId(clusterName, 3L);
+    executor.submit(task);
+    // Verify the move to the new scheme with metadata accessor
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastOffset(clusterName), offset));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 3L));
+    veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    final long latestOffset = future.get(TIMEOUT, TimeUnit.MILLISECONDS).offset();
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 5L));
+    Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName).get(storeName).longValue(), 5L);
+    Assert.assertEquals(getLastOffset(clusterName), latestOffset);
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -852,7 +899,7 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 2L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 2L));
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 2L));
     // New admin messages should fail with DIV error
     Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 4L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
@@ -864,7 +911,7 @@ public class TestAdminConsumptionTask {
     veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, 5L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 5L));
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 5L));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -915,7 +962,7 @@ public class TestAdminConsumptionTask {
       veniceWriter.put(emptyKeyBytes, messages[i], AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     }
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
-        () -> Assert.assertEquals(executionIdAccessor.getLastSucceededExecutionId(clusterName).longValue(), 10L));
+        () -> Assert.assertEquals(getLastExecutionId(clusterName), 10L));
     // Duplicate messages from the rewind should be skipped.
     verify(admin, times(10)).killOfflinePush(clusterName, topicName);
     verify(stats, never()).recordFailedAdminConsumption();

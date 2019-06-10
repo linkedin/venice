@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
+import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
@@ -26,6 +27,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final VeniceControllerConfig config;
   private final VeniceHelixAdmin admin;
   private final AdminOffsetManager offsetManager;
+  private final ZkAdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final VeniceConsumerFactory consumerFactory;
   private final MetricsRepository metricsRepository;
   // Only support single cluster right now
@@ -38,6 +40,7 @@ public class AdminConsumerService extends AbstractVeniceService {
     this.config = config;
     this.admin = admin;
     this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
+    this.adminTopicMetadataAccessor = new ZkAdminTopicMetadataAccessor(admin.getZkClient(), admin.getAdapterSerializer());
     this.metricsRepository = metricsRepository;
     this.consumerFactory = admin.getVeniceConsumerFactory();
   }
@@ -66,6 +69,7 @@ public class AdminConsumerService extends AbstractVeniceService {
         createKafkaConsumer(clusterName),
         admin,
         offsetManager,
+        adminTopicMetadataAccessor,
         admin.getExecutionIdAccessor(),
         config.isParent(),
         new AdminConsumptionStats(metricsRepository, clusterName + "-admin_consumption_task"),

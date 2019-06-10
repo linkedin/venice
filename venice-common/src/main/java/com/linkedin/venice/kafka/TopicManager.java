@@ -215,7 +215,7 @@ public class TopicManager implements Closeable {
             asyncCreateOperationSucceeded = true;
         } catch (InvalidReplicationFactorException e) {
           if (System.currentTimeMillis() > startTime + actualKafkaOperationTimeoutMs) {
-            throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.", e);
+            throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + actualKafkaOperationTimeoutMs + "ms.", e);
           } else {
             logger.info("Kafka failed to kick off topic creation because it appears to be under-replicated... Will treat it as a transient error and attempt to ride over it.", e);
             Utils.sleep(200);
@@ -225,7 +225,7 @@ public class TopicManager implements Closeable {
       while (!containsTopic(topicName, numPartitions)) {
         if (System.currentTimeMillis() > startTime + actualKafkaOperationTimeoutMs) {
           throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName
-              + ".  Topic still did not pass all the checks after " + kafkaOperationTimeoutMs + "ms.");
+              + ".  Topic still did not pass all the checks after " + actualKafkaOperationTimeoutMs + "ms.");
         }
         Utils.sleep(200);
       }
