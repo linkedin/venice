@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -89,7 +90,7 @@ public class TestVeniceParentHelixAdmin {
   private static int KAFKA_REPLICA_FACTOR = 3;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-  private final String zkOffsetNodePath = AdminOffsetManager.getAdminTopicOffsetNodePathForCluster(clusterName);
+  private final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
   private final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
   private final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
 
@@ -286,9 +287,9 @@ public class TestVeniceParentHelixAdmin {
     doReturn(future)
         .when(veniceWriter)
         .put(any(), any(), anyInt());
-    when(zkClient.readData(zkOffsetNodePath, null))
+    when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
-        .thenReturn(TestUtils.getOffsetRecord(1));
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -301,7 +302,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -344,12 +345,12 @@ public class TestVeniceParentHelixAdmin {
 
     for(String cluster:configMap.keySet()){
       String adminTopic =  AdminTopicUtils.getTopicNameFromClusterName(cluster);
-      String offsetPath = AdminOffsetManager.getAdminTopicOffsetNodePathForCluster(cluster);
+      String metadataPath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(cluster);
 
       VeniceWriter veniceWriter = writerMap.get(cluster);
 
       // Return offset -1 before writing any data into topic.
-      when(zkClient.readData(offsetPath, null))
+      when(zkClient.readData(metadataPath, null))
           .thenReturn(null);
 
       String storeName = "test-store-"+cluster;
@@ -358,8 +359,8 @@ public class TestVeniceParentHelixAdmin {
       String valueSchemaStr = "\"string\"";
       when(veniceWriter.put(any(),any(),anyInt())).then(invocation -> {
         // Once we send message to topic through venice writer, return offset 1
-        when(zkClient.readData(offsetPath, null))
-            .thenReturn(TestUtils.getOffsetRecord(1));
+        when(zkClient.readData(metadataPath, null))
+            .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
         Future future = mock(Future.class);
         doReturn(new RecordMetadata(new TopicPartition(adminTopic, partitionId), 0, 1, -1, -1, -1, -1))
             .when(future).get();
@@ -373,7 +374,7 @@ public class TestVeniceParentHelixAdmin {
       verify(veniceWriter)
           .put(any(), any(), anyInt());
       verify(zkClient, times(2))
-          .readData(offsetPath, null);
+          .readData(metadataPath, null);
       ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -399,7 +400,7 @@ public class TestVeniceParentHelixAdmin {
   public void testAddStoreWhenExists() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
-    when(zkClient.readData(zkOffsetNodePath, null))
+    when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null);
 
     String storeName = "test-store";
@@ -428,10 +429,10 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(TestUtils.getOffsetRecord(0))
-        .thenReturn(TestUtils.getOffsetRecord(1))
-        .thenReturn(TestUtils.getOffsetRecord(0));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(0, 0))
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1))
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(0, 0));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -462,9 +463,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
 
@@ -473,7 +474,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -507,9 +508,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.setStoreReadability(clusterName, storeName, false);
     verify(internalAdmin)
@@ -517,7 +518,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -547,9 +548,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.setStoreWriteability(clusterName, storeName, false);
 
@@ -558,7 +559,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -589,9 +590,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
+    when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     when(internalAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName))
         .thenThrow(new VeniceNoStoreException(storeName));
@@ -612,9 +613,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.setStoreReadability(clusterName, storeName, true);
     verify(internalAdmin)
@@ -622,7 +623,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -652,9 +653,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.setStoreWriteability(clusterName, storeName, true);
 
@@ -663,7 +664,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -692,9 +693,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     doReturn(new HashSet<>(Arrays.asList(kafkaTopic)))
         .when(topicManager).listTopics();
@@ -708,7 +709,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -1332,9 +1333,9 @@ public class TestVeniceParentHelixAdmin {
     doReturn(future)
         .when(veniceWriter)
         .put(any(), any(), anyInt());
-    when(zkClient.readData(zkOffsetNodePath, null))
+    when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
-        .thenReturn(TestUtils.getOffsetRecord(1));
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     throttledParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
     throttledParentAdmin.start(clusterName);
@@ -1373,9 +1374,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
     long readQuota = 100l;
     boolean readability = true;
     boolean accessControlled = true;
@@ -1385,7 +1386,7 @@ public class TestVeniceParentHelixAdmin {
     //test incremental push
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
-    verify(zkClient, times(2)).readData(zkOffsetNodePath, null);
+    verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -1460,15 +1461,15 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(any(), any(), anyInt());
 
-    when(zkClient.readData(zkOffsetNodePath, null))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(TestUtils.getOffsetRecord(1));
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.deleteStore(clusterName, storeName, 0);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
-        .readData(zkOffsetNodePath, null);
+        .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
