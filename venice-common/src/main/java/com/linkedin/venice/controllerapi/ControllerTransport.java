@@ -12,6 +12,7 @@ import java.util.concurrent.ExecutionException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
+import org.apache.log4j.Logger;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.httpclient.HttpStatus;
 
@@ -19,6 +20,7 @@ import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.HttpResponse;
 import org.apache.http.entity.ContentType;
+import org.apache.http.util.EntityUtils;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
@@ -30,6 +32,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.DeserializationConfig;
 
 public class ControllerTransport implements AutoCloseable {
+  private static final Logger logger = Logger.getLogger(ControllerTransport.class);
   private static final int CONNECTION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REQUEST_TIMEOUT_MS = 60 * Time.MS_PER_SECOND;
 
@@ -123,17 +126,25 @@ public class ControllerTransport implements AutoCloseable {
       request.abort();
     }
 
-    int statusCode = response.getStatusLine().getStatusCode();
+    String content = null;
+    try {
+      content = EntityUtils.toString(response.getEntity());
+    } catch (Exception e) {
+      logger.warn("Unable to read response content", e);
+    }
 
+    int statusCode = response.getStatusLine().getStatusCode();
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
     if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
+      logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
       throw new VeniceHttpException(statusCode, "Controller returned unsupported content-type: " + contentType);
     }
 
     T result;
-    try (InputStream content = response.getEntity().getContent()) {
+    try  {
       result = objectMapper.readValue(content, responseType);
     } catch (Exception e) {
+      logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
       throw new VeniceHttpException(statusCode, "Unable to deserialize controller response", e);
     }
 
@@ -142,7 +153,8 @@ public class ControllerTransport implements AutoCloseable {
     }
 
     if (statusCode != HttpStatus.SC_OK) {
-      throw new VeniceHttpException(statusCode, "Controller returned an error: " + statusCode);
+      logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
+      throw new VeniceHttpException(statusCode, "Controller returned unexpected status: " + statusCode);
     }
     return result;
   }
