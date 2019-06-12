@@ -1,29 +1,35 @@
 package com.linkedin.venice.exceptions;
 
 public class VeniceHttpException extends VeniceException {
-  private int code;
-  public VeniceHttpException(int code){
+  private final int statusCode;
+
+  public VeniceHttpException(int statusCode) {
     super();
-    this.code = code;
+    this.statusCode = statusCode;
   }
 
-  public VeniceHttpException(int code, String message){
+  public VeniceHttpException(int statusCode, String message) {
     super(message);
-    this.code = code;
+    this.statusCode = statusCode;
   }
 
-  public VeniceHttpException(int code, Throwable cause){
+  public VeniceHttpException(int statusCode, Throwable cause) {
     super(cause);
-    this.code = code;
+    this.statusCode = statusCode;
   }
 
-  public VeniceHttpException(int code, String message, Throwable cause){
+  public VeniceHttpException(int statusCode, String message, Throwable cause) {
     super(message, cause);
-    this.code = code;
+    this.statusCode = statusCode;
   }
 
   @Override
-  public int getHttpStatusCode(){
-    return code;
+  public int getHttpStatusCode() {
+    return this.statusCode;
+  }
+
+  @Override
+  public String getMessage() {
+    return "Http Status " + getHttpStatusCode() + " - " + super.getMessage();
   }
 }

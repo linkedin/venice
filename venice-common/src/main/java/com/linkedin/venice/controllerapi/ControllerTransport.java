@@ -154,7 +154,7 @@ public class ControllerTransport implements AutoCloseable {
 
     if (statusCode != HttpStatus.SC_OK) {
       logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
-      throw new VeniceHttpException(statusCode, "Controller returned unexpected status: " + statusCode);
+      throw new VeniceHttpException(statusCode, "Controller returned unexpected status");
     }
     return result;
   }
