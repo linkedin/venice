@@ -21,6 +21,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -105,6 +106,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + "retries"; //kafka.retries
   public final static String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
   public final static String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
+  public final static String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -189,6 +191,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private static final int UNCREATED_VERSION_NUMBER = -1;
 
+  private static final long DEFAULT_POLL_STATUS_INTERVAL_MS = 5 * Time.MS_PER_MINUTE;
+
   private String inputDirectory;
   // Immutable state
   private final VeniceProperties props;
@@ -244,6 +248,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     long minimumReducerLoggingIntervalInMs;
     int controllerRetries;
     int controllerStatusPollRetries;
+    long pollJobStatusIntervalMs;
   }
   private PushJobSetting pushJobSetting;
 
@@ -318,6 +323,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobSetting.minimumReducerLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
     pushJobSetting.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSetting.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
+    pushJobSetting.pollJobStatusIntervalMs = props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -731,17 +737,25 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
     ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
+    long pollingIntervalMs = pushJobSetting.pollJobStatusIntervalMs;
     // Set of datacenters that have reported a completed status at least once.
     Set<String> completedDatacenters = new HashSet<>();
     // Datacenter-specific details. Stored in memory to avoid printing repetitive details.
     Map<String, String> previousExtraDetails = new HashMap<>();
     // Overall job details. Stored in memory to avoid printing repetitive details.
     String previousOverallDetails = null;
+    long pollTime = System.currentTimeMillis() + pollingIntervalMs;
 
     while (keepChecking) {
-      Utils.sleep(5000); // TODO better polling policy
+      long currentTime = System.currentTimeMillis();
+      if (currentTime > pollTime) {
+        pollTime = currentTime + pollingIntervalMs;
+      } else {
+        Utils.sleep(pollTime - currentTime);
+        continue;
+      }
       JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries,
-          c -> c.queryJobStatus(versionTopicInfo.topic, incrementalPushVersion));
+          c -> c.queryOverallJobStatus(versionTopicInfo.topic, incrementalPushVersion));
       // response#isError() means the status could not be queried which could be due to a communication error.
       if (response.isError()) {
         throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl +
