@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
+import com.linkedin.venice.admin.InMemoryExecutionIdAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.AdminCommandExecutionStatus;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -26,7 +27,7 @@ public class TestAdminCommandExecutionTracker {
   private Map<String, ControllerClient> fabricToControllerMap;
   private ControllerClient mockControllerClient;
   private LastSucceedExecutionIdResponse mockResponse;
-  private ExecutionIdAccessor accessor;
+  private InMemoryExecutionIdAccessor accessor;
 
   @BeforeMethod
   public void setup() {
@@ -36,8 +37,7 @@ public class TestAdminCommandExecutionTracker {
     Mockito.doReturn(mockResponse).when(mockControllerClient).getLastSucceedExecutionId();
     fabricToControllerMap.put(fabric1, mockControllerClient);
     fabricToControllerMap.put(fabric2, mockControllerClient);
-    accessor = Mockito.mock(ExecutionIdAccessor.class);
-    Mockito.doReturn(0L).when(accessor).getLastGeneratedExecutionId(Mockito.anyString());
+    accessor = new InMemoryExecutionIdAccessor();
     executionTracker = new AdminCommandExecutionTracker(cluster, accessor, fabricToControllerMap, executionTTLHour);
   }
 
@@ -146,7 +146,7 @@ public class TestAdminCommandExecutionTracker {
   @Test
   public void testCreateTrackerWithInitialValue() {
     long initId = 100L;
-    Mockito.doReturn(initId).when(accessor).getLastGeneratedExecutionId(Mockito.anyString());
+    accessor.setExecutionId(initId);
     executionTracker = new AdminCommandExecutionTracker(cluster, accessor, fabricToControllerMap, executionTTLHour);
     Assert.assertEquals(executionTracker.getLastExecutionId(), initId);
   }

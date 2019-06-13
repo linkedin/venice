@@ -1,14 +1,12 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controller.init.ControllerInitializationManager;
-import com.linkedin.venice.controller.init.ControllerInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.StoreCleaner;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.manager.zk.ZkClient;
@@ -27,10 +25,10 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
       new ConcurrentHashMap<>();
   private final StoreCleaner storeCleaner;
   private final MetricsRepository metricsRepository;
-  private final ControllerInitializationRoutine controllerInitialization;
+  private final ClusterLeaderInitializationRoutine controllerInitialization;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner, MetricsRepository metricsRepository, ControllerInitializationRoutine controllerInitialization) {
+      StoreCleaner storeCleaner, MetricsRepository metricsRepository, ClusterLeaderInitializationRoutine controllerInitialization) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = new ConcurrentHashMap<>();

@@ -2,13 +2,17 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.StringToLongMapJSONSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.meta.SimpleStringSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+import org.I0Itec.zkclient.DataUpdater;
 import org.I0Itec.zkclient.exception.ZkNoNodeException;
+import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
@@ -20,10 +24,12 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
   private static final Logger logger = Logger.getLogger(ZkExecutionIdAccessor.class);
   private final ZkClient zkclient;
   private final ZkBaseDataAccessor<Map<String, Long>> zkMapAccessor;
+  private final ZkBaseDataAccessor<String> executionIdAccessor;
 
   public ZkExecutionIdAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
     this.zkclient = zkClient;
-    zkMapAccessor = new ZkBaseDataAccessor<>(zkClient);
+    this.zkMapAccessor = new ZkBaseDataAccessor<>(zkClient);
+    this.executionIdAccessor = new ZkBaseDataAccessor<>(zkClient);
     adapterSerializer.registerSerializer(getLastSucceededExecutionIdPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
         new SimpleStringSerializer());
     adapterSerializer.registerSerializer(getLastSucceededExecutionIdMapPath(PathResourceRegistry.WILDCARD_MATCH_ANY),
@@ -70,6 +76,32 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
     updateExecutionToZk(path, lastGeneratedExecutionId);
   }
 
+  /**
+   * Using AtomicLong here only as a workaround to get next execution id from
+   * {@link HelixUtils#compareAndUpdate(ZkBaseDataAccessor, String, int, DataUpdater)}
+   * :(
+   *
+   * @throws ZkDataAccessException will be thrown if it fails to update the data
+   */
+  @Override
+  public Long incrementAndGetExecutionId(String clusterName) {
+    AtomicLong executionId = new AtomicLong();
+    HelixUtils.compareAndUpdate(executionIdAccessor, getLastGeneratedExecutionIdPath(clusterName),
+        ZK_RETRY_COUNT, currentData -> {
+          long nextId;
+          if (currentData == null) {
+            //the id hasn't been initialized yet
+            nextId = 0;
+          } else {
+            nextId = Long.valueOf(currentData) + 1;
+          }
+          executionId.set(nextId);
+          return String.valueOf(nextId);
+        });
+
+    return executionId.get();
+  }
+
   private Map<String, Long> getExecutionIdMapFromZk(String path) {
     int retry = ZK_RETRY_COUNT;
     while (retry > 0) {
@@ -102,8 +134,8 @@ public class ZkExecutionIdAccessor implements ExecutionIdAccessor {
     int retry = ZK_RETRY_COUNT;
     while (retry > 0) {
       try {
-        String lastSucceedExecutionId = zkclient.readData(path, true);
-        if (lastSucceedExecutionId == null || lastSucceedExecutionId.isEmpty()) {
+        String lastSucceedExecutionId = executionIdAccessor.get(path, null, AccessOption.PERSISTENT);
+        if (lastSucceedExecutionId == null) {
           return -1L;
         }
         return Long.valueOf(lastSucceedExecutionId);

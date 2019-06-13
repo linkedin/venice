@@ -12,6 +12,8 @@ public class InMemoryExecutionIdAccessor implements ExecutionIdAccessor {
   Map<String, Long> lastSucceededExecutionIdInMem = new HashMap<>();
   Map<String, Map<String, Long>> executionIdMapInMem = new HashMap<>();
 
+  long executionId = 0L;
+
   @Override
   public Long getLastSucceededExecutionId(String clusterName) {
     return lastSucceededExecutionIdInMem.getOrDefault(clusterName, -1L);
@@ -38,12 +40,20 @@ public class InMemoryExecutionIdAccessor implements ExecutionIdAccessor {
 
   @Override
   public Long getLastGeneratedExecutionId(String clusterName) {
-    // not used, no op.
-    return null;
+    return executionId;
   }
 
   @Override
   public void updateLastGeneratedExecutionId(String clusterName, Long lastGeneratedExecutionId) {
     // not used, no op.
+  }
+
+  @Override
+  public Long incrementAndGetExecutionId(String clusterName) {
+    return ++executionId;
+  }
+
+  public void setExecutionId(long value) {
+    executionId = value;
   }
 }

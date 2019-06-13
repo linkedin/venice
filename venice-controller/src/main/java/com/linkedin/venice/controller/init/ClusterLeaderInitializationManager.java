@@ -12,8 +12,8 @@ import org.apache.log4j.Logger;
  * another chance of executing next time the same controller becomes leader of the cluster
  * for which the routine previously failed.
  */
-public class ControllerInitializationManager implements ControllerInitializationRoutine {
-  private static final Logger LOGGER = Logger.getLogger(ControllerInitializationManager.class);
+public class ClusterLeaderInitializationManager implements ClusterLeaderInitializationRoutine {
+  private static final Logger LOGGER = Logger.getLogger(ClusterLeaderInitializationManager.class);
 
   /**
    * Used to keep track of which clusters have been initialized with which routine.
@@ -22,18 +22,18 @@ public class ControllerInitializationManager implements ControllerInitialization
    *
    * The inner maps' keys are the routines to execute, and the value is ignored (i.e.: it is used as a set).
    */
-  private final Map<String, Map<ControllerInitializationRoutine, Object>> initializedClusters =
+  private final Map<String, Map<ClusterLeaderInitializationRoutine, Object>> initializedClusters =
       new VeniceConcurrentHashMap<>();
-  private final List<ControllerInitializationRoutine> initRoutines;
+  private final List<ClusterLeaderInitializationRoutine> initRoutines;
 
-  public ControllerInitializationManager(List<ControllerInitializationRoutine> initRoutines) {
+  public ClusterLeaderInitializationManager(List<ClusterLeaderInitializationRoutine> initRoutines) {
     this.initRoutines = initRoutines;
   }
 
   @Override
   public void execute(String clusterToInit) {
     CompletableFuture.runAsync(() -> {
-      Map<ControllerInitializationRoutine, Object> initializedRoutinesForCluster =
+      Map<ClusterLeaderInitializationRoutine, Object> initializedRoutinesForCluster =
           initializedClusters.computeIfAbsent(clusterToInit, k -> new VeniceConcurrentHashMap());
 
       initRoutines.forEach(routine -> {
@@ -52,7 +52,7 @@ public class ControllerInitializationManager implements ControllerInitialization
     });
   }
 
-  private String logMessage(String action, ControllerInitializationRoutine routine, String clusterToInit) {
+  private String logMessage(String action, ClusterLeaderInitializationRoutine routine, String clusterToInit) {
     return action + " execution of '" + routine.getClass().getSimpleName()
         + "' for cluster '" + clusterToInit + "'.";
   }

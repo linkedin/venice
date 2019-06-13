@@ -4,8 +4,8 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
-import com.linkedin.venice.controller.init.ControllerInitializationManager;
-import com.linkedin.venice.controller.init.ControllerInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -247,10 +247,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
 
-        List<ControllerInitializationRoutine> initRoutines = new ArrayList<>();
+        List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
-        ControllerInitializationRoutine controllerInitialization = new ControllerInitializationManager(initRoutines);
+        ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();

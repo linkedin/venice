@@ -6,7 +6,6 @@ import java.time.LocalDateTime;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
 
 
@@ -28,30 +27,28 @@ public class AdminCommandExecutionTracker {
   private final String cluster;
   private final int executionTTLHour;
   private final LinkedHashMap<Long, AdminCommandExecution> idToExecutionMap;
-  private final AtomicLong idGenerator;
   private final Map<String, ControllerClient> fabricToControllerClientsMap;
-  private final ExecutionIdAccessor executionIdAccessoridAccessor;
+  private final ExecutionIdAccessor executionIdAccessor;
 
-  public AdminCommandExecutionTracker(String cluster, ExecutionIdAccessor executionIdAccessoridAccessor,
+  public AdminCommandExecutionTracker(String cluster, ExecutionIdAccessor executionIdAccessor,
       Map<String, ControllerClient> fabricToControllerClientsMap, int executionTTLHour) {
     this.executionTTLHour = executionTTLHour;
     this.cluster = cluster;
     this.idToExecutionMap = new LinkedHashMap<>();
     this.fabricToControllerClientsMap = fabricToControllerClientsMap;
-    this.executionIdAccessoridAccessor = executionIdAccessoridAccessor;
-    idGenerator = new AtomicLong(this.executionIdAccessoridAccessor.getLastGeneratedExecutionId(cluster));
+    this.executionIdAccessor = executionIdAccessor;
   }
 
-  public AdminCommandExecutionTracker(String cluster, ExecutionIdAccessor executionIdAccessoridAccessor,
+  public AdminCommandExecutionTracker(String cluster, ExecutionIdAccessor executionIdAccessor,
       Map<String, ControllerClient> fabricToControllerClientsMap) {
-    this(cluster, executionIdAccessoridAccessor, fabricToControllerClientsMap, DEFAULT_TTL_HOUR);
+    this(cluster, executionIdAccessor, fabricToControllerClientsMap, DEFAULT_TTL_HOUR);
   }
 
   /**
    * Create an execution context of a command.
    */
   public synchronized AdminCommandExecution createExecution(String operation) {
-    return new AdminCommandExecution(generateExecutionId(), operation, cluster, fabricToControllerClientsMap.keySet());
+    return new AdminCommandExecution(getNextAvailableExecutionId(), operation, cluster, fabricToControllerClientsMap.keySet());
   }
 
   /**
@@ -104,14 +101,12 @@ public class AdminCommandExecutionTracker {
     return idToExecutionMap.get(id);
   }
 
-  protected long generateExecutionId() {
-    Long id = idGenerator.addAndGet(1);
-    executionIdAccessoridAccessor.updateLastGeneratedExecutionId(cluster, id);
-    return id;
+  protected long getNextAvailableExecutionId() {
+    return executionIdAccessor.incrementAndGetExecutionId(cluster);
   }
 
   public long getLastExecutionId() {
-    return idGenerator.get();
+    return executionIdAccessor.getLastGeneratedExecutionId(cluster);
   }
 
   protected Map<String, ControllerClient> getFabricToControllerClientsMap() {
