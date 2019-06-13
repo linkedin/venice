@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controller.init.ControllerInitializationManager;
-import com.linkedin.venice.controller.init.ControllerInitializationRoutine;
+import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
@@ -41,14 +40,14 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final HelixAdapterSerializer adapterSerializer;
   private final StoreCleaner storeCleaner;
   private final MetricsRepository metricsRepository;
-  private final ControllerInitializationRoutine controllerInitialization;
+  private final ClusterLeaderInitializationRoutine controllerInitialization;
   private String clusterName;
 
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner,
-      MetricsRepository metricsRepository, ControllerInitializationRoutine controllerInitialization) {
+      MetricsRepository metricsRepository, ClusterLeaderInitializationRoutine controllerInitialization) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;

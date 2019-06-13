@@ -20,7 +20,7 @@ import org.apache.log4j.Logger;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
-public class SystemSchemaInitializationRoutine implements ControllerInitializationRoutine {
+public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializationRoutine {
   private static final Logger LOGGER = Logger.getLogger(SystemSchemaInitializationRoutine.class);
 
   private final AvroProtocolDefinition protocolDefinition;
@@ -44,7 +44,7 @@ public class SystemSchemaInitializationRoutine implements ControllerInitializati
       try {
         Pair<String, String> clusterNameAndD2 = admin.discoverCluster(systemStoreName);
         String cluster = clusterNameAndD2.getFirst();
-        if (cluster != intendedCluster) {
+        if (cluster.equals(intendedCluster)) {
           LOGGER.warn("The system store for '" + protocolDefinition.name() + "' already exists in cluster '"
               + cluster + "', which is inconsistent with the config '" + CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME
               + "' which specifies that it should be in cluster '" + intendedCluster
