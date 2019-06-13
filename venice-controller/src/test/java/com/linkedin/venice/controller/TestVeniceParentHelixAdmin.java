@@ -1212,7 +1212,7 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin, never()).truncateKafkaTopic("topic8_v1");
     Assert.assertEquals(extraInfo.get("cluster13"), ExecutionStatus.COMPLETED.toString());
 
-    // 1 in 4 failures is ERROR
+    // 1 unreachable data center is UNKNOWN; it keeps trying until timeout
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();
     failCompleteMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
@@ -1220,21 +1220,11 @@ public class TestVeniceParentHelixAdmin {
     failCompleteMap.put("failcluster", clientMap.get(null));
     offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8_v1", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    verify(internalAdmin, timeout(TIMEOUT_IN_MS)).truncateKafkaTopic("topic8_v1");
+    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.UNKNOWN);
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("failcluster"), ExecutionStatus.UNKNOWN.toString());
-
-    // 3 in 6 failures is PROGRESS (so it keeps trying)
-    failCompleteMap.put("failcluster2", clientMap.get(null));
-    failCompleteMap.put("failcluster3", clientMap.get(null));
-    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic9_v1", failCompleteMap, topicManager);
-    extraInfo = offlineJobStatus.getExtraInfo();
-    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    Assert.assertEquals(extraInfo.get("failcluster2"), ExecutionStatus.UNKNOWN.toString());
-    Assert.assertEquals(extraInfo.get("failcluster3"), ExecutionStatus.UNKNOWN.toString());
 
     Map<String, ControllerClient> errorMap = new HashMap<>();
     errorMap.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
