@@ -20,6 +20,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
@@ -107,6 +108,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public final static String POLL_STATUS_RETRY_ATTEMPTS = "poll.status.retry.attempts";
   public final static String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
   public final static String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
+  public final static String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -193,6 +195,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private static final long DEFAULT_POLL_STATUS_INTERVAL_MS = 5 * Time.MS_PER_MINUTE;
 
+  /**
+   * The default total time we wait before failing a job if the job status stays in UNKNOWN state.
+   */
+  private static final long DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = 30 * Time.MS_PER_MINUTE;
+
   private String inputDirectory;
   // Immutable state
   private final VeniceProperties props;
@@ -249,6 +256,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     int controllerRetries;
     int controllerStatusPollRetries;
     long pollJobStatusIntervalMs;
+    long jobStatusInUnknownStateTimeoutMs;
   }
   private PushJobSetting pushJobSetting;
 
@@ -324,6 +332,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobSetting.controllerRetries = props.getInt(CONTROLLER_REQUEST_RETRY_ATTEMPTS, 1);
     pushJobSetting.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSetting.pollJobStatusIntervalMs = props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
+    pushJobSetting.jobStatusInUnknownStateTimeoutMs = props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -735,7 +744,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private void pollStatusUntilComplete(Optional<String> incrementalPushVersion, ControllerClient controllerClient,
       PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo) {
-    ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
     long pollingIntervalMs = pushJobSetting.pollJobStatusIntervalMs;
     // Set of datacenters that have reported a completed status at least once.
@@ -745,6 +753,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     // Overall job details. Stored in memory to avoid printing repetitive details.
     String previousOverallDetails = null;
     long pollTime = System.currentTimeMillis() + pollingIntervalMs;
+
+    /**
+     * The start time when some data centers enter unknown state;
+     * if 0, it means no data center is in unknown state.
+     *
+     * Once enter unknown state, it's allowed to stayed in unknown state for
+     * no more than {@link DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS}.
+     */
+    long unknownStateStartTimeInNS = 0;
 
     while (keepChecking) {
       long currentTime = System.currentTimeMillis();
@@ -768,7 +785,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
           if (datacenterStatus.isTerminal()) {
             if (datacenterStatus.equals(ExecutionStatus.ERROR)) {
-              throw new RuntimeException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
+              throw new RuntimeException("Push job triggered error in data center: " + datacenter);
             }
             completedDatacenters.add(datacenter);
           }
@@ -784,6 +801,18 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
             // and start truncating the data topic.
             throw new RuntimeException("Push job triggered error for: " + pushJobSetting.veniceControllerUrl);
           }
+        } else if (ExecutionStatus.UNKNOWN.equals(overallStatus)) {
+          if (unknownStateStartTimeInNS == 0) {
+            unknownStateStartTimeInNS = System.nanoTime();
+          } else if (LatencyUtils.getLatencyInMS(unknownStateStartTimeInNS) > pushJobSetting.jobStatusInUnknownStateTimeoutMs) {
+            throw new VeniceException("After waiting for " + (pushJobSetting.jobStatusInUnknownStateTimeoutMs / Time.MS_PER_MINUTE) + " minutes; "
+                + "push job is still in unknown state.");
+          } else {
+            double elapsedMinutes = LatencyUtils.getLatencyInMS(unknownStateStartTimeInNS) / Time.MS_PER_MINUTE;
+            logger.warn("Some data centers are still in unknown state after waiting for " + elapsedMinutes + " minutes.");
+          }
+        } else {
+          unknownStateStartTimeInNS = 0;
         }
       }
     }

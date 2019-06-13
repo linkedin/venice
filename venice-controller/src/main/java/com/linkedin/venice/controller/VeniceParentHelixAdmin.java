@@ -1321,6 +1321,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
+        statuses.add(ExecutionStatus.UNKNOWN);
         extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
         extraDetails.put(cluster, masterControllerUrl + " " + response.getError());
       } else {
@@ -1345,6 +1346,7 @@ public class VeniceParentHelixAdmin implements Admin {
         ExecutionStatus.PROGRESS,
         ExecutionStatus.STARTED,
         ExecutionStatus.START_OF_INCREMENTAL_PUSH_RECEIVED,
+        ExecutionStatus.UNKNOWN,
         ExecutionStatus.NEW,
         ExecutionStatus.NOT_CREATED,
         ExecutionStatus.END_OF_PUSH_RECEIVED,
