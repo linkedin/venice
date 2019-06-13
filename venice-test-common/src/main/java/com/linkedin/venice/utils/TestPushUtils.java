@@ -389,6 +389,7 @@ public class TestPushUtils {
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
+    props.put(POLL_JOB_STATUS_INTERVAL_MS, 5 * Time.MS_PER_SECOND);
     props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
     props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
     props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");

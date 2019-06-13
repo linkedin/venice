@@ -33,6 +33,8 @@ import org.apache.http.client.utils.URLEncodedUtils;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public class ControllerClient implements Closeable {
+  private static final int DEFAULT_MAX_ATTEMPTS = 10;
+  private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private String clusterName;
   private String localHostName;
   private String masterControllerUrl;
@@ -245,18 +247,38 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
-    return queryJobStatus(kafkaTopic, Optional.empty());
+  /**
+   * This method has a longer timeout intended to be used to query the overall job status on a parent controller. The
+   * extended timeout is meant for the parent controller to query each colo's child controller for the job status and
+   * aggregate the results. Use {@link ControllerClient#queryJobStatus(String, Optional)} instead if the target is a
+   * child controller.
+   */
+  public JobStatusQueryResponse queryOverallJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, 5 * QUERY_JOB_STATUS_TIMEOUT);
   }
 
+  public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
+    return queryJobStatus(kafkaTopic, Optional.empty(), QUERY_JOB_STATUS_TIMEOUT);
+  }
+
+  /**
+   * This method is used to query the job status from a controller. It is expected to be a child controller thus a
+   * shorter timeout is enforced. Use {@link ControllerClient#queryOverallJobStatus(String, Optional)} instead if the
+   * target is a parent controller.
+   */
   public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion) {
+    return queryJobStatus(kafkaTopic, incrementalPushVersion, QUERY_JOB_STATUS_TIMEOUT);
+  }
+
+  public JobStatusQueryResponse queryJobStatus(String kafkaTopic, Optional<String> incrementalPushVersion,
+      int timeoutMs) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(VERSION, version)
         .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
-    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, 60 * Time.MS_PER_SECOND);
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1);
   }
 
   /**
@@ -537,19 +559,22 @@ public class ControllerClient implements Closeable {
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
-    return request(route, params, responseType, 600 * Time.MS_PER_SECOND);
+    return request(route, params, responseType, 600 * Time.MS_PER_SECOND, DEFAULT_MAX_ATTEMPTS);
   }
 
-  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType, int timeoutMs) {
+  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType,
+      int timeoutMs, int maxAttempts) {
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport()) {
-      for (int attempt = 0; attempt < 10; ++attempt) {
+      for (int attempt = 0; attempt < maxAttempts; ++attempt) {
         try {
           return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs);
         } catch (ExecutionException | TimeoutException e) {
           // Controller is unreachable. Let's wait for a new master to be elected.
           // Total wait time should be at least master election time (~30 seconds)
-          Utils.sleep(5 * Time.MS_PER_SECOND);
+          if (attempt < maxAttempts - 1) {
+            Utils.sleep(5 * Time.MS_PER_SECOND);
+          }
           lastException = e;
         } catch (VeniceHttpException e) {
           if (e.getHttpStatusCode() != HttpConstants.SC_MISDIRECTED_REQUEST) {
