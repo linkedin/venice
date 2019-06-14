@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import org.apache.commons.io.FileUtils;
 
 import static com.linkedin.venice.store.bdb.BdbStoragePartition.*;
 
@@ -87,7 +88,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   @Override
   public long getStoreSizeInBytes() {
     if (environment.isValid()) {
-      return new BdbSpaceUtilizationSummary(environment).getTotalSpaceUsed();
+      return FileUtils.sizeOf(environment.getHome());
     } else {
       // Environment could be closed/discarded
       return StatsErrorCode.NULL_BDB_ENVIRONMENT.code;

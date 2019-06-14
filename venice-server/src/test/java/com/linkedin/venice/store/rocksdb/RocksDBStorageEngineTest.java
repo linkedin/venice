@@ -3,6 +3,8 @@ package com.linkedin.venice.store.rocksdb;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
+import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
@@ -13,6 +15,8 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
@@ -27,7 +31,8 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     storeName = TestUtils.getUniqueString("rocksdb_store_test");
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
-    service = new StorageService(configLoader, s -> s.toString());
+    service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
+        mock(AggVersionedStorageEngineStats.class));
     storeConfig = new VeniceStoreConfig(storeName, serverProperties, PersistenceType.ROCKS_DB);
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();

@@ -44,14 +44,17 @@ public class StorageService extends AbstractVeniceService {
   private final PartitionAssignmentRepository partitionAssignmentRepository;
   private final Consumer<String> storeVersionStateDeleter;
 
-  private Optional<AggVersionedStorageEngineStats> aggVersionedStorageEngineStats = Optional.empty();
+  private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
 
-  public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter) {
+  public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter,
+      AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats) {
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storeRepository = new StoreRepository();
+    this.storeRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
     this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
     this.storeVersionStateDeleter = storeVersionStateDeleter;
+    this.aggVersionedStorageEngineStats = storageEngineStats;
     initInternalStorageEngineFactories();
     // Restore all the stores persisted previously
     restoreAllStores(configLoader);
@@ -149,10 +152,9 @@ public class StorageService extends AbstractVeniceService {
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     engine = factory.getStore(storeConfig);
     storeRepository.addLocalStorageEngine(engine);
+    // Setup storage engine stats
+    aggVersionedStorageEngineStats.setStorageEngine(storeName, engine);
 
-    if (aggVersionedStorageEngineStats.isPresent()) {
-      aggVersionedStorageEngineStats.get().setStorageEngine(storeName, engine);
-    }
     return engine;
   }
 
@@ -209,13 +211,6 @@ public class StorageService extends AbstractVeniceService {
     return storeRepository;
   }
 
-  public void setAggBdbStorageEngineStats(AggVersionedBdbStorageEngineStats stats) {
-    storeRepository.setAggBdbStorageEngineStats(stats);
-  }
-
-  public void setAggVersionedStorageEngineStats(AggVersionedStorageEngineStats stats) {
-    aggVersionedStorageEngineStats = Optional.of(stats);
-  }
   @Override
   public boolean startInner() throws Exception {
     // After Storage Node starts, Helix controller initiates the state transition for the Stores that

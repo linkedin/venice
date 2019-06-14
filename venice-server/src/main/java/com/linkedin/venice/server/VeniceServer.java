@@ -140,12 +140,15 @@ public class VeniceServer {
     storageMetadataService = new BdbStorageMetadataService(veniceConfigLoader.getVeniceClusterConfig());
     services.add(storageMetadataService);
 
-    // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s));
-    services.add(storageService);
-
     // Create ReadOnlyStore/SchemaRepository
     createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
+
+    AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
+    // create and add StorageService. storeRepository will be populated by StorageService,
+    storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
+        bdbStorageEngineStats, storageEngineStats);
+    services.add(storageService);
 
     Optional<SchemaReader> schemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE))));
@@ -160,11 +163,6 @@ public class VeniceServer {
         metricsRepository,
         schemaReader,
         clientConfigForConsumer);
-
-    AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
-    storageService.setAggBdbStorageEngineStats(bdbStorageEngineStats);
-    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
-    storageService.setAggVersionedStorageEngineStats(storageEngineStats);
 
     VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
     this.diskHealthCheckService = new DiskHealthCheckService(veniceServerConfig.isDiskHealthCheckServiceEnabled(),
