@@ -18,6 +18,9 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 /**
  * Configuration which is specific to a Venice controller.
+ *
+ * It's quite confusing to have both {@link VeniceControllerConfig} and
+ * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 

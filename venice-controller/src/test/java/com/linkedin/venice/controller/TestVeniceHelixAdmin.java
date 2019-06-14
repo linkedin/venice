@@ -282,7 +282,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newClusterProps = builder.build();
     VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
-    veniceAdmin.addConfig(newClusterName, newClusterConfig);
+    veniceAdmin.addConfig(newClusterConfig);
     veniceAdmin.start(newClusterName);
     waitUntilIsMaster(veniceAdmin, newClusterName, MASTER_CHANGE_TIMEOUT);
 
