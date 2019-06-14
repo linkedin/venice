@@ -20,7 +20,7 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
 public class VeniceDistClusterControllerStateModelFactory extends StateModelFactory<VeniceDistClusterControllerStateModel> {
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
-  private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
+  private final VeniceControllerMultiClusterConfig clusterConfigs;
   private final ConcurrentMap<String, VeniceDistClusterControllerStateModel> clusterToStateModelsMap =
       new ConcurrentHashMap<>();
   private final StoreCleaner storeCleaner;
@@ -28,10 +28,11 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ClusterLeaderInitializationRoutine controllerInitialization;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner, MetricsRepository metricsRepository, ClusterLeaderInitializationRoutine controllerInitialization) {
+      StoreCleaner storeCleaner, VeniceControllerMultiClusterConfig clusterConfigs,
+      MetricsRepository metricsRepository, ClusterLeaderInitializationRoutine controllerInitialization) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
-    this.clusterToConfigsMap = new ConcurrentHashMap<>();
+    this.clusterConfigs = clusterConfigs;
     this.storeCleaner = storeCleaner;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
@@ -42,23 +43,17 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     String veniceClusterName =
         VeniceDistClusterControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
 
+    VeniceControllerClusterConfig clusterConfig = clusterConfigs.getConfigForCluster(veniceClusterName);
+
+    if (clusterConfig == null) {
+      throw new VeniceException("No configuration exists for " + veniceClusterName);
+    }
+
     VeniceDistClusterControllerStateModel model =
-        new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap, storeCleaner,
+        new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterConfig, storeCleaner,
             metricsRepository, controllerInitialization);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
-  }
-
-  public void addClusterConfig(String veniceClusterName, VeniceControllerClusterConfig config) {
-    clusterToConfigsMap.put(veniceClusterName, config);
-  }
-
-  public VeniceControllerClusterConfig getClusterConfig(String veniceClusterName) {
-    return clusterToConfigsMap.get(veniceClusterName);
-  }
-
-  public void deleteClusterConfig(String veniceClusterName) {
-    clusterToConfigsMap.remove(veniceClusterName);
   }
 
   public VeniceDistClusterControllerStateModel getModel(String veniceClusterName) {

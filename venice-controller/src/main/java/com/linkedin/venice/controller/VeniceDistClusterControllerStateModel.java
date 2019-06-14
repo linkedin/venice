@@ -43,16 +43,16 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final ClusterLeaderInitializationRoutine controllerInitialization;
   private String clusterName;
 
-  private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
+  private final VeniceControllerClusterConfig clusterConfig;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner,
+      VeniceControllerClusterConfig clusterConfig, StoreCleaner storeCleaner,
       MetricsRepository metricsRepository, ClusterLeaderInitializationRoutine controllerInitialization) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
-    this.clusterToConfigsMap = clusterToConfigsMap;
+    this.clusterConfig = clusterConfig;
     this.storeCleaner = storeCleaner;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
@@ -95,10 +95,6 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     executeStateTransition(message, () -> {
       String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
 
-      if (!clusterToConfigsMap.containsKey(clusterName)) {
-        throw new VeniceException("No configuration exists for " + clusterName);
-      }
-
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming leader from standby for " + clusterName);
       if (controller == null) {
@@ -107,7 +103,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
         controller.connect();
         controller.startTimerTasks();
         resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
-            clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
+            clusterConfig, storeCleaner, metricsRepository);
         resources.refresh();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {

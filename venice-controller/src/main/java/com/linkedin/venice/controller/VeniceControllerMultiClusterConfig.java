@@ -21,7 +21,11 @@ public class VeniceControllerMultiClusterConfig {
   }
 
   public VeniceControllerMultiClusterConfig(Map<String, VeniceControllerConfig> configMap){
-    clusterToConfigMap = new HashMap<String,VeniceControllerConfig>(configMap);
+    clusterToConfigMap = new HashMap<>(configMap);
+  }
+
+  public void addClusterConfig(VeniceControllerConfig clusterConfig) {
+    clusterToConfigMap.put(clusterConfig.getClusterName(), clusterConfig);
   }
 
   public VeniceControllerConfig getConfigForCluster(String clusterName) {

@@ -255,11 +255,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
-            zkClient, adapterSerializer, this, metricsRepository, controllerInitialization);
-        // Preset the configs for all known clusters.
-        for (String cluster : multiClusterConfigs.getClusters()) {
-            controllerStateModelFactory.addClusterConfig(cluster, multiClusterConfigs.getConfigForCluster(cluster));
-        }
+            zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization);
+
         // Initialized the helix manger for the level1 controller.
         initLevel1Controller();
 
@@ -2465,7 +2462,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return;
         }
 
-        VeniceControllerClusterConfig config = controllerStateModelFactory.getClusterConfig(clusterName);
+        VeniceControllerClusterConfig config = multiClusterConfigs.getConfigForCluster(clusterName);
         HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
                 forCluster(clusterName).build();
         Map<String, String> helixClusterProperties = new HashMap<String, String>();
@@ -3031,7 +3028,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    protected VeniceHelixResources getVeniceHelixResource(String cluster){
+    protected VeniceHelixResources getVeniceHelixResource(String cluster) {
         Optional<VeniceHelixResources> resources = controllerStateModelFactory.getModel(cluster).getResources();
         if (!resources.isPresent()) {
             throwClusterNotInitialized(cluster);
@@ -3039,8 +3036,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return resources.get();
     }
 
-    public void addConfig(String clusterName,VeniceControllerConfig config){
-        controllerStateModelFactory.addClusterConfig(clusterName, config);
+    public void addConfig(VeniceControllerConfig config) {
+        multiClusterConfigs.addClusterConfig(config);
     }
 
     public void addMetric(String clusterName, MetricsRepository metricsRepository){
