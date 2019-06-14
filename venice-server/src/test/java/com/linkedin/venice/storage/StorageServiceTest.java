@@ -3,6 +3,8 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
+import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
@@ -17,6 +19,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 /**
@@ -35,7 +39,8 @@ public class StorageServiceTest {
     VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
     storeConfig.setStorePersistenceType(PersistenceType.BDB);
 
-    StorageService service = new StorageService(configLoader, s -> s.toString());
+    StorageService service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
+        mock(AggVersionedStorageEngineStats.class));
 
     BdbStorageEngineFactory factory = (BdbStorageEngineFactory) service.getInternalStorageEngineFactory(storeConfig);
     File directoryPath = factory.getStorePath(storeName);
@@ -144,7 +149,8 @@ public class StorageServiceTest {
     // Create several stores first
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB, 1000);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
-    StorageService storageService = new StorageService(configLoader, s -> s.toString());
+    StorageService storageService = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
+        mock(AggVersionedStorageEngineStats.class));
 
     for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
       String storeName = entry.getKey();
@@ -159,7 +165,8 @@ public class StorageServiceTest {
 
     int bigPartitionId = 100;
     int existingPartitionId = 0;
-    storageService = new StorageService(configLoader, s -> s.toString());
+    storageService = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
+        mock(AggVersionedStorageEngineStats.class));
     for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
       String storeName = entry.getKey();
       int partitionNum = entry.getValue();
