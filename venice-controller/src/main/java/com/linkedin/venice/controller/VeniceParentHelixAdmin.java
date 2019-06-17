@@ -557,21 +557,21 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   /**
-   * Get the latest existing Kafka topic for the specified store
+   * Get the version topics list for the specified store in freshness order; the first
+   * topic in the list is the latest topic and the last topic is the oldest one.
    * @param storeName
-   * @return
+   * @return the version topics in freshness order
    */
-  protected Optional<String> getLatestKafkaTopic(String storeName) {
+  protected List<String> getKafkaTopicsByAge(String storeName) {
     List<String> existingTopics = existingTopicsForStore(storeName);
-    if (existingTopics.isEmpty()) {
-      return Optional.empty();
+    if (!existingTopics.isEmpty()) {
+      existingTopics.sort((t1, t2) -> {
+        int v1 = Version.parseVersionFromKafkaTopicName(t1);
+        int v2 = Version.parseVersionFromKafkaTopicName(t2);
+        return v2 - v1;
+      });
     }
-    existingTopics.sort((t1, t2) -> {
-      int v1 = Version.parseVersionFromKafkaTopicName(t1);
-      int v2 = Version.parseVersionFromKafkaTopicName(t2);
-      return v2 - v1;
-    });
-    return Optional.of(existingTopics.get(0));
+    return existingTopics;
   }
 
   protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName) {
@@ -583,7 +583,13 @@ public class VeniceParentHelixAdmin implements Admin {
    * else will return the ongoing Kafka topic. It will also try to clean up legacy topics.
    */
   protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName, boolean isIncrementalPush) {
-    Optional<String> latestKafkaTopic = getLatestKafkaTopic(storeName);
+    // The first/last topic in the list is the latest/oldest version topic
+    List<String> versionTopics = getKafkaTopicsByAge(storeName);
+    Optional<String> latestKafkaTopic = Optional.empty();
+    if (!versionTopics.isEmpty()) {
+      latestKafkaTopic = Optional.of(versionTopics.get(0));
+    }
+
     /**
      * Check current topic retention to decide whether the previous job is already done or not
      */
@@ -650,7 +656,7 @@ public class VeniceParentHelixAdmin implements Admin {
            * it will be truncated in {@link #getOffLinePushStatus(String, String)}.
            */
           if (!isIncrementalPush) {
-            truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
+            truncateTopicsBasedOnMaxErroredTopicNumToKeep(versionTopics);
           }
         }
       }
@@ -666,8 +672,7 @@ public class VeniceParentHelixAdmin implements Admin {
    *
    * TODO: rename the method once we remove the rest of KMM debugging logic.
    */
-  protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(String storeName) {
-    List<String> topics = existingTopicsForStore(storeName);
+  protected void truncateTopicsBasedOnMaxErroredTopicNumToKeep(List<String> topics) {
     // Based on current logic, only 'errored' topics were not truncated.
     List<String> sortedNonTruncatedTopics = topics.stream().filter(topic -> !isTopicTruncated(topic)).sorted((t1, t2) -> {
       int v1 = Version.parseVersionFromKafkaTopicName(t1);
