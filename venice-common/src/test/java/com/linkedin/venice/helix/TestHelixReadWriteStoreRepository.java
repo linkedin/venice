@@ -43,7 +43,7 @@ public class TestHelixReadWriteStoreRepository {
     @AfterMethod
     public void zkCleanup() {
         repo.clear();
-        zkClient.deleteRecursive(clusterPath);
+        zkClient.deleteRecursively(clusterPath);
         zkClient.close();
         zkServerWrapper.close();
     }

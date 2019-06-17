@@ -15,7 +15,7 @@ import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatib
  * {@link SchemaEntry} is composed of a schema and its corresponding id.
  * Internally, this class will maintain a parsed {@link org.apache.avro.Schema}
  */
-public final class SchemaEntry {
+public class SchemaEntry {
   private final int id;
   private Schema schema;
   private Logger logger = Logger.getLogger(getClass());

@@ -126,8 +126,7 @@ public class ConsumerIntegrationTest {
         cluster.getClusterName(),
         systemStoreName,
         NEW_PROTOCOL_SCHEMA.toString(),
-        NEW_PROTOCOL_VERSION,
-        DirectionalSchemaCompatibilityType.BACKWARD
+        NEW_PROTOCOL_VERSION
     );
   }
 

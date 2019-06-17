@@ -203,7 +203,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String schemaStr = message.schema.definition.toString();
     int schemaId = message.schemaId;
 
-    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId, DirectionalSchemaCompatibilityType.FULL);
+    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
     logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
   }
 

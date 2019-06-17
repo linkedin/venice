@@ -60,21 +60,20 @@ public class TestHelixReadOnlySchemaRepository {
 
   @AfterMethod
   public void zkCleanup() {
-    zkClient.deleteRecursive(clusterPath);
+    zkClient.deleteRecursively(clusterPath);
     zkClient.close();
     zkServerWrapper.close();
   }
 
   private void createStore(String storeName) {
-    Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.BDB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.BDB,
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     storeRWRepo.addStore(store);
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return storeRORepo.hasStore(storeName);
-    });
+    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> storeRORepo.hasStore(storeName));
   }
 
   @Test
-  public void testGetKeySchema() throws InterruptedException {
+  public void testGetKeySchema() {
     String storeName = "test_store1";
     // create store first
     createStore(storeName);
@@ -87,7 +86,7 @@ public class TestHelixReadOnlySchemaRepository {
     });
     SchemaEntry keySchema = schemaRORepo.getKeySchema(storeName);
     Assert.assertNotNull(keySchema);
-    Assert.assertEquals(keySchema.getId(), Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID));
+    Assert.assertEquals(keySchema.getId(), Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID));
     Assert.assertEquals(keySchema.getSchema().toString(), keySchemaStr);
   }
 
@@ -98,7 +97,7 @@ public class TestHelixReadOnlySchemaRepository {
   }
 
   @Test
-  public void testGetValueSchemaId() throws InterruptedException {
+  public void testGetValueSchemaId() {
     String storeName = "test_store1";
     String valueSchemaStr = "\"string\"";
     createStore(storeName);
@@ -111,7 +110,7 @@ public class TestHelixReadOnlySchemaRepository {
     Assert.assertFalse(schemaRORepo.hasValueSchema(storeName, 2));
   }
 
-  @Test(expectedExceptions = VeniceNoStoreException.class)
+  //@Test(expectedExceptions = VeniceNoStoreException.class)
   public void testGetValueSchemaIdByInvalidStore() throws InterruptedException {
     String storeName = "test_store1";
     String valueSchemaStr = "\"string\"";
@@ -119,7 +118,7 @@ public class TestHelixReadOnlySchemaRepository {
   }
 
   @Test
-  public void testGetValueSchema() throws InterruptedException {
+  public void testGetValueSchema() {
     String storeName = "test_store1";
     createStore(storeName);
     Assert.assertNull(schemaRORepo.getValueSchema(storeName, 1));
@@ -181,7 +180,7 @@ public class TestHelixReadOnlySchemaRepository {
   }
 
   @Test
-  public void testStoreDeletion() throws InterruptedException {
+  public void testStoreDeletion() {
     String storeName = "test_store1";
     createStore(storeName);
     // Add new value schema

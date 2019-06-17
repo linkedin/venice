@@ -1,52 +1,55 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 
+import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
+
 
 public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChangedListener {
   /**
    * Get key schema for the given store.
-   *
-   * @param storeName
-   * @return
    */
   SchemaEntry getKeySchema(String storeName);
 
   /**
    * Get value schema for the given store and value schema id.
-   *
-   * @param storeName
-   * @param id
-   * @return
    */
   SchemaEntry getValueSchema(String storeName, int id);
   /**
    * Check whether the specified schema id is valid or not
-   *
-   * @param storeName
-   * @param id
-   * @return
    */
   boolean hasValueSchema(String storeName, int id);
 
   /**
    * Look up the schema id by store name and value schema.
-   *
-   * @param storeName
-   * @param valueSchemaStr
-   * @return
    */
   int getValueSchemaId(String storeName, String valueSchemaStr);
 
   /**
    * Get all the value schemas for the given store.
-   *
-   * @param storeName
-   * @return
    */
   Collection<SchemaEntry> getValueSchemas(String storeName);
 
+  /**
+   * Get the most recent value schema added to the given store
+   */
   SchemaEntry getLatestValueSchema(String storeName);
+
+  /**
+   * Look up derived schema id and its corresponding value schema id
+   * by given store name and derived schema. This is likely used by
+   * clients that write to Venice
+   *
+   * @return a pair where the first value is value schema id and the
+   * second value is derived schema id
+   */
+  Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr);
+
+  /**
+   * Get the most recent derived schema added to the given store and value schema id
+   */
+  DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId);
 }

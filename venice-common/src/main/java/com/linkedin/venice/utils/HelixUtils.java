@@ -72,7 +72,6 @@ public class HelixUtils {
   }
 
   /**
-   *
    * @param helixInstanceName of form host_port.
    * @return Instance object with correct host and port.
    */
@@ -82,6 +81,10 @@ public class HelixUtils {
     return new Instance(helixInstanceName, hostname, port);
   }
 
+  /**
+   * @param path parent path
+   * @return a list of objects that are under parent path. It will return null if parent path is not existing
+   */
   public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount,
       long retryInterval) {
     int attempt = 1;
