@@ -66,6 +66,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 
+import java.util.HashSet;
 import java.util.Optional;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -122,6 +123,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
   private final boolean addVersionViaAdminProtocol;
   private long lastTopicCreationTime = -1;
+  private final Set<String> executionIdValidatedClusters = new HashSet<>();
   private Time timer = new SystemTime();
 
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
@@ -344,6 +346,20 @@ public class VeniceParentHelixAdmin implements Admin {
   private void sendAdminMessageAndWaitForConsumed(String clusterName, AdminOperation message) {
     if (!veniceWriterMap.containsKey(clusterName)) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
+    }
+    if (!executionIdValidatedClusters.contains(clusterName)) {
+      ExecutionIdAccessor executionIdAccessor = veniceHelixAdmin.getExecutionIdAccessor();
+      long lastGeneratedExecutionId = executionIdAccessor.getLastGeneratedExecutionId(clusterName);
+      long lastConsumedExecutionId =
+          AdminTopicMetadataAccessor.getExecutionId(adminTopicMetadataAccessor.getMetadata(clusterName));
+      if (lastGeneratedExecutionId < lastConsumedExecutionId) {
+        // Invalid state, resetting the last generated execution id to last consumed execution id.
+        logger.warn("Invalid executionId state detected, last generated execution id: " + lastGeneratedExecutionId
+            + ", last consumed execution id: " + lastConsumedExecutionId
+            + ". Resetting last generated execution id to: " + lastConsumedExecutionId);
+        executionIdAccessor.updateLastGeneratedExecutionId(clusterName, lastConsumedExecutionId);
+      }
+      executionIdValidatedClusters.add(clusterName);
     }
     AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
     AdminCommandExecution execution =
