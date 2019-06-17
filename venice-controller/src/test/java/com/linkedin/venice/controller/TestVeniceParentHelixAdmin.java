@@ -1524,26 +1524,29 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testGetLargestKafkaTopic() {
+  public void testGetKafkaTopicsByAge() {
     String storeName = TestUtils.getUniqueString("test-store");
-    Optional<String> latestTopic = parentAdmin.getLatestKafkaTopic(storeName);
-    Assert.assertFalse(latestTopic.isPresent());
+    List<String> versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
+    Assert.assertTrue(versionTopics.isEmpty());
 
     Set<String> topicList = new HashSet<>();
     topicList.add(storeName + "_v1");
     topicList.add(storeName + "_v2");
     topicList.add(storeName + "_v3");
     doReturn(topicList).when(topicManager).listTopics();
-    latestTopic = parentAdmin.getLatestKafkaTopic(storeName);
-    Assert.assertTrue(latestTopic.isPresent());
-    Assert.assertEquals(latestTopic.get(), storeName + "_v3");
+    versionTopics = parentAdmin.getKafkaTopicsByAge(storeName);
+    Assert.assertFalse(versionTopics.isEmpty());
+    String latestTopic = versionTopics.get(0);
+    Assert.assertEquals(latestTopic, storeName + "_v3");
+    Assert.assertTrue(topicList.containsAll(versionTopics));
+    Assert.assertTrue(versionTopics.containsAll(topicList));
   }
 
   @Test
   public void testGetTopicForCurrentPushJob() {
     String storeName = TestUtils.getUniqueString("test-store");
     VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
-    doReturn(Optional.empty()).when(mockParentAdmin).getLatestKafkaTopic(any());
+    doReturn(new ArrayList<String>()).when(mockParentAdmin).getKafkaTopicsByAge(any());
     doCallRealMethod().when(mockParentAdmin).getTopicForCurrentPushJob(clusterName, storeName, false);
 
     Store store = new Store(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
@@ -1554,7 +1557,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertFalse(mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false).isPresent());
 
     String latestTopic = storeName + "_v1";
-    doReturn(Optional.of(latestTopic)).when(mockParentAdmin).getLatestKafkaTopic(storeName);
+    doReturn(Arrays.asList(latestTopic)).when(mockParentAdmin).getKafkaTopicsByAge(storeName);
 
     doReturn(topicManager).when(mockParentAdmin).getTopicManager();
 
@@ -1639,8 +1642,12 @@ public class TestVeniceParentHelixAdmin {
     doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any());
     doCallRealMethod().when(mockParentAdmin).setMaxErroredTopicNumToKeep(anyInt());
     mockParentAdmin.setMaxErroredTopicNumToKeep(2);
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
-
+    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics);
+    /**
+     * Since the max error version topics we would like to keep is 2 and the non-truncated version
+     * topics include v1, v5, v7 and v10 (v8 is truncated already), we will truncate v1, v5 and keep
+     * 2 error non-truncated version topics v7 and v10.
+     */
     verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v1");
     verify(mockParentAdmin).truncateKafkaTopic(storeName + "_v5");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName + "_v7");
@@ -1650,15 +1657,21 @@ public class TestVeniceParentHelixAdmin {
     // Test with more truncated topics
     String storeName1 = TestUtils.getUniqueString("test-store");
     List<String> topics1 = new ArrayList<>();
-    topics.add(storeName1 + "_v1");
-    topics.add(storeName1 + "_v10");
-    topics.add(storeName1 + "_v8");
-    topics.add(storeName1 + "_v5");
-    topics.add(storeName1 + "_v7");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "v10");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "v7");
-    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "v8");
-    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName1);
+    topics1.add(storeName1 + "_v1");
+    topics1.add(storeName1 + "_v10");
+    topics1.add(storeName1 + "_v8");
+    topics1.add(storeName1 + "_v5");
+    topics1.add(storeName1 + "_v7");
+    doReturn(topics1).when(mockParentAdmin).existingTopicsForStore(storeName1);
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v10");
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v7");
+    doReturn(true).when(mockParentAdmin).isTopicTruncated(storeName1 + "_v8");
+    doCallRealMethod().when(mockParentAdmin).truncateTopicsBasedOnMaxErroredTopicNumToKeep(any());
+    mockParentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics1);
+    /**
+     * Since the max error version topics we would like to keep is 2 and we only have 2 non-truncated version
+     * topics v1 and v5 (v7, v8 and v10 are truncated already), we will not truncate anything.
+     */
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v1");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v5");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v7");
@@ -1701,10 +1714,10 @@ public class TestVeniceParentHelixAdmin {
   @Test
   public void testAdminCanCleanupLeakingTopics() {
     String storeName = "test_store";
-    doReturn(new HashSet(Arrays.asList(storeName + "_v1", storeName + "_v2", storeName + "_v3"))).when(topicManager)
-        .listTopics();
+    List<String> topics = Arrays.asList(storeName + "_v1", storeName + "_v2", storeName + "_v3");
+    doReturn(new HashSet(topics)).when(topicManager).listTopics();
 
-    parentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(storeName);
+    parentAdmin.truncateTopicsBasedOnMaxErroredTopicNumToKeep(topics);
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v1");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v2");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
