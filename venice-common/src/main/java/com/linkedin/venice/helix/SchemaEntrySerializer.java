@@ -3,7 +3,6 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaEntry;
-import org.apache.log4j.Logger;
 
 import java.io.IOException;
 
@@ -11,8 +10,6 @@ import java.io.IOException;
  * This class to use to serialize/deserialize Zookeeper node
  */
 public class SchemaEntrySerializer implements VeniceSerializer<SchemaEntry> {
-  private Logger logger = Logger.getLogger(getClass());
-
   /**
    * This function only serialize schema content, and the caller will be charge of
    * storing schema id as part of file path.

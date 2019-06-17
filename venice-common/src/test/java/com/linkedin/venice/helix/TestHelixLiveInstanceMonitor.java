@@ -35,7 +35,7 @@ public class TestHelixLiveInstanceMonitor {
 
   @AfterMethod
   public void zkCleanup() {
-    zkClient.deleteRecursive(clusterPath);
+    zkClient.deleteRecursively(clusterPath);
     zkClient.close();
     zkServerWrapper.close();
     helixLiveInstanceMonitor.clear();

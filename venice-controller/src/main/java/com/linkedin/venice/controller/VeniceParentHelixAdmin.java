@@ -51,6 +51,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
@@ -1232,6 +1233,11 @@ public class VeniceParentHelixAdmin implements Admin {
           clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
       logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
+      //if we find this is a duplicate schema, return the existing schema id
+      if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+        return new SchemaEntry(veniceHelixAdmin.getValueSchemaId(clusterName, storeName, valueSchemaStr), valueSchemaStr);
+      }
+
       ValueSchemaCreation valueSchemaCreation = (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
       valueSchemaCreation.clusterName = clusterName;
       valueSchemaCreation.storeName = storeName;
@@ -1259,7 +1265,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
     throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 

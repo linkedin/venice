@@ -173,7 +173,14 @@ public interface Admin extends AutoCloseable, Closeable {
 
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType);
 
-    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType);
+    /**
+     * This method skips most of precondition checks and is intended for only internal use.
+     * Code from outside should call
+     * {@link #addValueSchema(String, String, String, DirectionalSchemaCompatibilityType)} instead.
+     *
+     * TODO: make it private and remove from the interface list
+     */
+    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
 
     void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 

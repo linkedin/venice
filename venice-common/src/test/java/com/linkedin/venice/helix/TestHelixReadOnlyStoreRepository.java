@@ -55,7 +55,7 @@ public class TestHelixReadOnlyStoreRepository {
   public void zkCleanup() {
     repo.clear();
     writeRepo.clear();
-    zkClient.deleteRecursive(clusterPath);
+    zkClient.deleteRecursively(clusterPath);
     zkClient.close();
     zkServerWrapper.close();
   }

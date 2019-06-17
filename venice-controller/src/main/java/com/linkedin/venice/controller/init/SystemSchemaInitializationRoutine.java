@@ -44,7 +44,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
       try {
         Pair<String, String> clusterNameAndD2 = admin.discoverCluster(systemStoreName);
         String cluster = clusterNameAndD2.getFirst();
-        if (cluster.equals(intendedCluster)) {
+        if (!cluster.equals(intendedCluster)) {
           LOGGER.warn("The system store for '" + protocolDefinition.name() + "' already exists in cluster '"
               + cluster + "', which is inconsistent with the config '" + CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME
               + "' which specifies that it should be in cluster '" + intendedCluster
@@ -105,8 +105,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
                 clusterToInit,
                 systemStoreName,
                 schemaInLocalResources.toString(),
-                schemaVersion,
-                DirectionalSchemaCompatibilityType.BACKWARD);
+                schemaVersion);
           } catch (Exception e) {
             LOGGER.error("Caught Exception when attempting to register '" + protocolDefinition.name()
                 + "' schema version '" + schemaVersion + "'. Will bubble up.");

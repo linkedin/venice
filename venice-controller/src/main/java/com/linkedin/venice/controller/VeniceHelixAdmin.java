@@ -14,7 +14,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
@@ -43,6 +42,7 @@ import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -2232,61 +2232,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-        checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-            clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr,
+        DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+        checkControllerMastership(clusterName);
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
+
+        //if we find this is a duplicate schema, return the existing schema id
+        if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+            return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
+        }
+
+        return schemaEntry;
     }
 
     @Override
-    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-        checkPreConditionForAddValueSchemaAndGetNewSchemaId(
-            clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.addValueSchema(storeName, valueSchemaStr, schemaId, expectedCompatibilityType);
+    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+        checkControllerMastership(clusterName);
+        return getVeniceHelixResource(clusterName).getSchemaRepository()
+            .addValueSchema(storeName, valueSchemaStr, schemaId);
     }
 
-  /**
-   * This function will check whether the provided schema is good to add to the provided store.
-   * If yes, it will return the value schema id to be used.
-   * @param clusterName
-   * @param storeName
-   * @param valueSchemaStr
-   * @return
-   */
-    protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
+        String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        if (!repository.hasStore(storeName)) {
-            throw new VeniceNoStoreException(storeName);
-        }
-        SchemaEntry newValueSchemaWithInvalidId = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
-        // Make sure the value schema doesn't contain the reserved field name in the top level.
-        if (null != newValueSchemaWithInvalidId.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
-            throw new VeniceException("Field name: " + VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + " is reserved,"
-                + " please don't use it in the value schema");
-        }
-        // Check compatibility
-        Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
-        int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-        for (SchemaEntry entry : valueSchemas) {
-            // Idempotent
-            if (entry.equals(newValueSchemaWithInvalidId)) {
-                return entry.getId();
-            }
-            if (!entry.isNewSchemaCompatible(newValueSchemaWithInvalidId, expectedCompatibilityType)) {
-                throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);
-            }
-            if (entry.getId() > maxValueSchemaId) {
-                maxValueSchemaId = entry.getId();
-            }
-        }
-        if (SchemaData.INVALID_VALUE_SCHEMA_ID == maxValueSchemaId) {
-            return HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-        } else {
-            return maxValueSchemaId + 1;
-        }
+        return getVeniceHelixResource(clusterName).getSchemaRepository()
+            .preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, expectedCompatibilityType);
     }
 
     @Override

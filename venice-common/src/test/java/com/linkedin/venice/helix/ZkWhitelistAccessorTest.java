@@ -28,7 +28,7 @@ public class ZkWhitelistAccessorTest {
 
   @AfterMethod
   public void cleanup() {
-    zkClient.deleteRecursive(HelixUtils.getHelixClusterZkPath(cluster));
+    zkClient.deleteRecursively(HelixUtils.getHelixClusterZkPath(cluster));
     zkClient.close();
     zkServerWrapper.close();
   }

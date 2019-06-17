@@ -1,53 +1,89 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.VeniceConstants;
+import com.linkedin.venice.exceptions.SchemaDuplicateException;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Pair;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
-import org.apache.helix.AccessOption;
-import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
-import javax.validation.constraints.NotNull;
 import java.util.Collection;
 
 /**
  * This class is used to add schema entries for stores.
+ * There are 3 types of schema entries
+ *
+ * 1. Key schema
+ *    ZK Path: ${cluster_name}/Stores/${store_name}/key-schema/1
+ *    Each store only has 1 key schema and the schema is immutable.
+ *
+ * 2. Value schema
+ *    ZK Path: ${cluster_name}/Stores/${store_name}/value-schema/${value_schema_id}
+ *    Value schemas are evolvable. Stores can have multiple value schemas and each
+ *    value schema is forwards/backwards compatible with others.
+ * 3. Derived schema
+ *    ZK Path: ${cluster_name}/Stores/${store_name}/derived-schema/${value_schema_id}_${derived_schema_id}
+ *    Each value schema can have multiple derived schemas. check out
+ *    {@link com.linkedin.venice.schema.DerivedSchemaEntry} for more
+ *    details.
+ *
+ * Check out {@link SchemaEntrySerializer} and {@link DerivedSchemaEntrySerializer}
+ * to see how schemas are ser-ded.
+ *
+ * ReadWriteSchemaRepository doesn't cache existing schemas locally and it always
+ * queries ZK for currently values. This is a different behavior compared to
+ * {@link com.linkedin.venice.meta.ReadOnlyStoreRepository} where values always
+ * get cached and future update callbacks are registered.
+ *
+ * Notice: Users should not instantiate this class elsewhere than in the leader
+ * Controller and there should be always only 1 ReadWriteSchemaRepository per cluster.
+ * Instantiating multiple ReadWriteSchemaRepository will lead to race conditions in
+ * ZK.
  */
 public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
   private Logger logger = Logger.getLogger(HelixReadWriteSchemaRepository.class);
 
-  private ZkBaseDataAccessor<SchemaEntry> dataAccessor;
+  private final HelixSchemaAccessor accessor;
 
   // Store repository to check store related info
   private ReadWriteStoreRepository storeRepository;
 
-  // Venice cluster name
-  private String clusterName;
-
-  public HelixReadWriteSchemaRepository(@NotNull ReadWriteStoreRepository storeRepository,
-                                        @NotNull ZkClient zkClient,
-                                        @NotNull HelixAdapterSerializer adapter,
-                                        @NotNull String clusterName) {
-    // Comment out store repo refresh for now, need to revisit it later.
-    //storeRepository.refresh();
+  public HelixReadWriteSchemaRepository(ReadWriteStoreRepository storeRepository, ZkClient zkClient,
+      HelixAdapterSerializer adapter, String clusterName) {
     this.storeRepository = storeRepository;
-    this.clusterName = clusterName;
-    // Register schema serializer
-    HelixReadOnlySchemaRepository.registerSerializerForSchema(clusterName, zkClient, adapter);
-    this.dataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
 
-    // Register store data change listener
     storeRepository.registerStoreDataChangedListener(this);
+  }
+
+  /**
+   * Create derived schema parent path if it's not existing. This is a migration
+   * method that converts all existing store to be "write-computable". We only
+   * need to create once and the method can be removed later when all of the stores
+   * are all migrated.
+   */
+  private void createDerivedSchemaParentPathIfNotExisting(String storeName) {
+    if (!accessor.isDerivedSchemaParentPathExisting(storeName)) {
+      accessor.createDerivedSchemaPath(storeName);
+    }
   }
 
   /**
@@ -55,19 +91,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * Fetch from zookeeper directly.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
-   *
-   * @param storeName
    * @return
    *    null if key schema doesn't exist;
    *    schema entry if exists;
    */
   @Override
   public SchemaEntry getKeySchema(String storeName) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName, clusterName);
-    }
-    String keySchemaPath = HelixReadOnlySchemaRepository.getKeySchemaPath(clusterName, storeName);
-    return dataAccessor.get(keySchemaPath, null, AccessOption.PERSISTENT);
+    preCheckStoreCondition(storeName);
+
+    return accessor.getKeySchema(storeName);
   }
 
   /**
@@ -75,21 +107,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * Fetch from zookeeper directly.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
-   *
-   * @param storeName
-   * @param id
    * @return
    *    null if the schema doesn't exist;
    *    schema entry if exists;
    */
   @Override
   public SchemaEntry getValueSchema(String storeName, int id) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
-    }
-    String valueSchemaPath = HelixReadOnlySchemaRepository.getValueSchemaPath(clusterName,
-        storeName, Integer.toString(id));
-    return dataAccessor.get(valueSchemaPath, null, AccessOption.PERSISTENT);
+    preCheckStoreCondition(storeName);
+
+    return accessor.getValueSchema(storeName, String.valueOf(id));
   }
 
   /**
@@ -97,9 +123,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * Fetch from zookeeper directly.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
-   *
-   * @param storeName
-   * @param id
    * @return
    *    null if the schema doesn't exist;
    *    schema entry if exists;
@@ -115,18 +138,13 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    * @throws {@link org.apache.avro.SchemaParseException} if the schema is invalid;
-   *
-   * @param storeName
-   * @param valueSchemaStr
    * @return
    *    {@link com.linkedin.venice.schema.SchemaData#INVALID_VALUE_SCHEMA_ID}, if the schema doesn't exist in the given store;
    *    schema id (int), if the schema exists in the given store;
    */
   @Override
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
-    }
+    preCheckStoreCondition(storeName);
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
     SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
     List<SchemaEntry> canonicalizedMatches = AvroSchemaUtils.filterCanonicalizedSchemas(valueSchemaEntry, valueSchemas);
@@ -161,17 +179,12 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * Fetch from zookeeper directly.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
-   *
-   * @param storeName
-   * @return
    */
   @Override
   public Collection<SchemaEntry> getValueSchemas(String storeName) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
-    }
-    String valueSchemaParentPath = HelixReadOnlySchemaRepository.getValueSchemaParentPath(clusterName, storeName);
-    return dataAccessor.getChildren(valueSchemaParentPath, null, AccessOption.PERSISTENT);
+    preCheckStoreCondition(storeName);
+
+    return accessor.getAllValueSchemas(storeName);
   }
 
   @Override
@@ -188,6 +201,18 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return latestSchema;
   }
 
+  @Override
+  public DerivedSchemaEntry getLatestDerivedSchema(String storeName, int valueSchemaId) {
+    preCheckStoreCondition(storeName);
+    List<DerivedSchemaEntry> derivedSchemaList = getDerivedSchemaMap(storeName).get(valueSchemaId);
+
+    if (derivedSchemaList == null || derivedSchemaList.isEmpty()) {
+      throw new VeniceException("No derived schema found corresponding to store: " + storeName);
+    }
+
+    return derivedSchemaList.stream().max(Comparator.comparing(DerivedSchemaEntry::getId)).get();
+  }
+
   /**
    * Set up key schema for the given store.
    *
@@ -195,33 +220,24 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * @throws {@link com.linkedin.venice.exceptions.StoreKeySchemaExistException}, if key schema already exists;
    * @throws {@link org.apache.avro.SchemaParseException}, if key schema is invalid;
    * @throws {@link com.linkedin.venice.exceptions.VeniceException}, if zookeeper update fails;
-   *
-   * @param storeName
-   * @param schemaStr
-   * @return
    */
   @Override
   public SchemaEntry initKeySchema(String storeName, String schemaStr) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
-    }
-    SchemaEntry keySchema = new SchemaEntry(Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID), schemaStr);
+    preCheckStoreCondition(storeName);
+
+    SchemaEntry keySchemaEntry = new SchemaEntry(Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID), schemaStr);
     SchemaEntry existingKeySchema = getKeySchema(storeName);
+
     if (null != existingKeySchema) {
-      if (existingKeySchema.equals(keySchema)) {
+      if (existingKeySchema.equals(keySchemaEntry)) {
         return existingKeySchema;
       } else {
         throw StoreKeySchemaExistException.newExceptionForStore(storeName);
       }
     }
-    boolean ret = dataAccessor.create(HelixReadOnlySchemaRepository.getKeySchemaPath(clusterName, storeName),
-        keySchema, AccessOption.PERSISTENT);
-    if (!ret) {
-      throw new VeniceException("Failed to set key schema: " + keySchema + " for store: " + storeName);
-    }
-    logger.info("Setup key schema: " + schemaStr + " for store: " + storeName);
 
-    return keySchema;
+    accessor.createKeySchema(storeName, keySchemaEntry);
+    return keySchemaEntry;
   }
 
   /**
@@ -232,97 +248,144 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * @throws {@link SchemaIncompatibilityException}, if the new schema is
    *  incompatible with the previous value schemas;
    * @throws {@link com.linkedin.venice.exceptions.VeniceException}, if updating zookeeper fails;
-   *
-   * @param storeName
-   * @param schemaStr
-   * @return
-   *    schema entry if the schema is successfully added or already exists.
+   * @return schema entry if the schema is successfully added or already exists.
    */
   @Override
-  public SchemaEntry addValueSchema(String storeName, String schemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
-    }
-    SchemaEntry newValueSchemaWithInvalidId = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaStr);
-    Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
-    int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
-    for (SchemaEntry entry : valueSchemas) {
-      if (entry.equals(newValueSchemaWithInvalidId)) {
-        return entry;
-      }
-      if (!entry.isNewSchemaCompatible(newValueSchemaWithInvalidId, expectedCompatibilityType)) {
-        throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);
-      }
-      int entryId = entry.getId();
-      if (entryId > maxValueSchemaId) {
-        maxValueSchemaId = entryId;
-      }
-    }
-    int newValueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    if (SchemaData.INVALID_VALUE_SCHEMA_ID != maxValueSchemaId) {
-      newValueSchemaId = maxValueSchemaId + 1;
-    }
-    SchemaEntry newValueSchema = new SchemaEntry(newValueSchemaId, newValueSchemaWithInvalidId.getSchema());
-    String newValueSchemaPath = HelixReadOnlySchemaRepository.getValueSchemaPath(clusterName,
-        storeName, Integer.toString(newValueSchemaId));
-    boolean ret = dataAccessor.create(newValueSchemaPath, newValueSchema, AccessOption.PERSISTENT);
-    if (!ret) {
-      throw new VeniceException("Failed to create value schema: " + schemaStr + " for store: " + storeName);
-    }
-    logger.info("Add value schema: " + newValueSchema.toString() + " for store: " + storeName);
-
-    return newValueSchema;
+  public synchronized SchemaEntry addValueSchema(String storeName, String schemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    return addValueSchema(storeName, schemaStr, preCheckValueSchemaAndGetNextAvailableId(storeName, schemaStr, expectedCompatibilityType));
   }
 
   @Override
-  public SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
-    if (!storeRepository.hasStore(storeName)) {
-      throw new VeniceNoStoreException(storeName);
-    }
+  public synchronized SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
     SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
-    Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
-    for (SchemaEntry entry : valueSchemas) {
-      // If the new schema is not compatible with existing schema, here still throw an exception
-      /**
-       * TODO: Consider removing this check, since it is already performed prior to calling this in
-       * {@link com.linkedin.venice.controller.VeniceHelixAdmin#checkPreConditionForAddValueSchemaAndGetNewSchemaId()}
-       */
-      if (!entry.isNewSchemaCompatible(newValueSchemaEntry, expectedCompatibilityType)) {
-        throw new SchemaIncompatibilityException(entry, newValueSchemaEntry);
-      }
+
+    if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      logger.info("Value schema is already existing. Skip adding it to repository. Schema: " + schemaStr);
+    } else {
+      accessor.addValueSchema(storeName, newValueSchemaEntry);
     }
-    String newValueSchemaPath = HelixReadOnlySchemaRepository.getValueSchemaPath(clusterName,
-        storeName, Integer.toString(schemaId));
-    boolean ret = dataAccessor.set(newValueSchemaPath, newValueSchemaEntry, AccessOption.PERSISTENT);
-    if (!ret) {
-      throw new VeniceException("Failed to set value schema: " + schemaStr + " for store: " + storeName);
-    }
-    logger.info("Setup value schema: " + newValueSchemaEntry.toString() + " with schema id: "
-        + schemaId + " for store: " + storeName);
 
     return newValueSchemaEntry;
   }
 
   /**
-   * Create schema parent node when store node is firstly created in Zookeeper.
+   * Check if the incoming schema is a valid schema and return the next available schema ID.
    *
-   * @param store
+   * Venice pre-checks 3 things:
+   * 1. If the store is existing or not
+   * 2. If the incoming schema contains any reserved fields
+   * 3. If the incoming schema is duplicate with current's.
+   *
+   * @return next available ID if it's a valid schema or {@link SchemaData#DUPLICATE_VALUE_SCHEMA_CODE}
+   * if it's a duplicate
+   */
+  public int preCheckValueSchemaAndGetNextAvailableId(String storeName, String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    preCheckStoreCondition(storeName);
+
+    SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
+
+    // Make sure the value schema doesn't contain the reserved field name in the top level.
+    if (valueSchemaEntry.getSchema().getType() == Schema.Type.RECORD &&
+        null != valueSchemaEntry.getSchema().getField(VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME)) {
+      throw new VeniceException("Field name: " + VeniceConstants.VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME + " is reserved,"
+          + " please don't use it in the value schema");
+    }
+
+    return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
+  }
+
+  @Override
+  public DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId) {
+    preCheckStoreCondition(storeName);
+
+    DerivedSchemaEntry newDerivedSchemaEntry =
+        new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, schemaStr);
+    return addDerivedSchema(storeName, schemaStr, valueSchemaId,
+        getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId), newDerivedSchemaEntry, DirectionalSchemaCompatibilityType.FULL));
+  }
+
+  @Override
+  public DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId, int derivedSchemaId) {
+    DerivedSchemaEntry newDerivedSchemaEntry =
+        new DerivedSchemaEntry(valueSchemaId, derivedSchemaId, schemaStr);
+
+    if (derivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+      logger.info("derived schema is already existing. Skip adding it to repository. Schema: " + schemaStr);
+    } else {
+      accessor.addDerivedSchema(storeName, newDerivedSchemaEntry);
+    }
+
+    return newDerivedSchemaEntry;
+  }
+
+  private int getNextAvailableSchemaId(Collection<? extends SchemaEntry> schemaEntries, SchemaEntry newSchemaEntry,
+      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
+    int newValueSchemaId;
+    try {
+      if (schemaEntries.isEmpty()) {
+        newValueSchemaId = HelixSchemaAccessor.VALUE_SCHEMA_STARTING_ID;
+      } else {
+        newValueSchemaId = schemaEntries.stream().map(schemaEntry -> {
+          if (schemaEntry.equals(newSchemaEntry)) {
+            throw new SchemaDuplicateException(schemaEntry, newSchemaEntry);
+          }
+          if (!schemaEntry.isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType)) {
+            throw new SchemaIncompatibilityException(schemaEntry, newSchemaEntry);
+          }
+
+          return schemaEntry.getId();
+        }).max(Integer::compare).get() + 1;
+      }
+    } catch (SchemaDuplicateException e) {
+      logger.warn(e.getMessage());
+      newValueSchemaId = SchemaData.DUPLICATE_VALUE_SCHEMA_CODE;
+    }
+
+    return newValueSchemaId;
+  }
+
+  @Override
+  public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
+    Schema derivedSchema = Schema.parse(derivedSchemaStr);
+    Pair<Integer, Integer> derivedSchemaIdPair =
+        new Pair<>(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
+
+    for (DerivedSchemaEntry derivedSchemaEntry : getDerivedSchemaMap(storeName).values().stream()
+        .flatMap(List::stream).collect(Collectors.toList())) {
+      if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
+        derivedSchemaIdPair.create(derivedSchemaEntry.getValueSchemaId(), derivedSchemaEntry.getId());
+        return derivedSchemaIdPair;
+      }
+    }
+
+    return derivedSchemaIdPair;
+  }
+
+  private Map<Integer, List<DerivedSchemaEntry>> getDerivedSchemaMap(String storeName) {
+    preCheckStoreCondition(storeName);
+
+    Map<Integer, List<DerivedSchemaEntry>> derivedSchemaEntryMap = new HashMap<>();
+    accessor.getAllDerivedSchemas(storeName).forEach(derivedSchemaEntry ->
+      derivedSchemaEntryMap.computeIfAbsent(derivedSchemaEntry.getValueSchemaId(), id -> new ArrayList<>())
+          .add(derivedSchemaEntry));
+
+    return derivedSchemaEntryMap;
+  }
+
+  /**
+   * Create schema parent node when store node is firstly created in Zookeeper.
    */
   @Override
   public void handleStoreCreated(Store store) {
-    // Create key-schema/value-schema folder
+    // Create key-schema, value-schema and derived-schema parent path
     String storeName = store.getName();
-    dataAccessor.create(HelixReadOnlySchemaRepository.getKeySchemaParentPath(clusterName, storeName),
-        null, AccessOption.PERSISTENT);
-    dataAccessor.create(HelixReadOnlySchemaRepository.getValueSchemaParentPath(clusterName, storeName),
-        null, AccessOption.PERSISTENT);
-    logger.info("Create key-schema/value-schema folder for store: " + storeName);
+    accessor.createKeySchemaPath(storeName);
+    accessor.createValueSchemaPath(storeName);
+    accessor.createDerivedSchemaPath(storeName);
   }
 
   /**
    * Do nothing for store deletion, since it will recursively remove all the related schema.
-   *
-   * @param storeName
    */
   @Override
   public void handleStoreDeleted(String storeName) {
@@ -334,11 +397,21 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
 
   @Override
   public void refresh() {
-
+    //Check and create derived schema parent path for all existing stores
+    //Notice: We should make sure that store metadata repo is refreshed
+    //prior to schema repo. Otherwise, there woould be a chance to lose
+    //some of stores.
+    //TODO: this is more like a migration method. Remove this method after all stores have derived schema path.
+    storeRepository.getAllStores().forEach(store -> createDerivedSchemaParentPathIfNotExisting(store.getName()));
   }
 
   @Override
   public void clear() {
+  }
 
+  private void preCheckStoreCondition(String storeName) {
+    if (!storeRepository.hasStore(storeName)) {
+      throw new VeniceNoStoreException(storeName);
+    }
   }
 }

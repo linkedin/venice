@@ -1,8 +1,10 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -17,13 +19,20 @@ public final class SchemaData {
   private SchemaEntry keySchema;
   private SortedMap<Integer, SchemaEntry> valueSchemaMap;
   private Map<SchemaEntry, Integer> valueSchemaRMap;
+  private Map<Pair<Integer, Integer>, DerivedSchemaEntry> derivedSchemaMap;
+  private Map<DerivedSchemaEntry, Pair<Integer, Integer>> derivedSchemaRMap;
 
+  public static int UNKNOWN_SCHEMA_ID = 0;
   public static int INVALID_VALUE_SCHEMA_ID = -1;
+  public static int DUPLICATE_VALUE_SCHEMA_CODE = -2;
 
   public SchemaData(String storeName) {
     this.storeName = storeName;
     valueSchemaMap = new TreeMap<>();
     valueSchemaRMap = new HashMap<>();
+
+    derivedSchemaMap = new HashMap<>();
+    derivedSchemaRMap = new HashMap<>();
   }
 
   public String getStoreName() {
@@ -43,22 +52,44 @@ public final class SchemaData {
   }
 
   public void addValueSchema(SchemaEntry valueSchema) {
-    // value schema should be unique in store level, same as schema id
+    //value schema should be unique in store level, same as schema id
     Integer id = new Integer(valueSchema.getId());
     valueSchemaMap.put(id, valueSchema);
     valueSchemaRMap.put(valueSchema, id);
+  }
+
+  public DerivedSchemaEntry getDerivedSchema(int valueSchemaId, int derivedSchemaId) {
+    return derivedSchemaMap.get(new Pair<>(valueSchemaId, derivedSchemaId));
+  }
+
+  public Collection<DerivedSchemaEntry> getDerivedSchemas() {
+    return derivedSchemaMap.values();
+  }
+
+  public Pair<Integer, Integer> getDerivedSchemaId(DerivedSchemaEntry entry) {
+    if (derivedSchemaRMap.containsKey(entry)) {
+      return derivedSchemaRMap.get(entry);
+    }
+
+    return new Pair<>(INVALID_VALUE_SCHEMA_ID, INVALID_VALUE_SCHEMA_ID);
+  }
+
+  public void addDerivedSchema(DerivedSchemaEntry derivedSchemaEntry) {
+    Pair<Integer, Integer> derivedSchemaId = new Pair<>(derivedSchemaEntry.getValueSchemaId(), derivedSchemaEntry.getId());
+    derivedSchemaMap.put(derivedSchemaId, derivedSchemaEntry);
+    derivedSchemaRMap.put(derivedSchemaEntry, derivedSchemaId);
   }
 
   public int getMaxValueSchemaId() {
     if (valueSchemaMap.isEmpty()) {
       return INVALID_VALUE_SCHEMA_ID;
     }
-    return valueSchemaMap.lastKey().intValue();
+    return valueSchemaMap.lastKey();
   }
 
   public int getSchemaID(SchemaEntry entry) {
     if (valueSchemaRMap.containsKey(entry)) {
-      return valueSchemaRMap.get(entry).intValue();
+      return valueSchemaRMap.get(entry);
     }
     return INVALID_VALUE_SCHEMA_ID;
   }

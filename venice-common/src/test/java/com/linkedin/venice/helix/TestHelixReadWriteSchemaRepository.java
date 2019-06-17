@@ -29,6 +29,7 @@ public class TestHelixReadWriteSchemaRepository {
   private ZkServerWrapper zkServerWrapper;
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 
+  HelixSchemaAccessor accessor;
   HelixReadWriteStoreRepository storeRepo;
   HelixReadWriteSchemaRepository schemaRepo;
 
@@ -40,6 +41,7 @@ public class TestHelixReadWriteSchemaRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
+    accessor = new HelixSchemaAccessor(zkClient, adapter, cluster);
     storeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
     storeRepo.refresh();
     schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster);
@@ -47,7 +49,7 @@ public class TestHelixReadWriteSchemaRepository {
 
   @AfterMethod
   public void zkCleanup() {
-    zkClient.deleteRecursive(clusterPath);
+    zkClient.deleteRecursively(clusterPath);
     zkClient.close();
     zkServerWrapper.close();
   }
@@ -62,16 +64,16 @@ public class TestHelixReadWriteSchemaRepository {
     // Create store first
     String storeName = "test_store1";
     createStore(storeName);
-    String keySchemaFolderPath = HelixReadOnlySchemaRepository.getKeySchemaParentPath(cluster, storeName);
-    String valueSchemaFolderPath = HelixReadOnlySchemaRepository.getValueSchemaParentPath(cluster, storeName);
+    String keySchemaFolderPath = accessor.getKeySchemaParentPath(storeName);
+    String valueSchemaFolderPath = accessor.getValueSchemaParentPath(storeName);
     Assert.assertTrue(zkClient.exists(keySchemaFolderPath));
     Assert.assertTrue(zkClient.exists(valueSchemaFolderPath));
     // Set key schema
     String keySchemaStr = "\"string\"";
     SchemaEntry keySchema = schemaRepo.initKeySchema(storeName, keySchemaStr);
-    Assert.assertTrue(zkClient.exists(HelixReadOnlySchemaRepository.getKeySchemaPath(cluster, storeName)));
+    Assert.assertTrue(zkClient.exists(accessor.getKeySchemaPath(storeName)));
     Assert.assertNotNull(keySchema);
-    Assert.assertEquals(keySchema.getId(), Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID));
+    Assert.assertEquals(keySchema.getId(), Integer.parseInt(HelixSchemaAccessor.KEY_SCHEMA_ID));
     Assert.assertEquals(keySchema.getSchema().toString(), keySchemaStr);
     Assert.assertEquals(schemaRepo.getKeySchema(storeName), keySchema);
     // Listener num should be 0 since it is a RW repo
@@ -300,10 +302,6 @@ public class TestHelixReadWriteSchemaRepository {
     createStore(storeName);
     schemaRepo.addValueSchema(storeName, valueSchemaStr, valueSchemaId);
     SchemaEntry valueSchemaEntry = schemaRepo.getValueSchema(storeName, valueSchemaId);
-    Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
-    // Add the same schema again with the same schema id
-    schemaRepo.addValueSchema(storeName, valueSchemaStr, valueSchemaId);
-    valueSchemaEntry = schemaRepo.getValueSchema(storeName, valueSchemaId);
     Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
     // Add the same schema with different schema id
     int newValueSchemaId = 11;
