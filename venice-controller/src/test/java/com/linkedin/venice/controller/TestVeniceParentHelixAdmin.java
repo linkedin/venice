@@ -300,7 +300,7 @@ public class TestVeniceParentHelixAdmin {
     .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -372,7 +372,7 @@ public class TestVeniceParentHelixAdmin {
           .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr);
       verify(veniceWriter)
           .put(any(), any(), anyInt());
-      verify(zkClient, times(2))
+      verify(zkClient, times(3))
           .readData(metadataPath, null);
       ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
       ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -472,7 +472,7 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -516,7 +516,7 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -557,7 +557,7 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -621,7 +621,7 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -662,7 +662,7 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -707,7 +707,7 @@ public class TestVeniceParentHelixAdmin {
         .truncateKafkaTopic(kafkaTopic);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -1375,7 +1375,7 @@ public class TestVeniceParentHelixAdmin {
     //test incremental push
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
-    verify(zkClient, times(2)).readData(zkMetadataNodePath, null);
+    verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -1457,7 +1457,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.deleteStore(clusterName, storeName, 0);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
-    verify(zkClient, times(2))
+    verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
