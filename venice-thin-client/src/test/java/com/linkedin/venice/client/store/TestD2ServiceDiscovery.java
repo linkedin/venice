@@ -15,19 +15,23 @@ public class TestD2ServiceDiscovery {
   public void testD2ServiceDiscovery() {
     String storeName = "test";
     ClientConfig clientConfig = ClientConfig.defaultGenericClientConfig(storeName);
-    ZkServerWrapper zk = ServiceFactory.getZkServer();
-    // Set up d2 config before announcing
-    D2TestUtils.setupD2Config(zk.getAddress(), false);
-    // Start a mock server which will serve for the d2 service.
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), false, new Properties());
-    // Set up client config to use the d2 service that router serving for
-    clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
-    // Find the d2 service for that store.
-    D2TransportClient client =new D2TransportClient(zk.getAddress(), router.getRouterD2Service(),
-        clientConfig.getD2BasePath(),
-        clientConfig.getD2ZkTimeout());
-    String d2ServiceName = new D2ServiceDiscovery().discoverD2Service(client, storeName);
-    Assert.assertEquals(d2ServiceName, router.getD2ServiceNameForCluster(router.getClusterName()),
-        "Should find the correct d2 service associated with the given cluster.");
+    try (ZkServerWrapper zk = ServiceFactory.getZkServer()) {
+      // Set up d2 config before announcing
+      D2TestUtils.setupD2Config(zk.getAddress(), false);
+      // Start a mock server which will serve for the d2 service.
+      try (MockVeniceRouterWrapper router =
+          ServiceFactory.getMockVeniceRouter(zk.getAddress(), false, new Properties())) {
+        // Set up client config to use the d2 service that router serving for
+        clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
+        // Find the d2 service for that store.
+        try (D2TransportClient client = new D2TransportClient(zk.getAddress(), router.getRouterD2Service(),
+            clientConfig.getD2BasePath(),
+            clientConfig.getD2ZkTimeout())) {
+          String d2ServiceName = new D2ServiceDiscovery().discoverD2Service(client, storeName);
+          Assert.assertEquals(d2ServiceName, router.getD2ServiceNameForCluster(router.getClusterName()),
+              "Should find the correct d2 service associated with the given cluster.");
+        }
+      }
+    }
   }
 }

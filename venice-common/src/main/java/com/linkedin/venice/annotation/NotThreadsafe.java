@@ -1,8 +1,7 @@
 package com.linkedin.venice.annotation;
 
 /**
- * Claims that a class is threadsafe or admonishes implementors of an interface
- * to ensure that their implementation is threadsafe.
+ * Warns that a class is not threadsafe.
  */
 public @interface NotThreadsafe {
 }
