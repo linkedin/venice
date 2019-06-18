@@ -1,6 +1,6 @@
 package com.linkedin.venice.writer;
 
-import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.annotation.Threadsafe;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -39,10 +39,8 @@ import org.apache.log4j.Logger;
 
 /**
  * Class which acts as the primary writer API.
- *
- * N.B.: Not intended for multi-threaded usage. If that becomes a use case, we need to revisit.
  */
-@NotThreadsafe
+@Threadsafe
 public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
   // log4j logger
@@ -238,9 +236,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public Future<RecordMetadata> delete(K key, Callback callback) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, keySerializer.serialize(topicName, key));
     int partition = getPartition(kafkaKey);
-    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.DELETE, partition);
-    kafkaValue.payloadUnion = new Delete();
-    return sendMessage(kafkaKey, kafkaValue, partition, callback);
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, new Delete(), partition, callback);
   }
 
   /**
@@ -276,13 +272,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.PUT, partition);
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(serializedValue);
     putPayload.schemaId = valueSchemaId;
-    kafkaValue.payloadUnion = putPayload;
 
-    return sendMessage(kafkaKey, kafkaValue, partition, callback);
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback);
   }
 
   @Override
@@ -364,28 +358,65 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     producer.flush();
   }
 
-  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
-    return sendMessage(key, value, partition, callback, true);
+  private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload, int partition, Callback callback) {
+    return sendMessage(keyProvider, messageType, payload, partition, callback, true);
   }
 
   /**
-   * @param updateCheckSum if true, the K/V content will be added to the partition's segment's checksum
-   *                       if false, the checksum update is omitted, which is the right thing to do during retries
+   * An interface which enables the key to contain parts of the {@param producerMetadata} within it, which is
+   * useful for control messages and chunked values.
    */
-  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback, boolean updateCheckSum) {
-    if (updateCheckSum) {
-      segmentsMap.get(partition).addToCheckSum(key, value);
+  private interface KeyProvider {
+    KafkaKey getKey(ProducerMetadata producerMetadata);
+  }
+
+  /**
+   * This is (and should remain!) the only function in the class which writes to Kafka. The synchronized locking
+   * is important, in that it ensures that DIV-related operations are performed atomically with the write to Kafka,
+   * which prevents ordering issues such as this one:
+   *
+   * - Thread A: calls sendMessage(msgA)
+   * - Thread A: increments sequence # (now at X)
+   * - Thread B: calls sendMessage(msgB)
+   * - Thread B: increments sequence # (now at X+1)
+   * - Thread B: produces (msgB, seq# X+1) into Kafka
+   * - Thread A: produces (msgA, seq# X) into Kafka
+   * - Consumer (in another process) sees: (msgB, seq# X+1) followed by (msgA, seq# X) which triggers a DIV issue
+   *
+   * P.S. 1: Callers which pass {@param updateDIV} == false for the purpose of retrying to produce the same message
+   *         should also be synchronized, since otherwise the retries could be interleaved with other messages which
+   *         have also updated the DIV.
+   *         @see {@link #sendControlMessage(ControlMessage, int, Map)}
+   *
+   * P.S. 2: If there is too much contention on this lock, then we can consider a finer locking strategy, where the
+   *         locking is per-partition, which would also be correct as far as DIV is concerned.
+   *
+   * @param updateDIV if true, the partition's segment's checksum will be updated and its sequence number incremented
+   *                  if false, the checksum and seq# update are omitted, which is the right thing to do during retries
+   */
+  private synchronized Future<RecordMetadata> sendMessage(
+      KeyProvider keyProvider,
+      MessageType messageType,
+      Object payload,
+      int partition,
+      Callback callback,
+      boolean updateDIV) {
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV);
+    kafkaValue.payloadUnion = payload;
+    KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
+    if (updateDIV) {
+      segmentsMap.get(partition).addToCheckSum(key, kafkaValue);
     }
     Callback messageCallback = callback;
     if (null == callback) {
-      messageCallback = new KafkaMessageCallback(key, value, logger);
+      messageCallback = new KafkaMessageCallback(key, kafkaValue, logger);
     } else if (callback instanceof CompletableFutureCallback) {
       CompletableFutureCallback completableFutureCallBack = (CompletableFutureCallback)callback;
       if (completableFutureCallBack.callback == null) {
-        completableFutureCallBack.callback = new KafkaMessageCallback(key, value, logger);
+        completableFutureCallBack.callback = new KafkaMessageCallback(key, kafkaValue, logger);
       }
     }
-    return producer.sendMessage(topicName, key, value, partition, messageCallback);
+    return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
   }
 
   /**
@@ -410,51 +441,50 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
     int numberOfChunks = (int) Math.ceil((double) serializedValue.length / (double) sizeAvailablePerMessage);
 
-    KafkaMessageEnvelope kafkaValueForFirstChunk = getKafkaMessageEnvelope(MessageType.PUT, partition);
-    ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
-    chunkedKeySuffix.isChunk = true;
-    chunkedKeySuffix.chunkId = new ChunkId();
-
-    // The ChunkId used as part of the key is based on the first message
-    chunkedKeySuffix.chunkId.producerGUID = kafkaValueForFirstChunk.producerMetadata.producerGUID;
-    chunkedKeySuffix.chunkId.segmentNumber = kafkaValueForFirstChunk.producerMetadata.segmentNumber;
-    chunkedKeySuffix.chunkId.messageSequenceNumber = kafkaValueForFirstChunk.producerMetadata.messageSequenceNumber;
-
-    ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
+    final ChunkedValueManifest chunkedValueManifest = new ChunkedValueManifest();
     chunkedValueManifest.schemaId = valueSchemaId;
     chunkedValueManifest.keysWithChunkIdSuffix = new ArrayList<>(numberOfChunks);
     chunkedValueManifest.size = serializedValue.length;
 
     int chunkStartByteIndex;
     int chunkEndByteIndex;
-    for (int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++) {
-      // Prepare key
-      chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
+    KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
+
+    /**
+     * This {@link ChunkedKeySuffix} instance gets mutated along the way, first in the loop, where its
+     * chunk index is incremented at each iteration, and then also on the first iteration of the loop,
+     * the {@link firstKeyProvider} will extract {@link ProducerMetadata} information out of the first
+     * message sent, to be re-used across all chunk keys belonging to this value.
+     */
+    final ChunkedKeySuffix chunkedKeySuffix = new ChunkedKeySuffix();
+    chunkedKeySuffix.isChunk = true;
+    chunkedKeySuffix.chunkId = new ChunkId();
+
+    subsequentKeyProvider = producerMetadata -> {
       ByteBuffer keyWithSuffix = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeChunkedKey(serializedKey, chunkedKeySuffix));
       chunkedValueManifest.keysWithChunkIdSuffix.add(keyWithSuffix);
-      KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyWithSuffix.array());
-
-      // Prepare value
-      KafkaMessageEnvelope chunkedKafkaValue;
-      if (chunkIndex == 0) {
-        /**
-         * For the very first chunk, we want to use the previously-defined {@link KafkaMessageEnvelope}
-         * because it contains the right producer metadata.
-         */
-        chunkedKafkaValue = kafkaValueForFirstChunk;
-      } else {
-        /**
-         * Further chunks beyond the first should get a new {@link KafkaMessageEnvelope} with fresh producer metadata.
-         */
-        chunkedKafkaValue = getKafkaMessageEnvelope(MessageType.PUT, partition);
-      }
+      return new KafkaKey(MessageType.PUT, keyWithSuffix.array());
+    };
+    firstKeyProvider = producerMetadata -> {
+      chunkedKeySuffix.chunkId.producerGUID = producerMetadata.producerGUID;
+      chunkedKeySuffix.chunkId.segmentNumber = producerMetadata.segmentNumber;
+      chunkedKeySuffix.chunkId.messageSequenceNumber = producerMetadata.messageSequenceNumber;
+      return subsequentKeyProvider.getKey(producerMetadata);
+    };
+    for (int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++) {
       chunkStartByteIndex = chunkIndex * sizeAvailablePerMessage;
       chunkEndByteIndex = Math.min((chunkIndex + 1) * sizeAvailablePerMessage, serializedValue.length);
       byte[] valueChunk = Arrays.copyOfRange(serializedValue, chunkStartByteIndex, chunkEndByteIndex);
       Put putPayload = new Put();
       putPayload.putValue = ByteBuffer.wrap(valueChunk);
       putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
-      chunkedKafkaValue.payloadUnion = putPayload;
+
+      chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
+      if (0 == chunkIndex) {
+        keyProvider = firstKeyProvider;
+      } else {
+        keyProvider = subsequentKeyProvider;
+      }
 
       try {
         /**
@@ -465,7 +495,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
          * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
          * such as timeout, retries and so on;
          */
-        sendMessage(kafkaKey, chunkedKafkaValue, partition, null).get();
+        sendMessage(keyProvider, MessageType.PUT, putPayload, partition, null).get();
       } catch (Exception e) {
         throw new VeniceException("Caught an exception while attempting to produce a chunk of a large value into Kafka... "
             + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, serializedKey, serializedValue), e);
@@ -473,12 +503,12 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
 
     // Now that we've sent all the chunks, we can take care of the final value, the manifest.
-    KafkaKey kafkaKeyForManifest = new KafkaKey(MessageType.PUT, keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey));
-    KafkaMessageEnvelope kafkaValueForManifest = getKafkaMessageEnvelope(MessageType.PUT, partition);
+    KeyProvider manifestKeyProvider = producerMetadata ->
+        new KafkaKey(MessageType.PUT, keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey));
+
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest));
     putPayload.schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
-    kafkaValueForManifest.payloadUnion = putPayload;
 
     if (putPayload.putValue.capacity() > sizeAvailablePerMessage) {
       // This is a very desperate edge case...
@@ -488,7 +518,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,
     // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    return sendMessage(kafkaKeyForManifest, kafkaValueForManifest, partition, callback);
+    return sendMessage(manifestKeyProvider, MessageType.PUT, putPayload, partition, callback);
   }
 
   private String getDetailedSizeReport(int chunkIndex, int numberOfChunks, int sizeAvailablePerMessage, byte[] serializedKey, byte[] serializedValue) {
@@ -571,32 +601,30 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    *
    * If the Kafka topic does not exist, this function will back off for {@link #sleepTimeMsWhenTopicMissing}
    * ms and try again for a total of {@link #maxAttemptsWhenTopicMissing} attempts. Note that this back off
-   * and retry behavior does not happen in {@link #sendMessage(KafkaKey, KafkaMessageEnvelope, int, Callback)}
+   * and retry behavior does not happen in {@link #sendMessage(KeyProvider, MessageType, Object, int, Callback)}
    * because that function returns a {@link Future}, and it is {@link Future#get()} which throws the relevant
    * exception. In any case, the topic should be seeded with a {@link ControlMessageType#START_OF_SEGMENT}
    * at first, and therefore, there should be no cases where a topic has not been created yet and we attempt
    * to write a data message first, prior to a control message. If a topic did disappear later on in the
    * {@link VeniceWriter}'s lifecycle, then it would be appropriate to let that {@link Future} fail.
    *
+   * This function is synchronized because if the retries need to be exercised, then it would cause a DIV failure
+   * if another message slipped in after the first attempt and before the eventually successful attempt.
+   *
    * @param controlMessage a {@link ControlMessage} instance to persist into Kafka.
    * @param partition the Kafka partition to write to.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
-  private void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo) {
+  private synchronized void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
     controlMessage.debugInfo = new HashMap<>(debugInfo);
-
-    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
-    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, partition);
-    kafkaValue.payloadUnion = controlMessage;
-    KafkaKey kafkaKey = getControlMessageKey(kafkaValue);
 
     int attempt = 1;
     boolean updateCheckSum = true;
     while (true) {
       try {
-        sendMessage(kafkaKey, kafkaValue, partition, null, updateCheckSum).get();
+        sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, partition, null, updateCheckSum).get();
         return;
       } catch (InterruptedException|ExecutionException e) {
         if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
@@ -634,16 +662,16 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * Kafka's Log Compaction. Since there is no key per say associated with control messages, we generate one
    * from the producer metadata, including: GUID, segment and sequence number.
 
-   * @param kafkaValue from which to derive the producer metadata necessary to generate the key.
+   * @param producerMetadata necessary to generate the key.
    * @return a {@link KafkaKey} guaranteed to be unique within its target partition.
    */
-  private KafkaKey getControlMessageKey(KafkaMessageEnvelope kafkaValue) {
+  private KafkaKey getControlMessageKey(ProducerMetadata producerMetadata) {
     return new KafkaKey(
         MessageType.CONTROL_MESSAGE,
         ByteBuffer.allocate(CONTROL_MESSAGE_KAFKA_KEY_LENGTH)
-            .put(kafkaValue.producerMetadata.producerGUID.bytes())
-            .putInt(kafkaValue.producerMetadata.segmentNumber)
-            .putInt(kafkaValue.producerMetadata.messageSequenceNumber)
+            .put(producerMetadata.producerGUID.bytes())
+            .putInt(producerMetadata.segmentNumber)
+            .putInt(producerMetadata.messageSequenceNumber)
             .array());
   }
 
@@ -657,7 +685,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * @param messageType an instance of the {@link MessageType} enum.
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
-  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition) {
+  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition, boolean incrementSequenceNumber) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = messageType.getValue();
@@ -666,7 +694,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     producerMetadata.producerGUID = producerGUID;
     Segment currentSegment = getSegment(partition);
     producerMetadata.segmentNumber = currentSegment.getSegmentNumber();
-    producerMetadata.messageSequenceNumber = currentSegment.getAndIncrementSequenceNumber();
+    if (incrementSequenceNumber) {
+      producerMetadata.messageSequenceNumber = currentSegment.getAndIncrementSequenceNumber();
+    } else {
+      producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
+    }
     producerMetadata.messageTimestamp = time.getMilliseconds();
     kafkaValue.producerMetadata = producerMetadata;
 
