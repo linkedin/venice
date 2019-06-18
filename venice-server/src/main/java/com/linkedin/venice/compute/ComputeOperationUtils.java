@@ -65,7 +65,7 @@ public class ComputeOperationUtils {
   private static List<Float> hadamardProduct(int size, FloatSupplierByIndex floatSupplier1, FloatSupplierByIndex floatSupplier2) {
     PrimitiveFloatList hadamardProductResult = new PrimitiveFloatList(size);
     for (int i = 0; i < size; i++) {
-      hadamardProductResult.add(floatSupplier1.get(i) * floatSupplier2.get(i));
+      hadamardProductResult.addPrimitive(floatSupplier1.get(i) * floatSupplier2.get(i));
     }
     return hadamardProductResult;
   }
