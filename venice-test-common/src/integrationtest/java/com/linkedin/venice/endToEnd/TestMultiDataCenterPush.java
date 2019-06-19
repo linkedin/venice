@@ -137,10 +137,7 @@ public class TestMultiDataCenterPush {
         JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(job.getKafkaTopic());
         Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
             "After job is complete, status should reflect that");
-        // In this test we are allowing the progress to not reach the full capacity, but we still want to make sure
-        // that most of the progress has completed
-        Assert.assertTrue(jobStatus.getMessagesConsumed()*1.5 > jobStatus.getMessagesAvailable(),
-            "Complete job should have progress");
+        // We won't verify progress any more here since we decided to disable this feature
       }
     }
 
