@@ -14,13 +14,15 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
   private int version;
   private String status;
   private String statusDetails;
+  private boolean availableFinal;
+  private Map<String, String> extraInfo;
+  private Map<String, String> extraDetails;
+
+  // The folllowing progress info won't be valid any more, and they could be removed eventually in the future.
   private long messagesConsumed;
   private long messagesAvailable;
   private Map<String, Long> perTaskProgress;
   private Map<Integer, Long> perPartitionCapacity;
-  private boolean availableFinal;
-  private Map<String, String> extraInfo;
-  private Map<String, String> extraDetails;
 
   public int getVersion() {
     return version;

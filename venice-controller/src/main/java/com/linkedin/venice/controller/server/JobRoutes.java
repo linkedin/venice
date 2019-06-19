@@ -10,8 +10,7 @@ import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Utils;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.Collections;
 import java.util.Optional;
 import org.apache.log4j.Logger;
 import spark.Route;
@@ -49,33 +48,15 @@ public class JobRoutes {
     Version version = new Version(store, versionNumber);
     String kafkaTopicName = version.kafkaTopicName();
 
-    //Available offsets
-    Map<Integer, Long> offsets;
-    try {
-      offsets = admin.getTopicManager().getLatestOffsets(kafkaTopicName);
-    } catch (Exception ex) {
-      logger.error("Failed to get latest offsets from Kafka for topic: " + kafkaTopicName, ex);
-      offsets = new HashMap<>();
-    }
-    int replicationFactor = admin.getReplicationFactor(cluster, store);
-    int clusterCount = admin.getDatacenterCount(cluster);
-    long aggregateOffsets = 0;
-    for (Long offset : offsets.values()) {
-      aggregateOffsets += offset * replicationFactor * clusterCount;
-    }
-    responseObject.setMessagesAvailable(aggregateOffsets);
-    responseObject.setPerPartitionCapacity(offsets);
-
-    //Current offsets
-    Map<String, Long> currentProgress = admin.getOfflinePushProgress(cluster, kafkaTopicName);
-    responseObject.setPerTaskProgress(currentProgress);
-
-    //Aggregated progress
-    long aggregatedProgress = 0L;
-    for (Long taskOffset : currentProgress.values()) {
-      aggregatedProgress += taskOffset;
-    }
-    responseObject.setMessagesConsumed(aggregatedProgress);
+    /**
+     * Offset progress is not being used by KafkaPushJob, and sometimes, it will timeout because of Kafka operation timeout
+     * while retrieving the latest offset.
+     * So we decided to disable this feature, TODO: might remove it completely in the future.
+     */
+    responseObject.setMessagesAvailable(-1);
+    responseObject.setPerPartitionCapacity(Collections.emptyMap());
+    responseObject.setMessagesConsumed(-1);
+    responseObject.setPerTaskProgress(Collections.emptyMap());
 
     /**
      * Job status
