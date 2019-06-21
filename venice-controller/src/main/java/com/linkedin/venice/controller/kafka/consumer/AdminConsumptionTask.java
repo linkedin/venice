@@ -85,7 +85,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * A {@link Map} of stores to admin operations belonging to each store. The corresponding kafka offset of each admin
    * operation is also attached as the first element of the {@link Pair}.
    */
-  private Map<String, Queue<Pair<Long, AdminOperation>>> storeAdminOperationsMapWithOffset;
+  private Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
   private Map<String, Long> problematicStores;
   private Queue<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> undelegatedRecords;
 
@@ -288,9 +288,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     List<Callable<Void>> tasks = new ArrayList<>();
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
-    for (Map.Entry<String, Queue<Pair<Long, AdminOperation>>> entry : storeAdminOperationsMapWithOffset.entrySet()) {
+    for (Map.Entry<String, Queue<AdminOperationWrapper>> entry : storeAdminOperationsMapWithOffset.entrySet()) {
       if (!entry.getValue().isEmpty()) {
-        if (checkOffsetToSkip(entry.getValue().peek().getFirst())) {
+        if (checkOffsetToSkip(entry.getValue().peek().getOffset())) {
           entry.getValue().poll();
         }
         tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(),
@@ -314,7 +314,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (result.isCancelled()) {
             if (lastSucceededExecutionIdMap.get(storeName).equals(newLastSucceededExecutionIdMap.get(storeName))) {
               // only mark the store problematic if it didn't make any progress.
-              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getFirst());
+              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset());
               logger.warn("Could not finish processing admin operations for store " + storeName + " in time");
               pendingAdminMessagesCount += storeAdminOperationsMapWithOffset.get(storeName).size();
               storesWithPendingAdminMessagesCount++;
@@ -324,7 +324,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               result.get();
               problematicStores.remove(storeName);
             } catch (ExecutionException e) {
-              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getFirst());
+              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset());
               pendingAdminMessagesCount += storeAdminOperationsMapWithOffset.get(storeName).size();
               storesWithPendingAdminMessagesCount++;
             }
@@ -429,7 +429,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     String storeName = extractStoreName(adminOperation);
     storeAdminOperationsMapWithOffset.putIfAbsent(storeName, new LinkedList<>());
-    storeAdminOperationsMapWithOffset.get(storeName).add(new Pair<>(record.offset(), adminOperation));
+    long producerTimestamp = kafkaValue.producerMetadata.messageTimestamp;
+    long brokerTimestamp = record.timestamp();
+    AdminOperationWrapper adminOperationWrapper = new AdminOperationWrapper(adminOperation, record.offset(),
+        producerTimestamp, brokerTimestamp, System.currentTimeMillis());
+    storeAdminOperationsMapWithOffset.get(storeName).add(adminOperationWrapper);
+    stats.recordAdminMessageMMLatency(Math.max(0,
+        adminOperationWrapper.getLocalBrokerTimestamp() - adminOperationWrapper.getProducerTimestamp()));
+    stats.recordAdminMessageDelegateLatency(Math.max(0,
+        adminOperationWrapper.getDelegateTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
     return executionId;
   }
 
