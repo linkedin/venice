@@ -30,8 +30,6 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
-import com.linkedin.venice.utils.Pair;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
@@ -44,6 +42,7 @@ import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask
  * This class is used to create {@link Callable} that execute {@link AdminOperation}s for a given store.
  */
 public class AdminExecutionTask implements Callable<Void> {
+
   /**
    * This logger is intended to be passed from the {@link AdminConsumptionTask} in order to produce logs with the
    * tag AdminConsumptionTask#CONSUMER_TASK_ID_FORMAT.
@@ -51,7 +50,7 @@ public class AdminExecutionTask implements Callable<Void> {
   private final Logger logger;
   private final String clusterName;
   private final String storeName;
-  private final Queue<Pair<Long, AdminOperation>> internalTopic;
+  private final Queue<AdminOperationWrapper> internalTopic;
   private final VeniceHelixAdmin admin;
   private final ExecutionIdAccessor executionIdAccessor;
   private final boolean isParentController;
@@ -64,7 +63,7 @@ public class AdminExecutionTask implements Callable<Void> {
       String clusterName,
       String storeName,
       long lastSucceededExecutionId,
-      Queue<Pair<Long, AdminOperation>> internalTopic,
+      Queue<AdminOperationWrapper> internalTopic,
       VeniceHelixAdmin admin,
       ExecutionIdAccessor executionIdAccessor,
       boolean isParentController,
@@ -83,16 +82,29 @@ public class AdminExecutionTask implements Callable<Void> {
   @Override
   public Void call() {
     while (!internalTopic.isEmpty() && admin.isMasterController(clusterName)) {
-      AdminOperation adminOperation = internalTopic.peek().getSecond();
-      long offset = internalTopic.peek().getFirst();
+      AdminOperationWrapper adminOperationWrapper = internalTopic.peek();
       try {
-        processMessage(adminOperation);
+        if (adminOperationWrapper.getStartProcessingTimestamp() == null) {
+          adminOperationWrapper.setStartProcessingTimestamp(System.currentTimeMillis());
+          stats.recordAdminMessageStartProcessingLatency(Math.max(0,
+              adminOperationWrapper.getStartProcessingTimestamp() - adminOperationWrapper.getLocalBrokerTimestamp()));
+        }
+        processMessage(adminOperationWrapper.getAdminOperation());
+        long completionTimestamp = System.currentTimeMillis();
+        long processLatency = Math.max(0, completionTimestamp - adminOperationWrapper.getStartProcessingTimestamp());
+        if (AdminMessageType.valueOf(adminOperationWrapper.getAdminOperation()) == AdminMessageType.ADD_VERSION) {
+          stats.recordAdminMessageProcessLatency(processLatency);
+        } else {
+          stats.recordAdminMessageProcessLatency(processLatency);
+        }
+        stats.recordAdminMessageTotalLatency(Math.max(0,
+            completionTimestamp - adminOperationWrapper.getProducerTimestamp()));
         internalTopic.poll();
       } catch (Exception e) {
         // Retry of the admin operation is handled automatically by keeping the failed admin operation inside the queue.
         // The queue with the problematic operation will be delegated and retried by the worker thread in the next cycle.
-        String logMessage = "when processing admin message for store " + storeName + " with offset " + offset
-            + " and execution id " + adminOperation.executionId;
+        String logMessage = "when processing admin message for store " + storeName + " with offset "
+            + adminOperationWrapper.getOffset() + " and execution id " + adminOperationWrapper.getAdminOperation().executionId;
         if (e instanceof VeniceRetriableException) {
           // These retriable exceptions are expected, therefore logging at the info level should be sufficient.
           stats.recordFailedRetriableAdminConsumption();

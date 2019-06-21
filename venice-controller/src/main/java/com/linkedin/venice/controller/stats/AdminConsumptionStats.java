@@ -17,6 +17,33 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
   final private Sensor adminConsumptionCycleDurationMsSensor;
   final private Sensor pendingAdminMessagesCountSensor;
   final private Sensor storesWithPendingAdminMessagesCountSensor;
+  /**
+   * The time it took MM to copy the message from parent to child controller's admin topic.
+   */
+  final private Sensor adminMessageMMLatencySensor;
+  /**
+   * The time difference between the message made available to the local topic and delegated to the in memory topic
+   * by the {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask}.
+   */
+  final private Sensor adminMessageDelegateLatencySensor;
+  /**
+   * The time difference between the message's delegated time and the first attempt to process the message.
+   */
+  final private Sensor adminMessageStartProcessingLatencySensor;
+  /**
+   * The time difference between the first attempt to process the message and when the message is fully processed. This
+   * includes the latency caused by failures/retries. This metric does not include process time for add version admin messages.
+   */
+  final private Sensor adminMessageProcessLatencySensor;
+  /**
+   * Similar to {@code adminMessageProcessLatencySensor} but specifically for add version admin messages.
+   */
+  final private Sensor adminMessageAddVersionProcessLatencySensor;
+  /**
+   * Total end to end latency from the time when the message was first generated in the parent controller to when it's
+   * fully processed in the child controller.
+   */
+  final private Sensor adminMessageTotalLatencySensor;
   private long adminConsumptionFailedOffset;
   /**
    * A gauge reporting the total number of pending admin messages remaining in the internal queue at the end of each
@@ -41,6 +68,13 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
         new Gauge(() -> pendingAdminMessagesCountGauge), new Avg(), new Min(), new Max());
     storesWithPendingAdminMessagesCountSensor = registerSensor("stores_with_pending_admin_messages_count",
         new Gauge(() -> storesWithPendingAdminMessagesCountGauge), new Avg(), new Min(), new Max());
+    adminMessageMMLatencySensor = registerSensor("admin_message_mm_latency_ms", new Avg(), new Max());
+    adminMessageDelegateLatencySensor = registerSensor("admin_message_delegate_latency_ms", new Avg(), new Max());
+    adminMessageStartProcessingLatencySensor = registerSensor("admin_message_start_processing_latency_ms", new Avg(), new Max());
+    adminMessageProcessLatencySensor = registerSensor("admin_message_process_latency_ms", new Avg(), new Max());
+    adminMessageAddVersionProcessLatencySensor = registerSensor("admin_message_add_version_process_latency_ms",
+        new Avg(), new Max());
+    adminMessageTotalLatencySensor = registerSensor("admin_message_total_latency_ms", new Avg(), new Max());
   }
 
   /**
@@ -76,5 +110,29 @@ public class AdminConsumptionStats extends AbstractVeniceStats {
 
   public void setAdminConsumptionFailedOffset(long adminConsumptionFailedOffset) {
     this.adminConsumptionFailedOffset = adminConsumptionFailedOffset;
+  }
+
+  public void recordAdminMessageMMLatency(double value) {
+    adminMessageMMLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageDelegateLatency(double value) {
+    adminMessageDelegateLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageStartProcessingLatency(double value) {
+    adminMessageStartProcessingLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageProcessLatency(double value) {
+    adminMessageProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageAddVersionProcessLatency(double value) {
+    adminMessageAddVersionProcessLatencySensor.record(value);
+  }
+
+  public void recordAdminMessageTotalLatency(double value) {
+    adminMessageTotalLatencySensor.record(value);
   }
 }
