@@ -541,13 +541,19 @@ public class TopicManager implements Closeable {
 
   /**
    * This method is synchronized because it calls #getConsumer()
+   *
+   * Here this function will only check whether the topic exists in Kafka Zookeeper or not.
+   * If stronger check against Kafka broker is required, the caller should call {@link #containsTopic(String)}
+   * before invoking this function. The reason of not checking topic existence by {@link #containsTopic(String)}
+   * by default since this function will validate whether every topic partition has ISR, which could
+   * fail {@link #getLatestOffset(String, int)} since some transient non-ISR could happen randomly.
    */
   public synchronized long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
     return getLatestOffset(getConsumer(), topic, partition, true);
   }
 
   private synchronized Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
-    if (doTopicCheck && !containsTopic(topic)) {
+    if (doTopicCheck && !containsTopicInKafkaZK(topic)) {
       throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
     }
     if (partition < 0) {
