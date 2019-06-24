@@ -46,6 +46,15 @@ public interface ComputeRequestBuilder<K> {
   ComputeRequestBuilder<K> cosineSimilarity(String inputFieldName, List<Float> cosSimilarityParam, String resultFieldName);
 
   /**
+   * Setup hadamard-product operation; if this api is invoked, use version 2 in the compute request version header.
+   * @param inputFieldName : top-level field in the value record as the input of hadamard-product operation
+   * @param hadamardProductParam : hadamard-product param
+   * @param resultFieldName : result field name in the response record
+   * @return
+   */
+  ComputeRequestBuilder<K> hadamardProduct(String inputFieldName, List<Float> hadamardProductParam, String resultFieldName);
+
+  /**
    * Send compute request to Venice, and this should be the last step of the compute specification.
    * @param keys : keys for the candidate records
    * @return

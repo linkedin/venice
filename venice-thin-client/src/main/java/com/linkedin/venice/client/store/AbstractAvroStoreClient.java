@@ -486,7 +486,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public ComputeRequestBuilder<K> compute(final Optional<ClientStats> stats, final Optional<ClientStats> streamingStats,
       final InternalAvroStoreClient computeStoreClient, final long preRequestTimeInNS)  {
-    return new AvroComputeRequestBuilderV1<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
+    return new AvroComputeRequestBuilderV2<>(getLatestValueSchema(), computeStoreClient, stats, streamingStats);
   }
 
 
@@ -496,7 +496,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return  computeRequestClientKeySerializer.serializeObjects(serializedKeyList, ByteBuffer.wrap(serializedComputeRequest));
   }
   /**
-   * This function is only being used by {@link AvroComputeRequestBuilderV1#execute(Set)}.
+   * This function is only being used by {@link AvroComputeRequestBuilderV2#execute(Set)}.
    *
    * @param computeRequestWrapper
    * @param keys
