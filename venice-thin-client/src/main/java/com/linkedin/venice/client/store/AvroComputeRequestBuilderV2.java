@@ -27,11 +27,10 @@ import static com.linkedin.venice.compute.protocol.request.enums.ComputeOperatio
  * and this class will invoke {@link AbstractAvroStoreClient} to send the 'compute' request to
  * backend.
  *
- * This class is public on purpose in order not to move integration tests to the client package;
- * we should move it back to package-private once compute request V2 becomes the default behavior.
+ * This class is package-private on purpose.
  * @param <K>
  */
-public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K> {
+class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBuilder<K> {
   private static final String HADAMARD_PRODUCT_SPEC = "hadamardProduct_spec";
 
   private static final Schema DOT_PRODUCT_RESULT_SCHEMA = Schema.createUnion(Arrays.asList(Schema.create(Schema.Type.NULL), Schema.create(Schema.Type.FLOAT)));
@@ -51,13 +50,7 @@ public class AvroComputeRequestBuilderV2<K> extends AbstractAvroComputeRequestBu
     super(latestValueSchema, storeClient, stats, streamingStats, time);
   }
 
-  /**
-   * Setup hadamard-product operation; if this api is invoked, use version 2 in the compute request version header.
-   * @param inputFieldName : top-level field in the value record as the input of hadamard-product operation
-   * @param hadamardProductParam : hadamard-product param
-   * @param resultFieldName : result field name in the response record
-   * @return
-   */
+  @Override
   public ComputeRequestBuilder<K> hadamardProduct(String inputFieldName, List<Float> hadamardProductParam, String resultFieldName)
       throws VeniceClientException {
     HadamardProduct hadamardProduct = (HadamardProduct) HADAMARD_PRODUCT.getNewInstance();

@@ -2,7 +2,6 @@ package com.linkedin.venice.storagenode;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.AvroComputeRequestBuilderV2;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -176,6 +175,7 @@ public class StorageNodeComputeTest {
             .project("id")
             .dotProduct("member_feature", p, "member_score")
             .cosineSimilarity("member_feature", cosP, "cosine_similarity_result")
+            .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
             .execute(keySet)
             /**
              * Added 2s timeout as a safety net as ideally each request should take sub-second.
@@ -187,41 +187,14 @@ public class StorageNodeComputeTest {
           // check projection result
           Assert.assertEquals(entry.getValue().get("id"), new Utf8(valuePrefix + keyIdx));
           // check dotProduct result; should be double for V1 request
-          Assert.assertEquals(entry.getValue().get("member_score"), (double)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+          Assert.assertEquals(entry.getValue().get("member_score"), (float)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
 
           // check cosine similarity result; should be double for V1 request
-          double dotProductResult = (double) cosP.get(0) * (float)(keyIdx + 1) + cosP.get(1) * (float)((keyIdx + 1) * 10);
-          double valueVectorMagnitude = Math.sqrt((double)((float)(keyIdx + 1) * (float)(keyIdx + 1) + ((float)(keyIdx + 1) * 10.0f) * ((float)(keyIdx + 1) * 10.0f)));
-          double parameterVectorMagnitude = Math.sqrt((double)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
-          double expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
-          Assert.assertEquals((double) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001d);
-        }
-
-        /**
-         * Test Compute Request V2 request using the same key set;
-         *
-         * Generate a V2 compute request builder directly; once V2 compute request becomes
-         * the default behavior, remove this change and use `storeClient.compute()` to generate
-         * V2 compute request builder.
-         */
-        if (! (storeClient instanceof InternalAvroStoreClient)) {
-          throw new VeniceException("storeClient is not an instance of InternalAvroStoreClient; instead, it's " + storeClient.getClass());
-        }
-        AvroComputeRequestBuilderV2<String> requestBuilderV2 =
-            new AvroComputeRequestBuilderV2(Schema.parse(valueSchemaForCompute), (InternalAvroStoreClient)storeClient, Optional.empty(), Optional.empty());
-        Map<String, GenericRecord> computeResultV2 = requestBuilderV2
-            .hadamardProduct("member_feature", hadamardP, "hadamard_product_result")
-            .dotProduct("member_feature", p, "member_score")
-            .execute(keySet)
-            /**
-             * Added 2s timeout as a safety net as ideally each request should take sub-second.
-             */
-            .get(2, TimeUnit.SECONDS);
-        Assert.assertEquals(computeResultV2.size(), 10);
-        for (Map.Entry<String, GenericRecord> entry : computeResultV2.entrySet()) {
-          int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
-          // check dotProduct result
-          Assert.assertEquals(entry.getValue().get("member_score"), (float)(p.get(0) * (keyIdx + 1) + p.get(1) * ((keyIdx + 1) * 10)));
+          float dotProductResult = (float) cosP.get(0) * (float)(keyIdx + 1) + cosP.get(1) * (float)((keyIdx + 1) * 10);
+          float valueVectorMagnitude = (float) Math.sqrt(((float)(keyIdx + 1) * (float)(keyIdx + 1) + ((float)(keyIdx + 1) * 10.0f) * ((float)(keyIdx + 1) * 10.0f)));
+          float parameterVectorMagnitude = (float) Math.sqrt((float)(cosP.get(0) * cosP.get(0) + cosP.get(1) * cosP.get(1)));
+          float expectedCosineSimilarity = dotProductResult / (parameterVectorMagnitude * valueVectorMagnitude);
+          Assert.assertEquals((float) entry.getValue().get("cosine_similarity_result"), expectedCosineSimilarity, 0.000001f);
 
           // check hadamard product
           List<Float> hadamardProductResult = new ArrayList<>(2);

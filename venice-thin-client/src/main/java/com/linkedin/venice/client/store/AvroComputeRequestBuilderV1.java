@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Pair;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
@@ -78,6 +79,11 @@ class AvroComputeRequestBuilderV1<K> extends AbstractAvroComputeRequestBuilder<K
     computeRequestWrapper.setOperations((List)operations);
 
     return computeRequestWrapper;
+  }
+
+  @Override
+  public ComputeRequestBuilder<K> hadamardProduct(String inputFieldName, List<Float> hadamardProductParam, String resultFieldName) {
+    throw new VeniceException("Hadamard-product is not supported in V1 compute request.");
   }
 
   @Override
