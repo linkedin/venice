@@ -10,7 +10,6 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compute.ComputeRequestWrapper;
-import com.linkedin.venice.compute.protocol.request.ComputeRequestV1;
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -30,6 +29,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -436,6 +436,7 @@ public class StatTrackingStoreClientTest {
 
   @Test
   public void multiGetStreamTestForPartialResponse() throws InterruptedException, ExecutionException, TimeoutException {
+    CountDownLatch resultLatch = new CountDownLatch(1);
     class StoreClientForMultiGetStreamTest<K, V> extends SimpleStoreClient<K, V> {
       private final VeniceClientException veniceException;
       public StoreClientForMultiGetStreamTest(TransportClient transportClient, String storeName,
@@ -450,13 +451,13 @@ public class StatTrackingStoreClientTest {
           for (int i = 0; i < 10; i += 2) {
             callback.onRecordReceived((K) ("key_" + i), (V) mock(GenericRecord.class));
             callback.onRecordReceived((K) ("key_" + (i + 1)), null);
-            Utils.sleep(3);
           }
           if (callback instanceof TrackingStreamingCallback) {
             TrackingStreamingCallback<K, V> trackingStreamingCallback = (TrackingStreamingCallback) callback;
-            Utils.sleep(5);
             trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
           }
+          resultLatch.countDown();
+
           // Never complete, so the timeout should always happen
         });
         callbackThread.start();
@@ -473,7 +474,10 @@ public class StatTrackingStoreClientTest {
     for (int i = 0; i < 10; ++i) {
       keys.add("key_" + i);
     }
-    VeniceResponseMap result = statTrackingStoreClient.streamingBatchGet(keys).get(30, TimeUnit.MILLISECONDS);
+    CompletableFuture<VeniceResponseMap<String, GenericRecord>> resultFuture = statTrackingStoreClient.streamingBatchGet(keys);
+    // Make the behavior deterministic
+    resultLatch.await();
+    VeniceResponseMap result = resultFuture.get(1, TimeUnit.MILLISECONDS);
     Assert.assertTrue(!result.isFullResponse());
     Assert.assertTrue(result.size() > 0);
     Assert.assertTrue(result.getNonExistingKeys().size() > 0);
@@ -488,6 +492,7 @@ public class StatTrackingStoreClientTest {
 
   @Test
   public void computeStreamTestForPartialResponse() throws InterruptedException, ExecutionException, TimeoutException {
+    CountDownLatch resultLatch = new CountDownLatch(1);
     class StoreClientForComputeStreamTest<K> extends SimpleStoreClient<K, GenericRecord> {
       private final VeniceClientException veniceException;
       public StoreClientForComputeStreamTest(TransportClient transportClient, String storeName,
@@ -503,13 +508,12 @@ public class StatTrackingStoreClientTest {
           for (int i = 0; i < 10; i += 2) {
             callback.onRecordReceived((K) ("key_" + i), mock(GenericRecord.class));
             callback.onRecordReceived((K) ("key_" + (i + 1)), null);
-            Utils.sleep(3);
           }
           if (callback instanceof TrackingStreamingCallback) {
             TrackingStreamingCallback<K, org.apache.avro.generic.GenericRecord> trackingStreamingCallback = (TrackingStreamingCallback) callback;
-            Utils.sleep(5);
             trackingStreamingCallback.onDeserializationCompletion(Optional.of(veniceException), 10, 5);
           }
+          resultLatch.countDown();
           // Never complete, so the timeout should always happen
         });
         callbackThread.start();
@@ -526,8 +530,11 @@ public class StatTrackingStoreClientTest {
     for (int i = 0; i < 10; ++i) {
       keys.add("key_" + i);
     }
+    CompletableFuture<VeniceResponseMap<String, GenericRecord>> resultFuture = statTrackingStoreClient.compute().project("int_field").streamingExecute(keys);
+    // Make the behavior deterministic
+    resultLatch.await();
     VeniceResponseMap
-        result = statTrackingStoreClient.compute().project("int_field").streamingExecute(keys).get(30, TimeUnit.MILLISECONDS);
+        result = resultFuture.get(1, TimeUnit.MILLISECONDS);
     Assert.assertFalse(result.isFullResponse());
     Assert.assertTrue(result.size() > 0);
     Assert.assertTrue(result.getNonExistingKeys().size() > 0);
