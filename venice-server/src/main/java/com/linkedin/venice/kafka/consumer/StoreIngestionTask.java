@@ -1512,7 +1512,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     long getOffset(String topic, int partitionId) {
       return cachedLatestOffsets.computeIfAbsent(new TopicAndPartition(topic, partitionId),
-      tp -> topicManager.getLatestOffsetAndRetry(tp.topic(), tp.partition(), 3));
+      tp -> topicManager.getLatestOffsetAndRetry(tp.topic(), tp.partition(), 10));
     }
   }
 }
