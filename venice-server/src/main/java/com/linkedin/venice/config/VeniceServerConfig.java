@@ -131,7 +131,15 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int serverComputeThreadNum;
 
+  /**
+   * Health check cycle in server.
+   */
   private final long diskHealthCheckIntervalInMS;
+
+  /**
+   * Server disk health check timeout.
+   */
+  private final long diskHealthCheckTimeoutInMs;
 
   private final boolean diskHealthCheckServiceEnabled;
 
@@ -183,7 +191,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaMaxPollRecords = serverProperties.getInt(SERVER_KAFKA_MAX_POLL_RECORDS, 100);
     kafkaPollRetryTimes = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_TIMES, 100);
     kafkaPollRetryBackoffMs = serverProperties.getInt(SERVER_KAFKA_POLL_RETRY_BACKOFF_MS, 0);
-    diskHealthCheckIntervalInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 60)); // 1 minute by default
+    diskHealthCheckIntervalInMS = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10)); // 10 seconds by default
+    diskHealthCheckTimeoutInMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS, 30)); // 30 seconds by default
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, false);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 5000);
@@ -316,6 +325,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getDiskHealthCheckIntervalInMS() {
     return diskHealthCheckIntervalInMS;
+  }
+
+  public long getDiskHealthCheckTimeoutInMs() {
+    return diskHealthCheckTimeoutInMs;
   }
 
   public boolean isDiskHealthCheckServiceEnabled() {
