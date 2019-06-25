@@ -77,7 +77,7 @@ public class VeniceResponseDecompressor {
   }
 
   private static CompressionStrategy getClientSupportedCompression(HttpRequest request) {
-    return getCompressionStrategy(request.headers().get(VENICE_SUPPORTED_COMPRESSION));
+    return getCompressionStrategy(request.headers().get(VENICE_SUPPORTED_COMPRESSION_STRATEGY));
   }
 
   private static CompressionStrategy getResponseCompressionStrategy(HttpResponse response) {
@@ -105,8 +105,8 @@ public class VeniceResponseDecompressor {
       // Decompress record on the client side if needed
       return response;
     }
-    AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.SINGLE_GET);
 
+    AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.SINGLE_GET);
     stats.recordCompressedResponseSize(storeName, response.content().readableBytes());
     long startTimeInNs = System.nanoTime();
     ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(responseCompression,
@@ -121,8 +121,8 @@ public class VeniceResponseDecompressor {
      * client, and the ByteBuf will be released in the netty pipeline.
      */
     response.content().release();
-    FullHttpResponse fullHttpResponse  = response.replace(decompressedData);
 
+    FullHttpResponse fullHttpResponse  = response.replace(decompressedData);
     fullHttpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, fullHttpResponse.content().readableBytes());
     fullHttpResponse.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
     return fullHttpResponse;
@@ -190,23 +190,23 @@ public class VeniceResponseDecompressor {
    * them back.
    */
   public FullHttpResponse processMultiGetResponses(List<FullHttpResponse> responses) {
-    long startTimeInNs = System.nanoTime();
-    long responseSizeBefore = 0;
-    // Venice only supports either compress the whole database or no compression at all.
-    boolean compressedResponse = false;
-
-    /**
-     * Here we will check the consistency of the following headers among all the responses:
-     * 1. {@link HttpHeaderNames.CONTENT_TYPE}
-     * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
-     */
-    CompressionStrategy compressionStrategy = validateAndExtractCompressionStrategy(responses);
+    long decompressedSize = 0;
+    long decompressionTimeInNs = 0;
     CompositeByteBuf content = Unpooled.compositeBuffer();
+    // Venice only supports either compression of the whole database or no compression at all.
+    CompressionStrategy responseCompression = validateAndExtractCompressionStrategy(responses);
+
     for (FullHttpResponse response : responses) {
       if (response.status() != OK) {
         // Return error response directly for now.
         return response;
       }
+
+      /**
+       * Here we will check the consistency of the following headers among all the responses:
+       * 1. {@link HttpHeaderNames.CONTENT_TYPE}
+       * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
+       */
       MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
         String currentValue = response.headers().get(headerName);
         if (null == currentValue) {
@@ -218,21 +218,20 @@ public class VeniceResponseDecompressor {
               BAD_GATEWAY, "Incompatible header received for " + headerName + ", values: " + headerValue + ", " +  currentValue);
         }
       });
-      if (canPassThroughResponse(compressionStrategy)) {
+
+      if (canPassThroughResponse(responseCompression)) {
         content.addComponent(true, response.content());
       } else {
-        if (compressionStrategy.isCompressionEnabled()) {
-          compressedResponse = true;
-        }
-        responseSizeBefore += response.content().readableBytes();
-
+        long startTimeInNs = System.nanoTime();
         if (response.content() instanceof CompositeByteBuf) {
           for (ByteBuf buffer : (CompositeByteBuf)response.content()) {
-            content.addComponent(true, decompressMultiGetRecords(compressionStrategy, buffer));
+            content.addComponent(true, decompressMultiGetRecords(responseCompression, buffer));
           }
         } else {
-          content.addComponent(true, decompressMultiGetRecords(compressionStrategy, response.content()));
+          content.addComponent(true, decompressMultiGetRecords(responseCompression, response.content()));
         }
+        decompressedSize +=  response.content().readableBytes();
+        decompressionTimeInNs += System.nanoTime() - startTimeInNs;
         /**
          * When using compression, the data in response is already copied during decompression, so we can explicitly
          * release the ByteBuf in the response immediately to avoid any memory leak.
@@ -243,26 +242,25 @@ public class VeniceResponseDecompressor {
         response.content().release();
       }
     }
-    if (compressedResponse) {
-      AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.SINGLE_GET);
-      stats.recordCompressedResponseSize(storeName, responseSizeBefore);
+
+    if (decompressedSize > 0) {
+      AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.MULTI_GET);
+      stats.recordCompressedResponseSize(storeName, decompressedSize);
       /**
        * The following metric is actually measuring the deserialization/decompression/re-serialization.
        * Since all the overhead is introduced by the value compression, it might be fine to track them altogether.
        */
-      stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
+      stats.recordDecompressionTime(storeName, LatencyUtils.convertLatencyFromNSToMS(decompressionTimeInNs));
+      // Content is already decompressed by service router above
+      responseCompression = CompressionStrategy.NO_OP;
     }
 
-    if (compressionStrategy == null || compressionStrategy != clientCompression) {
-      // Content is already decompressed by service router above
-      compressionStrategy = CompressionStrategy.NO_OP;
-    }
     FullHttpResponse multiGetResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, OK, content);
     MULTI_GET_VALID_HEADER_MAP.forEach((headerName, headerValue) -> {
       multiGetResponse.headers().add(headerName, headerValue);
     });
     multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
-    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
+    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, responseCompression.getValue());
     return multiGetResponse;
   }
 
@@ -271,9 +269,14 @@ public class VeniceResponseDecompressor {
       // Decompress record on the client side if needed
       return new Pair<>(content, responseCompression);
     }
-    ByteBuf decompressedContent = decompressMultiGetRecords(responseCompression, content);
-    content.release();
 
+    AggRouterHttpRequestStats stats = routerStats.getStatsByType(RequestType.MULTI_GET_STREAMING);
+    stats.recordCompressedResponseSize(storeName, content.readableBytes());
+    long startTimeInNs = System.nanoTime();
+    ByteBuf decompressedContent = decompressMultiGetRecords(responseCompression, content);
+    stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(startTimeInNs));
+
+    content.release();
     return new Pair<>(decompressedContent, CompressionStrategy.NO_OP);
   }
 
