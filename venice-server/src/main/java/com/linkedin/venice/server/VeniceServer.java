@@ -167,6 +167,7 @@ public class VeniceServer {
     VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
     this.diskHealthCheckService = new DiskHealthCheckService(veniceServerConfig.isDiskHealthCheckServiceEnabled(),
                                                              veniceServerConfig.getDiskHealthCheckIntervalInMS(),
+                                                             veniceServerConfig.getDiskHealthCheckTimeoutInMs(),
                                                              veniceServerConfig.getDataBasePath());
     services.add(diskHealthCheckService);
 

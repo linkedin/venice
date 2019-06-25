@@ -10,14 +10,32 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 
+/**
+ * DiskHealthCheckService will wake up every 10 seconds by default and run a health check
+ * in the disk by writing 64KB random data, read them back and verify the content; if there
+ * is any error within the process, an in-memory state variable "diskHealthy" will be updated
+ * to false; otherwise, "diskHealthy" will be kept as true.
+ *
+ * If there is a SSD failure, the disk operation could hang forever; in order to report such
+ * kind of disk failure, there is a timeout mechanism inside the health status polling API;
+ * a total timeout will be decided at the beginning:
+ * totalTimeout = Math.max(30 seconds, health check interval + disk operation timeout)
+ * we will keep track of the last update time for the in-memory health status variable, if
+ * the in-memory status haven't been updated for more than the totalTimeout, we believe the
+ * disk operation hang due to disk failure and start reporting unhealthy for this server.
+ */
 public class DiskHealthCheckService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(DiskHealthCheckService.class);
 
+  private static final long HEALTH_CHECK_HARD_TIMEOUT = TimeUnit.SECONDS.toMillis(30); // 30 seconds
+
   private volatile boolean diskHealthy = true;
   private long healthCheckIntervalMs;
+  private long healthCheckTimeoutMs;
   private long lastStatusUpdateTimeInNS;
   private boolean serviceEnabled;
   private String databasePath;
@@ -27,9 +45,10 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private DiskHealthCheckTask healthCheckTask;
   private Thread runner;
 
-  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, String databasePath) {
+  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout, String databasePath) {
     this.serviceEnabled = serviceEnabled;
     this.healthCheckIntervalMs = healthCheckIntervalMs;
+    this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeout);
     this.databasePath = databasePath;
     errorMessage = null;
   }
@@ -57,9 +76,9 @@ public class DiskHealthCheckService extends AbstractVeniceService {
       return true;
     }
 
-    if (LatencyUtils.getLatencyInMS(lastStatusUpdateTimeInNS) > 5l * healthCheckIntervalMs) {
+    if (LatencyUtils.getLatencyInMS(lastStatusUpdateTimeInNS) > healthCheckTimeoutMs) {
       /**
-       * Disk operation hangs so the status has not been updated for 5 health check cycles;
+       * Disk operation hangs so the status has not been updated for {@link healthCheckTimeoutMs};
        * mark the host as unhealthy.
        */
       diskHealthy = false;

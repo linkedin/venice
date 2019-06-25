@@ -265,6 +265,14 @@ public class ConfigKeys {
   public static final String SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS = "server.disk.health.check.interval.in.seconds";
 
   /**
+   * When there is an actual disk failure, health check operation would hang, so this config decides how fast the
+   * servers will start reporting unhealthy after the health check stop updating status; however, in order to
+   * reduce the possibility of false alerts (for example, the health check updates can be delayed by GC), we couldn't
+   * set the timeout too small. Currently by default, the timeout is 30 seconds.
+   */
+  public static final String SERVER_DISK_HEALTH_CHECK_TIMEOUT_IN_SECONDS = "server.disk.health.check.timeout.in.seconds";
+
+  /**
    * This config is used to enable/disable the disk health check service.
    */
   public static final String SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED = "server.disk.health.check.service.enabled";
