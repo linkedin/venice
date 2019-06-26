@@ -45,7 +45,7 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.ConfigKeys.*;
 
 
-@Test (singleThreaded = true)
+@Test(singleThreaded = true)
 public abstract class TestRestartServerDuringIngestion {
   private VeniceClusterWrapper cluster;
   private VeniceServerWrapper serverWrapper;
@@ -84,7 +84,7 @@ public abstract class TestRestartServerDuringIngestion {
     return records;
   }
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setup() {
     int numberOfController = 1;
     int numberOfRouter = 1;
@@ -94,12 +94,12 @@ public abstract class TestRestartServerDuringIngestion {
     serverWrapper = cluster.addVeniceServer(getVeniceServerProperties());
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanup() {
     cluster.close();
   }
 
-  @Test
+  @Test(groups = {"flaky"})
   public void ingestionRecovery() throws ExecutionException, InterruptedException {
     // Create a store
     String stringSchemaStr = "\"string\"";
@@ -242,5 +242,4 @@ public abstract class TestRestartServerDuringIngestion {
       cluster.restartVeniceRouter(router.getPort());
     }
   }
-
 }

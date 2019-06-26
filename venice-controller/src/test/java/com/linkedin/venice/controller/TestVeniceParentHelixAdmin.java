@@ -48,7 +48,6 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -902,12 +901,7 @@ public class TestVeniceParentHelixAdmin {
     }
   }
 
-  /**
-   * End-to-end test
-   *
-   * TODO: Fix this test. It's flaky.
-   */
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test
   public void testEnd2End() throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     VeniceControllerWrapper childControllerWrapper =

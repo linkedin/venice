@@ -52,7 +52,7 @@ public abstract class TestRouterCache {
 
   //We're instantiate Venice cluster before the method since MetricsRepository can't reset.
   //TODO: optimize it if any chances
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 0, 2, 100, true, false);
@@ -93,7 +93,7 @@ public abstract class TestRouterCache {
     return response;
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void cleanUp() {
     IOUtils.closeQuietly(controllerClient);
     IOUtils.closeQuietly(veniceCluster);
@@ -104,7 +104,7 @@ public abstract class TestRouterCache {
     return new Object[][]{{false, true, false}, {false, false, true}, {true, true, false}, {true, false, true}};
   }
 
-  @Test(timeOut = 20000, dataProvider = "isCompressed_isCacheEnabled_isBatchGetCacheEnabled")
+  @Test(timeOut = 20000, dataProvider = "isCompressed_isCacheEnabled_isBatchGetCacheEnabled", groups = {"flaky"})
   public void testRead(boolean isCompressed, boolean isRouterCacheEnabled, boolean isBatchGetRouterCacheEnabled) throws Exception {
     // Create test store
     VersionCreationResponse creationResponse = createStore(isCompressed, isRouterCacheEnabled, isBatchGetRouterCacheEnabled);

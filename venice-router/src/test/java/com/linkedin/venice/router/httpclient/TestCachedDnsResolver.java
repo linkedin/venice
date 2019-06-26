@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.venice.router.httpclient.CachedDnsResolver;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.net.InetAddress;

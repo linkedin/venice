@@ -344,8 +344,6 @@ public class TestHybrid {
     logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
   }
 
-
-
   @Test
   public void testHybridWithBufferReplayDisabled() throws Exception {
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);

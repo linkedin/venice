@@ -47,7 +47,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
-@Test(singleThreaded = false)
+@Test
 public class StoreClientPerfTest {
   private static final Logger LOGGER = Logger.getLogger(StoreClientPerfTest.class);
   private MockD2ServerWrapper routerServer;

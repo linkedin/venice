@@ -297,7 +297,7 @@ public class TestStore {
     }
   }
 
-  @Test (expectedExceptions = VeniceException.class)
+  @Test(expectedExceptions = VeniceException.class)
   public void invalidStoreNameThrows(){
     Store store = new Store("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
   }
@@ -305,7 +305,7 @@ public class TestStore {
   /**
    * We're not relying on push ID uniqueness.  We can reenable this test if we start relying on (and enforcing) push ID uniqueness
    */
-  @Test (enabled = false)
+  @Test(groups = {"flaky"})
   public void cannotAddDifferentVersionsWithSamePushId(){
     String storeName = "storeName";
     Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -320,7 +320,6 @@ public class TestStore {
       //expected
     }
   }
-
 
   @Test
   public void testStoreLevelAcl(){

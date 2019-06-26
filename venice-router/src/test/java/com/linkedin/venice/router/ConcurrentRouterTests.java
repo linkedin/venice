@@ -3,7 +3,6 @@ package com.linkedin.venice.router;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -82,7 +81,7 @@ public class ConcurrentRouterTests {
    * thread starved, then a request will hang and timeout, failing this test.
    * @throws InterruptedException
    */
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = 20 * Time.MS_PER_SECOND)
+  @Test(timeOut = 20 * Time.MS_PER_SECOND)
   public void routerDoesntHangOnConcurrentSslAndNonSslRequests() throws InterruptedException {
     try {
       venice = ServiceFactory.getVeniceCluster();

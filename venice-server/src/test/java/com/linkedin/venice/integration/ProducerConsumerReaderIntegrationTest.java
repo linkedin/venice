@@ -76,7 +76,7 @@ public class ProducerConsumerReaderIntegrationTest {
     }
   }
 
-  @Test//(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test
   public void testEndToEndProductionAndReading() throws Exception {
     boolean sslEnabled = true;
     veniceCluster = ServiceFactory.getVeniceCluster(sslEnabled);

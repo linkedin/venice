@@ -39,7 +39,7 @@ public class TestRouterReadQuotaThrottler {
   private String storeName;
   private int currentVersion;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setup()
       throws Exception {
     int numberOfController = 1;
@@ -68,13 +68,13 @@ public class TestRouterReadQuotaThrottler {
     veniceWriter.broadcastEndOfPush(new HashMap<String, String>());
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanup() {
     veniceWriter.close();
     cluster.close();
   }
 
-  @Test(enabled = false) // TODO: FIX THIS BROKEN TEST
+  @Test(groups = {"flaky"})
   public void testReadRequestBeThrottled()
       throws InterruptedException {
     long timeWindowInSec = TimeUnit.MILLISECONDS.toSeconds(ReadRequestThrottler.DEFAULT_STORE_QUOTA_TIME_WINDOW);

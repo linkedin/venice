@@ -50,7 +50,7 @@ public class TestHelixStatusMessageChannel {
   private RoutingDataRepository routingDataRepository;
   private final long WAIT_ZK_TIME = 1000l;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setup()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
@@ -82,7 +82,7 @@ public class TestHelixStatusMessageChannel {
     routingDataRepository.refresh();
    }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void cleanup() {
     manager.disconnect();
     controller.disconnect();
@@ -331,7 +331,7 @@ public class TestHelixStatusMessageChannel {
    *
    * TODO: find a better way to handle this scenario.
    */
-  @Test (enabled = false)
+  @Test(groups = {"flaky"})
   public void testSendMessageBelongToWrongResourceToStorageNodes() {
     // Wait until helix has assigned participant to the given resource.
     TestUtils.waitForNonDeterministicCompletion(WAIT_ZK_TIME, TimeUnit.MILLISECONDS,

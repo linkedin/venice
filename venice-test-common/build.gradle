@@ -9,7 +9,7 @@ task buildJar(type: Jar) {
 }
 
 configurations.implementation {
-  exclude group: "org.apache.kafka"
+  exclude group: 'org.apache.kafka'
   exclude group: 'org.mortbay.jetty', module: 'servlet-api'
 }
 
@@ -28,57 +28,52 @@ jar {
 }
 
 sourceSets {
-  integrationtest {
-    java {
-      compileClasspath += main.output + test.output
-      runtimeClasspath += main.output + test.output
-      srcDir file("src/integrationtest/java")
-    }
-    resources.srcDir file("src/integrationtest/resources")
+  integrationTest {
+    java.srcDirs = ['src/integrationtest/java']
+    resources.srcDirs = ['src/integrationtest/resources']
+    compileClasspath += main.output
+    runtimeClasspath += main.output
   }
 }
 
 configurations {
-  integrationtestCompile.extendsFrom testImplementation
-  integrationtestRuntime.extendsFrom testRuntime
+  integrationTestCompile.extendsFrom testImplementation
+  integrationTestRuntime.extendsFrom testRuntime
 }
 
-task integrationtest(type: Test) {
-  description = "Run integration tests for " + project.name;
-  testClassesDirs = project.files(sourceSets.integrationtest.output.classesDirs)
-  classpath = sourceSets.integrationtest.runtimeClasspath
-  testReportDirName = "integrationtest"
-  testResultsDirName = "integrationtest-result"
-  jacoco {
-    destinationFile = file("$buildDir/jacoco/integrationtest.exec")
-  }
-
-  String forkEveryConfigName = "integrationTest.forkEvery"
+def applyConcurrencyConfig(task) {
+  String forkEveryConfigName = 'integrationTest.forkEvery'
   if (project.hasProperty(forkEveryConfigName)) {
     println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"
-    forkEvery = Integer.parseInt(project.getProperty(forkEveryConfigName))
+    task.forkEvery = Integer.parseInt(project.getProperty(forkEveryConfigName))
   } else {
     println "$forkEveryConfigName not set. Will recycle the same JVM(s)."
   }
 
-  String maxParallelForksConfigName = "integrationTest.maxParallelForks"
+  String maxParallelForksConfigName = 'integrationTest.maxParallelForks'
   if (project.hasProperty(maxParallelForksConfigName)) {
     println "$maxParallelForksConfigName set to ${project.getProperty(maxParallelForksConfigName)}"
-    maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksConfigName))
+    task.maxParallelForks = Integer.parseInt(project.getProperty(maxParallelForksConfigName))
   } else {
-    println "$maxParallelForksConfigName not set. Will default to $maxParallelForks parallel forks."
+    println "$maxParallelForksConfigName not set. Will default to $task.maxParallelForks parallel forks."
   }
 }
 
-task jacocoIntegrationTestReport(type: JacocoReport) {
-  dependsOn integrationtest
-  executionData file("$buildDir/jacoco/integrationtest.exec")
-  reports {
-    xml.enabled false
-    csv.enabled false
-    html.destination new File("${buildDir}/jacocoIntegrationHtml")
+task integrationTests(type: Test) {
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
+  applyConcurrencyConfig(integrationTests)
+}
+
+task flakyIntegrationTests(type: Test) {
+  useTestNG() {
+    includeGroups 'flaky'
   }
-  sourceSets sourceSets.main
+  mustRunAfter test
+  classpath = sourceSets.integrationTest.runtimeClasspath
+  testClassesDirs = project.files(sourceSets.integrationTest.output.classesDirs)
+  applyConcurrencyConfig(flakyIntegrationTests)
 }
 
 dependencies {
@@ -94,7 +89,6 @@ dependencies {
   implementation project(':venice-schema-common')
   implementation project(':venice-common')
   implementation project(':venice-server')
-  // implementation project(':venice-consumer').sourceSets.test.output
   implementation project(':venice-controller')
   implementation project(':venice-router')
   implementation project(':venice-thin-client')

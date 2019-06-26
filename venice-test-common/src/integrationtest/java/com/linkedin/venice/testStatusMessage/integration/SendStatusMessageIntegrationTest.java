@@ -40,7 +40,7 @@ public class SendStatusMessageIntegrationTest {
   private ArrayList<SafeHelixManager> participants = new ArrayList<>();
   private HelixMessageChannelStats helixMessageChannelStats;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setup()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
@@ -62,7 +62,7 @@ public class SendStatusMessageIntegrationTest {
     controller.connect();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanup(){
     controller.disconnect();
     zkServerWrapper.close();
@@ -90,7 +90,7 @@ public class SendStatusMessageIntegrationTest {
    *
    * @throws Exception
    */
-  @Test (enabled = false) //TODO: Yan to take a look at this test, it is flaky, Yan says it isn't guaranteed by Helix
+  @Test(groups = {"flaky"})
   public void testReceiveMessageFromThreeParticipants()
       throws Exception {
     // Enlarge the delay to fix the flaky test.

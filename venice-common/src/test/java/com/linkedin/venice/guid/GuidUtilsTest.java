@@ -41,7 +41,7 @@ public class GuidUtilsTest {
     return returnList.toArray(byteArraysToReturn);
   }
 
-  @Test(dataProvider = "byteArrays", enabled = true)
+  @Test(dataProvider = "byteArrays")
   public void testCharSeqToGuidConversionAndBack(ByteArray arrayUnderTest) {
     LOGGER.info("array: " + arrayUnderTest);
     CharSequence originalCharSequence = new String(arrayUnderTest.get(), GuidUtils.CHARSET);

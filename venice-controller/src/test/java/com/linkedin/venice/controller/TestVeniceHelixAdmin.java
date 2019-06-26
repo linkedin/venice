@@ -35,7 +35,6 @@ import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.status.StatusMessageHandler;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -100,7 +99,7 @@ public class TestVeniceHelixAdmin {
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_SHORT_TEST = 10 * Time.MS_PER_SECOND;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setup()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
@@ -119,7 +118,7 @@ public class TestVeniceHelixAdmin {
     waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void cleanup() {
     stopParticipants();
     try {
@@ -391,7 +390,7 @@ public class TestVeniceHelixAdmin {
     Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(groups = {"flaky"})
   public void testHandleVersionCreationFailure() {
     String storeName = "test";
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
@@ -417,7 +416,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(offlinePushStatus.getStatusDetails().get(), statusDetails);
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(groups = {"flaky"})
   public void testDeleteOldVersions()
       throws InterruptedException {
     String storeName = "test";
@@ -1050,7 +1049,7 @@ public class TestVeniceHelixAdmin {
   }
 
   //TODO slow test, ~15 seconds.  Can we improve it?
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(groups = {"flaky"})
   public void testKillOfflinePush()
       throws Exception {
     String newNodeId = Utils.getHelixNodeIdentifier(9786);
@@ -1121,7 +1120,7 @@ public class TestVeniceHelixAdmin {
             .containsKafkaTopic(version.kafkaTopicName()));
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(groups = {"flaky"})
   public void testDeleteAllVersionsInStore()
       throws Exception {
     stopParticipants();

@@ -74,7 +74,7 @@ public class StorageNodeComputeTest {
       "  ]       " +
       " }       ";
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, false, false);
     // Add one more server with fast-avro enabled
@@ -101,7 +101,7 @@ public class StorageNodeComputeTest {
     valueSerializer = new VeniceAvroKafkaSerializer(valueSchemaForCompute);
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     if (veniceCluster != null) {
       veniceCluster.close();
@@ -135,7 +135,7 @@ public class StorageNodeComputeTest {
     return returnList.toArray(valuesToReturn);
   }
 
-  @Test (timeOut = 30000, dataProvider = "testPermutations")
+  @Test(timeOut = 30000, dataProvider = "testPermutations")
   public void testCompute(
       CompressionStrategy compressionStrategy,
       BatchDeserializerType batchDeserializerType,
@@ -218,7 +218,7 @@ public class StorageNodeComputeTest {
   /**
    * The goal of this test is to find the breaking point at which a compute request gets split into more than 1 part.
    */
-  @Test (timeOut = 30000, enabled = false)
+  @Test(timeOut = 30000, groups = {"flaky"})
   public void testComputeRequestSize() throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setReadComputationEnabled(true);

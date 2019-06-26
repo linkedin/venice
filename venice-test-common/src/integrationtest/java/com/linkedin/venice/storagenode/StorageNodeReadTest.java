@@ -26,7 +26,6 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.stats.StatsErrorCode;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -86,7 +85,7 @@ public class StorageNodeReadTest {
 
   private final Base64.Encoder encoder = Base64.getUrlEncoder();
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     boolean enableSSL = false;
     veniceCluster = ServiceFactory.getVeniceCluster(enableSSL);
@@ -114,7 +113,7 @@ public class StorageNodeReadTest {
 
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     IOUtils.closeQuietly(veniceCluster);
     IOUtils.closeQuietly(veniceWriter);
@@ -136,7 +135,7 @@ public class StorageNodeReadTest {
    *    {@link #pushSyntheticData(String, String, int, VeniceClusterWrapper, VeniceWriter, int)} so it is not
    *    clear why that would be the case. TODO: Debug why the offset occasionally shows as zero
    */
-  @Test(timeOut = 10 * Time.MS_PER_SECOND, retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(timeOut = 10 * Time.MS_PER_SECOND, groups = {"flaky"})
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
