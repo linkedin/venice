@@ -11,7 +11,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -40,19 +39,19 @@ public class TestAdminSparkServerWithMultiServers {
   private ControllerClient controllerClient;
   private final int numberOfServer = 3;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() {
     venice = ServiceFactory.getVeniceCluster(1, numberOfServer, 1);
     controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void tearDown() {
     controllerClient.close();
     venice.close();
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = TIME_OUT)
+  @Test(groups = {"flaky"}, timeOut = TIME_OUT)
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
@@ -113,7 +112,7 @@ public class TestAdminSparkServerWithMultiServers {
    * After the attempt, the version is made current so the next attempt generates a new version.
    * @throws InterruptedException
    */
-  @Test(timeOut = TIME_OUT, retryAnalyzer = FlakyTestRetryAnalyzer.class) // TODO: Fix this flaky test.
+  @Test(timeOut = TIME_OUT, groups = {"flaky"}) // TODO: Fix this flaky test.
   public void requestTopicIsIdempotentWithConcurrency() throws InterruptedException {
     String storeName = TestUtils.getUniqueString("store");
     venice.getNewStore(storeName);

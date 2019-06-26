@@ -9,7 +9,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
@@ -49,7 +48,7 @@ public class AggVersionedDIVStatsTest {
     stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository);
   }
 
-  @Test(timeOut = TEST_TIME, retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(timeOut = TEST_TIME)
   public void  testStatsCanLoadAllStoresInTime() {
     //try to load 5000 stores
     for (int i = 0; i < 5000; i ++) {

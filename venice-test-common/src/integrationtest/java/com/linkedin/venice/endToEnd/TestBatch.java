@@ -58,12 +58,12 @@ public abstract class TestBatch {
 
   public abstract VeniceClusterWrapper initializeVeniceCluster();
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setup() {
     veniceCluster = initializeVeniceCluster();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanup() {
     if (veniceCluster != null) {
       veniceCluster.close();
@@ -274,7 +274,7 @@ public abstract class TestBatch {
     void validate(AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient, MetricsRepository metricsRepository) throws Exception;
   }
 
-  @Test //(timeOut = TEST_TIMEOUT)
+  @Test
   public void testLargeValues() throws Exception {
     try {
       testStoreWithLargeValues(false);
@@ -412,7 +412,7 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(enabled = false) // disabled because performance testing is not very amenable to the unit test environment
+  @Test(groups = {"flaky"})
   public void stressTestLargeMultiGet() throws Exception {
     int valueSize = 800;
     int numberOfRecords = 100000;

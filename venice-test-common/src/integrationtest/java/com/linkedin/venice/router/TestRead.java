@@ -84,7 +84,7 @@ public abstract class TestRead {
 
   protected abstract StorageNodeClientType getStorageNodeClientType();
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     /**
      * The following config is used to detect Netty resource leaking.
@@ -142,13 +142,13 @@ public abstract class TestRead {
             .setBatchGetLimit(maxKeyLimit));
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void cleanUp() {
     IOUtils.closeQuietly(veniceCluster);
     IOUtils.closeQuietly(veniceWriter);
   }
 
-  @Test(timeOut = 50000)
+  @Test(timeOut = 50000, groups = {"flaky"})
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

@@ -6,7 +6,6 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -50,7 +49,7 @@ public class TestHelixRoutingDataRepository {
   private HelixRoutingDataRepository repository;
   private SafeHelixManager readManager;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void HelixSetup()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
@@ -87,7 +86,7 @@ public class TestHelixRoutingDataRepository {
         () -> repository.containsKafkaTopic(resourceName));
   }
 
-  @AfterMethod
+  @AfterMethod(alwaysRun = true)
   public void HelixCleanup() {
     manager.disconnect();
     readManager.disconnect();
@@ -144,10 +143,7 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
   }
 
-  /**
-   * TODO: This test is broken. We should fix it or get rid of it...
-   */
-  @Test(enabled = false)
+  @Test(groups = {"flaky"})
   public void testGetNumberOfPartitionsWhenResourceDropped()
       throws Exception {
     Assert.assertTrue(admin.getResourcesInCluster(clusterName).contains(resourceName));
@@ -244,9 +240,8 @@ public class TestHelixRoutingDataRepository {
     newMaster.disconnect();
   }
 
-  @Test
-  public void testNodeChanged()
-      throws InterruptedException {
+  @Test(groups = {"flaky"})
+  public void testNodeChanged() {
     // Test initial conditions
     Assert.assertTrue(repository.getReadyToServeInstances(resourceName, 0).size() > 0);
     Assert.assertTrue(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions() > 0);

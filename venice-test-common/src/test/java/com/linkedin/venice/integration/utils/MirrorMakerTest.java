@@ -12,7 +12,6 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -43,13 +42,13 @@ public class MirrorMakerTest {
   KafkaBrokerWrapper sourceKafka = null;
   KafkaBrokerWrapper destinationKafka = null;
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   void setUp() {
     sourceKafka = ServiceFactory.getKafkaBroker();
     destinationKafka = ServiceFactory.getKafkaBroker();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   void cleanUp() {
     IOUtils.closeQuietly(sourceKafka);
     IOUtils.closeQuietly(destinationKafka);
@@ -59,7 +58,7 @@ public class MirrorMakerTest {
    * Unfortunately, MirrorMaker is a little flaky and sometimes fails. I have seen failures about 2% of the
    * time when running this test repeatedly, hence why I am adding the {@link FlakyTestRetryAnalyzer}. -FGV
    */
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = 30 * Time.MS_PER_SECOND)
+  @Test(groups = {"flaky"}, timeOut = 30 * Time.MS_PER_SECOND)
   void testMirrorMakerProcessWrapper() throws ExecutionException, InterruptedException {
     MirrorMakerWrapper mirrorMaker = null;
 

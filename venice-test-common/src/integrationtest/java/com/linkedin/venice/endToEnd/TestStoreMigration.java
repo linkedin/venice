@@ -47,6 +47,7 @@ import org.testng.annotations.Test;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
+@Test(groups = {"flaky"})
 public class TestStoreMigration {
   /**
    * Unfortunately, this test class is quite flaky and also takes a very long time, therefore, it can be necessary to disable it.

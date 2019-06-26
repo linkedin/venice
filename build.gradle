@@ -5,7 +5,7 @@
 // gradle.startParameter.setMaxWorkerCount(10)
 
 if (project.hasProperty('overrideBuildEnvironment')) {
-  if(project.overrideBuildEnvironment) {
+  if (project.overrideBuildEnvironment) {
     apply from: file(project.overrideBuildEnvironment)
     product {
       codeQuality {
@@ -17,7 +17,6 @@ if (project.hasProperty('overrideBuildEnvironment')) {
 
 apply plugin: 'java'
 apply plugin: 'idea'
-apply plugin: 'eclipse'
 
 // Internal LinkedIn Kafka release
 def internalKafkaGroup = 'kafka'
@@ -121,12 +120,9 @@ ext.libraries = [ // Groovy map literal
 subprojects {
   apply plugin: 'java-library'
   apply plugin: 'idea'
-  apply plugin: 'eclipse'
-  apply plugin: 'jacoco'
 
   sourceCompatibility = 1.8
-  if (!project.hasProperty('overrideBuildEnvironment') ||
-     !project.overrideBuildEnvironment) {
+  if (!project.hasProperty('overrideBuildEnvironment') || !project.overrideBuildEnvironment) {
      version = '0.1'
   }
 
@@ -175,7 +171,9 @@ subprojects {
   }
 
   tasks.withType(Test) {
-    useTestNG()
+    useTestNG() {
+      excludeGroups 'flaky'
+    }
 
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
     maxParallelForks = 5
@@ -188,58 +186,38 @@ subprojects {
     }
   }
 
-  jacoco {
-    toolVersion = '0.7.6.201602180812'
-  }
-
-  jacocoTestReport {
-    dependsOn test
-    reports {
-      xml.enabled false
-      csv.enabled false
-      html.destination new File("$buildDir/jacocoHtml")
+  task flakyTests(type: Test) {
+    useTestNG() {
+      includeGroups 'flaky'
     }
+    mustRunAfter test
   }
-
-  build.dependsOn jacocoTestReport
 }
 
 task unitTests {
-  dependsOn 'venice-common:build'
-  dependsOn 'venice-thin-client:build'
-  dependsOn 'venice-server:build'
-  dependsOn 'venice-controller:build'
-  dependsOn 'venice-router:build'
-  dependsOn 'hadoop-to-venice-bridge:build'
-  dependsOn 'venice-schema-common:build'
-  dependsOn 'venice-consumer:build'
-  dependsOn 'venice-common:buildJar'
-  dependsOn 'venice-server:installDist'
-  dependsOn 'venice-controller:installDist'
-  dependsOn 'venice-router:installDist'
-  // dependsOn 'hadoop-to-venice-bridge:installApp'
-  dependsOn 'venice-admin-tool:build'
-  dependsOn 'venice-test-common:build'
-  dependsOn 'venice-samza:build'
-  dependsOn 'venice-etl:build'
+  dependsOn build
+}
+
+task flakyTests {
+  dependsOn subprojects.flakyTests
+  dependsOn 'venice-test-common:flakyIntegrationTests'
 }
 
 task integrationTests {
-  dependsOn 'venice-test-common:integrationtest'
-}
-
-task integrationtest {
-  // just a rename to the new syntax, while maintaining backwards compat
-  dependsOn integrationTests
+  dependsOn 'venice-test-common:integrationTests'
 }
 
 task buildAll {
   dependsOn unitTests
   dependsOn integrationTests
+  dependsOn 'venice-common:buildJar'
+  dependsOn 'venice-router:installDist'
+  dependsOn 'venice-server:installDist'
+  dependsOn 'venice-controller:installDist'  
 }
 
 task compile {
   dependsOn compileJava
   dependsOn compileTestJava
-  // dependsOn compileIntegrationtestJava // Not sure why this one doesn't work... it does work from the command line.
+  dependsOn 'venice-test-common:compileIntegrationTestJava'
 }

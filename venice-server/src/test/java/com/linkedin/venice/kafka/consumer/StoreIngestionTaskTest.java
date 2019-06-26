@@ -51,7 +51,6 @@ import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.DiskUsage;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -174,20 +173,20 @@ public class StoreIngestionTaskTest {
         .array();
   }
 
-  @BeforeClass
+  @BeforeClass(alwaysRun = true)
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
     storeBufferService = new StoreBufferService(3, 10000, 1000);
     storeBufferService.start();
   }
 
-  @AfterClass
+  @AfterClass(alwaysRun = true)
   public void tearDown() throws Exception {
     taskPollingService.shutdown();
     storeBufferService.stop();
   }
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void methodSetUp() throws Exception {
     inMemoryKafkaBroker = new InMemoryKafkaBroker();
     inMemoryKafkaBroker.createTopic(topic, PARTITION_COUNT);
@@ -1124,7 +1123,7 @@ public class StoreIngestionTaskTest {
     });
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(groups = {"flaky"})
   public void testDelayedTransitionToOnlineInHybridMode() throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;
