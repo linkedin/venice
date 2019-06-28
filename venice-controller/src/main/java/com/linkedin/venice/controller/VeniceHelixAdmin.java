@@ -1998,7 +1998,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (store.isIncrementalPushEnabled()) {
                         throw new VeniceException("incremental push store could not support hybrid");
                     }
-                    store.setHybridStoreConfig(finalHybridConfig);
+                    if (finalHybridConfig.getRewindTimeInSeconds() < 0 || finalHybridConfig.getOffsetLagThresholdToGoOnline() < 0) {
+                        /**
+                         * If one of the config values is negative, it indicates that the store is being set back to batch-only store.
+                         */
+                        store.setHybridStoreConfig(null);
+                        String realTimeTopic = Version.composeRealTimeTopic(storeName);
+                        truncateKafkaTopic(realTimeTopic);
+                        // Also remove the Brooklin replication streams
+                        if (topicReplicator.isPresent()) {
+                            store.getVersions().stream().forEach(version ->
+                                topicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
+                        }
+                    } else {
+                        store.setHybridStoreConfig(finalHybridConfig);
+                    }
                     return store;
                 });
             }

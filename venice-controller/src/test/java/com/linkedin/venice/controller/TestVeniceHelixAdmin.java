@@ -568,6 +568,13 @@ public class TestVeniceHelixAdmin {
             .setHybridRewindSeconds(hybridConfig.getRewindTimeInSeconds())
             .setHybridOffsetLagThreshold(hybridConfig.getOffsetLagThresholdToGoOnline()));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
+
+    // test reverting hybrid store back to batch-only store; negative config value will undo hybrid setting
+    HybridStoreConfig revertHybridConfig = new HybridStoreConfig(-1, -1);
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(revertHybridConfig.getRewindTimeInSeconds())
+        .setHybridOffsetLagThreshold(revertHybridConfig.getOffsetLagThresholdToGoOnline()));
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
   }
 
   @Test
