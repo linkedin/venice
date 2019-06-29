@@ -244,18 +244,18 @@ public class TestHelixRoutingDataRepository {
     newMaster.disconnect();
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test
   public void testNodeChanged()
       throws InterruptedException {
+    // Test initial conditions
+    Assert.assertTrue(repository.getReadyToServeInstances(resourceName, 0).size() > 0);
+    Assert.assertTrue(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions() > 0);
+
     manager.disconnect();
-    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
-      @Override
-      public boolean getAsBoolean() {
-        return repository.getReadyToServeInstances(resourceName, 0).size() == 0;
-      }
+    TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0);
+      Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 0);
     });
-    Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0);
-    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 0);
   }
 
   @Test

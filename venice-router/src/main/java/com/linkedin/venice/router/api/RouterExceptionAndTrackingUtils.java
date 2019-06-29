@@ -80,14 +80,21 @@ public class RouterExceptionAndTrackingUtils {
     // If we don't know the actual store name, this error will only be aggregated in server level, but not
     // in store level
     if (responseStatus.equals(BAD_REQUEST)) {
-      if (storeName.isPresent()) {
-        stats.recordBadRequest(storeName.get());
-      } else {
-        stats.recordBadRequest();
-      }
+      stats.recordBadRequest(storeName.orElse(null));
     } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
       if (storeName.isPresent()) {
-        stats.recordThrottledRequest(storeName.get());
+        if (requestType.isPresent() && !requestType.get().equals(RequestType.SINGLE_GET)) {
+          /**
+           * Single gets are already getting recorded in {@link VeniceResponseAggregator}.
+           *
+           * Once we stop throwing quota exceptions from within the {@link VeniceDelegateMode} then we can
+           * process everything through {@link VeniceResponseAggregator} and remove the metric tracking
+           * from here.
+           *
+           * TODO: Remove this metric after the above work is done...
+           */
+          stats.recordThrottledRequest(storeName.get());
+        }
       } else {
         // not possible to have empty store name in this scenario
         throw new VeniceException("Received a TOO_MANY_REQUESTS error without store name present");
@@ -109,11 +116,7 @@ public class RouterExceptionAndTrackingUtils {
           return;
       }
 
-      if (storeName.isPresent()) {
-        stats.recordUnhealthyRequest(storeName.get());
-      } else {
-        stats.recordUnhealthyRequest();
-      }
+      stats.recordUnhealthyRequest(storeName.orElse(null));
 
       if (responseStatus.equals(SERVICE_UNAVAILABLE)) {
         if (storeName.isPresent()) {

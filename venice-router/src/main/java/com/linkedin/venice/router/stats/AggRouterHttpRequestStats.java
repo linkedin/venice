@@ -39,14 +39,23 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordRequest();
   }
 
-  public void recordHealthyRequest(String storeName) {
-    totalStats.recordHealthyRequest();
-    getStoreStats(storeName).recordHealthyRequest();
+  public void recordHealthyRequest(String storeName, double latency) {
+    totalStats.recordHealthyRequest(latency);
+    getStoreStats(storeName).recordHealthyRequest(latency);
   }
 
   public void recordUnhealthyRequest(String storeName) {
     totalStats.recordUnhealthyRequest();
-    getStoreStats(storeName).recordUnhealthyRequest();
+    if (storeName != null) {
+      getStoreStats(storeName).recordUnhealthyRequest();
+    }
+  }
+
+  public void recordUnhealthyRequest(String storeName, double latency) {
+    totalStats.recordUnhealthyRequest(latency);
+    if (storeName != null) {
+      getStoreStats(storeName).recordUnhealthyRequest(latency);
+    }
   }
 
   /**
@@ -60,27 +69,33 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     getStoreStats(storeName).recordReadQuotaUsage(quotaUsage);
   }
 
-  public void recordUnhealthyRequest() {
-    totalStats.recordUnhealthyRequest();
+  public void recordTardyRequest(String storeName, double latency) {
+    totalStats.recordTardyRequest(latency);
+    getStoreStats(storeName).recordTardyRequest(latency);
   }
 
-  public void recordTardyRequest(String storeName) {
-    totalStats.recordTardyRequest();
-    getStoreStats(storeName).recordTardyRequest();
-  }
-
+  /**
+   * Once we stop reporting throttled requests in {@link com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils},
+   * and we only report them in {@link com.linkedin.venice.router.api.VeniceResponseAggregator} then we will always have
+   * a latency and we'll be able to remove this overload.
+   *
+   * TODO: Remove this overload after fixing the above.
+   */
   public void recordThrottledRequest(String storeName){
     totalStats.recordThrottledRequest();
     getStoreStats(storeName).recordThrottledRequest();
   }
 
-  public void recordBadRequest(String storeName) {
-    totalStats.recordBadRequest();
-    getStoreStats(storeName).recordBadRequest();
+  public void recordThrottledRequest(String storeName, double latency){
+    totalStats.recordThrottledRequest(latency);
+    getStoreStats(storeName).recordThrottledRequest(latency);
   }
 
-  public void recordBadRequest() {
+  public void recordBadRequest(String storeName) {
     totalStats.recordBadRequest();
+    if (storeName != null) {
+      getStoreStats(storeName).recordBadRequest();
+    }
   }
 
   public void recordFanoutRequestCount(String storeName, int count) {
@@ -129,6 +144,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   public void recordFindUnhealthyHostRequest(String storeName) {
     totalStats.recordFindUnhealthyHostRequest();
     getStoreStats(storeName).recordFindUnhealthyHostRequest();
+  }
+
+  public void recordResponse(String storeName) {
+    totalStats.recordResponse();
+    getStoreStats(storeName).recordResponse();
   }
 
   private class AggScatterGatherStats extends ScatterGatherStats {

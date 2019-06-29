@@ -158,6 +158,9 @@ public abstract class TestRead {
       return currentVersion == pushVersion;
     });
 
+    double maxInflightRequestCount = getMetricValue(".total--in_flight_request_count.Max");
+    Assert.assertEquals(maxInflightRequestCount, 0.0, "There should be no in-flight requests yet!");
+
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
@@ -189,6 +192,9 @@ public abstract class TestRead {
       Assert.assertEquals(value.toString(), expectedValue);
     }
 
+    double maxInflightRequestCountAfterQueries = getMetricValue(".total--in_flight_request_count.Max");
+    Assert.assertTrue(maxInflightRequestCountAfterQueries > 0.0, "There should be in-flight requests now!");
+
     // Check retry requests
     double singleGetRetries = 0;
     double batchGetRetries = 0;
@@ -205,73 +211,27 @@ public abstract class TestRead {
     Assert.assertTrue(singleGetRetries > 0, "After " + rounds + " reads, there should be some single-get retry requests");
     Assert.assertTrue(batchGetRetries > 0, "After " + rounds + " reads, there should be some batch-get retry requests");
     // Check Router connection pool metrics
-    double totalMaxConnectionCount = 0;
+    double totalMaxConnectionCount = getMetricValue(".connection_pool--total_max_connection_count.LambdaStat");
+    double totalActiveConnectionCount = getMetricValue(".connection_pool--total_active_connection_count.LambdaStat");
+    double totalIdleConnectionCount = getMetricValue(".connection_pool--total_idle_connection_count.LambdaStat");
+    double totalPendingConnectionRequestCount = getMetricValue(".connection_pool--total_pending_connection_request_count.LambdaStat");
+    double totalLocalhostActiveConnectionCount = getMetricValue(".localhost--active_connection_count.Gauge");
+    double totalLocalhostIdleConnectionCount = getMetricValue(".localhost--idle_connection_count.Gauge");
+    double totalLocalhostPendingConnectionCount = getMetricValue(".localhost--pending_connection_request_count.Gauge");
+    double totalLocalhostMaxConnectionCount = getMetricValue(".localhost--max_connection_count.Gauge");
+    double totalRequestUsage = getMetricValue(".total--request_usage.Total");
+    double localhostResponseWaitingTimeForSingleGet = getMetricValue(".localhost--response_waiting_time.50thPercentile");
+    double localhostResponseWaitingTimeForMultiGet = getMetricValue(".localhost--multiget_response_waiting_time.50thPercentile");
+    double localhostRequestCount = getMetricValue(".localhost--request.Count");
+    double localhostRequestCountForMultiGet = getMetricValue(".localhost--multiget_request.Count");
+    double totalReadQuotaUsage = getMetricValue(".total--read_quota_usage_kps.Total");
     double connectionLeaseRequestLatencyMax = 0;
-    double totalActiveConnectionCount = 0;
-    double totalIdleConnectionCount = 0;
-    double totalPendingConnectionRequestCount = 0;
-    double totalLocalhostActiveConnectionCount = 0;
-    double totalLocalhostIdleConnectionCount = 0;
-    double totalLocalhostPendingConnectionCount = 0;
-    double totalLocalhostMaxConnectionCount = 0;
-
-    double totalRequestUsage = 0;
-
-    double localhostResponseWaitingTimeForSingleGet = 0;
-    double localhostResponseWaitingTimeForMultiGet = 0;
-    double localhostRequestCount = 0;
-    double localhostRequestCountForMultiGet = 0;
-
-    double totalReadQuotaUsage = 0;
-
     for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
       MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
       Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-      if (metrics.containsKey(".connection_pool--total_max_connection_count.LambdaStat")) {
-        totalMaxConnectionCount += metrics.get(".connection_pool--total_max_connection_count.LambdaStat").value();
-      }
       if (metrics.containsKey(".connection_pool--connection_lease_request_latency.Max")) {
         double routerConnectionLeaseRequestLatencyMax = metrics.get(".connection_pool--connection_lease_request_latency.Max").value();
         connectionLeaseRequestLatencyMax = Math.max(connectionLeaseRequestLatencyMax, routerConnectionLeaseRequestLatencyMax);
-      }
-      if (metrics.containsKey(".connection_pool--total_active_connection_count.LambdaStat")) {
-        totalActiveConnectionCount += metrics.get(".connection_pool--total_active_connection_count.LambdaStat").value();
-      }
-      if (metrics.containsKey(".connection_pool--total_pending_connection_request_count.LambdaStat")) {
-        totalPendingConnectionRequestCount += metrics.get(".connection_pool--total_pending_connection_request_count.LambdaStat").value();
-      }
-      if (metrics.containsKey(".connection_pool--total_idle_connection_count.LambdaStat")) {
-        totalIdleConnectionCount += metrics.get(".connection_pool--total_idle_connection_count.LambdaStat").value();
-      }
-      if (metrics.containsKey(".localhost--active_connection_count.Gauge")) {
-        totalLocalhostActiveConnectionCount += metrics.get(".localhost--active_connection_count.Gauge").value();
-      }
-      if (metrics.containsKey(".localhost--idle_connection_count.Gauge")) {
-        totalLocalhostIdleConnectionCount += metrics.get(".localhost--idle_connection_count.Gauge").value();
-      }
-      if (metrics.containsKey(".localhost--pending_connection_request_count.Gauge")) {
-        totalLocalhostPendingConnectionCount += metrics.get(".localhost--pending_connection_request_count.Gauge").value();
-      }
-      if (metrics.containsKey(".localhost--max_connection_count.Gauge")) {
-        totalLocalhostMaxConnectionCount += metrics.get(".localhost--max_connection_count.Gauge").value();
-      }
-      if (metrics.containsKey(".localhost--response_waiting_time.50thPercentile")) {
-        localhostResponseWaitingTimeForSingleGet = metrics.get(".localhost--response_waiting_time.50thPercentile").value();
-      }
-      if (metrics.containsKey(".localhost--multiget_response_waiting_time.50thPercentile")) {
-        localhostResponseWaitingTimeForMultiGet = metrics.get(".localhost--multiget_response_waiting_time.50thPercentile").value();
-      }
-      if (metrics.containsKey(".localhost--request.Count")) {
-        localhostRequestCount += metrics.get(".localhost--request.Count").value();
-      }
-      if (metrics.containsKey(".localhost--multiget_request.Count")) {
-        localhostRequestCountForMultiGet += metrics.get(".localhost--multiget_request.Count").value();
-      }
-      if (metrics.containsKey(".total--request_usage.Total")) {
-        totalRequestUsage += metrics.get(".total--request_usage.Total").value();
-      }
-      if (metrics.containsKey(".total--read_quota_usage_kps.Total")) {
-        totalReadQuotaUsage += metrics.get(".total--read_quota_usage_kps.Total").value();
       }
     }
 
@@ -340,16 +300,90 @@ public abstract class TestRead {
       }
     });
 
-    //check client can receive quota exceeding message if it is exceeded.
+    // Single get quota test
+
+    int throttledRequestsForSingleGet = (int) getMetricValue(".total--multiget_throttled_request.Count");
+    Assert.assertEquals(throttledRequestsForSingleGet, 0, "The throttled_request metric should be at zero before the test.");
+
+    double throttledRequestLatencyForSingleGet = getMetricValue(".total--throttled_request_latency.Max");
+    Assert.assertEquals(throttledRequestLatencyForSingleGet, 0.0, "There should be no single get throttled request latency yet!");
+
     updateStore(1l, MAX_KEY_LIMIT);
-    try {
-      for (int i = 0; i < 100; i++) {
+    int quotaExceptionsCount = 0;
+    int numberOfRequests = 100;
+    long startTime = System.currentTimeMillis();
+    for (int i = 0; i < numberOfRequests; i++) {
+      try {
         storeClient.get(keyPrefix + i).get();
+      } catch (ExecutionException e) {
+        Throwable cause = e.getCause();
+        Assert.assertTrue(cause instanceof VeniceClientHttpException);
+        Assert.assertTrue(cause.getMessage().contains("Quota exceeds!"), "Did not get the expected exception message: " + cause.getMessage());
+        quotaExceptionsCount++;
       }
-    } catch (ExecutionException e) {
-      Assert.assertTrue(e.getCause() instanceof VeniceClientHttpException);
-      Assert.assertTrue(e.getCause().getMessage().contains("Quota exceeds!"));
     }
+    long runTimeMs = System.currentTimeMillis() - startTime;
+    Assert.assertTrue(quotaExceptionsCount > 0,
+        "There were no quota exceptions at all for single gets! "
+            + "(Test too slow? " + runTimeMs + " ms for " + numberOfRequests + " requests)");
+
+    int throttledRequestsForSingleGetAfterQueries = (int) getMetricValue(".total--throttled_request.Count");
+    Assert.assertEquals(throttledRequestsForSingleGetAfterQueries, quotaExceptionsCount,
+        "The throttled_request metric is inconsistent with the number of quota exceptions received by the client!");
+
+    double throttledRequestLatencyForSingleGetAfterQueries = getMetricValue(".total--throttled_request_latency.Max");
+    Assert.assertTrue(throttledRequestLatencyForSingleGetAfterQueries > 0.0, "There should be single get throttled request latency now!");
+
+
+    // Batch get quota test
+
+    int throttledRequestsForBatchGet = (int) getMetricValue(".total--multiget_throttled_request.Count");
+    Assert.assertEquals(throttledRequestsForBatchGet, 0, "The throttled_request metric should be at zero before the test.");
+
+    double throttledRequestLatencyForBatchGet = getMetricValue(".total--multiget_throttled_request_latency.Max");
+    Assert.assertEquals(throttledRequestLatencyForBatchGet, 0.0, "There should be no batch get throttled request latency yet!");
+
+    keySet.clear();
+    for (int i = 0; i < MAX_KEY_LIMIT; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+    int quotaExceptionsCountForSingleGetsOnly = quotaExceptionsCount;
+    long startTimeForBatchGet = System.currentTimeMillis();
+    int quotaExceptionsCountForBatchGet = 0;
+    for (int i = 0; i < numberOfRequests; i++) {
+      try {
+        storeClient.batchGet(keySet).get();
+      } catch (ExecutionException e) {
+        Throwable cause = e.getCause();
+        Assert.assertTrue(cause instanceof VeniceClientHttpException);
+        Assert.assertTrue(cause.getMessage().contains("Quota exceeds!"), "Did not get the expected exception message: " + cause.getMessage());
+        quotaExceptionsCountForBatchGet++;
+      }
+    }
+    long runTimeForBatchGetMs = System.currentTimeMillis() - startTimeForBatchGet;
+    Assert.assertTrue(quotaExceptionsCountForBatchGet > 0,
+        "There were no quota exceptions at all for batch gets! "
+            + "(Test too slow? " + runTimeForBatchGetMs + " ms for " + numberOfRequests + " requests)");
+
+    int throttledRequestsForBatchGetAfterQueries = (int) getMetricValue(".total--multiget_throttled_request.Count");
+    Assert.assertEquals(throttledRequestsForBatchGetAfterQueries, quotaExceptionsCountForBatchGet,
+        "The throttled_request metric is inconsistent with the number of quota exceptions received by the client! (quotaExceptionsCountForSingleGetsOnly = " + quotaExceptionsCountForSingleGetsOnly + ")");
+
+    double throttledRequestLatencyForBatchGetAfterQueries = getMetricValue(".total--multiget_throttled_request_latency.Max");
+    /** TODO Re-enable this assertion once we stop throwing batch get quota exceptions from {@link com.linkedin.venice.router.api.VeniceDelegateMode} */
+//    Assert.assertTrue(throttledRequestLatencyForBatchGetAfterQueries > 0.0, "There should be batch get throttled request latency now!");
+  }
+
+  private double getMetricValue(String metricName) {
+    double value = 0;
+    for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
+      MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+      if (metrics.containsKey(metricName)) {
+        value += metrics.get(metricName).value();
+      }
+    }
+    return value;
   }
 
   @Test
