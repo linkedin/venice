@@ -88,6 +88,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       return gatheredResponses.get(0);
     }
 
+    // TODO: Need to investigate if any of the early terminations above could cause the in-flight request sensor to "leak"
+
     RequestType requestType = venicePath.getRequestType();
     AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
     String storeName = venicePath.getStoreName();
@@ -127,21 +129,22 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 2. {@link ROUTER_ROUTING_TIME}
      */
     if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
+      // TODO: When a batch get throws a quota exception, the ROUTER_SERVER_TIME is missing, so we can't record anything here...
       double latency = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
       if (HEALTHY_STATUSES.contains(responseStatus)) {
         routerStats.getStatsByType(RequestType.SINGLE_GET).recordReadQuotaUsage(storeName, venicePath.getPartitionKeys().size());
         if (isFastRequest(latency, requestType)) {
-          stats.recordHealthyRequest(storeName);
+          stats.recordHealthyRequest(storeName, latency);
         } else {
-          stats.recordTardyRequest(storeName);
+          stats.recordTardyRequest(storeName, latency);
         }
       } else if (responseStatus.equals(TOO_MANY_REQUESTS)) {
         LOGGER.debug("request is rejected by storage node because quota is exceeded");
-        stats.recordThrottledRequest(storeName);
+        stats.recordThrottledRequest(storeName, latency);
       } else {
         LOGGER.debug("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
-        stats.recordUnhealthyRequest(storeName);
+        stats.recordUnhealthyRequest(storeName, latency);
       }
     }
     if (allMetrics.containsKey(ROUTER_RESPONSE_WAIT_TIME.name())) {
@@ -160,6 +163,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       // Only record successful response
       stats.recordResponseSize(storeName, finalResponse.content().readableBytes());
     }
+    stats.recordResponse(storeName);
 
     return finalResponse;
   }

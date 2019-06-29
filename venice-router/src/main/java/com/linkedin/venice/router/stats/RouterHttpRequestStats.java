@@ -11,9 +11,11 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Gauge;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
@@ -25,6 +27,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor tardyRequestRatioSensor;
   private final Sensor throttleSensor;
   private final Sensor latencySensor;
+  private final Sensor healthyRequestLatencySensor;
+  private final Sensor unhealthyRequestLatencySensor;
+  private final Sensor tardyRequestLatencySensor;
+  private final Sensor throttledRequestLatencySensor;
   private final Sensor requestSizeSensor;
   private final Sensor compressedResponseSizeSensor;
   private final Sensor responseSizeSensor;
@@ -45,24 +51,19 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor keyNumSensor;
   // Reflect the real request usage, e.g count each key as an unit of request usage.
   private final Sensor requestUsageSensor;
-
   private final Sensor cacheResultSerializationLatencySensor;
   private final Sensor responseResultsDeserializationLatencySensor;
-
   private final Sensor requestParsingLatencySensor;
   private final Sensor requestRoutingLatencySensor;
-
   private final Sensor unAvailableRequestSensor;
-
   private final Sensor delayConstraintAbortedRetryRequest;
   private final Sensor slowRouteAbortedRetryRequest;
-
   private final Sensor nettyClientFirstResponseLatencySensor;
   private final Sensor nettyClientLastResponseLatencySensor;
-
   private final Sensor nettyClientAcquireChannelFutureLatencySensor;
-
   private final Sensor readQuotaUsageSensor;
+  private final Sensor inFlightRequestSensor;
+  private final AtomicInteger currentInFlightRequest;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
@@ -82,8 +83,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         new TehutiUtils.SimpleRatioStat(tardyRequestRate, requestRate));
     throttleSensor = registerSensor("throttled_request", new Count());
     badRequestSensor = registerSensor("bad_request", new Count());
-    fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max());
-    latencySensor = registerSensorWithDetailedPercentiles("latency", new Max());
+    fanoutRequestCountSensor = registerSensor("fanout_request_count", new Avg(), new Max(0));
+    latencySensor = registerSensorWithDetailedPercentiles("latency", new Avg(), new Max(0));
+    healthyRequestLatencySensor = registerSensorWithDetailedPercentiles("healthy_request_latency", new Avg(), new Max(0));
+    unhealthyRequestLatencySensor = registerSensorWithDetailedPercentiles("unhealthy_request_latency", new Avg(), new Max(0));
+    tardyRequestLatencySensor = registerSensorWithDetailedPercentiles("tardy_request_latency", new Avg(), new Max(0));
+    throttledRequestLatencySensor = registerSensorWithDetailedPercentiles("throttled_request_latency", new Avg(), new Max(0));
     routerResponseWaitingTimeSensor = registerSensor("response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
     requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")), new Avg());
@@ -121,7 +126,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     cachePutLatencySensor = registerSensor("cache_put_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
 
-    keyNumSensor = registerSensor("key_num", new Avg(), new Max());
+    keyNumSensor = registerSensor("key_num", new Avg(), new Max(0));
     /**
      * request_usage.Total is incoming KPS while request_usage.OccurrenceRate is QPS
      */
@@ -156,18 +161,34 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("netty_client_acquire_channel_latency")));
 
     readQuotaUsageSensor = registerSensor("read_quota_usage_kps", new Total());
+
+    inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
+    currentInFlightRequest = new AtomicInteger();
   }
 
+  /**
+   * We record this at the beginning of request handling, so we don't know the latency yet... All specific
+   * types of requests also have their latencies logged at the same time.
+   */
   public void recordRequest() {
     requestSensor.record();
+    inFlightRequestSensor.record(currentInFlightRequest.incrementAndGet());
   }
 
-  public void recordHealthyRequest() {
+  public void recordHealthyRequest(Double latency) {
     healthySensor.record();
+    if (latency != null) {
+      healthyRequestLatencySensor.record(latency);
+    }
   }
 
   public void recordUnhealthyRequest() {
     unhealthySensor.record();
+  }
+
+  public void recordUnhealthyRequest(double latency) {
+    recordUnhealthyRequest();
+    unhealthyRequestLatencySensor.record(latency);
   }
 
   /**
@@ -178,10 +199,23 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     readQuotaUsageSensor.record(quotaUsage);
   }
 
-  public void recordTardyRequest() {
+  public void recordTardyRequest(double latency) {
     tardySensor.record();
+    tardyRequestLatencySensor.record(latency);
   }
 
+  public void recordThrottledRequest(double latency) {
+    recordThrottledRequest();
+    throttledRequestLatencySensor.record(latency);
+  }
+
+  /**
+   * Once we stop reporting throttled requests in {@link com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils},
+   * and we only report them in {@link com.linkedin.venice.router.api.VeniceResponseAggregator} then we will always have
+   * a latency and we'll be able to remove this overload.
+   *
+   * TODO: Remove this overload after fixing the above.
+   */
   public void recordThrottledRequest() {
     throttleSensor.record();
   }
@@ -198,6 +232,22 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordLatency(double latency) {
     latencySensor.record(latency);
+  }
+
+  public void recordHealthyRequestLatencySensor(double latency) {
+    healthyRequestLatencySensor.record(latency);
+  }
+
+  public void recordUnhealthyRequestLatencySensor(double latency) {
+    unhealthyRequestLatencySensor.record(latency);
+  }
+
+  public void recordTardyRequestLatencySensor(double latency) {
+    tardyRequestLatencySensor.record(latency);
+  }
+
+  public void recordThrottledRequestLatencySensor(double latency) {
+    throttledRequestLatencySensor.record(latency);
   }
 
   public void recordResponseWaitingTime(double waitingTime) {
@@ -302,5 +352,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordSlowRouteAbortedRetryRequest() {
     slowRouteAbortedRetryRequest.record();
+  }
+
+  public void recordResponse() {
+    /**
+     * We already report into the sensor when the request starts, in {@link #recordRequest()}, so at response time
+     * there is no need to record into the sensor again. We just want to maintain the bookkeeping.
+     */
+    currentInFlightRequest.decrementAndGet();
   }
 }

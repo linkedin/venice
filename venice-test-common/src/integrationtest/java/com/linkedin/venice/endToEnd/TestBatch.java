@@ -253,16 +253,15 @@ public abstract class TestBatch {
     }
 
     MetricsRepository metricsRepository = new MetricsRepository();
-
-    AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-        .setVeniceURL(veniceCluster.getRandomRouterURL())
-        .setMetricsRepository(metricsRepository) // metrics only available for Avro client...
-    );
-    AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultVsonGenericClientConfig(storeName)
-        .setVeniceURL(veniceCluster.getRandomRouterURL())
-    );
-
-    dataValidator.validate(avroClient, vsonClient, metricsRepository);
+    try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(veniceCluster.getRandomRouterURL())
+            .setMetricsRepository(metricsRepository)); // metrics only available for Avro client...
+        AvroGenericStoreClient vsonClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultVsonGenericClientConfig(storeName)
+                .setVeniceURL(veniceCluster.getRandomRouterURL()))) {
+      dataValidator.validate(avroClient, vsonClient, metricsRepository);
+    }
 
     return storeName;
   }

@@ -190,6 +190,6 @@ public class TestVeniceResponseAggregator {
     FullHttpResponse response5 = buildFullHttpResponse(TOO_MANY_REQUESTS, new byte[0], headers);
     metrics.setMetric(MetricNames.ROUTER_SERVER_TIME.name(), new TimeValue(1, TimeUnit.MILLISECONDS));
     responseAggregator.buildResponse(request, metrics, Arrays.asList(response5));
-    verify(mockStatsForMultiGet).recordThrottledRequest(storeName);
+    verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0);
   }
 }

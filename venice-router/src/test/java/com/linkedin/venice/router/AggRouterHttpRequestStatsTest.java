@@ -32,8 +32,8 @@ public class AggRouterHttpRequestStatsTest {
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 2d);
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
 
-    stats.recordThrottledRequest("store1");
-    stats.recordThrottledRequest("store2");
+    stats.recordThrottledRequest("store1", 1.0);
+    stats.recordThrottledRequest("store2", 1.0);
     Assert.assertEquals(reporter.query(".total--request.Count").value(), 2d);
     Assert.assertEquals(reporter.query(".store1--request.Count").value(), 1d);
 
