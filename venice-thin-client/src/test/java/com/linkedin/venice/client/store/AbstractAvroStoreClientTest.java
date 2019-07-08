@@ -87,6 +87,7 @@ public class AbstractAvroStoreClientTest {
 
   private static final List<Float> dotProductParam = Arrays.asList(0.1f, 0.2f);
   private static final List<Float> cosineSimilarityParam = Arrays.asList(0.3f, 0.4f);
+  private static final List<Float> hadamardProductParam = Arrays.asList(0.5f, 0.6f);
 
   @Test
   public void testCompute() throws ExecutionException, InterruptedException {
@@ -99,27 +100,33 @@ public class AbstractAvroStoreClientTest {
         "  \"doc\": \"\",                          " +
         "  \"fields\": [        " +
         "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             " +
-        "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": \"double\", \"doc\": \"\", \"default\": 0 },           " +
-        "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": \"double\", \"doc\": \"\", \"default\": 0 },           " +
+        "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
+        "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
+        "         { \"name\": \"hadamard_product_for_float_array_field1\", \"type\":[\"null\",{\"type\":\"array\",\"items\":\"float\"}],\"doc\":\"\",\"default\":null },           " +
         "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        " +
         "  ]       " +
         " }       ";
     Schema resultSchema = Schema.parse(resultSchemaStr);
     RecordSerializer<GenericRecord> resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
+
+    List<Float> hadamardProductResult = Arrays.asList(3.1f, 4.1f);
     List<ComputeResponseRecordV1> responseRecordV1List = new ArrayList<>();
     GenericRecord result1 = new GenericData.Record(resultSchema);
     result1.put("int_field", 1);
-    result1.put("dot_product_for_float_array_field1", 1.1d);
-    result1.put("cosine_similarity_for_float_array_field2", 2.1d);
+    result1.put("dot_product_for_float_array_field1", 1.1f);
+    result1.put("cosine_similarity_for_float_array_field2", 2.1f);
+    result1.put("hadamard_product_for_float_array_field1", hadamardProductResult);
     result1.put("veniceComputationError", Collections.emptyMap());
     ComputeResponseRecordV1 record1 = new ComputeResponseRecordV1();
     record1.keyIndex = 0;
     record1.value = ByteBuffer.wrap(resultSerializer.serialize(result1));
 
+    List<Float> hadamardProductResult2 = Arrays.asList(3.2f, 4.2f);
     GenericRecord result2 = new GenericData.Record(resultSchema);
     result2.put("int_field", 2);
-    result2.put("dot_product_for_float_array_field1", 1.2d);
-    result2.put("cosine_similarity_for_float_array_field2", 2.2d);
+    result2.put("dot_product_for_float_array_field1", 1.2f);
+    result2.put("cosine_similarity_for_float_array_field2", 2.2f);
+    result2.put("hadamard_product_for_float_array_field1", hadamardProductResult2);
     result2.put("veniceComputationError", Collections.emptyMap());
     ComputeResponseRecordV1 record2 = new ComputeResponseRecordV1();
     record2.keyIndex = 1;
@@ -147,19 +154,22 @@ public class AbstractAvroStoreClientTest {
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
         .cosineSimilarity("float_array_field2", cosineSimilarityParam, "cosine_similarity_for_float_array_field2")
+        .hadamardProduct("float_array_field1", hadamardProductParam, "hadamard_product_for_float_array_field1")
         .execute(keys);
     Map<String, GenericRecord> computeResult = computeFuture.get();
     Assert.assertEquals(computeResult.size(), 2);
     Assert.assertNotNull(computeResult.get("key1"));
     GenericRecord resultForKey1 = computeResult.get("key1");
     Assert.assertEquals(resultForKey1.get("int_field"), 1);
-    Assert.assertEquals(resultForKey1.get("dot_product_for_float_array_field1"), 1.1d);
-    Assert.assertEquals(resultForKey1.get("cosine_similarity_for_float_array_field2"), 2.1d);
+    Assert.assertEquals(resultForKey1.get("dot_product_for_float_array_field1"), 1.1f);
+    Assert.assertEquals(resultForKey1.get("cosine_similarity_for_float_array_field2"), 2.1f);
+    Assert.assertEquals(resultForKey1.get("hadamard_product_for_float_array_field1"), hadamardProductResult);
     Assert.assertNotNull(computeResult.get("key2"));
     GenericRecord resultForKey2 = computeResult.get("key2");
     Assert.assertEquals(resultForKey2.get("int_field"), 2);
-    Assert.assertEquals(resultForKey2.get("dot_product_for_float_array_field1"), 1.2d);
-    Assert.assertEquals(resultForKey2.get("cosine_similarity_for_float_array_field2"), 2.2d);
+    Assert.assertEquals(resultForKey2.get("dot_product_for_float_array_field1"), 1.2f);
+    Assert.assertEquals(resultForKey2.get("cosine_similarity_for_float_array_field2"), 2.2f);
+    Assert.assertEquals(resultForKey2.get("hadamard_product_for_float_array_field1"), hadamardProductResult2);
   }
 
   @Test
@@ -173,8 +183,8 @@ public class AbstractAvroStoreClientTest {
         "  \"doc\": \"\",                          " +
         "  \"fields\": [        " +
         "         { \"name\": \"int_field\", \"type\": \"int\", \"doc\": \"\", \"default\": 0 },             " +
-        "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": \"double\", \"doc\": \"\", \"default\": 0 },           " +
-        "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": \"double\", \"doc\": \"\", \"default\": 0 },           " +
+        "         { \"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
+        "         { \"name\": \"cosine_similarity_for_float_array_field2\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\": null },           " +
         "         { \"name\": \"veniceComputationError\", \"type\": { \"type\": \"map\", \"values\": \"string\" }, \"doc\": \"\", \"default\": { } }        " +
         "  ]       " +
         " }       ";
@@ -183,8 +193,8 @@ public class AbstractAvroStoreClientTest {
     List<ComputeResponseRecordV1> responseRecordV1List = new ArrayList<>();
     GenericRecord result1 = new GenericData.Record(resultSchema);
     result1.put("int_field", 1);
-    result1.put("dot_product_for_float_array_field1", 0d);
-    result1.put("cosine_similarity_for_float_array_field2", 0d);
+    result1.put("dot_product_for_float_array_field1", 0f);
+    result1.put("cosine_similarity_for_float_array_field2", 0f);
     Map<String, String> computationErrorMap = new HashMap<>();
     computationErrorMap.put("dot_product_for_float_array_field1", "array length are different");
     computationErrorMap.put("cosine_similarity_for_float_array_field2", "NullPointerException");

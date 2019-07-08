@@ -233,20 +233,17 @@ public class StatTrackingStoreClientTest {
     TransportClient mockTransportClient = mock(TransportClient.class);
 
     // Mock a transport client response
-    String resultSchemaStr = "{\n" + "  \"type\" : \"record\",\n" + "  \"name\" : \"test_store_VeniceComputeResult\",\n"
-        + "  \"doc\" : \"\",\n" + "  \"fields\" : [ {\n" + "    \"name\" : \"int_field\",\n"
-        + "    \"type\" : \"int\",\n" + "    \"doc\" : \"\",\n" + "    \"default\" : 0\n" + "  }, {\n"
-        + "    \"name\" : \"dot_product_for_float_array_field1\",\n" + "    \"type\" : \"double\",\n"
-        + "    \"doc\" : \"\",\n" + "    \"default\" : 0\n" + "  }, {\n"
-        + "    \"name\" : \"veniceComputationError\",\n" + "    \"type\" : {\n" + "      \"type\" : \"map\",\n"
-        + "      \"values\" : \"string\"\n" + "    },\n" + "    \"doc\" : \"\",\n" + "    \"default\" : { }\n"
-        + "  } ]\n" + "}";
+    String resultSchemaStr = "{\n" + "\t\"type\": \"record\",\n" + "\t\"name\": \"test_store_VeniceComputeResult\", \"doc\" : \"\",\n"
+        + "\t\"fields\": [\n"
+        + "\t\t{\"name\": \"int_field\", \"type\": \"int\", \"default\": 0, \"doc\": \"\"},\n"
+        + "\t\t{\"name\": \"dot_product_for_float_array_field1\", \"type\": [\"null\",\"float\"], \"doc\": \"\", \"default\" : null},\n"
+        + "\t\t{\"name\": \"veniceComputationError\", \"type\": {\"type\": \"map\", \"values\": \"string\"}, \"doc\": \"\", \"default\" : {}}]}";
     Schema resultSchema = Schema.parse(resultSchemaStr);
     RecordSerializer<GenericRecord> resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(resultSchema);
     List<ComputeResponseRecordV1> responseRecordV1List = new ArrayList<>();
     GenericRecord result1 = new GenericData.Record(resultSchema);
     result1.put("int_field", 1);
-    result1.put("dot_product_for_float_array_field1", 1.1d);
+    result1.put("dot_product_for_float_array_field1", 1.1f);
     result1.put("veniceComputationError", Collections.emptyMap());
     ComputeResponseRecordV1 record1 = new ComputeResponseRecordV1();
     record1.keyIndex = 0;
@@ -254,7 +251,7 @@ public class StatTrackingStoreClientTest {
 
     GenericRecord result2 = new GenericData.Record(resultSchema);
     result2.put("int_field", 2);
-    result2.put("dot_product_for_float_array_field1", 1.2d);
+    result2.put("dot_product_for_float_array_field1", 1.2f);
     result2.put("veniceComputationError", Collections.emptyMap());
     ComputeResponseRecordV1 record2 = new ComputeResponseRecordV1();
     record2.keyIndex = 1;
@@ -299,11 +296,11 @@ public class StatTrackingStoreClientTest {
     Assert.assertNotNull(computeResult.get("key1"));
     GenericRecord resultForKey1 = computeResult.get("key1");
     Assert.assertEquals(1, resultForKey1.get("int_field"));
-    Assert.assertEquals(1.1d, resultForKey1.get("dot_product_for_float_array_field1"));
+    Assert.assertEquals(1.1f, resultForKey1.get("dot_product_for_float_array_field1"));
     Assert.assertNotNull(computeResult.get("key2"));
     GenericRecord resultForKey2 = computeResult.get("key2");
     Assert.assertEquals(2, resultForKey2.get("int_field"));
-    Assert.assertEquals(1.2d, resultForKey2.get("dot_product_for_float_array_field1"));
+    Assert.assertEquals(1.2f, resultForKey2.get("dot_product_for_float_array_field1"));
 
     // Verify metrics
     Map<String, ? extends Metric> metrics = repository.metrics();
