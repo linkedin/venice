@@ -19,6 +19,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -34,6 +35,7 @@ import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.errors.TopicAuthorizationException;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.log4j.Logger;
 
@@ -418,7 +420,15 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
         completableFutureCallBack.callback = new KafkaMessageCallback(key, kafkaValue, logger);
       }
     }
-    return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
+    try {
+      return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
+    } catch (Exception e) {
+      if (ExceptionUtils.recursiveClassEquals(e, TopicAuthorizationException.class)) {
+        throw new VeniceException("You do not have permission to write to this store. Please check that ACLs are set correctly.", e);
+      } else {
+        throw e;
+      }
+    }
   }
 
   /**
