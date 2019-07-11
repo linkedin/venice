@@ -40,7 +40,7 @@ public class AdminChannelWithSSL {
     ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
     controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
-      MultiStoreResponse response = controllerClient.queryStoreList();
+      MultiStoreResponse response = controllerClient.queryStoreList(false);
       Assert.assertFalse(response.isError());
       String[] stores = response.getStores();
       Assert.assertEquals(stores.length, 1);
@@ -50,7 +50,7 @@ public class AdminChannelWithSSL {
     ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerWrapper.getControllerUrl());
     // Child controller is talking SSL to Kafka
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
-      MultiStoreResponse response = childControllerClient.queryStoreList();
+      MultiStoreResponse response = childControllerClient.queryStoreList(false);
       Assert.assertFalse(response.isError());
       String[] stores = response.getStores();
       Assert.assertEquals(stores.length, 1);
