@@ -47,10 +47,10 @@ public class StoresRoutes {
         veniceResponse.setName(request.queryParams(NAME));
 
         // Potentially filter out the system stores
-        String includeSystemStores = request.params(INCLUDE_SYSTEM_STORES);
+        String includeSystemStores = request.queryParams(INCLUDE_SYSTEM_STORES);
         List<Store> storeList = admin.getAllStores(veniceResponse.getCluster());
-        if (null == includeSystemStores // If the param is not provided, the default is to exclude them
-            || !Boolean.parseBoolean(includeSystemStores)) {
+        if (null != includeSystemStores // If the param is not provided, the default is to include them
+            && !Boolean.parseBoolean(includeSystemStores)) {
           storeList = storeList.stream()
               .filter(store -> !store.isSystemStore())
               .collect(Collectors.toList());

@@ -70,7 +70,7 @@ public enum Arg {
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage"),
   FORCE("force", "f", false, "Force execute this operation"),
-  INCLUDE_SYSTEM_STORES("include-system-stores", "iss", false, "Include internal stores maintained by the system.");
+  INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system.");
 
 
   private final String argName;

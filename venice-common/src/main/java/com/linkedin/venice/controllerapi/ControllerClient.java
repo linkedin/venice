@@ -303,7 +303,7 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.UPLOAD_PUSH_JOB_STATUS, params, PushJobStatusUploadResponse.class);
   }
   public MultiStoreResponse queryStoreList() {
-    return queryStoreList(false);
+    return queryStoreList(true);
   }
 
   public MultiStoreResponse queryStoreList(boolean includeSystemStores) {
