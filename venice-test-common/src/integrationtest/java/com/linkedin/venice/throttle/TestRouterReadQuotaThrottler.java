@@ -3,18 +3,25 @@ package com.linkedin.venice.throttle;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -23,7 +30,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 
-public class TestThrottleReadRequestPerStore {
+public class TestRouterReadQuotaThrottler {
   private VeniceClusterWrapper cluster;
   private int testTimeOutMS = 3000;
   private int numberOfRouter = 2;
@@ -128,5 +135,34 @@ public class TestThrottleReadRequestPerStore {
     } catch (ExecutionException e) {
       //expected
     }
+  }
+
+  @Test
+  public void testNoopThrottlerCanReportPerRouterStoreQuota() {
+    // Get default read quota
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    StoreInfo storeInfo = storeResponse.getStore();
+    long expectedDefaultQuota = storeInfo.getReadQuotaInCU();
+
+    VeniceRouterWrapper veniceRouterWrapper = cluster.getRandomVeniceRouter();
+    MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+    Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+
+    TestUtils.waitForNonDeterministicAssertion(2000, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(metrics.containsKey("." + storeName + "--read_quota_per_router.Gauge"));
+      Assert.assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), (double)expectedDefaultQuota / 2.0, 0.0001d);
+    });
+
+    // test the stats change after changing updating store read quota config
+    long newQuota = 1000000l; // 1 million
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(newQuota));
+    storeResponse = controllerClient.getStore(storeName);
+    storeInfo = storeResponse.getStore();
+    long expectedQuota = storeInfo.getReadQuotaInCU();
+    TestUtils.waitForNonDeterministicAssertion(2000, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertTrue(metrics.containsKey("." + storeName + "--read_quota_per_router.Gauge"));
+      Assert.assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), (double)expectedQuota / 2.0, 0.0001d);
+    });
   }
 }
