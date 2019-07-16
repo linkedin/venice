@@ -151,6 +151,20 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     });
   }
 
+  @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
+  public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
+    executeStateTransition(message, () -> {
+      logger.info(clusterName + " going from OFFLINE to DROPPED.");
+    });
+  }
+
+  @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
+  public void onBecomeDroppedFromError(Message message, NotificationContext context) {
+    executeStateTransition(message, () -> {
+      logger.info(clusterName + " going from ERROR to DROPPED.");
+    });
+  }
+
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
