@@ -35,7 +35,7 @@ public class ParentHelixOfflinePushAccessor {
         "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
     HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(clusterName, pushStatus.getKafkaTopic()),
         pushStatus);
-    logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes.");
+    logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes for topic: " + pushStatus.getKafkaTopic());
   }
 
   public OfflinePushStatus getOfflinePushStatus(String clusterName, String kafkaTopic) {

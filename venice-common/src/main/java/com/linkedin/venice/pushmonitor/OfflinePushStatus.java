@@ -121,6 +121,10 @@ public class OfflinePushStatus {
    * @param newPartitionStatus the new partition status
    */
   public static void setPartitionStatus(List<PartitionStatus> partitionStatusList, PartitionStatus newPartitionStatus, String kafkaTopic) {
+    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= partitionStatusList.size()) {
+      throw new IllegalArgumentException(
+          "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
+    }
     if (newPartitionStatus instanceof ReadOnlyPartitionStatus) {
       partitionStatusList.set(newPartitionStatus.getPartitionId(), newPartitionStatus);
     } else {
