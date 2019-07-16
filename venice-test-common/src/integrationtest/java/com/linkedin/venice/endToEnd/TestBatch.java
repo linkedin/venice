@@ -198,7 +198,7 @@ public abstract class TestBatch {
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT, invocationCount = 3)
   public void testLeaderFollowerStateModel() throws Exception {
     testBatchStore(inputDir -> {
       Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);

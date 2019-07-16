@@ -138,7 +138,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   }
 
   @Override
-  public void createOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
+  public synchronized void createOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
     logger.info(
         "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
     HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
@@ -150,7 +150,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       partitionStatuses.add(new PartitionStatus(partitionId));
     }
     HelixUtils.updateChildren(partitionStatusAccessor, partitionPaths, partitionStatuses);
-    logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes.");
+    logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes for topic : " + pushStatus.getKafkaTopic());
   }
 
   @Override

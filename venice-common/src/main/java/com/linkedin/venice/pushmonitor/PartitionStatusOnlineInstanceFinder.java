@@ -46,7 +46,9 @@ public class PartitionStatusOnlineInstanceFinder
   @Override
   public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
     List<PartitionStatus> statusList = topicToPartitionMap.get(kafkaTopic);
-    if (statusList == null) {
+
+    // have not yet received partition status for this topic yet. return;
+    if (statusList == null ) {
       logger.info("Instance finder received unknown partition status notification." +
           " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId() + ". Will ignore.");
       return;
@@ -56,7 +58,7 @@ public class PartitionStatusOnlineInstanceFinder
         logger.error("Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
       }
     } else {
-      logger.warn("Instance finder received partition status notification for topic unkown to RoutingDataRepository." +
+      logger.warn("Instance finder received partition status notification for topic unknown to RoutingDataRepository." +
           " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId());
     }
     OfflinePushStatus.setPartitionStatus(statusList, partitionStatus, kafkaTopic);
@@ -68,6 +70,7 @@ public class PartitionStatusOnlineInstanceFinder
   @Override
   public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
     List<PartitionStatus> partitionStatusList = topicToPartitionMap.get(kafkaTopic);
+
     if (partitionStatusList == null) {
       //haven't received partition info related to this topic. Return empty list
       return Collections.emptyList();
@@ -125,7 +128,18 @@ public class PartitionStatusOnlineInstanceFinder
 
     newPushStatusList.forEach(pushStatusName -> {
       OfflinePushStatus status = getPushStatusFromZk(pushStatusName);
+
       if (status != null) {
+        // if partition list size is 0 it means the partition status node is not properly created yet
+        // but the child ZK nodes are causing to this method to get called. 
+        // In that case create place holder statuses baased on the partition count.
+        if (status.getPartitionStatuses().size() == 0) {
+          List<PartitionStatus> partitionStatuses = new ArrayList<>(status.getNumberOfPartition());
+          for (int i = 0; i < status.getNumberOfPartition(); i++) {
+            partitionStatuses.add(new PartitionStatus(i));
+          }
+          status.setPartitionStatuses(partitionStatuses);
+        }
         topicToPartitionMap.put(pushStatusName, new ArrayList<>(status.getPartitionStatuses()));
         offlinePushAccessor.subscribePartitionStatusChange(status, this);
       }
@@ -136,7 +150,7 @@ public class PartitionStatusOnlineInstanceFinder
 
   private OfflinePushStatus getPushStatusFromZk(String kafkaTopic) {
     try {
-         return offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
+      return offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(kafkaTopic);
     } catch (VeniceException exception) {
       logger.warn("Instance finder could not retrieve offline push status from ZK. Topic: " + kafkaTopic);
       return null;

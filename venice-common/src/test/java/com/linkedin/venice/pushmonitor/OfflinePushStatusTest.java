@@ -2,6 +2,8 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import java.util.ArrayList;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -43,6 +45,25 @@ public class OfflinePushStatusTest {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
       Assert.fail("Partition 1000 dose not exist.");
     } catch (VeniceException e) {
+      //expected
+    }
+  }
+
+  @Test
+  public void testSetPartitionStatus() {
+    OfflinePushStatus offlinePushStatus =
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    PartitionStatus partitionStatus = new PartitionStatus(1);
+    partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
+    offlinePushStatus.setPartitionStatus(partitionStatus);
+    Assert.assertEquals(offlinePushStatus.getPartitionStatuses().get(1),
+        ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
+    List<PartitionStatus> partitionStatuses = new ArrayList<>();
+
+    try {
+      OfflinePushStatus.setPartitionStatus(partitionStatuses, new PartitionStatus(1000), "topic_1");
+      Assert.fail("Partition 1000 dose not exist.");
+    } catch (IllegalArgumentException e) {
       //expected
     }
   }
