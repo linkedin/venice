@@ -31,8 +31,8 @@ import org.codehaus.jackson.annotate.JsonProperty;
  */
 public class Store {
 
-  private static final String SYSTEM_STORE_NAME_PADDING = "__";
-  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PADDING + "%s" + SYSTEM_STORE_NAME_PADDING;
+  private static final String SYSTEM_STORE_NAME_PADDING = "venice_system_store_";
+  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PADDING + "%s";
 
   /**
    * Special version number indicates none of version is available to read.
@@ -691,7 +691,7 @@ public class Store {
   }
 
   public boolean isSystemStore() {
-    return getName().startsWith(SYSTEM_STORE_NAME_PADDING) && getName().endsWith(SYSTEM_STORE_NAME_PADDING);
+    return getName().startsWith(SYSTEM_STORE_NAME_PADDING);
   }
 
   /**
