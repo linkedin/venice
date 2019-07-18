@@ -216,6 +216,28 @@
                       "type": "string"
                     }
                   ]
+                }, {
+                  "name": "TopicSwitch",
+                  "doc": "This ControlMessage is sent by the Controller, once per partition; it will only be used in leader/follower state transition model; this control message will indicate the leader to switch to a new source topic and start consuming from offset with a specific timestamp.",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "sourceKafkaServers",
+                      "doc": "A list of Kafka bootstrap servers URLs where the new source topic exists; currently there will be only one URL in the list, but the list opens up the possibility for leader to consume from different fabrics in active-active replication mode.",
+                      "type": {
+                        "type": "array",
+                        "items": "string"
+                      }
+                    }, {
+                      "name": "sourceTopicName",
+                      "doc": "Name of new the source topic.",
+                      "type": "string"
+                    }, {
+                      "name": "rewindStartTimestamp",
+                      "doc": "The creation time of this control message in parent controller minus the rewind time of the corresponding store; leaders in different fabrics will get the offset of the source topic by the same start timestamp and start consuming from there; if timestamp is 0, leader will start consuming from the beginning of the source topic.",
+                      "type": "long"
+                    }
+                  ]
                 }
               ]
             }
