@@ -53,6 +53,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
     try {
       QueryAction action = getQueryActionFromRequest(req);
+      statsHandler.setRequestSize(req.content().readableBytes());
       switch (action){
         case STORAGE:  // GET /storage/store/partition/key
           HttpMethod requestMethod = req.method();

@@ -22,6 +22,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
@@ -42,6 +43,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -51,6 +53,8 @@ import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class StorageNodeComputeTest {
+  private static final Logger LOGGER = Logger.getLogger(StorageNodeComputeTest.class);
+
   private VeniceClusterWrapper veniceCluster;
   private int valueSchemaId;
   private String storeName;
@@ -182,6 +186,7 @@ public class StorageNodeComputeTest {
              */
             .get(2, TimeUnit.SECONDS);
         Assert.assertEquals(computeResult.size(), 10);
+
         for (Map.Entry<String, GenericRecord> entry : computeResult.entrySet()) {
           int keyIdx = getKeyIndex(entry.getKey(), keyPrefix);
           // check projection result
@@ -205,16 +210,74 @@ public class StorageNodeComputeTest {
       }
 
       // Check retry requests
-      double computeRetries = 0;
-      for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
-        MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
-        Map<String, ? extends Metric> metrics = metricsRepository.metrics();
-        if (metrics.containsKey(".total--compute_retry_count.LambdaStat")) {
-          computeRetries += metrics.get(".total--compute_retry_count.LambdaStat").value();
-        }
-      }
+      Assert.assertTrue(MetricsUtils.getSum(".total--compute_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,
+          "After " + rounds + " reads, there should be some compute retry requests");
+    }
+  }
 
-      Assert.assertTrue(computeRetries > 0, "After " + rounds + " reads, there should be some compute retry requests");
+  /**
+   * The goal of this test is to find the breaking point at which a compute request gets split into more than 1 part.
+   */
+  @Test (timeOut = 30000, enabled = false)
+  public void testComputeRequestSize() throws Exception {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    veniceCluster.updateStore(storeName, params);
+
+    VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
+    final int pushVersion = newVersion.getVersion();
+
+    try (VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
+        AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerAddr))) {
+
+      String keyPrefix = "key_";
+      String valuePrefix = "value_";
+      pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, 100, veniceCluster,
+          veniceWriter, pushVersion, CompressionStrategy.NO_OP);
+
+      // Run multiple rounds
+      int rounds = 100;
+      int cur = 0;
+      while (cur++ < rounds) {
+        Set<String> keySet = new HashSet<>();
+        for (int i = 0; i < 10; ++i) {
+          keySet.add(keyPrefix + i);
+        }
+        keySet.add("unknown_key");
+        List<Float> p = new ArrayList<>();
+        for (int i = 0; i < cur; i++) {
+          p.add((float) (i * 0.1));
+        }
+
+        Map<String, GenericRecord> computeResult = storeClient.compute()
+            .dotProduct("member_feature", p, "member_score")
+            .execute(keySet)
+            /**
+             * Added 2s timeout as a safety net as ideally each request should take sub-second.
+             */
+            .get(2, TimeUnit.SECONDS);
+        Assert.assertEquals(computeResult.size(), 10);
+
+        LOGGER.info("Current round: " + cur + "/" + rounds
+            + "\n - max part_count: "
+            + MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers())
+            + "\n - min part_count: "
+            + MetricsUtils.getMin(".total--compute_request_part_count.Min", veniceCluster.getVeniceServers())
+            + "\n - avg part_count: "
+            + MetricsUtils.getAvg(".total--compute_request_part_count.Avg", veniceCluster.getVeniceServers())
+            + "\n - max request size: "
+            + MetricsUtils.getMax(".total--compute_request_size_in_bytes.Max", veniceCluster.getVeniceServers())
+            + "\n - min request size: "
+            + MetricsUtils.getMin(".total--compute_request_size_in_bytes.Min", veniceCluster.getVeniceServers())
+            + "\n - avg request size: "
+            + MetricsUtils.getAvg(".total--compute_request_size_in_bytes.Avg", veniceCluster.getVeniceServers())
+        );
+
+        Assert.assertEquals(MetricsUtils.getMax(".total--compute_request_part_count.Max", veniceCluster.getVeniceServers()), 1.0,
+            "Expected a max of one part in compute request");
+      }
     }
   }
 
