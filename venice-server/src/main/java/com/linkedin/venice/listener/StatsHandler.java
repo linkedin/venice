@@ -25,6 +25,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
   private int successRequestKeyCount = -1;
+  private int requestSizeInBytes = -1;
   private double readComputeLatency = -1;
   private double readComputeDeserializationLatency = -1;
   private double readComputeSerializationLatency = -1;
@@ -108,6 +109,10 @@ public class StatsHandler extends ChannelDuplexHandler {
     setRequestKeyCount(request.getKeyCount());
   }
 
+  public void setRequestSize(int requestSizeInBytes) {
+    this.requestSizeInBytes = requestSizeInBytes;
+  }
+
   public void setSuccessRequestKeyCount(int successKeyCount) {
     this.successRequestKeyCount = successKeyCount;
   }
@@ -164,6 +169,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       storageExecutionSubmissionWaitTime = -1;
       requestKeyCount = -1;
       successRequestKeyCount = -1;
+      requestSizeInBytes = -1;
       multiChunkLargeValueCount = -1;
       readComputeLatency = -1;
       readComputeDeserializationLatency = -1;
@@ -240,6 +246,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (successRequestKeyCount > 0) {
         currentStats.recordSuccessRequestKeyCount(storeName, successRequestKeyCount);
+      }
+      if (requestSizeInBytes > 0) {
+        currentStats.recordRequestSizeInBytes(storeName, requestSizeInBytes);
       }
       if (firstPartLatency > 0) {
         currentStats.recordRequestFirstPartLatency(storeName, firstPartLatency);

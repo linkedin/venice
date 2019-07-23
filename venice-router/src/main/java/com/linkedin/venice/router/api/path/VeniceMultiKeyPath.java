@@ -1,7 +1,6 @@
 package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;

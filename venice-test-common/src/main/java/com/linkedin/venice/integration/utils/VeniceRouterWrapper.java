@@ -5,6 +5,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -23,7 +24,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 /**
  * A wrapper for the {@link VeniceRouterWrapper}.
  */
-public class VeniceRouterWrapper extends ProcessWrapper {
+public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
 
   public static final String SERVICE_NAME = "VeniceRouter";
 
@@ -133,6 +134,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     return service.getRoutersClusterManager();
   }
 
+  @Override
   public MetricsRepository getMetricsRepository() {
     return service.getMetricsRepository();
   }

@@ -6,6 +6,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor multiChunkLargeValueCountSensor;
   private final Sensor requestKeyCountSensor;
   private final Sensor successRequestKeyCountSensor;
+  private final Sensor requestSizeInBytesSensor;
   private final Sensor storageExecutionHandlerSubmissionWaitTime;
 
   private final Sensor requestFirstPartLatencySensor;
@@ -112,13 +114,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     requestKeyCountSensor = registerSensor("request_key_count", new Rate(), requestKeyCount, new Avg(), new Max());
     successRequestKeyCountSensor = registerSensor("success_request_key_count", new Rate(), successRequestKeyCount,
         new Avg(), new Max());
+    requestSizeInBytesSensor = registerSensor("request_size_in_bytes", new Avg(), new Min(), new Max());
     successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
 
     requestFirstPartLatencySensor = getPercentileStatSensor("request_first_part_latency");
     requestSecondPartLatencySensor = getPercentileStatSensor("request_second_part_latency");
     requestPartsInvokeDelayLatencySensor = getPercentileStatSensor("request_parts_invoke_delay_latency");
-    requestPartCountSensor = registerSensor("request_part_count", new Avg(), new Max());
+    requestPartCountSensor = registerSensor("request_part_count", new Avg(), new Min(), new Max());
 
     readComputeLatencySensor = getPercentileStatSensor("storage_engine_read_compute_latency");
     readComputeLatencyForSmallValueSensor = getPercentileStatSensor("storage_engine_read_compute_latency_for_small_value");
@@ -164,6 +167,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
   public void recordSuccessRequestKeyCount(int successKeyCount) {
     successRequestKeyCountSensor.record(successKeyCount);
+  }
+
+  public void recordRequestSizeInBytes(int requestSizeInBytes) {
+    requestSizeInBytesSensor.record(requestSizeInBytes);
   }
 
   public void recordMultiChunkLargeValueCount(int multiChunkLargeValueCount) {

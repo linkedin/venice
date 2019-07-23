@@ -53,6 +53,11 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordSuccessRequestKeyCount(keyNum);
   }
 
+  public void recordRequestSizeInBytes(String storeName, int requestSizeInBytes) {
+    totalStats.recordRequestSizeInBytes(requestSizeInBytes);
+    getStoreStats(storeName).recordRequestSizeInBytes(requestSizeInBytes);
+  }
+
   public void recordMultiChunkLargeValueCount(String storeName, int multiChunkLargeValueCount) {
     totalStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
     getStoreStats(storeName).recordMultiChunkLargeValueCount(multiChunkLargeValueCount);

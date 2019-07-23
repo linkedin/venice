@@ -7,9 +7,9 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -31,7 +31,7 @@ import org.apache.kafka.common.protocol.SecurityProtocol;
 /**
  * A wrapper for the {@link com.linkedin.venice.server.VeniceServer}.
  */
-public class VeniceServerWrapper extends ProcessWrapper {
+public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware {
   public static final String SERVICE_NAME = "VeniceServer";
 
   /**
@@ -169,6 +169,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
     return veniceServer;
   }
 
+  @Override
   public MetricsRepository getMetricsRepository() {
     return veniceServer.getMetricsRepository();
   }
