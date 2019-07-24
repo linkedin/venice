@@ -6,6 +6,7 @@ import static org.testng.Assert.*;
 import static org.apache.avro.Schema.*;
 
 import com.linkedin.venice.meta.Store;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.SortedMap;
@@ -106,6 +107,19 @@ public class UtilsTest {
 
     assertListEqualityBothWays(javaUtilArrayList3, javaUtilArrayList4,
         "We cannot compare java.util.ArrayList<Object> by content equality properly!");
+  }
+
+  @Test
+  public void testGetDebugInfo() {
+    Map<CharSequence, CharSequence> debugInfo = Utils.getDebugInfo();
+    debugInfo.forEach((k, v) -> System.out.println(k + ": " + v));
+    Assert.assertFalse(debugInfo.isEmpty(), "debugInfo should not be empty.");
+    String[] expectedKeys = {"path", "host", "pid", "version", "user"};
+    Assert.assertEquals(debugInfo.size(), expectedKeys.length, "debugInfo does not contain the expected number of elements.");
+    Arrays.stream(expectedKeys).forEach(key ->
+        Assert.assertTrue(debugInfo.containsKey(key), "debugInfo should contain: " + key));
+
+    // N.B.: Not testing the actual debugInfo values because them being environment-specific makes things a bit tricky
   }
 
   @Test

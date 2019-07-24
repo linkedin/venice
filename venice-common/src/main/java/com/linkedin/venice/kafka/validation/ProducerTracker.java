@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -18,6 +19,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -124,9 +126,21 @@ public class ProducerTracker {
       if (null == state) {
         state = new ProducerPartitionState();
 
-        // TODO: Set these maps properly from the beginning of segment record.
-        state.aggregates = new HashMap<>();
-        state.debugInfo = new HashMap<>();
+        /**
+         * The aggregates and debugInfo being stored in the {@link ProducerPartitionState} will add a bit
+         * of overhead when we checkpoint this metadata to disk, so we should be careful not to add a very
+         * large number of elements to these arbitrary collections.
+         *
+         * In the case of the debugInfo, it is expected (at the time of writing this comment) that all
+         * partitions produced by the same producer GUID would have the same debug values (though nothing
+         * precludes us from having per-partition debug values in the future if there is a use case for
+         * that). It is redundant that we store the same debug values once per partition. In the future,
+         * if we want to eliminate this redundancy, we could move the per-producer debug info to another
+         * data structure, though that would increase bookkeeping complexity. This is expected to be a
+         * minor overhead, and therefore it appears to be a premature to optimize this now.
+         */
+        state.aggregates = segment.getAggregates();
+        state.debugInfo = segment.getDebugInfo();
         state.checksumType = segment.getCheckSumType().getValue();
       }
       /**
@@ -209,6 +223,8 @@ public class ProducerTracker {
                                        boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
     boolean unregisteredProducer = true;
+    Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
+    Map<CharSequence, Long> aggregates = new HashMap<>();
 
     switch (MessageType.valueOf(messageEnvelope)) {
       case CONTROL_MESSAGE:
@@ -217,6 +233,9 @@ public class ProducerTracker {
           case START_OF_SEGMENT:
             StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
             checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
+            debugInfo = controlMessage.debugInfo;
+            startOfSegment.upcomingAggregates.stream().forEach(aggregate ->
+                aggregates.put(aggregate, 0L));
             unregisteredProducer = false;
         }
     }
@@ -225,7 +244,9 @@ public class ProducerTracker {
         partition,
         messageEnvelope.producerMetadata.segmentNumber,
         messageEnvelope.producerMetadata.messageSequenceNumber,
-        checkSumType);
+        checkSumType,
+        debugInfo,
+        aggregates);
     segments.put(partition, newSegment);
 
     if (unregisteredProducer) {
@@ -422,19 +443,30 @@ public class ProducerTracker {
       }
 
       String exceptionMsg = name() + " data detected for producer GUID: "
-          + producerMetadata.producerGUID + ",\n"
+          + GuidUtils.getHexFromGuid(producerMetadata.producerGUID) + ",\n"
           + "message type: " + messageTypeString + ",\n"
           + "partition: " + partition + ",\n"
           + "previous segment: " + previousSegment + ",\n"
           + "incoming segment: " + producerMetadata.segmentNumber + ",\n"
           + "previous sequence number: " + previousSequenceNumber + ",\n"
-          + "incoming sequence number: " + producerMetadata.messageSequenceNumber;
-
-      if (extraInfo.isPresent()) {
-        exceptionMsg += ",\n" + "extra info: " + extraInfo.get();
-      }
+          + "incoming sequence number: " + producerMetadata.messageSequenceNumber + ",\n"
+          + "aggregates: " + printMap(segment.getAggregates()) + ",\n"
+          + "debugInfo: " + printMap(segment.getDebugInfo())
+          + extraInfo.map(info -> ",\n" + "extra info: " + info).orElse("");
 
       return exceptionSupplier.apply(exceptionMsg);
+    }
+
+    private <K, V> String printMap(Map<K, V> map) {
+      String msg = "{";
+      for (Map.Entry<K, V> entry: map.entrySet()) {
+        msg += "\n\t" + entry.getKey() + ": " + entry.getValue();
+      }
+      if (!map.isEmpty()) {
+        msg += "\n";
+      }
+      msg += "}";
+      return msg;
     }
   }
   public interface DIVErrorMetricCallback {

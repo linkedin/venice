@@ -11,11 +11,17 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.net.UnknownHostException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -514,5 +520,82 @@ public class Utils {
     double divider = Math.pow(1000, suffixIndex);
     int prettyNumber = (int) Math.round(doubleNumber / divider);
     return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
+  }
+
+  public static String getCurrentWorkingDirectory() {
+    Path currentRelativePath = Paths.get("");
+    return currentRelativePath.toAbsolutePath().toString();
+  }
+
+  /**
+   * Note: this may fail in some JVM implementations.
+   *
+   * Lifted from: https://stackoverflow.com/a/7690178
+   *
+   * @return the pid of the current Java process, or "N/A" if unavailable
+   */
+  public static String getPid() {
+    try {
+      // something like '<pid>@<hostname>', at least in SUN / Oracle JVMs
+      final String jvmName = ManagementFactory.getRuntimeMXBean().getName();
+      final int index = jvmName.indexOf('@');
+
+      if (index < 1) {
+        LOGGER.warn("Failed to determine pid");
+        return "N/A";
+      }
+
+      return Long.toString(Long.parseLong(jvmName.substring(0, index)));
+    } catch (Exception e) {
+      LOGGER.warn("Failed to determine pid", e);
+      return "N/A";
+    }
+  }
+
+  /**
+   * N.B.: This method doesn't work in IntelliJ because of the way the classpath is generated in that environment.
+   *
+   * @return the version of the venice-common jar on the classpath, if available, or "N/A" otherwise.
+   */
+  public static String getVeniceVersionFromClassPath() {
+    ClassLoader cl = ClassLoader.getSystemClassLoader();
+    URL[] urls = ((URLClassLoader)cl).getURLs();
+    String jarNamePrefixToLookFor = "venice-common-";
+    for (URL url: urls) {
+      String fileName = url.getFile();
+      int indexOfJarName = fileName.lastIndexOf(jarNamePrefixToLookFor);
+      if (indexOfJarName > -1) {
+        int substringStart = indexOfJarName + jarNamePrefixToLookFor.length();
+        return fileName.substring(substringStart).replace(".jar", "");
+      }
+    }
+
+    LOGGER.warn("Failed to determine Venice version");
+    return "N/A";
+  }
+
+  public static String getCurrentUser() {
+    try {
+      return System.getProperty("user.name");
+    } catch (Exception e) {
+      LOGGER.warn("Failed to determine current user");
+      return "N/A";
+    }
+  }
+
+  public static Map<CharSequence, CharSequence> getDebugInfo() {
+    Map<CharSequence, CharSequence> debugInfo = new HashMap<>();
+    try {
+      debugInfo.put("host", getHostName());
+    } catch (Exception e) {
+      LOGGER.warn("Failed to determine host name");
+      debugInfo.put("host", "N/A");
+    }
+    debugInfo.put("path", getCurrentWorkingDirectory());
+    debugInfo.put("pid", getPid());
+    debugInfo.put("version", getVeniceVersionFromClassPath());
+    debugInfo.put("user", getCurrentUser());
+
+    return debugInfo;
   }
 }
