@@ -31,6 +31,7 @@ import java.util.concurrent.Future;
 
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
+import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.protocol.Errors;
@@ -109,11 +110,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private final int maxSizeForUserPayloadPerMessageInBytes;
   private final int maxAttemptsWhenTopicMissing;
   private final long sleepTimeMsWhenTopicMissing;
-
   /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
   private final Map<Integer, Segment> segmentsMap = new HashMap<>();
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
+  private final Map<CharSequence, CharSequence> defaultDebugInfo;
 
   protected VeniceWriter(
       VeniceProperties props,
@@ -141,6 +142,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
     this.maxAttemptsWhenTopicMissing = props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
     this.sleepTimeMsWhenTopicMissing = props.getInt(SLEEP_TIME_MS_WHEN_TOPIC_MISSING, DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING);
+    this.defaultDebugInfo = Utils.getDebugInfo();
 
     try {
       this.producer = producerWrapperSupplier.get();
@@ -596,6 +598,30 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
         + " Control Message for topic '" + topicName + "'.");
   }
 
+  private Map<CharSequence, CharSequence> getDebugInfo(Map<String, String> debugInfoToAdd) {
+    if (null == debugInfoToAdd || debugInfoToAdd.isEmpty()) {
+      return defaultDebugInfo;
+    }
+
+    // Otherwise, we do a copy of the default info in order to avoid polluting it.
+    Map<CharSequence, CharSequence> debugInfo = new HashMap<>(defaultDebugInfo);
+    debugInfoToAdd.entrySet().stream().forEach(entry -> {
+      String k = entry.getKey();
+      String v = entry.getValue();
+      CharSequence defaultValue = debugInfo.get(k);
+      if (defaultValue != null && !defaultValue.equals(new Utf8(v))) {
+        logger.warn("Debug info key '" + k + "' will be omitted because it is already part of the default "
+            + this.getClass().getSimpleName() + " debug info. "
+            + "Default value: '" + defaultValue + "', "
+            + "supplied (omitted) value: '" + v + "'.");
+      } else {
+        debugInfo.put(k, v);
+      }
+    });
+
+    return debugInfo;
+  }
+
   /**
    * This function sends a control message into the prescribed partition.
    *
@@ -618,8 +644,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private synchronized void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
-    controlMessage.debugInfo = new HashMap<>(debugInfo);
-
+    controlMessage.debugInfo = getDebugInfo(debugInfo);
     int attempt = 1;
     boolean updateCheckSum = true;
     while (true) {
@@ -759,10 +784,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
 
     if (!currentSegment.isStarted()) {
-      sendStartOfSegment(
-          partition,
-          new HashMap<>() // TODO: Add extra debugging info
-      );
+      sendStartOfSegment(partition, null);
 
       currentSegment.start();
     }

@@ -12,6 +12,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Optional;
 import org.apache.avro.specific.FixedSize;
 import org.testng.annotations.Test;
@@ -69,9 +70,12 @@ public class TestProducerTracker {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
-    startOfSegment.checksumType = CheckSumType.NONE.getValue();
     startOfSegment.upcomingAggregates = new ArrayList<>();
+    startOfSegment.upcomingAggregates.add("baz");
+    startOfSegment.checksumType = CheckSumType.NONE.getValue();
     controlMessage.controlMessageUnion = startOfSegment;
+    controlMessage.debugInfo = new HashMap<>();
+    controlMessage.debugInfo.put("foo", "bar");
 
     return controlMessage;
   }

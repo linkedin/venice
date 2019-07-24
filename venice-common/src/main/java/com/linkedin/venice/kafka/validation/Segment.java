@@ -14,6 +14,8 @@ import com.linkedin.venice.message.KafkaKey;
 import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
 
 import java.nio.ByteBuffer;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -39,13 +41,21 @@ public class Segment {
   private final int segmentNumber;
   private final Optional<CheckSum> checkSum;
   private final AtomicInteger sequenceNumber;
+  private final Map<CharSequence, CharSequence> debugInfo;
+  private final Map<CharSequence, Long> aggregates;
 
   // Mutable state
   private boolean started;
   private boolean ended;
   private boolean finalSegment;
 
-  public Segment(int partition, int segmentNumber, int sequenceNumber, CheckSumType checkSumType) {
+  public Segment(
+      int partition,
+      int segmentNumber,
+      int sequenceNumber,
+      CheckSumType checkSumType,
+      Map<CharSequence, CharSequence> debugInfo,
+      Map<CharSequence, Long> aggregates) {
     this.partition = partition;
     this.segmentNumber = segmentNumber;
     this.checkSum = CheckSum.getInstance(checkSumType);
@@ -53,10 +63,12 @@ public class Segment {
     this.started = (sequenceNumber > 0);
     this.ended = false;
     this.finalSegment = false;
+    this.debugInfo = debugInfo;
+    this.aggregates = aggregates;
   }
 
   public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
-    this(partition, segmentNumber, 0, checkSumType);
+    this(partition, segmentNumber, 0, checkSumType, new HashMap<>(), new HashMap<>());
   }
 
   public Segment(int partition, ProducerPartitionState state) {
@@ -70,6 +82,8 @@ public class Segment {
     this.started = segmentStatus != NOT_STARTED;
     this.ended = segmentStatus.isTerminal();
     this.finalSegment = segmentStatus == END_OF_FINAL_SEGMENT;
+    this.debugInfo = state.debugInfo;
+    this.aggregates = state.aggregates;
   }
 
   public int getSegmentNumber() {
@@ -94,6 +108,14 @@ public class Segment {
 
   public int getSequenceNumber() {
     return this.sequenceNumber.get();
+  }
+
+  public Map<CharSequence, CharSequence> getDebugInfo() {
+    return this.debugInfo;
+  }
+
+  public Map<CharSequence, Long> getAggregates() {
+    return this.aggregates;
   }
 
   public byte[] getCheckSumState() {
