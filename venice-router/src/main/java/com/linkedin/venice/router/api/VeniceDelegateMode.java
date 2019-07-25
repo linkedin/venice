@@ -155,7 +155,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         H finalHost = host;
         hosts.removeIf(aHost -> !aHost.equals(finalHost));
       }
-      if (!  (host instanceof Instance)) {
+      if (!(host instanceof Instance)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
             INTERNAL_SERVER_ERROR, "Ready-to-serve host must be an 'Instance'");
       }
@@ -369,7 +369,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
    */
   protected static <H, K> H avoidSlowHost(VenicePath path, K key, List<H> hosts) throws RouterException {
     H host = chooseHostByKey(key, hosts);
-    if (!  (host instanceof Instance)) {
+    if (!(host instanceof Instance)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(path.getStoreName()), Optional.of(path.getRequestType()),
           INTERNAL_SERVER_ERROR, "The chosen host is not an 'Instance'");
     }

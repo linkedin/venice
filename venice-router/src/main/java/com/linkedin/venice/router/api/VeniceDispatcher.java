@@ -197,7 +197,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public void accept(PortableHttpResponse result) {
         pendingRequestThrottler.take();
-        path.markStorageNodeAsFast(host.getNodeId());
         int statusCode = result.getStatusCode();
         if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR || statusCode == HttpStatus.SC_SERVICE_UNAVAILABLE) {
           // Retry errored request
@@ -211,6 +210,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             });
             return;
           }
+        } else {
+          path.markStorageNodeAsFast(host.getNodeId());
         }
 
         Set<String> partitionNames = part.getPartitionsNames();

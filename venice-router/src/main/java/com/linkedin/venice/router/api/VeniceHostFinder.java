@@ -122,8 +122,10 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       }
     }
     int hostCount = newHosts.size();
-    if (hostCount <= 1 ||
-        isSingleGet && !isStickyRoutingEnabledForSingleGet || // single-get but sticky routing is not enabled
+    if (hostCount <= 1)  {
+      return newHosts;
+    }
+    if (isSingleGet && !isStickyRoutingEnabledForSingleGet || // single-get but sticky routing is not enabled
         !isSingleGet && !isStickyRoutingEnabledForMultiGet) { // multi-get but sticky routing is not enabled
 
       //Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
