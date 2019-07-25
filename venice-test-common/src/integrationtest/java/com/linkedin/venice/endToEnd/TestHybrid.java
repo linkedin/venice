@@ -19,6 +19,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
@@ -266,7 +267,9 @@ public class TestHybrid {
 
   @Test
   public void testSamzaBatchLoad() throws Exception {
-    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);
+    Properties extraProperties = new Properties();
+    extraProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties);
     Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
     String storeName = "test-store";
@@ -284,7 +287,7 @@ public class TestHybrid {
 
     // Batch load from Samza
     SystemProducer veniceBatchProducer = getSamzaProducer(veniceClusterWrapper, storeName, ControllerApiConstants.PushType.BATCH);
-    for (int i=1; i<=10; i++) {
+   for (int i=10; i>=1; i--) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
       sendStreamingRecord(veniceBatchProducer, storeName, i);
     }
     Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));

@@ -88,12 +88,12 @@ public class TestAdminSparkServerWithMultiServers {
 
       // Both
       VersionCreationResponse responseOne =
-          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushOne, false);
+          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushOne, false, false);
       if (responseOne.isError()) {
         Assert.fail(responseOne.getError());
       }
       VersionCreationResponse responseTwo =
-          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushTwo, false);
+          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushTwo, false, false);
       if (responseTwo.isError()) {
         Assert.fail(responseOne.getError());
       }
@@ -102,7 +102,7 @@ public class TestAdminSparkServerWithMultiServers {
           "Multiple requests for topics with the same pushId must return the same kafka topic");
 
       VersionCreationResponse responseThree =
-          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushThree, false);
+          controllerClient.requestTopicForWrites(storeName, 1, storeToType.get(storeName), pushThree, false, false);
       Assert.assertFalse(responseThree.isError(), "Controller should not allow concurrent push");
     }
   }
@@ -160,7 +160,7 @@ public class TestAdminSparkServerWithMultiServers {
       final VersionCreationResponse vcr = new VersionCreationResponse();
       try {
         VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId,
-            false);
+            false, false);
         vcr.setKafkaTopic(thisVcr.getKafkaTopic());
         vcr.setVersion(thisVcr.getVersion());
       } catch (Throwable t) {
@@ -181,7 +181,7 @@ public class TestAdminSparkServerWithMultiServers {
     StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();
     VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId,
-        false);
+        false, true);
     int newVersion = versionResponse.getVersion();
     Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
     controllerClient.writeEndOfPush(storeName, newVersion);

@@ -1195,14 +1195,15 @@ public class AdminTool {
     String version = getRequiredArgument(cmd, Arg.VERSION);
 
     // Check if version is a valid integer
+    int intVersion;
     try {
-      Integer.parseInt(version);
+      intVersion = Integer.parseInt(version);
     } catch (Exception e) {
       System.err.println("ERROR: " + version + " is not a valid integer");
       return;
     }
 
-    ControllerResponse response = controllerClient.sendEndOfPush(storeName, version);
+    ControllerResponse response = controllerClient.writeEndOfPush(storeName, intVersion);
     printObject(response);
   }
 

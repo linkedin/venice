@@ -844,7 +844,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized Version addVersion(String clusterName, String storeName, int versionNumber,
         int numberOfPartition, int replicationFactor) {
         return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition,
-            replicationFactor, true, false, false);
+            replicationFactor, true, false, false, false);
     }
 
     /**
@@ -875,7 +875,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " for store " + storeName + " in cluster " + clusterName);
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-                getReplicationFactor(clusterName, storeName), true, false, true);
+                getReplicationFactor(clusterName, storeName), true, false, false, true);
             if (store.isMigrating()) {
                 try {
                     StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
@@ -924,7 +924,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     protected Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, int replicationFactor, boolean whetherStartOfflinePush, boolean sendStartOfPush,
-        boolean useFastKafkaOperationTimeout) {
+        boolean sorted, boolean useFastKafkaOperationTimeout) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1008,9 +1008,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
 
                 if (sendStartOfPush) {
-                    // Note this will use default values for "sorted", "chunked" and "compressionStrategy" properties.
-                    // TODO: add more flexibility and consider refactoring this entire logictus
-                    veniceWriterFactory.getVeniceWriter(version.kafkaTopicName()).broadcastStartOfPush(new HashMap<>());
+                    veniceWriterFactory.getVeniceWriter(version.kafkaTopicName()).broadcastStartOfPush(
+                        sorted,
+                        version.isChunkingEnabled(),
+                        version.getCompressionStrategy(),
+                        new HashMap<>());
                 }
 
                 if (whetherStartOfflinePush) {
@@ -1077,7 +1079,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
         int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
-        boolean sendStartOfPush) {
+        boolean sendStartOfPush, boolean sorted) {
 
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
@@ -1097,7 +1099,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return isIncrementalPush ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                offlinePush, sendStartOfPush, false);
+                offlinePush, sendStartOfPush, sorted, false);
     }
 
     /**

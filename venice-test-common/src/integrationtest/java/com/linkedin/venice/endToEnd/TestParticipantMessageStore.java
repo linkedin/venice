@@ -81,7 +81,7 @@ public class TestParticipantMessageStore {
       long storeSize = 10 * 1024 * 1024;
       controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
       VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, storeSize,
-          ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), true);
+          ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), true, true);
       assertFalse(versionCreationResponse.isError());
       String topicName = versionCreationResponse.getKafkaTopic();
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
