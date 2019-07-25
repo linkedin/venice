@@ -701,13 +701,13 @@ public class TestAdminSparkServer {
 
     VersionCreationResponse vcr =
         controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.BATCH, pushId,
-            false);
+            false, true);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));
 
     vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId,
-        false);
+        false, false);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));

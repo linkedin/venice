@@ -729,10 +729,10 @@ public class TestVeniceParentHelixAdmin {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
     doReturn(new Version(storeName, 1, pushJobId)).when(internalAdmin)
-        .incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
+        .incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false, false);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false, false);
     // TODO remove or re-enable based on our decision to kill or revive push job properties upload feature
     /*verify(accessor).createOfflinePushStatus(eq(clusterName), any());
     verify(accessor).getAllPushNames(eq(clusterName));*/
@@ -801,12 +801,12 @@ public class TestVeniceParentHelixAdmin {
     store.addVersion(version);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(version).when(internalAdmin)
-        .incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
+        .incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false, false);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
     Version newVersion =
-        partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false, false);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
+        partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false, false, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false, false);
     Assert.assertEquals(newVersion, version);
   }
 
@@ -828,11 +828,11 @@ public class TestVeniceParentHelixAdmin {
     doReturn(true).when(internalAdmin).isTopicTruncated(previousKafkaTopic);
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
     doReturn(new Version(storeName, 1, pushJobId)).when(internalAdmin)
-        .incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
+        .incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false, false);
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false, false);
-    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true, false, false, false);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, false, false, false, false);
   }
 
   /**
@@ -950,7 +950,7 @@ public class TestVeniceParentHelixAdmin {
 
     // Add version
     VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, 10 * 1024 * 1024,
-        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false);
+        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false, true);
     Assert.assertFalse(versionCreationResponse.isError());
 
     // Set up migration push strategy
@@ -1281,19 +1281,6 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
     Assert.assertEquals(tenProgress.get("cluster1_task1"), new Long(10L));
     Assert.assertEquals(tenProgress.get("cluster2_task2"), new Long(10L));
-  }
-
-  @Test
-  public void testMayThrottleTopicCreation() {
-    long timeWindowMs = 1000;
-    doReturn(timeWindowMs).when(config).getTopicCreationThrottlingTimeWindowMs();
-    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
-    long start = System.currentTimeMillis();
-    MockTime timer = new MockTime(start);
-    throttledParentAdmin.mayThrottleTopicCreation(timer);
-    Assert.assertTrue(timer.getMilliseconds() - start == 1000l, "First time to create topic, must sleep 1s.");
-    throttledParentAdmin.mayThrottleTopicCreation(timer);
-    Assert.assertTrue(timer.getMilliseconds() - start == 2000l, "Create topic too frequently, must sleep another 1s before creating the next topic.");
   }
 
   // throttle for topic creation may no longer be needed.
@@ -1679,7 +1666,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = TestUtils.getUniqueString("test_store");
     String pushJobId = TestUtils.getUniqueString("push_job_id");
     doReturn(new Version(storeName, 1)).when(internalAdmin)
-        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false , false);
+        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false , false, false);
     List<String> names = new ArrayList<>();
     int count = VeniceParentHelixAdmin.MAX_PUSH_STATUS_PER_STORE_TO_KEEP+1;
     for(int i=0;i<count;i++){

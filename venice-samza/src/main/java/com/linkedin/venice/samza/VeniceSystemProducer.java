@@ -101,8 +101,14 @@ public class VeniceSystemProducer implements SystemProducer {
 
     // Request all the necessary info from Venice Controller
     this.versionCreationResponse = (VersionCreationResponse)controllerRequestWithRetry(
-        // sendStartOfPush must be true in order to support batch push to Venice from Samza app
-        () -> this.controllerClient.requestTopicForWrites(this.storeName, 1, pushType, samzaJobId, true)
+        () -> this.controllerClient.requestTopicForWrites(
+            this.storeName,
+            1,
+            pushType,
+            samzaJobId,
+            true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
+            false // Samza jobs, including batch ones, are expected to write data out of order
+        )
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
     this.veniceWriter = getVeniceWriter(this.versionCreationResponse);

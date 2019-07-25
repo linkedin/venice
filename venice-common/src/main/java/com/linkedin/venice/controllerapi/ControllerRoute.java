@@ -9,7 +9,7 @@ import org.apache.commons.collections.ListUtils;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public enum ControllerRoute {
-  REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_TYPE, PUSH_JOB_ID)), // topic that writer should produce to
+  REQUEST_TOPIC("/request_topic", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_TYPE, PUSH_JOB_ID), PUSH_IN_SORTED_ORDER), // topic that writer should produce to
   EMPTY_PUSH("/empty_push", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_JOB_ID)), // do an empty push into a new version for this store
   END_OF_PUSH("/end_of_push", HttpMethod.POST, Arrays.asList(NAME, VERSION)), // write an END OF PUSH message into the topic
   STORE("/store", HttpMethod.GET, Arrays.asList(NAME)), // get all information about that store

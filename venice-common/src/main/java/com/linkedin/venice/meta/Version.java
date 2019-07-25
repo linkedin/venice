@@ -51,6 +51,11 @@ public class Version implements Comparable<Version> {
   private boolean bufferReplayEnabledForHybrid = true;
 
   /**
+   * Whether or not large values are supported (via chunking).
+   */
+  private boolean chunkingEnabled = false;
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
@@ -112,6 +117,15 @@ public class Version implements Comparable<Version> {
   public void setBufferReplayEnabledForHybrid(boolean bufferReplayEnabledForHybrid) {
     this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
   }
+
+  public boolean isChunkingEnabled() {
+    return chunkingEnabled;
+  }
+
+  public void setChunkingEnabled(boolean chunkingEnabled) {
+    this.chunkingEnabled = chunkingEnabled;
+  }
+
 
   public String getStoreName() {
     return storeName;
@@ -184,6 +198,10 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if (chunkingEnabled != version.chunkingEnabled) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -214,6 +232,7 @@ public class Version implements Comparable<Version> {
     clonedVersion.setCompressionStrategy(compressionStrategy);
     clonedVersion.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
     clonedVersion.setBufferReplayEnabledForHybrid(bufferReplayEnabledForHybrid);
+    clonedVersion.setChunkingEnabled(chunkingEnabled);
     return clonedVersion;
   }
 

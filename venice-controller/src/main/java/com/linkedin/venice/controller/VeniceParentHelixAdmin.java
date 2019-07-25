@@ -574,10 +574,6 @@ public class VeniceParentHelixAdmin implements Admin {
     return existingTopics;
   }
 
-  protected Optional<String> getTopicForCurrentPushJob(String clusterName, String storeName) {
-    return getTopicForCurrentPushJob(clusterName, storeName, false);
-  }
-
   /**
    * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
    * else will return the ongoing Kafka topic. It will also try to clean up legacy topics.
@@ -695,87 +691,6 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
-  // TODO: this function isn't able to block parallel push in theory since it is not synchronized.
-  // TODO: this function should be removed, keeping for now as a record on how we used to use mayThrottleTopicCreation and createOfflinePushStatus
-  public Version incrementVersion(String clusterName,
-                                  String storeName,
-                                  String pushJobId,
-                                  int numberOfPartition,
-                                  int replicationFactor) {
-    // TODO: consider to move version creation to admin protocol
-    // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
-    // create new corresponding store versions
-    // Adding version in Parent Controller won't start offline push job.
-
-    /*
-     * Check the offline job status for this topic, and if it has already been terminated, we will skip it.
-     * Otherwise, an exception will be thrown to stop concurrent data pushes.
-     *
-     * {@link #getOffLinePushStatus(String, String)} will remove the topic if the offline job has been terminated,
-     * so we don't need to explicitly remove it here.
-     */
-    Optional<String> currentPush = getTopicForCurrentPushJob(clusterName, storeName);
-    if (currentPush.isPresent()) {
-      throw new VeniceException("Topic: " + currentPush.get() + " exists for store: " + storeName +
-          ", please wait for previous job to be finished, and reach out Venice team if it is" +
-          " not this case");
-    }
-
-    mayThrottleTopicCreation(timer);
-    Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
-        numberOfPartition, replicationFactor, false, false, false);
-    cleanupHistoricalVersions(clusterName, storeName);
-    createOfflinePushStatus(clusterName, storeName, newVersion.getNumber(), numberOfPartition, replicationFactor);
-    return newVersion;
-  }
-
-  protected synchronized void createOfflinePushStatus(String cluster, String storeName, int version, int partitionCount, int replicationFactor){
-    VeniceHelixResources resources = veniceHelixAdmin.getVeniceHelixResource(cluster);
-    ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
-    Store store = storeRepository.getStore(storeName);
-    String topicName = Version.composeKafkaTopic(storeName, version);
-    OfflinePushStatus status = new OfflinePushStatus(topicName, partitionCount, replicationFactor, store.getOffLinePushStrategy());
-    offlinePushAccessor.createOfflinePushStatus(cluster, status);
-    // Collect the old push status.
-    List<String> names = offlinePushAccessor.getAllPushNames(cluster);
-    List<Integer> versionNumbers = names
-        .stream()
-        .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
-        .map(Version::parseVersionFromKafkaTopicName)
-        .collect(Collectors.toList());
-    while (versionNumbers.size() > MAX_PUSH_STATUS_PER_STORE_TO_KEEP) {
-      int oldestVersionNumber = Collections.min(versionNumbers);
-      versionNumbers.remove(Integer.valueOf(oldestVersionNumber));
-      String oldestTopicName = Version.composeKafkaTopic(storeName, oldestVersionNumber);
-      offlinePushAccessor.deleteOfflinePushStatus(cluster, oldestTopicName);
-    }
-  }
-
-  // TODO throttle for topic creation may no longer be needed, if so remove this method.
-  /**
-   * This method will throttle the topic creation operation. During each time window, it only allow ONE topic to be created.
-   * Other topic creation request will be blocked until time goes to the next time window.
-   */
-  protected synchronized void mayThrottleTopicCreation(Time timer) {
-    long timeSinceLastTopicCreation = timer.getMilliseconds() - lastTopicCreationTime;
-    if (lastTopicCreationTime < 0) {
-      // First time to create topic on this controller. Considering the failover case that another controller could
-      // just create a topic then failed, this controller take over the cluster and start to create a new topic,
-      // The time interval between those two creation might be less than TopicCreationThrottlingTimeWindowMs.
-      // So we should sleep at least TopicCreationThrottlingTimeWindowMs here to prevent creating topic too frequently.
-      timeSinceLastTopicCreation = 0;
-    }
-    if (timeSinceLastTopicCreation < multiClusterConfigs.getTopicCreationThrottlingTimeWindowMs()) {
-      try {
-        timer.sleep(multiClusterConfigs.getTopicCreationThrottlingTimeWindowMs() - timeSinceLastTopicCreation);
-      } catch (InterruptedException e) {
-        throw new VeniceException(
-            "Topic creation throttler is interrupted while blocking too frequent topic creation operation.", e);
-      }
-    }
-    lastTopicCreationTime = timer.getMilliseconds();
-  }
-
   /**
    * TODO: Remove the old behavior and refactor once add version via the admin protocol is stable.
    * TODO: refactor so that this method and the counterpart in {@link VeniceHelixAdmin} should have same behavior
@@ -783,7 +698,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
-      boolean sendStartOfPush) {
+      boolean sendStartOfPush, boolean sorted) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
     if (currentPushTopic.isPresent()) {
@@ -809,7 +724,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
     Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions,
-        replicationFactor, false, isIncrementalPush, sendStartOfPush);
+        replicationFactor, false, isIncrementalPush, sendStartOfPush, sorted);
     if (addVersionViaAdminProtocol && !isIncrementalPush) {
       acquireLock(clusterName);
       try {

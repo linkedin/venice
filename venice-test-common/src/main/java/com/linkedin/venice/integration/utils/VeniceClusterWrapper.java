@@ -135,7 +135,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         }
 
         VeniceServerWrapper veniceServerWrapper =
-            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, new Properties());
+            ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, extraProperties);
         veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
       }
 
@@ -485,31 +485,33 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     String storeOwner = TestUtils.getUniqueString("store-owner");
     long storeSize =  1024;
 
-    // Create new store
-    ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
-
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
-    if (newStoreResponse.isError()) {
-      throw new VeniceException(newStoreResponse.getError());
+    try (ControllerClient controllerClient = getControllerClient()) {
+      // Create new store
+      NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
+      if (newStoreResponse.isError()) {
+        throw new VeniceException(newStoreResponse.getError());
+      }
+      // Create new version
+      VersionCreationResponse newVersion =
+          controllerClient.requestTopicForWrites(storeName, storeSize, ControllerApiConstants.PushType.BATCH,
+              Version.guidBasedDummyPushId(), false, false);
+      if (newVersion.isError()) {
+        throw new VeniceException(newVersion.getError());
+      }
+      storeCount.getAndIncrement();
+      return newVersion;
     }
-    // Create new version
-    VersionCreationResponse newVersion = controllerClient.requestTopicForWrites(storeName, storeSize,
-        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false);
-    if (newVersion.isError()) {
-      throw new VeniceException(newVersion.getError());
-    }
-    storeCount.getAndIncrement();
-    return newVersion;
   }
 
   public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
-    // Create new store
-    ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
-    ControllerResponse response = controllerClient.updateStore(storeName, params);
-    if (response.isError()) {
-      throw new VeniceException(response.getError());
+    try (ControllerClient controllerClient = getControllerClient()) {
+      // Create new store
+      ControllerResponse response = controllerClient.updateStore(storeName, params);
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+      return response;
     }
-    return response;
   }
 
   public ControllerClient getControllerClient() {
@@ -561,26 +563,34 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public NewStoreResponse getNewStore(String storeName, String owner) {
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
-    ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
+    try (ControllerClient controllerClient = getControllerClient()) {
+      NewStoreResponse response = controllerClient.createNewStore(storeName, owner, keySchema, valueSchema);
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
 
-    NewStoreResponse response = controllerClient.createNewStore(storeName, owner, keySchema, valueSchema);
-    if (response.isError()) {
-      throw new VeniceException(response.getError());
+      storeCount.getAndIncrement();
+      return response;
     }
-
-    storeCount.getAndIncrement();
-    return response;
   }
 
   public VersionCreationResponse getNewVersion(String url, String storeName, int dataSize) {
-    ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
-    VersionCreationResponse newVersion =
-        controllerClient.requestTopicForWrites(storeName, dataSize, ControllerApiConstants.PushType.BATCH,
-            Version.guidBasedDummyPushId(), false);
-    if (newVersion.isError()) {
-      throw new VeniceException(newVersion.getError());
+    try (ControllerClient controllerClient = getControllerClient()) {
+      VersionCreationResponse newVersion =
+          controllerClient.requestTopicForWrites(
+              storeName,
+              dataSize,
+              ControllerApiConstants.PushType.BATCH,
+              Version.guidBasedDummyPushId(),
+              false,
+              // This function is expected to be called by tests that bypass the push job and write data directly,
+              // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
+              false);
+      if (newVersion.isError()) {
+        throw new VeniceException(newVersion.getError());
+      }
+      return newVersion;
     }
-    return newVersion;
   }
 
   public String getRandomRouterURL() {

@@ -556,6 +556,8 @@ public class Store {
     //update version Helix state model
     version.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
 
+    version.setChunkingEnabled(chunkingEnabled);
+
     versions.add(index, version);
     if (version.getNumber() > largestUsedVersionNumber) {
       largestUsedVersionNumber = version.getNumber();

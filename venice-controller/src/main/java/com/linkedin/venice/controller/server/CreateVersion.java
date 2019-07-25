@@ -82,12 +82,19 @@ public class CreateVersion {
         responseObject.setEnableSSL(isSSL);
 
         String pushJobId = request.queryParams(PUSH_JOB_ID);
+
+        boolean sorted = false; // an inefficient but safe default
+        String sortedParam = request.queryParams(PUSH_IN_SORTED_ORDER);
+        if (sortedParam != null) {
+          sorted = Utils.parseBooleanFromString(sortedParam, PUSH_IN_SORTED_ORDER);
+        }
+
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                    true, (pushType == PushType.INCREMENTAL), sendStartOfPush);
+                    true, (pushType == PushType.INCREMENTAL), sendStartOfPush, sorted);
 
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(version.kafkaTopicName());

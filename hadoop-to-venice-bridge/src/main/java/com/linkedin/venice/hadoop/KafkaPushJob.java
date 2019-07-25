@@ -109,6 +109,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public final static String CONTROLLER_REQUEST_RETRY_ATTEMPTS = "controller.request.retry.attempts";
   public final static String POLL_JOB_STATUS_INTERVAL_MS = "poll.job.status.interval.ms";
   public final static String JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = "job.status.in.unknown.state.timeout.ms";
+  public final static String SEND_CONTROL_MESSAGES_DIRECTLY = "send.control.messages.directly";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -274,12 +275,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     int controllerStatusPollRetries;
     long pollJobStatusIntervalMs;
     long jobStatusInUnknownStateTimeoutMs;
+    boolean sendControlMessagesDirectly;
   }
   private PushJobSetting pushJobSetting;
 
   protected class VersionTopicInfo {
     // Kafka topic for new data push
     String topic;
+    /** Version part of the store-version / topic name */
+    int version;
     // Kafka topic partition count
     int partitionCount;
     // Kafka url will get from Venice backend for store push
@@ -350,6 +354,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobSetting.controllerStatusPollRetries = props.getInt(POLL_STATUS_RETRY_ATTEMPTS, 15);
     pushJobSetting.pollJobStatusIntervalMs = props.getLong(POLL_JOB_STATUS_INTERVAL_MS, DEFAULT_POLL_STATUS_INTERVAL_MS);
     pushJobSetting.jobStatusInUnknownStateTimeoutMs = props.getLong(JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS, DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS);
+    pushJobSetting.sendControlMessagesDirectly = props.getBoolean(SEND_CONTROL_MESSAGES_DIRECTLY, false);
 
     if (pushJobSetting.enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -418,16 +423,31 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         jc = new JobClient(jobConf);
         Optional<String> incrementalPushVersion = Optional.empty();
         if (pushJobSetting.isIncrementalPush) {
+          /**
+           * N.B.: For now, we always send control messages directly for incremental pushes, regardless of
+           * {@link pushJobSetting.sendControlMessagesDirectly}, because the controller does not yet support
+           * sending these types of CM. If/when we add support for that in the controller, then we'll be able
+           * to completely stop using the {@link VeniceWriter} from this class.
+           */
           incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
           getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
           runningJob = jc.runJob(jobConf);
           getVeniceWriter(versionTopicInfo).broadcastEndOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
         } else {
-          getVeniceWriter(versionTopicInfo).broadcastStartOfPush(!pushJobSetting.isMapOnly, storeSetting.isChunkingEnabled, versionTopicInfo.compressionStrategy, new HashMap<>());
-          // submit the job for execution and wait for completion
+          if (pushJobSetting.sendControlMessagesDirectly) {
+            getVeniceWriter(versionTopicInfo).broadcastStartOfPush(!pushJobSetting.isMapOnly, storeSetting.isChunkingEnabled, versionTopicInfo.compressionStrategy, new HashMap<>());
+          } else {
+            /**
+             * No-op, as it was already sent as part of the call to
+             * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
+             */
+          }
           runningJob = jc.runJob(jobConf);
-          //TODO: send a failure END OF PUSH message if something went wrong
-          getVeniceWriter(versionTopicInfo).broadcastEndOfPush(new HashMap<>());
+          if (pushJobSetting.sendControlMessagesDirectly) {
+            getVeniceWriter(versionTopicInfo).broadcastEndOfPush(new HashMap<>());
+          } else {
+            controllerClient.writeEndOfPush(pushJobSetting.storeName, versionTopicInfo.version);
+          }
         }
         // Close VeniceWriter before polling job status since polling job status could
         // trigger job deletion
@@ -677,9 +697,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     VersionTopicInfo versionTopicInfo = new VersionTopicInfo();
     ControllerApiConstants.PushType pushType = setting.isIncrementalPush ?
         ControllerApiConstants.PushType.INCREMENTAL : ControllerApiConstants.PushType.BATCH;
+    boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
+    boolean sorted = !pushJobSetting.isMapOnly;
     VersionCreationResponse versionCreationResponse =
         controllerClient.retryableRequest(setting.controllerRetries, c ->
-            c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId, false));
+            c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId, askControllerToSendControlMessage, sorted));
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
@@ -690,6 +712,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       logger.info(versionCreationResponse.toString());
     }
     versionTopicInfo.topic = versionCreationResponse.getKafkaTopic();
+    versionTopicInfo.version = versionCreationResponse.getVersion();
     versionTopicInfo.kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     versionTopicInfo.partitionCount = versionCreationResponse.getPartitions();
     versionTopicInfo.sslToKafka = versionCreationResponse.isEnableSSL();

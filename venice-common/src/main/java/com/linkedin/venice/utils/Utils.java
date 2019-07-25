@@ -350,11 +350,11 @@ public class Utils {
    * Since {@link Boolean#parseBoolean(String)} does not throw exception and will always return 'false' for
    * any string that are not equal to 'true', We validate the string by our own.
    */
-  public static boolean parseBooleanFromString(String value, String filedName) {
+  public static boolean parseBooleanFromString(String value, String fieldName) {
     if (value.equalsIgnoreCase("true") || value.equalsIgnoreCase("false")) {
       return Boolean.valueOf(value);
     } else {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, filedName + " must be a boolean, but value: " + value);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value);
     }
   }
 

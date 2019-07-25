@@ -3,6 +3,7 @@ package com.linkedin.venice.store.rocksdb;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
+import com.linkedin.venice.utils.ByteUtils;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;

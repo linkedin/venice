@@ -111,16 +111,18 @@ public class ControllerClient implements Closeable {
    * @param pushJobId Unique Id for this job
    * @param sendStartOfPush Whether controller should send START_OF_PUSH message to the newly created topic,
    *                        while adding a new version. This is currently used in Samza batch load, a.k.a. grandfather
+   * @param sorted Whether the push is going to contain sorted data (in each partition) or not
    * @return VersionCreationResponse includes topic and partitioning
    */
   public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType,
-      String pushJobId, boolean sendStartOfPush) {
+      String pushJobId, boolean sendStartOfPush, boolean sorted) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(STORE_SIZE, Long.toString(storeSize))
         .add(PUSH_JOB_ID, pushJobId)
         .add(PUSH_TYPE, pushType.toString())
-        .add(SEND_START_OF_PUSH, sendStartOfPush);
+        .add(SEND_START_OF_PUSH, sendStartOfPush)
+        .add(PUSH_IN_SORTED_ORDER, sorted);
     return request(ControllerRoute.REQUEST_TOPIC, params, VersionCreationResponse.class);
   }
 
@@ -486,13 +488,6 @@ public class ControllerClient implements Closeable {
 
   public MultiVersionStatusResponse listBootstrappingVersions() {
     return request(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS, newParams(), MultiVersionStatusResponse.class);
-  }
-
-  public ControllerResponse sendEndOfPush(String storeName, String version) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version);
-    return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
   }
 
   protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {
