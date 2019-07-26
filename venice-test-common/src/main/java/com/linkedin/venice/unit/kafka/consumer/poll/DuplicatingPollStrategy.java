@@ -18,30 +18,30 @@ import org.apache.kafka.common.TopicPartition;
 public class DuplicatingPollStrategy extends AbstractPollStrategy {
 
   private final AbstractPollStrategy basePollStrategy;
-  private final Set<Pair<TopicPartition, OffsetRecord>> topicPartitionOffsetsToDuplicate;
+  private final Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToDuplicate;
   private final Map<TopicPartition, Long> amountOfIntroducedDupes = new HashMap<>();
 
   public DuplicatingPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Set<Pair<TopicPartition, OffsetRecord>> topicPartitionOffsetsToDuplicate) {
+      Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToDuplicate) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.topicPartitionOffsetsToDuplicate = topicPartitionOffsetsToDuplicate;
   }
 
   @Override
-  protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
-    Pair<TopicPartition, OffsetRecord> nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
+    Pair<TopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
 
     if (null == nextPoll) {
       return null;
     }
 
     TopicPartition topicPartition = nextPoll.getFirst();
-    OffsetRecord offsetRecord = nextPoll.getSecond();
-    offsetRecord.setOffset(offsetRecord.getOffset() + getAmountOfDupes(topicPartition));
+    long offset = nextPoll.getSecond();
+    offset += getAmountOfDupes(topicPartition);
 
-    Pair<TopicPartition, OffsetRecord> nextPollWithAdjustedOffset = new Pair<>(topicPartition, offsetRecord);
+    Pair<TopicPartition, Long> nextPollWithAdjustedOffset = new Pair<>(topicPartition, offset);
 
     if (topicPartitionOffsetsToDuplicate.contains(nextPoll)) {
       if (!amountOfIntroducedDupes.containsKey(topicPartition)) {

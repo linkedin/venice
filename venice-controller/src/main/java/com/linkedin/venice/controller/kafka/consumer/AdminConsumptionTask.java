@@ -249,9 +249,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       persistAdminTopicMetadata();
     }
     // Subscribe the admin topic
-    OffsetRecord offsetRecord = new OffsetRecord();
-    offsetRecord.setOffset(lastOffset);
-    consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
+    consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     isSubscribed = true;
     logger.info("Subscribe to topic name: " + topic + ", with offset: " + lastOffset + " and execution id: "
         + lastPersistedExecutionId);

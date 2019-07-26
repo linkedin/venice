@@ -25,6 +25,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.kafka.TopicManager.*;
+import static com.linkedin.venice.offsets.OffsetRecord.*;
 import static org.mockito.Mockito.*;
 
 public class TopicManagerTest {
@@ -151,7 +152,7 @@ public class TopicManagerTest {
     VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topicName);
 
     // Test starting conditions
-    assertOffsetsByTime(topicName, 0, 0);
+    assertOffsetsByTime(topicName, 0, LOWEST_OFFSET);
 
     // Populate messages
     mockTime.addMilliseconds(TIME_SKIP);

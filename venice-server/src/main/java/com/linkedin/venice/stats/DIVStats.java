@@ -36,6 +36,9 @@ public class DIVStats {
   private Min producerConsumerLatencyMinMs = new Min();
   private Max producerConsumerLatencyMaxMs = new Max();
 
+  private long leaderOffsetRewindCount = 0;
+  private long leaderProducerFailureCount = 0;
+
   public DIVStats() {
     String sensorName = "producer_to_broker_latency";
     producerBrokerLatencySensor = localRepository.sensor(sensorName);
@@ -163,5 +166,21 @@ public class DIVStats {
 
   public void recordProducerConsumerLatencyMs(double value) {
     producerConsumerLatencySensor.record(value);
+  }
+
+  public void recordLeaderOffsetRewind() {
+    leaderOffsetRewindCount += 1;
+  }
+
+  public long getLeaderOffsetRewindCount() {
+    return leaderOffsetRewindCount;
+  }
+
+  public void recordLeaderProducerFailure() {
+    leaderProducerFailureCount += 1;
+  }
+
+  public long getLeaderProducerFailure() {
+    return leaderProducerFailureCount;
   }
 }

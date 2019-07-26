@@ -12,19 +12,19 @@ import org.apache.kafka.common.TopicPartition;
 public class FilteringPollStrategy extends AbstractPollStrategy {
 
   private final AbstractPollStrategy basePollStrategy;
-  private final Set<Pair<TopicPartition, OffsetRecord>> topicPartitionOffsetsToFilterOut;
+  private final Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToFilterOut;
 
   public FilteringPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Set<Pair<TopicPartition, OffsetRecord>> topicPartitionOffsetsToFilterOut) {
+      Set<Pair<TopicPartition, Long>> topicPartitionOffsetsToFilterOut) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.topicPartitionOffsetsToFilterOut = topicPartitionOffsetsToFilterOut;
   }
 
   @Override
-  protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
-    Pair<TopicPartition, OffsetRecord> nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
+    Pair<TopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
     if (topicPartitionOffsetsToFilterOut.contains(nextPoll)) {
       incrementOffset(offsets, nextPoll.getFirst(), nextPoll.getSecond());
       return getNextPoll(offsets);

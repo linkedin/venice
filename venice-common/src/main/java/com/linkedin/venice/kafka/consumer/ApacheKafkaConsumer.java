@@ -4,16 +4,20 @@ import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.errors.RetriableException;
@@ -53,7 +57,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     this(props.toProperties());
   }
 
-  private void seek(TopicPartition topicPartition, OffsetRecord offset) {
+  private void seekNextOffset(TopicPartition topicPartition, long lastReadOffset) {
     // Kafka Consumer controls the default offset to start by the property
     // "auto.offset.reset" , it is set to "earliest" to start from the
     // beginning.
@@ -61,8 +65,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     // Venice would prefer to start from the beginning and using seekToBeginning
     // would have made it clearer. But that call always fail and can be used
     // only after the offsets are remembered for a partition in 0.9.0.2
-
-    long lastReadOffset = offset.getOffset();
+    // TODO: Kafka has been upgraded to 0.11.*; we might be able to simply this function.
     if (lastReadOffset != OffsetRecord.LOWEST_OFFSET) {
       long nextReadOffset = lastReadOffset + 1;
       kafkaConsumer.seek(topicPartition, nextReadOffset);
@@ -73,7 +76,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void subscribe(String topic, int partition, OffsetRecord offset) {
+  public void subscribe(String topic, int partition, long lastReadOffset) {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
 
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
@@ -81,8 +84,8 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
       topicPartitionList.add(topicPartition);
       kafkaConsumer.assign(topicPartitionList);
-      seek(topicPartition, offset);
-      logger.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + offset.toString());
+      seekNextOffset(topicPartition, lastReadOffset);
+      logger.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + lastReadOffset);
     } else {
       logger.warn("Already subscribed on Topic: " + topic + " Partition: " + partition
           + ", ignore the request of subscription.");

@@ -147,6 +147,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final long participantMessageConsumptionDelayMs;
 
+  /**
+   * When a server replica is promoted to leader from standby, it wait for some time after the last message consumed
+   * before it switches to the leader role.
+   */
+  private final long serverPromotionToLeaderReplicaDelayMs;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -196,6 +202,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     diskHealthCheckServiceEnabled = serverProperties.getBoolean(SERVER_DISK_HEALTH_CHECK_SERVICE_ENABLED, true);
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, false);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 5000);
+    serverPromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));  // 5 minutes by default
   }
 
   public int getListenerPort() {
@@ -348,4 +355,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public long getParticipantMessageConsumptionDelayMs() { return participantMessageConsumptionDelayMs; }
+
+  public long getServerPromotionToLeaderReplicaDelayMs() {
+    return serverPromotionToLeaderReplicaDelayMs;
+  }
 }

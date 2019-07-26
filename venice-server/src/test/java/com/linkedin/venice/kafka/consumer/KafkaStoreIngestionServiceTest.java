@@ -10,14 +10,17 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.Mockito.*;
 
 
@@ -45,9 +48,16 @@ public class KafkaStoreIngestionServiceTest {
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
     doReturn(0l).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
+    doReturn("").when(mockVeniceServerConfig).getDataBasePath();
+    doReturn(0.9d).when(mockVeniceServerConfig).getDiskFullThreshold();
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     doReturn("localhost:1234").when(mockVeniceClusterConfig).getKafkaZkAddress();
+    Properties properties = new Properties();
+    properties.put(KAFKA_ZK_ADDRESS, "localhost:1234");
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, "localhost:16637");
+    VeniceProperties mockVeniceProperties = new VeniceProperties(properties);
+    doReturn(mockVeniceProperties).when(mockVeniceClusterConfig).getClusterProperties();
 
     doReturn(mockVeniceServerConfig).when(mockVeniceConfigLoader).getVeniceServerConfig();
     doReturn(mockVeniceClusterConfig).when(mockVeniceConfigLoader).getVeniceClusterConfig();

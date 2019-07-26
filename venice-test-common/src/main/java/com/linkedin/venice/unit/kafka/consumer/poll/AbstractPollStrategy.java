@@ -43,7 +43,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
-  protected abstract Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets);
+  protected abstract Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets);
 
   /**
    * This function is to simulate the deserialization logic in {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}
@@ -60,7 +60,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     return enlargedByteBuffer;
   }
 
-  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsets, long timeout) {
+  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, Long> offsets, long timeout) {
     drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
 
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = new HashMap<>();
@@ -69,7 +69,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     int numberOfRecords = 0;
 
     while (numberOfRecords < maxMessagePerPoll && System.currentTimeMillis() < startTime + timeout) {
-      Pair<TopicPartition, OffsetRecord> nextPoll = getNextPoll(offsets);
+      Pair<TopicPartition, Long> nextPoll = getNextPoll(offsets);
       if (null == nextPoll) {
         if (keepPollingWhenEmpty) {
           continue;
@@ -79,11 +79,11 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       }
 
       TopicPartition topicPartition = nextPoll.getFirst();
-      OffsetRecord offsetRecord = nextPoll.getSecond();
+      long offset = nextPoll.getSecond();
 
       String topic = topicPartition.topic();
       int partition = topicPartition.partition();
-      long nextOffset = offsetRecord.getOffset() + 1;
+      long nextOffset = offset + 1;
       Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextOffset);
       if (message.isPresent()) {
         if (! AdminTopicUtils.isAdminTopic(topic)) {
@@ -106,7 +106,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             topic,
             partition,
             nextOffset,
-            offsetRecord.getEventTimeEpochMs(),
+            System.currentTimeMillis(),
             TimestampType.NO_TIMESTAMP_TYPE,
             -1, // checksum
             -1, // serializedKeySize
@@ -117,7 +117,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
           records.put(topicPartition, new ArrayList<>());
         }
         records.get(topicPartition).add(consumerRecord);
-        incrementOffset(offsets, topicPartition, offsetRecord);
+        incrementOffset(offsets, topicPartition, offset);
         numberOfRecords++;
       } else if (keepPollingWhenEmpty) {
         continue;
@@ -131,10 +131,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     return new ConsumerRecords(records);
   }
 
-  protected void incrementOffset(Map<TopicPartition, OffsetRecord> offsets, TopicPartition topicPartition, OffsetRecord offsetRecord) {
-    // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing verify() semantics
-    OffsetRecord newOffsetRecord = new OffsetRecord(offsetRecord.toBytes());
-    newOffsetRecord.setOffset(offsetRecord.getOffset() + 1);
-    offsets.put(topicPartition, newOffsetRecord);
+  protected void incrementOffset(Map<TopicPartition, Long> offsets, TopicPartition topicPartition, long offset) {
+    offsets.put(topicPartition, offset + 1);
   }
 }

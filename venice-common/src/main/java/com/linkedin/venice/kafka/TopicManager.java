@@ -41,6 +41,7 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.ConfigConstants.*;
+import static com.linkedin.venice.offsets.OffsetRecord.*;
 
 
 /**
@@ -573,6 +574,9 @@ public class TopicManager implements Closeable {
     return latestOffset;
   }
 
+  /**
+   * Get offsets for all the partitions with a specific timestamp.
+   */
   public synchronized Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
     int remainingAttempts = 5;
     List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
@@ -591,50 +595,66 @@ public class TopicManager implements Closeable {
     } else {
       Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream()
           .collect(Collectors.toMap(partitionInfo -> new TopicPartition(topic, partitionInfo.partition()), ignoredParam -> timestamp));
+      return getOffsetsByTime(topic, timestampsToSearch, timestamp);
+    }
+  }
 
-      Map<Integer, Long>  result = getConsumer().offsetsForTimes(timestampsToSearch)
+  /**
+   * Get offsets for only one partition with a specific timestamp.
+   */
+  public synchronized long getOffsetByTime(String topic, int partition, long timestamp) {
+    Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
+    timestampsToSearch.put(new TopicPartition(topic, partition), timestamp);
+    return getOffsetsByTime(topic, timestampsToSearch, timestamp).get(partition);
+  }
+
+  /**
+   * Get offsets for the selected partitions in `timestampsToSearch` with a specific timestamp
+   */
+  public synchronized Map<Integer, Long> getOffsetsByTime(String topic, Map<TopicPartition, Long> timestampsToSearch, long timestamp) {
+    int expectedPartitionNum = timestampsToSearch.size();
+    Map<Integer, Long>  result = getConsumer().offsetsForTimes(timestampsToSearch)
+        .entrySet()
+        .stream()
+        .collect(Collectors.toMap(
+            partitionToOffset ->
+                Utils.notNull(partitionToOffset.getKey(),"Got a null TopicPartition key out of the offsetsForTime API")
+                    .partition(),
+            partitionToOffset -> {
+              Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset());
+              if (offsetOptional.isPresent()){
+                return offsetOptional.get();
+              } else {
+                return getOffsetByTimeIfOutOfRange(partitionToOffset.getKey(), timestamp);
+              }
+            }));
+    // The given timestamp exceed the timestamp of the last message. So return the last offset.
+    if (result.isEmpty()) {
+      logger.warn("Offsets result is empty. Will complement with the last offsets.");
+      result = getConsumer().endOffsets(timestampsToSearch.keySet())
           .entrySet()
           .stream()
-          .collect(Collectors.toMap(
-              partitionToOffset ->
-                  Utils.notNull(partitionToOffset.getKey(),"Got a null TopicPartition key out of the offsetsForTime API")
-                      .partition(),
-              partitionToOffset -> {
-                Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset());
-                if (offsetOptional.isPresent()){
-                  return offsetOptional.get();
-                } else {
-                  return getOffsetByTimeIfOutOfRange(partitionToOffset.getKey(), timestamp);
-                }
-              }));
-      // The given timestamp exceed the timestamp of the last message. So return the last offset.
-      if (result.isEmpty()) {
-        logger.warn("Offsets result is empty. Will complement with the last offsets.");
-        result = getConsumer().endOffsets(timestampsToSearch.keySet())
-            .entrySet()
-            .stream()
-            .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
-                partitionToOffset -> partitionToOffset.getValue()));
-      } else if (result.size() != partitionInfoList.size()) {
-        Map<TopicPartition, Long>  endOffests = getConsumer().endOffsets(timestampsToSearch.keySet());
-        // Get partial offsets result.
-        logger.warn("Missing offsets for some partitions. Partition Number should be :" + partitionInfoList.size()
-            + " but only got: " + result.size()+". Will complement with the last offsets.");
+          .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
+              partitionToOffset -> partitionToOffset.getValue()));
+    } else if (result.size() != expectedPartitionNum) {
+      Map<TopicPartition, Long>  endOffests = getConsumer().endOffsets(timestampsToSearch.keySet());
+      // Get partial offsets result.
+      logger.warn("Missing offsets for some partitions. Partition Number should be :" + expectedPartitionNum
+          + " but only got: " + result.size()+". Will complement with the last offsets.");
 
-        for (PartitionInfo partitionInfo : partitionInfoList) {
-          int partitionId = partitionInfo.partition();
-          if (!result.containsKey(partitionId)) {
-            result.put(partitionId, endOffests.get(new TopicPartition(topic, partitionId)));
-          }
+      for (TopicPartition topicPartition : timestampsToSearch.keySet()) {
+        int partitionId = topicPartition.partition();
+        if (!result.containsKey(partitionId)) {
+          result.put(partitionId, endOffests.get(new TopicPartition(topic, partitionId)));
         }
       }
-      if (result.size() < partitionInfoList.size()) {
-        throw new VeniceException(
-            "Failed to get offsets for all partitions. Got offsets for " + result.size() + " partitions, should be: "
-                + partitionInfoList.size());
-      }
-      return result;
     }
+    if (result.size() < expectedPartitionNum) {
+      throw new VeniceException(
+          "Failed to get offsets for all partitions. Got offsets for " + result.size() + " partitions, should be: "
+              + expectedPartitionNum);
+    }
+    return result;
   }
 
   /**
@@ -645,7 +665,7 @@ public class TopicManager implements Closeable {
   private synchronized long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp){
     long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition());
     if (latestOffset <= 0) {
-      return 0L;
+      return LOWEST_OFFSET;
     }
     KafkaConsumer consumer = getConsumer();
     try {
@@ -653,13 +673,13 @@ public class TopicManager implements Closeable {
       consumer.seek(topicPartition, latestOffset - 1);
       ConsumerRecords records = consumer.poll(1000L);
       if (records.isEmpty()) {
-        return 0L;
+        return LOWEST_OFFSET;
       }
       ConsumerRecord record = (ConsumerRecord) records.iterator().next();
       if (timestamp > record.timestamp()) {
         return latestOffset;
       } else {
-        return 0L;
+        return LOWEST_OFFSET;
       }
     } finally {
       consumer.assign(Arrays.asList());

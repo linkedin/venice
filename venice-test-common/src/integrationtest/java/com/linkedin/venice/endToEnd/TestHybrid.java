@@ -4,6 +4,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -13,12 +14,14 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
@@ -44,6 +47,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -55,9 +59,16 @@ import static org.testng.Assert.*;
 public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
 
-  @Test
-  public void testHybridInitializationOnMultiColo(){
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false);
+  @DataProvider(name = "isLeaderFollowerModelEnabled")
+  public static Object[][] isLeaderFollowerModelEnabled() {
+    return new Object[][]{{false}, {true}};
+  }
+
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testHybridInitializationOnMultiColo(boolean isLeaderFollowerModelEnabled) {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false, extraProperties);
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
         venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, false);
@@ -72,7 +83,9 @@ public class TestHybrid {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
             .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
             .setHybridRewindSeconds(streamingRewindSeconds)
-            .setHybridOffsetLagThreshold(streamingMessageLag));
+            .setHybridOffsetLagThreshold(streamingMessageLag)
+            .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+    );
 
     // There should be no version on the store yet
     assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
@@ -100,14 +113,14 @@ public class TestHybrid {
     venice.close();
   }
 
-  @Test
-  public void testHybridEndToEndWithMultiDivStream() throws Exception {
-    testHybridEndToEnd(true);
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testHybridEndToEndWithMultiDivStream(boolean isLeaderFollowerModelEnabled) throws Exception {
+    testHybridEndToEnd(true, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testHybridEndToEnd() throws Exception {
-    testHybridEndToEnd(false);
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testHybridEndToEnd(boolean isLeaderFollowerModelEnabled) throws Exception {
+    testHybridEndToEnd(false, isLeaderFollowerModelEnabled);
   }
 
   /**
@@ -123,10 +136,14 @@ public class TestHybrid {
    *
    *                       If this test succeeds with {@param multiDivStream} set to true, but fails with it set to false,
    *                       then there is a regression in the DIV partial segment tolerance after EOP.
+   * @param isLeaderFollowerModelEnabled Whether enable Leader/Follower state transition model
    */
-  public void testHybridEndToEnd(boolean multiDivStream) throws Exception {
+  public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
+        1, 1000000, false, false, extraProperties);
     logger.info("Finished creating VeniceClusterWrapper");
 
     long streamingRewindSeconds = 25L;
@@ -142,7 +159,9 @@ public class TestHybrid {
 
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(streamingRewindSeconds)
-        .setHybridOffsetLagThreshold(streamingMessageLag));
+        .setHybridOffsetLagThreshold(streamingMessageLag)
+        .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+    );
 
     //Do an H2V push
     runH2V(h2vProperties, 1, controllerClient);
@@ -150,10 +169,16 @@ public class TestHybrid {
     //Verify some records (note, records 1-100 have been pushed)
     AvroGenericStoreClient client =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-    for (int i=1;i<10;i++){
-      String key = Integer.toString(i);
-      assertEquals(client.get(key).get().toString(), "test_name_" + key);
-    }
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        for (int i = 1; i < 10; i++) {
+          String key = Integer.toString(i);
+          assertEquals(client.get(key).get().toString(), "test_name_" + key);
+        }
+      } catch (Exception e) {
+        throw new VeniceException(e);
+      }
+    });
 
     //write streaming records
     SystemProducer veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
@@ -164,7 +189,7 @@ public class TestHybrid {
       veniceProducer.stop(); //close out the DIV segment
     }
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
         assertEquals(client.get("2").get().toString(),"stream_2");
       } catch (Exception e) {
@@ -188,7 +213,7 @@ public class TestHybrid {
     for (int i=10; i<=20; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);
     }
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       try {
         assertEquals(client.get("19").get().toString(),"stream_19");
       } catch (Exception e) {
@@ -200,7 +225,7 @@ public class TestHybrid {
     runH2V(h2vProperties, 3, controllerClient);
 
     // Verify new streaming record in third version
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       try {
         assertEquals(client.get("19").get().toString(),"stream_19");
       } catch (Exception e) {
@@ -218,57 +243,73 @@ public class TestHybrid {
     assertTrue(versions.contains(2));
     assertTrue(versions.contains(3));
 
-    // Verify replication exists for versions 2 and 3, but not for version 1
-    VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getMasterVeniceController().getVeniceAdmin();
-    Field topicReplicatorField = veniceHelixAdmin.getClass().getDeclaredField("onlineOfflineTopicReplicator");
-    topicReplicatorField.setAccessible(true);
-    Optional<TopicReplicator> topicReplicatorOptional = (Optional<TopicReplicator>) topicReplicatorField.get(veniceHelixAdmin);
-    if (topicReplicatorOptional.isPresent()){
-      TopicReplicator topicReplicator = topicReplicatorOptional.get();
-      String realtimeTopic = Version.composeRealTimeTopic(storeName);
-      String versionOneTopic = Version.composeKafkaTopic(storeName, 1);
-      String versionTwoTopic = Version.composeKafkaTopic(storeName, 2);
-      String versionThreeTopic = Version.composeKafkaTopic(storeName, 3);
+    /**
+     * For L/F model, {@link com.linkedin.venice.replication.LeaderStorageNodeReplicator#doesReplicationExist(String, String)}
+     * would always return false.
+     */
+    if (!isLeaderFollowerModelEnabled) {
+      // Verify replication exists for versions 2 and 3, but not for version 1
+      VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getMasterVeniceController().getVeniceAdmin();
+      Field topicReplicatorField = veniceHelixAdmin.getClass().getDeclaredField("onlineOfflineTopicReplicator");
+      topicReplicatorField.setAccessible(true);
+      Optional<TopicReplicator> topicReplicatorOptional = (Optional<TopicReplicator>) topicReplicatorField.get(veniceHelixAdmin);
+      if (topicReplicatorOptional.isPresent()) {
+        TopicReplicator topicReplicator = topicReplicatorOptional.get();
+        String realtimeTopic = Version.composeRealTimeTopic(storeName);
+        String versionOneTopic = Version.composeKafkaTopic(storeName, 1);
+        String versionTwoTopic = Version.composeKafkaTopic(storeName, 2);
+        String versionThreeTopic = Version.composeKafkaTopic(storeName, 3);
 
-      assertFalse(topicReplicator.doesReplicationExist(realtimeTopic, versionOneTopic), "Replication stream must not exist for retired version 1");
-      assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionTwoTopic), "Replication stream must still exist for backup version 2");
-      assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionThreeTopic), "Replication stream must still exist for current version 3");
-    } else {
-      fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
+        assertFalse(topicReplicator.doesReplicationExist(realtimeTopic, versionOneTopic), "Replication stream must not exist for retired version 1");
+        assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionTwoTopic), "Replication stream must still exist for backup version 2");
+        assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionThreeTopic), "Replication stream must still exist for current version 3");
+      } else {
+        fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
+      }
     }
 
-    // TODO will move this test case to a single fail-over integration test.
-    //Stop one server
-    int port = venice.getVeniceServers().get(0).getPort();
-    venice.stopVeniceServer(port);
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, ()->{
-      Map<String,String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
-      // Make sure Helix know the instance is completed shutdown
-      if(instanceStatus.values().iterator().next().equals(InstanceStatus.DISCONNECTED.toString())){
-        return true;
-      }
-      return false;
-    });
+    /**
+     * Disable the restart server test for L/F model for now until the fix in rb1753313 is merged;
+     * "controllerClient.listStoresStatuses()" would eventually calling
+     * {@link com.linkedin.venice.controller.kafka.StoreStatusDecider#getStoreStatues(List, ResourceAssignment, VeniceControllerClusterConfig)}
+     * which uses {@link Partition#getReadyToServeInstances()} to find the online replicas for the store; however, for
+     * L/F model, the "stateToInstancesMap" inside Partition only contains state like "STANDBY" and "LEADER"; we should
+     * use PushMonitor inside StoreStatusDecider to get the ready to serve instances.
+     */
+    if (!isLeaderFollowerModelEnabled) {
+      // TODO will move this test case to a single fail-over integration test.
+      //Stop one server
+      int port = venice.getVeniceServers().get(0).getPort();
+      venice.stopVeniceServer(port);
+      TestUtils.waitForNonDeterministicCompletion(15, TimeUnit.SECONDS, () -> {
+        Map<String, String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
+        // Make sure Helix know the instance is completed shutdown
+        if (instanceStatus.values().iterator().next().equals(InstanceStatus.DISCONNECTED.toString())) {
+          return true;
+        }
+        return false;
+      });
 
-    //Restart one server
-    venice.restartVeniceServer(port);
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
-      Map<String, String> storeStatus =
-          controllerClient.listStoresStatuses().getStoreStatusMap();
-      // Make sure Helix know the instance is completed shutdown
-      if (storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString())) {
-        return true;
-      }
-      return false;
-    });
+      //Restart one server
+      venice.restartVeniceServer(port);
+      TestUtils.waitForNonDeterministicCompletion(15, TimeUnit.SECONDS, () -> {
+        Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
+        // Make sure Helix know the instance is completed shutdown
+        if (storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString())) {
+          return true;
+        }
+        return false;
+      });
+    }
     veniceProducer.stop();
     venice.close();
   }
 
-  @Test
-  public void testSamzaBatchLoad() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testSamzaBatchLoad(boolean isLeaderFollowerModelEnabled) throws Exception {
     Properties extraProperties = new Properties();
-    extraProperties.put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB);
+    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
     VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties);
     Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
@@ -280,7 +321,9 @@ public class TestHybrid {
     admin.addStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
     admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(streamingRewindSeconds)
-        .setHybridOffsetLagThreshold(streamingMessageLag));
+        .setHybridOffsetLagThreshold(streamingMessageLag)
+        .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+    );
     Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
     Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
 
@@ -323,7 +366,15 @@ public class TestHybrid {
     Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
 
     // Verify both batch and stream data
-    Utils.sleep(3000);
+    /**
+     * Leader would wait for 5 seconds before switching to real-time topic.
+     */
+    long extraWaitTime = isLeaderFollowerModelEnabled
+        ? TimeUnit.SECONDS.toMillis(Long.valueOf(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)))
+        : 0L;
+    long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
+    logger.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
+    Utils.sleep(normalTimeForConsuming + extraWaitTime);
     for (int i = 1; i < 20; i++){
       String key = Integer.toString(i);
       Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
@@ -347,9 +398,11 @@ public class TestHybrid {
     logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
   }
 
-  @Test
-  public void testHybridWithBufferReplayDisabled() throws Exception {
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testHybridWithBufferReplayDisabled(boolean isLeaderFollowerModelEnabled) throws Exception {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties);
 
     List<VeniceControllerWrapper> controllers = venice.getVeniceControllers();
     Assert.assertEquals(controllers.size(), 1, "There should only be one controller");
@@ -373,7 +426,9 @@ public class TestHybrid {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
         .setHybridRewindSeconds(streamingRewindSeconds)
-        .setHybridOffsetLagThreshold(streamingMessageLag));
+        .setHybridOffsetLagThreshold(streamingMessageLag)
+        .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+    );
 
     // Create a new version, and do an empty push for that version
     VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);

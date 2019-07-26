@@ -177,9 +177,8 @@ public class TestAdminConsumptionTask {
         adminConsumptionCycleTimeoutMs, 1);
   }
 
-  private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(recordMetadata.offset());
-    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), offsetRecord);
+  private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
+    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), recordMetadata.offset());
   }
 
   private long getLastOffset(String clusterName) {
@@ -200,7 +199,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, never())
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -240,12 +239,12 @@ public class TestAdminConsumptionTask {
       verify(topicManager, timeout(TIMEOUT))
           .createTopic(AdminTopicUtils.getTopicNameFromClusterName(clusterName), 1, 1, true, false, Optional.of(0));
       verify(mockKafkaConsumer, timeout(TIMEOUT))
-          .subscribe(any(), anyInt(), any());
+          .subscribe(any(), anyInt(), anyLong());
     } else {
       verify(topicManager, never())
           .createTopic(anyString(), anyInt(), anyInt(), anyBoolean(), anyBoolean(), any());
       verify(mockKafkaConsumer, never())
-          .subscribe(any(), anyInt(), any());
+          .subscribe(any(), anyInt(), anyLong());
     }
     task.close();
     executor.shutdown();
@@ -279,7 +278,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
@@ -311,7 +310,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
@@ -423,7 +422,7 @@ public class TestAdminConsumptionTask {
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
-    Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder = new LinkedList<>();
+    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
@@ -445,7 +444,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
@@ -491,7 +490,7 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 2),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
 
-    Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder = new LinkedList<>();
+    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
 
@@ -510,7 +509,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
@@ -534,11 +533,10 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName3, owner, keySchema, valueSchema, 3),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(offsetToSkip - 1);
-    Set<Pair<TopicPartition, OffsetRecord>> set = new HashSet<>();
+    Set<Pair<TopicPartition, Long>> set = new HashSet<>();
     set.add(new Pair(
         new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-        offsetRecord
+        offsetToSkip - 1
     ));
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(false), set);
 
@@ -563,7 +561,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
     verify(stats, atLeastOnce()).recordAdminTopicDIVErrorReportCount();
     verify(admin, atLeastOnce()).isMasterController(clusterName);
-    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, times(1)).subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, times(1)).unSubscribe(any(), anyInt());
     verify(admin, times(1)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
     verify(admin, never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
@@ -598,7 +596,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
@@ -633,7 +631,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
 
@@ -661,7 +659,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
@@ -805,7 +803,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
     verify(mockKafkaConsumer, timeout(TIMEOUT))
-        .subscribe(any(), anyInt(), any());
+        .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
 

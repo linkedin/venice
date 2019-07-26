@@ -21,7 +21,12 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
 
   @Override
   public void onPartitionStatusChange(OfflinePushStatus offlinePushStatus) {
-    if (offlinePushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+    boolean isTerminalStatus = offlinePushStatus.getCurrentStatus().isTerminal();
+    /**
+     * If the current push status is not terminal, we need the special check inside PartitionStatusBasedPushMonitor
+     * to figure out whether the entire push job is terminal now after receiving one partition status change.
+     */
+    if (!isTerminalStatus) {
       updatePushStatusByPartitionStatus(offlinePushStatus, getRoutingDataRepository().getPartitionAssignments(offlinePushStatus.getKafkaTopic()));
     }
 

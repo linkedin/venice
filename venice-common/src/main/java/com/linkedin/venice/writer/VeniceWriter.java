@@ -98,6 +98,16 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    */
   public static final int DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING = 10 * Time.MS_PER_SECOND;
 
+  /**
+   * The default value of the "upstreamOffset" field in avro record {@link ProducerMetadata}.
+   *
+   * Even though we have set the default value for "upstreamOffset" field as -1, the initial value for the long field
+   * "upstreamOffset" is still 0 when we construct a ProducerMetadata record. Default field values are primarily used
+   * when reading records that don't have those fields, typically when we deserialize a record from older version to
+   * newer version.
+   */
+  public static final long DEFAULT_UPSTREAM_OFFSET = ProducerMetadata.SCHEMA$.getField("upstreamOffset").defaultValue().asLong();
+
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
@@ -220,12 +230,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * Execute a standard "delete" on the key.
    *
    * @param key - The key to delete in storage.
+   * @param callback - callback will be executed after Kafka producer completes on sending the message.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<RecordMetadata> delete(K key) {
-    return delete(key, null);
+  public Future<RecordMetadata> delete(K key, Callback callback) {
+    return delete(key, callback, DEFAULT_UPSTREAM_OFFSET);
   }
 
   /**
@@ -233,18 +244,25 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    *
    * @param key - The key to delete in storage.
    * @param callback - Callback function invoked by Kafka producer after sending the message.
+   * @param upstreamOffset - The upstream offset of this message in the source topic:
+   *                         -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
+   *                              sending the message in H2V plugin to the version topic;
+   *                         >=0: Leader replica consumes a delete message from real-time topic, VeniceWriter in leader
+   *                              is sending this message to version topic with extra info: offset in the real-time topic.
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<RecordMetadata> delete(K key, Callback callback) {
+  public Future<RecordMetadata> delete(K key, Callback callback, long upstreamOffset) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, keySerializer.serialize(topicName, key));
     int partition = getPartition(kafkaKey);
-    return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, new Delete(), partition, callback);
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, new Delete(), partition, callback, upstreamOffset);
   }
 
   /**
    * Execute a standard "put" on the key.
+   *
+   * VeniceReducer and VeniceSystemProducer should call this API.
    *
    * @param key   - The key to put in storage.
    * @param value - The value to be associated with the given key
@@ -256,13 +274,26 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    */
   @Override
   public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback) {
+    return put(key, value, valueSchemaId, callback, DEFAULT_UPSTREAM_OFFSET);
+  }
+
+  /**
+   * VeniceWriter in the leader replica should call this API to fulfill extra metadata information --- upstreamOffset.
+   *
+   * UpstreamOffset is the offset of PUT message in the source topic:
+   * -1:  VeniceWriter is sending this message in a Samza app to the real-time topic; or it's
+   *      sending the message in H2V plugin to the version topic;
+   * >=0: Leader replica consumes a put message from real-time topic, VeniceWriter in leader
+   *      is sending this message to version topic with extra info: offset in the real-time topic.
+   */
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback, long upstreamOffset) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
 
     if (serializedKey.length + serializedValue.length > maxSizeForUserPayloadPerMessageInBytes) {
       if (isChunkingEnabled) {
-        return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition);
+        return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition, upstreamOffset);
       } else {
         throw new VeniceException("This record exceeds the maximum size. " +
             getSizeReport(serializedKey, serializedValue));
@@ -280,7 +311,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     putPayload.putValue = ByteBuffer.wrap(serializedValue);
     putPayload.schemaId = valueSchemaId;
 
-    return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback);
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback, upstreamOffset);
   }
 
   @Override
@@ -379,8 +410,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     producer.flush();
   }
 
-  private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload, int partition, Callback callback) {
-    return sendMessage(keyProvider, messageType, payload, partition, callback, true);
+  /**
+   * Data message like PUT and DELETE should call this API to enable DIV check.
+   */
+  private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload, int partition, Callback callback, long upstreamOffset) {
+    return sendMessage(keyProvider, messageType, payload, partition, callback, true, upstreamOffset);
   }
 
   /**
@@ -407,7 +441,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * P.S. 1: Callers which pass {@param updateDIV} == false for the purpose of retrying to produce the same message
    *         should also be synchronized, since otherwise the retries could be interleaved with other messages which
    *         have also updated the DIV.
-   *         @see {@link #sendControlMessage(ControlMessage, int, Map)}
+   *         @see {@link #sendControlMessage(ControlMessage, int, Map, Callback, long)}
    *
    * P.S. 2: If there is too much contention on this lock, then we can consider a finer locking strategy, where the
    *         locking is per-partition, which would also be correct as far as DIV is concerned.
@@ -421,8 +455,9 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       Object payload,
       int partition,
       Callback callback,
-      boolean updateDIV) {
-    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV);
+      boolean updateDIV,
+      long upstreamOffset) {
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV, upstreamOffset);
     kafkaValue.payloadUnion = payload;
     KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
     if (updateDIV) {
@@ -451,7 +486,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   /**
    * This function implements chunking of a large value into many small values.
    */
-  private Future<RecordMetadata> putLargeValue(byte[] serializedKey, byte[] serializedValue, int valueSchemaId, Callback callback, int partition) {
+  private Future<RecordMetadata> putLargeValue(byte[] serializedKey, byte[] serializedValue, int valueSchemaId,
+      Callback callback, int partition, long upstreamOffset) {
     int sizeAvailablePerMessage = maxSizeForUserPayloadPerMessageInBytes - serializedKey.length;
     if (sizeAvailablePerMessage < maxSizeForUserPayloadPerMessageInBytes / 2) {
       /**
@@ -524,7 +560,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
          * 3. Infinite blocking means the following 'sendMessage' call will follow the config of the internal Kafka Producer,
          * such as timeout, retries and so on;
          */
-        sendMessage(keyProvider, MessageType.PUT, putPayload, partition, null).get();
+        sendMessage(keyProvider, MessageType.PUT, putPayload, partition, null, DEFAULT_UPSTREAM_OFFSET).get();
       } catch (Exception e) {
         throw new VeniceException("Caught an exception while attempting to produce a chunk of a large value into Kafka... "
             + getDetailedSizeReport(chunkIndex, numberOfChunks, sizeAvailablePerMessage, serializedKey, serializedValue), e);
@@ -547,7 +583,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,
     // all the chunks should also be finished, since they were sent first, and ordering should be guaranteed.
-    return sendMessage(manifestKeyProvider, MessageType.PUT, putPayload, partition, callback);
+    return sendMessage(manifestKeyProvider, MessageType.PUT, putPayload, partition, callback, upstreamOffset);
   }
 
   private String getDetailedSizeReport(int chunkIndex, int numberOfChunks, int sizeAvailablePerMessage, byte[] serializedKey, byte[] serializedValue) {
@@ -577,7 +613,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     startOfSegment.checksumType = checkSumType.getValue();
     startOfSegment.upcomingAggregates = new ArrayList<>(); // TODO Add extra aggregates
     controlMessage.controlMessageUnion = startOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo);
+    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_UPSTREAM_OFFSET);
   }
 
   /**
@@ -596,7 +632,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
-    sendControlMessage(controlMessage, partition, debugInfo);
+    sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_UPSTREAM_OFFSET);
   }
 
   /**
@@ -619,7 +655,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    */
   private void broadcastControlMessage(ControlMessage controlMessage, Map<String, String> debugInfo) {
     for(int partition = 0; partition < numberOfPartitions ; partition ++) {
-      sendControlMessage(controlMessage, partition, debugInfo);
+      sendControlMessage(controlMessage, partition, debugInfo, null, DEFAULT_UPSTREAM_OFFSET);
     }
     logger.info("Successfully broadcasted " + ControlMessageType.valueOf(controlMessage)
         + " Control Message for topic '" + topicName + "'.");
@@ -654,7 +690,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    *
    * If the Kafka topic does not exist, this function will back off for {@link #sleepTimeMsWhenTopicMissing}
    * ms and try again for a total of {@link #maxAttemptsWhenTopicMissing} attempts. Note that this back off
-   * and retry behavior does not happen in {@link #sendMessage(KeyProvider, MessageType, Object, int, Callback)}
+   * and retry behavior does not happen in {@link #sendMessage(KeyProvider, MessageType, Object, int, Callback, long)}
    * because that function returns a {@link Future}, and it is {@link Future#get()} which throws the relevant
    * exception. In any case, the topic should be seeded with a {@link ControlMessageType#START_OF_SEGMENT}
    * at first, and therefore, there should be no cases where a topic has not been created yet and we attempt
@@ -667,8 +703,9 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * @param controlMessage a {@link ControlMessage} instance to persist into Kafka.
    * @param partition the Kafka partition to write to.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   * @param callback callback to execute when the record has been acknowledged by the Kafka server (null means no callback)
    */
-  private synchronized void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo) {
+  public synchronized void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo, Callback callback, long upstreamOffset) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
     controlMessage.debugInfo = getDebugInfo(debugInfo);
@@ -676,7 +713,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     boolean updateCheckSum = true;
     while (true) {
       try {
-        sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, partition, null, updateCheckSum).get();
+        sendMessage(this::getControlMessageKey, MessageType.CONTROL_MESSAGE, controlMessage, partition, callback, updateCheckSum, upstreamOffset).get();
         return;
       } catch (InterruptedException|ExecutionException e) {
         if (e.getMessage().contains(Errors.UNKNOWN_TOPIC_OR_PARTITION.message())) {
@@ -737,7 +774,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * @param messageType an instance of the {@link MessageType} enum.
    * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
-  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition, boolean incrementSequenceNumber) {
+  protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition, boolean incrementSequenceNumber, long upstreamOffset) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
     KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
     kafkaValue.messageType = messageType.getValue();
@@ -752,6 +789,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       producerMetadata.messageSequenceNumber = currentSegment.getSequenceNumber();
     }
     producerMetadata.messageTimestamp = time.getMilliseconds();
+    producerMetadata.upstreamOffset = upstreamOffset;
     kafkaValue.producerMetadata = producerMetadata;
 
     return kafkaValue;

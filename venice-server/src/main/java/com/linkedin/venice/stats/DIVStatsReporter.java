@@ -42,6 +42,10 @@ public class DIVStatsReporter extends AbstractVeniceStatsReporter<DIVStats> {
         new DIVStatsCounter(this, () -> getStats().getProducerConsumerLatencyMinMs()));
     registerSensor("producer_to_consumer_latency_max_ms",
         new DIVStatsCounter(this, () -> getStats().getProducerConsumerLatencyMaxMs()));
+    registerSensor("leader_offset_rewind_count",
+        new DIVStatsCounter(this, () -> (double) getStats().getLeaderOffsetRewindCount()));
+    registerSensor("leader_producer_failure_count",
+        new DIVStatsCounter(this, () -> (double) getStats().getLeaderProducerFailure()));
   }
 
   private static class DIVStatsCounter extends Gauge {

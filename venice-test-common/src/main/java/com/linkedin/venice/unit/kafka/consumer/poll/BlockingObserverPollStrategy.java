@@ -16,19 +16,19 @@ import java.util.Map;
  */
 public class BlockingObserverPollStrategy extends AbstractPollStrategy {
   private final AbstractPollStrategy basePollStrategy;
-  private final Consumer<Pair<TopicPartition, OffsetRecord>> observer;
+  private final Consumer<Pair<TopicPartition, Long>> observer;
 
   public BlockingObserverPollStrategy(
       AbstractPollStrategy basePollStrategy,
-      Consumer<Pair<TopicPartition, OffsetRecord>> observer) {
+      Consumer<Pair<TopicPartition, Long>> observer) {
     super(basePollStrategy.keepPollingWhenEmpty);
     this.basePollStrategy = basePollStrategy;
     this.observer = observer;
   }
 
   @Override
-  protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
-    Pair<TopicPartition, OffsetRecord> nextPoll = basePollStrategy.getNextPoll(offsets);
+  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
+    Pair<TopicPartition, Long> nextPoll = basePollStrategy.getNextPoll(offsets);
     observer.accept(nextPoll);
     return nextPoll;
   }

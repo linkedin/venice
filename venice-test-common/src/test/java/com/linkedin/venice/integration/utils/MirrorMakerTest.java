@@ -56,7 +56,9 @@ public class MirrorMakerTest {
 
   /**
    * Unfortunately, MirrorMaker is a little flaky and sometimes fails. I have seen failures about 2% of the
-   * time when running this test repeatedly, hence why I am adding the {@link FlakyTestRetryAnalyzer}. -FGV
+   * time when running this test repeatedly, hence why I am adding the FlakyTestRetryAnalyzer. -FGV
+   *
+   * FlakyTestRetryAnalyzer class has been removed; we use "flaky" group to mark flaky test now.
    */
   @Test(timeOut = 30 * Time.MS_PER_SECOND)
   void testMirrorMakerProcessWrapper() throws ExecutionException, InterruptedException {
@@ -92,7 +94,7 @@ public class MirrorMakerTest {
       ApacheKafkaConsumer consumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()));
 
       // Test pre-conditions
-      consumer.subscribe(topicName, 0, new OffsetRecord());
+      consumer.subscribe(topicName, 0, OffsetRecord.LOWEST_OFFSET);
 
       LOGGER.info("About to consume message from destination cluster (should be empty).");
       ConsumerRecords consumerRecordsBeforeTest = consumer.poll(1 * Time.MS_PER_SECOND);
@@ -105,7 +107,7 @@ public class MirrorMakerTest {
       LOGGER.info("About to consume message from destination cluster (should contain something).");
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
         ApacheKafkaConsumer newConsumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()));
-        newConsumer.subscribe(topicName, 0, new OffsetRecord());
+        newConsumer.subscribe(topicName, 0, OffsetRecord.LOWEST_OFFSET);
         ConsumerRecords consumerRecords = newConsumer.poll(1 * Time.MS_PER_SECOND);
         Assert.assertFalse(consumerRecords.isEmpty(), "The destination Kafka cluster should NOT be empty!");
       });

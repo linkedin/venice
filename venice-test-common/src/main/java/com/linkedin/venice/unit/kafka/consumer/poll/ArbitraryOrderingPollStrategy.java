@@ -11,15 +11,15 @@ import org.apache.kafka.common.TopicPartition;
  * at construction time.
  */
 public class ArbitraryOrderingPollStrategy extends AbstractPollStrategy {
-  private final Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder;
+  private final Queue<Pair<TopicPartition, Long>> pollDeliveryOrder;
 
-  public ArbitraryOrderingPollStrategy(Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder) {
+  public ArbitraryOrderingPollStrategy(Queue<Pair<TopicPartition, Long>> pollDeliveryOrder) {
     super(false);
     this.pollDeliveryOrder = pollDeliveryOrder;
   }
 
   @Override
-  protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
+  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
     if (offsets.isEmpty()) {
       // Not subscribed yet
       return null;

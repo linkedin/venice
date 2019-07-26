@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
@@ -9,6 +10,7 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -44,11 +46,12 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -57,15 +60,18 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
-import javax.validation.constraints.NotNull;
 import org.apache.commons.collections4.map.PassiveExpiringMap;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
@@ -76,7 +82,7 @@ import static java.util.concurrent.TimeUnit.*;
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
-public class StoreIngestionTask implements Runnable, Closeable {
+public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = Logger.getLogger(StoreIngestionTask.class);
@@ -96,91 +102,102 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
   // Final stuff
   /** storage destination for consumption */
-  private final StoreRepository storeRepository;
-  private final String topic;
-  private final String storeNameWithoutVersionInfo;
-  private final int storeVersion;
-  private final ReadOnlySchemaRepository schemaRepo;
-  private final String consumerTaskId;
-  private final Properties kafkaProps;
-  private final VeniceConsumerFactory factory;
-  private final AtomicBoolean isRunning;
-  private final AtomicBoolean emitMetrics; //TODO: remove this once we migrate to versioned stats
-  private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
-  private final StorageMetadataService storageMetadataService;
-  private final TopicManager topicManager;
-  private final CachedLatestOffsetGetter cachedLatestOffsetGetter;
-  private final EventThrottler bandwidthThrottler;
-  private final EventThrottler recordsThrottler;
+  protected final StoreRepository storeRepository;
+  protected final String topic;
+  protected final String storeNameWithoutVersionInfo;
+  protected final int storeVersion;
+  protected final ReadOnlySchemaRepository schemaRepo;
+  protected final String consumerTaskId;
+  protected final Properties kafkaProps;
+  protected final VeniceConsumerFactory factory;
+  protected final VeniceWriterFactory veniceWriterFactory;
+  protected final AtomicBoolean isRunning;
+  protected final AtomicBoolean emitMetrics; //TODO: remove this once we migrate to versioned stats
+  protected final AtomicInteger consumerActionSequenceNumber = new AtomicInteger(0);
+  protected final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
+  protected final StorageMetadataService storageMetadataService;
+  protected final TopicManager topicManager;
+  protected final CachedLatestOffsetGetter cachedLatestOffsetGetter;
+  protected final EventThrottler bandwidthThrottler;
+  protected final EventThrottler recordsThrottler;
   /** Per-partition consumption state map */
-  private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
-  private final StoreBufferService storeBufferService;
+  protected final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  protected final StoreBufferService storeBufferService;
   /** Persists the exception thrown by {@link StoreBufferService}. */
-  private Exception lastDrainerException = null;
+  protected Exception lastDrainerException = null;
   /** Keeps track of every upstream producer this consumer task has seen so far. */
-  private final Map<GUID, ProducerTracker> producerTrackerMap;
-  private final AggStoreIngestionStats storeIngestionStats;
-  private final AggVersionedDIVStats versionedDIVStats;
-  private final BooleanSupplier isCurrentVersion;
-  private final Optional<HybridStoreConfig> hybridStoreConfig;
-  private final IngestionNotificationDispatcher notificationDispatcher;
-  private final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
+  protected final Map<GUID, ProducerTracker> producerTrackerMap;
+  protected final AggStoreIngestionStats storeIngestionStats;
+  protected final AggVersionedDIVStats versionedDIVStats;
+  protected final BooleanSupplier isCurrentVersion;
+  protected final Optional<HybridStoreConfig> hybridStoreConfig;
+  protected final IngestionNotificationDispatcher notificationDispatcher;
+  protected final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
 
-  private final Function<GUID, ProducerTracker> producerTrackerCreator;
-  private final long readCycleDelayMs;
-  private final long emptyPollSleepMs;
+  protected final Function<GUID, ProducerTracker> producerTrackerCreator;
+  protected final long readCycleDelayMs;
+  protected final long emptyPollSleepMs;
 
-  private final DiskUsage diskUsage;
-
-  // Non-final
-  private KafkaConsumerWrapper consumer;
-  private Set<Integer> schemaIdSet;
-  private int idleCounter = 0;
-
-  //this indicates whether it polls nothing from Kafka
-  //It's for stats measuring purpose
-  private boolean recordsPolled = true;
+  protected final DiskUsage diskUsage;
 
   /** Message bytes consuming interval before persisting offset in offset db for transactional mode database. */
-  private final long databaseSyncBytesIntervalForTransactionalMode;
+  protected final long databaseSyncBytesIntervalForTransactionalMode;
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
-  private final long databaseSyncBytesIntervalForDeferredWriteMode;
+  protected final long databaseSyncBytesIntervalForDeferredWriteMode;
 
   /** A quick check point to see if incremental push is supported.
    * It helps fast {@link #isReadyToServe(PartitionConsumptionState)}*/
-  private final boolean isIncrementalPushEnabled;
+  protected final boolean isIncrementalPushEnabled;
 
-  private final boolean readOnlyForBatchOnlyStoreEnabled;
+  protected final boolean readOnlyForBatchOnlyStoreEnabled;
 
   /**
-   * When buffer replay is disabled, {@link #measureHybridOffsetLag(StartOfBufferReplay, PartitionConsumptionState, boolean)}
+   * When buffer replay is disabled, {@link #measureHybridOffsetLag(PartitionConsumptionState, boolean)}
    * won't consider the real-time topic offset.
    */
-  private final boolean bufferReplayEnabledForHybrid;
+  protected final boolean bufferReplayEnabledForHybrid;
 
-  public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
-                            @NotNull Properties kafkaConsumerProperties,
-                            @NotNull StoreRepository storeRepository,
-                            @NotNull StorageMetadataService storageMetadataService,
-                            @NotNull Queue<VeniceNotifier> notifiers,
-                            @NotNull EventThrottler bandwidthThrottler,
-                            @NotNull EventThrottler recordsThrottler,
-                            @NotNull ReadOnlySchemaRepository schemaRepo,
-                            @NotNull TopicManager topicManager,
-                            @NotNull AggStoreIngestionStats storeIngestionStats,
-                            @NotNull AggVersionedDIVStats versionedDIVStats,
-                            @NotNull StoreBufferService storeBufferService,
-                            @NotNull BooleanSupplier isCurrentVersion,
-                            @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
-                            @NotNull boolean isIncrementalPushEnabled,
-                            @NotNull VeniceStoreConfig storeConfig,
+  protected final VeniceServerConfig serverConfig;
+
+  // use this checker to check whether ingestion completion can be reported for a partition
+  protected final ReadyToServeCheck defaultReadyToServeChecker;
+
+  // Non-final
+  protected KafkaConsumerWrapper consumer;
+  protected VeniceWriter<byte[], byte[]> veniceWriter;
+  protected Set<Integer> schemaIdSet;
+  protected int idleCounter = 0;
+
+  //this indicates whether it polls nothing from Kafka
+  //It's for stats measuring purpose
+  protected boolean recordsPolled = true;
+
+  public StoreIngestionTask(VeniceWriterFactory writerFactory,
+                            VeniceConsumerFactory consumerFactory,
+                            Properties kafkaConsumerProperties,
+                            StoreRepository storeRepository,
+                            StorageMetadataService storageMetadataService,
+                            Queue<VeniceNotifier> notifiers,
+                            EventThrottler bandwidthThrottler,
+                            EventThrottler recordsThrottler,
+                            ReadOnlySchemaRepository schemaRepo,
+                            TopicManager topicManager,
+                            AggStoreIngestionStats storeIngestionStats,
+                            AggVersionedDIVStats versionedDIVStats,
+                            StoreBufferService storeBufferService,
+                            BooleanSupplier isCurrentVersion,
+                            Optional<HybridStoreConfig> hybridStoreConfig,
+                            boolean isIncrementalPushEnabled,
+                            VeniceStoreConfig storeConfig,
                             DiskUsage diskUsage,
-                            boolean bufferReplayEnabledForHybrid) {
+                            boolean bufferReplayEnabledForHybrid,
+                            VeniceServerConfig serverConfig) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
     this.databaseSyncBytesIntervalForDeferredWriteMode = storeConfig.getDatabaseSyncBytesIntervalForDeferredWriteMode();
-    this.factory = factory;
+    this.veniceWriterFactory = writerFactory;
+    this.factory = consumerFactory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
@@ -191,8 +208,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
     this.storeVersion = Version.parseVersionFromKafkaTopicName(topic);
     this.schemaIdSet = new HashSet<>();
-    this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY,
-        new ConsumerAction.ConsumerActionPriorityComparator());
+    this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
@@ -223,12 +239,26 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
     this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
+
+    this.serverConfig = serverConfig;
+
+    this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
   }
 
-  private void validateState() {
+  protected void validateState() {
     if(!this.isRunning.get()) {
       throw new VeniceException(" Topic " + topic + " is shutting down, no more messages accepted");
     }
+  }
+
+  /**
+   * Apply an unique and increasing sequence number for each consumer action, so if there are multiple consumer actions
+   * in the queue and they have the same priority, whichever be added first into the queue will be polled out first
+   * from the queue (FIFO).
+   * @return an unique and increasing sequence number for a new consumer action.
+   */
+  protected int nextSeqNum() {
+    return consumerActionSequenceNumber.incrementAndGet();
   }
 
   /**
@@ -236,7 +266,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void subscribePartition(String topic, int partition) {
     validateState();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition, nextSeqNum()));
   }
 
   /**
@@ -244,7 +274,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void unSubscribePartition(String topic, int partition) {
     validateState();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, partition));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, partition, nextSeqNum()));
   }
 
   /**
@@ -252,12 +282,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   public synchronized void resetPartitionConsumptionOffset(String topic, int partition) {
     validateState();
-    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition, nextSeqNum()));
   }
+
+  public abstract void promoteToLeader(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
+  public abstract void demoteToStandby(String topic, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
 
   public synchronized void kill() {
     validateState();
-    consumerActionsQueue.add(ConsumerAction.createKillAction(topic));
+    consumerActionsQueue.add(ConsumerAction.createKillAction(topic, nextSeqNum()));
     int currentAttempts = 0;
     try {
       // Check whether the task is really killed
@@ -319,7 +352,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    *
    * @return true if EOP was received and (for hybrid stores) if lag <= threshold
    */
-  private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
+  protected boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // Check various short-circuit conditions first.
     if (!partitionConsumptionState.isEndOfPushReceived()) {
       // If the EOP has not been received yet, then for sure we aren't ready
@@ -348,30 +381,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
       lagIsAcceptable = cachedLatestOffsetGetter.getOffset(topic, partitionConsumptionState.getPartition()) <=
         partitionConsumptionState.getOffsetRecord().getOffset() + SLOPPY_OFFSET_CATCHUP_THRESHOLD;
     } else {
-      Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
-      Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
-      if (!(storeVersionStateOptional.isPresent() && sobrDestinationOffsetOptional.isPresent())) {
-        // In this case, we have a hybrid store which has received its EOP, but has not yet received its SOBR.
-        // Therefore, we cannot precisely measure its offset, but we know for sure that it is lagging since
-        // the RT buffer replay has not even started yet.
-        logger.warn(consumerTaskId + " Cannot measure replication lag because the SOBR info is not present"
-            + ", storeVersionStateOptional: " + storeVersionStateOptional + ", sobrDestinationOffsetOptional: " + sobrDestinationOffsetOptional);
-        return false;
-      }
-      /**
-       * startOfBufferReplay could be null if the storeVersionState was deleted without deleting the corresponding
-       * partitionConsumptionState. This will cause storeVersionState to be recreated without startOfBufferReplay.
-       */
-      if (storeVersionStateOptional.get().startOfBufferReplay == null) {
-        throw new VeniceInconsistentStoreMetadataException("Inconsistent store metadata detected for topic " + topic
-            + ", partition " + partitionConsumptionState.getPartition()
-            +". Will clear the metadata and restart ingestion.");
-      }
-
       // Looks like none of the short-circuitry fired, so we need to measure lag!
       long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
       boolean shouldLogLag = partitionConsumptionState.getOffsetRecord().getOffset() % threshold == 0; //Log lag for every <threshold> records.
-      long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState, shouldLogLag);
+      long lag = measureHybridOffsetLag(partitionConsumptionState, shouldLogLag);
       boolean lagging = lag > threshold;
 
       if (shouldLogLag) {
@@ -390,50 +403,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
-   * A private method that has the formula to calculate real-time buffer lag. This method assumes every factor is
-   * not null or presented in Optional. Pre-check should be done if necessary
+   * Measure the hybrid offset lag for partition being tracked in `partitionConsumptionState`.
    */
-  private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs, boolean shouldLog) {
-    int partition = pcs.getPartition();
-    long currentOffset = pcs.getOffsetRecord().getOffset();
-    /**
-     * We still allow the upstream to check whether it could become 'ONLINE' for every message since it is possible
-     * that there is no messages after rewinding, which causes partition won't be 'ONLINE' in the future.
-     *
-     * With this strategy, it is possible that partition could become 'ONLINE' at most
-     * {@link CachedLatestOffsetGetter#ttlMs} earlier.
-     */
-    if (bufferReplayEnabledForHybrid) {
-      long sourceTopicMaxOffset = cachedLatestOffsetGetter.getOffset(sobr.sourceTopicName.toString(), partition);
+  protected abstract long measureHybridOffsetLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag);
 
-      long sobrSourceOffset = sobr.sourceOffsets.get(partition);
-
-      if (!pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
-        throw new IllegalArgumentException("SOBR DestinationOffset is not presented.");
-      }
-
-      long sobrDestinationOffset = pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().get();
-
-      long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
-
-      if (shouldLog) {
-        logger.info(String.format("%s partition %d real-time buffer lag offset is: " + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
-            consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
-      }
-
-      return lag;
-    } else {
-      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(topic, partition);
-      long lag = storeVersionTopicLatestOffset - currentOffset;
-      if (shouldLog) {
-        logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",
-            consumerTaskId, partition, storeVersionTopicLatestOffset, currentOffset, lag));
-      }
-      return lag;
-    }
-  }
-
-  private void processMessages() throws InterruptedException {
+  protected void processMessages() throws InterruptedException {
     if (null != lastDrainerException) {
       // Interrupt the whole ingestion task
       throw new VeniceException("Exception thrown by store buffer drainer", lastDrainerException);
@@ -531,12 +505,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
     logger.info("Running " + consumerTaskId);
     try {
       this.consumer = factory.getConsumer(kafkaProps);
+      this.veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topic);
       /**
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
        * acquired by some other synchronized function, such as {@link #kill()}.
         */
       while (isRunning.get()) {
         processConsumerActions();
+        checkLongRunningConsumerActionState();
         processMessages();
       }
 
@@ -593,10 +569,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * Consumes the kafka actions messages in the queue.
    */
   private void processConsumerActions() {
-    Iterator<ConsumerAction> iter = consumerActionsQueue.iterator();
-    while (iter.hasNext()) {
+    while (!consumerActionsQueue.isEmpty()) {
       // Do not want to remove a message from the queue unless it has been processed.
-      ConsumerAction message = iter.next();
+      ConsumerAction message = consumerActionsQueue.peek();
       try {
         message.incrementAttempt();
         processConsumerAction(message);
@@ -608,18 +583,76 @@ public class StoreIngestionTask implements Runnable, Closeable {
           logger.info("Error Processing message will retry later" + message , ex);
           return;
         } else {
-          logger.info("Ignoring message:  " + message + " after retries " + message.getAttemptsCount(), ex);
+          logger.error("Ignoring message:  " + message + " after retries " + message.getAttemptsCount(), ex);
         }
       }
-      iter.remove();
+      consumerActionsQueue.poll();
     }
   }
 
-  private void processConsumerAction(ConsumerAction message)
+  private void checkConsumptionStateWhenStart(OffsetRecord record, PartitionConsumptionState newPartitionConsumptionState) {
+    int partition = newPartitionConsumptionState.getPartition();
+    // Once storage node restart, send the "START" status to controller to rebuild the task status.
+    // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
+    // once START_OF_PUSH message has been read.
+    if (record.getOffset() > 0) {
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
+      if (storeVersionState.isPresent()) {
+        boolean sorted = storeVersionState.get().sorted;
+        /**
+         * Notify the underlying store engine about starting batch push.
+         */
+        beginBatchWrite(partition, sorted, newPartitionConsumptionState);
+
+        notificationDispatcher.reportRestarted(newPartitionConsumptionState);
+      }
+      /**
+       * If StoreVersionState doesn't exist, we would create it when we process
+       * START_OF_PUSH message for the first time.
+       */
+    }
+    /**
+     * TODO: The behavior for completed partition is not consistent here.
+     *
+     * When processing subscription action for restart scenario, {@link #consumer} won't subscribe the topic
+     * partition if it is already completed.
+     * In normal case (not completed right away), {@link #consumer} will continue subscribing the topic partition
+     * even after receiving the 'EOP' control message (no auto-unsubscription happens).
+     *
+     * From my understanding, at least we should keep them consistent to avoid confusion.
+     *
+     * Possible proposals:
+     * 1. (Preferred) Auto-unsubscription when receiving EOP for batch store. With this way,
+     * the unused consumer thread (not processing any kafka message) will be collected.
+     * 2. Always keep subscription no matter what happens.
+     */
+
+    // Second, take care of informing the controller about our status, and starting consumption
+    /**
+     * There could be two cases in this scenario:
+     * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
+     * 2. The job is still running: some partitions are in 'ONLINE' state, but other partitions are still in
+     * 'BOOTSTRAP' state.
+     * In either case, StoreIngestionTask should report 'started' => ['progress' => ] 'completed' to accomplish
+     * task state transition in Controller.
+     */
+    try {
+      defaultReadyToServeChecker.apply(newPartitionConsumptionState);
+    } catch (VeniceInconsistentStoreMetadataException e) {
+      storeIngestionStats.recordInconsistentStoreMetadata(storeNameWithoutVersionInfo, 1);
+      // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
+      // processConsumerActions.
+      storageMetadataService.clearOffset(topic, partition);
+      storageMetadataService.clearStoreVersionState(topic);
+      producerTrackerMap.values().forEach(
+          producerTracker -> producerTracker.clearPartition(partition)
+      );
+      throw e;
+    }
+  }
+
+  protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition)
       throws InterruptedException {
-    ConsumerActionType operation = message.getType();
-    String topic = message.getTopic();
-    int partition = message.getPartition();
     switch (operation) {
       case SUBSCRIBE:
         // Drain the buffered message by last subscription.
@@ -638,88 +671,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
             }
         );
 
-        // Once storage node restart, send the "START" status to controller to rebuild the task status.
-        // If this storage node has ever consumed data from this topic, instead of sending "START" here, we send it
-        // once START_OF_PUSH message has been read.
-        if (record.getOffset() > 0) {
-          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
-          boolean sorted;
-          if (storeVersionState.isPresent()) {
-            /**
-             * This is where the field should be for any push that begun after the introduction of
-             * {@link StoreVersionState} v1.
-             */
-            sorted = storeVersionState.get().sorted;
-          } else {
-            /**
-             * This is the fall-back, if we don't find the field in its intended place.
-             *
-             * This could happen the first time a Storage Node bounces after being upgraded to the the
-             * current code, for any store-version which was pushed prior to the introduction of
-             * {@link StoreVersionState} v1. After this first Storage node bounce, this code
-             * should never run again and could be removed...
-             *
-             * In that case, we will run {@link #retrieveSortedFieldFromStartOfPush(int)} in order to
-             * attempt to populate the {@link StoreVersionState}.
-             */
-            sorted = retrieveSortedFieldFromStartOfPush(partition);
-
-            StoreVersionState newStoreVersionState = new StoreVersionState();
-            newStoreVersionState.sorted = sorted;
-            storageMetadataService.put(topic, newStoreVersionState);
-            logger.info(consumerTaskId + " We did not find a StoreVersionState for partition " + partition +
-                " at consumer subscription time. We will generate a new StoreVersionState with sorted=" + sorted +
-                " and store it persistently.");
-          }
-          /**
-           * Notify the underlying store engine about starting batch push.
-           */
-          beginBatchWrite(partition, sorted, newPartitionConsumptionState);
-
-          notificationDispatcher.reportRestarted(newPartitionConsumptionState);
-        }
-        /**
-         * TODO: The behavior for completed partition is not consistent here.
-         *
-         * When processing subscription action for restart scenario, {@link #consumer} won't subscribe the topic
-         * partition if it is already completed.
-         * In normal case (not completed right away), {@link #consumer} will continue subscribing the topic partition
-         * even after receiving the 'EOP' control message (no auto-unsubscription happens).
-         *
-         * From my understanding, at least we should keep them consistent to avoid confusion.
-         *
-         * Possible proposals:
-         * 1. (Preferred) Auto-unsubscription when receiving EOP for batch store. With this way,
-         * the unused consumer thread (not processing any kafka message) will be collected.
-         * 2. Always keep subscription no matter what happens.
-         */
-
-        // Second, take care of informing the controller about our status, and starting consumption
-          /**
-           * There could be two cases in this scenario:
-           * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
-           * 2. The job is still running: some partitions are in 'ONLINE' state, but other partitions are still in
-           * 'BOOTSTRAP' state.
-           * In either case, StoreIngestionTask should report 'started' => ['progress' => ] 'completed' to accomplish
-           * task state transition in Controller.
-           */
-        try {
-          if (isReadyToServe(newPartitionConsumptionState)) {
-            notificationDispatcher.reportCompleted(newPartitionConsumptionState);
-            logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve");
-          }
-        } catch (VeniceInconsistentStoreMetadataException e) {
-          storeIngestionStats.recordInconsistentStoreMetadata(storeNameWithoutVersionInfo, 1);
-          // clear the local store metadata and the replica will be rebuilt from scratch upon retry as part of
-          // processConsumerActions.
-          storageMetadataService.clearOffset(topic, partition);
-          storageMetadataService.clearStoreVersionState(topic);
-          producerTrackerMap.values().forEach(
-              producerTracker -> producerTracker.clearPartition(partition)
-          );
-          throw e;
-        }
-        consumer.subscribe(topic, partition, record);
+        checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
+        consumer.subscribe(topic, partition, record.getOffset());
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
             + record.getOffset());
         break;
@@ -732,7 +685,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
          * Since the processing of the buffered messages are using {@link #partitionConsumptionStateMap} and
          * {@link #producerTrackerMap}, we would like to drain all the buffered messages before cleaning up those
          * two variables to avoid the race condition.
-          */
+         */
         partitionConsumptionStateMap.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
@@ -759,81 +712,20 @@ public class StoreIngestionTask implements Runnable, Closeable {
         // Throw the exception here to break the consumption loop, and then this task is marked as error status.
         throw new InterruptedException("Received the signal to kill this consumer. Topic " + topic);
       default:
-        throw new UnsupportedOperationException(operation.name() + "not implemented.");
+        throw new UnsupportedOperationException(operation.name() + " is not supported in " + this.getClass().getName());
     }
   }
+
+  protected abstract void checkLongRunningConsumerActionState() throws InterruptedException;
+  protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
 
   /**
-   * This function is for data migration purposes. In order to populate missing StoreVersionState
-   * records for already-existing store-versions pushed prior to the upgrade which include the
-   * schema for StoreVersionState.
-   *
-   * TODO: Remove this function when the data migration is completed...
-   *
-   * @param partitionId for which to retrieve the SOP's sorted field.
-   * @return the value of the sorted field in the SOP for that partition.
+   * Common record check for different state models:
+   * check whether server continues receiving messages after EOP for a batch-only store.
    */
-  @Deprecated
-  private boolean retrieveSortedFieldFromStartOfPush(int partitionId) {
-    int consumptionAttempt = 0;
-    int recordsConsumed = 0;
-    final int MAX_ATTEMPTS = 10;
-    final int MAX_RECORDS = 1000;
-    try (KafkaConsumerWrapper tempConsumer = factory.getConsumer(kafkaProps)) {
-      tempConsumer.subscribe(topic, partitionId, new OffsetRecord());
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
-      while (consumptionAttempt < MAX_ATTEMPTS && recordsConsumed < MAX_RECORDS) {
-        consumerRecords = tempConsumer.poll(readCycleDelayMs);
-        if (consumerRecords.isEmpty()) {
-          consumptionAttempt++;
-          logger.info(consumerTaskId + " Got nothing out of Kafka while attempting to" +
-              " retrieveSortedFieldFromStartOfPush() for partition " + partitionId +
-              " on attempt " + consumptionAttempt + "/" + MAX_ATTEMPTS);
-        } else {
-          Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iterator = consumerRecords.iterator();
-          while (iterator.hasNext()) {
-            recordsConsumed++;
-            ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iterator.next();
-            if (record.key().isControlMessage()) {
-              ControlMessage controlMessage = (ControlMessage) record.value().payloadUnion;
-              if (ControlMessageType.valueOf(controlMessage) == ControlMessageType.START_OF_PUSH) {
-                StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-                logger.info(consumerTaskId + " Successfully retrieved the START_OF_PUSH message from partition " +
-                    partitionId + " at offset " + record.offset() + ". Returning sorted=" + startOfPush.sorted);
-                return startOfPush.sorted;
-              }
-            }
-          }
-          logger.info(consumerTaskId + " Consumed " + recordsConsumed + " messages from partition " + partitionId +
-              " without finding any START_OF_PUSH control messages... Will keep trying until consuming" +
-              MAX_RECORDS + " at most.");
-        }
-      }
-    }
-    // TODO: Evaluate if this behavior is too stringent, and relax it if it is...
-    throw new VeniceException(consumerTaskId + " Could not find a StartOfPush message in partition" + partitionId +
-        ". Consumer poll attempts that yielded zero records: " + consumptionAttempt + "/" + MAX_ATTEMPTS +
-        ". Number of real records consumed: " + recordsConsumed + "/" + MAX_RECORDS);
-  }
-
-  private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    String recordTopic = record.topic();
-    if(!topic.equals(recordTopic)) {
-      throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.topic + " Actual " + recordTopic);
-    }
-
+  protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
-    if(null == partitionConsumptionState) {
-      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + topic + " Partition Id: " + partitionId);
-      return false;
-    }
-    long lastOffset = partitionConsumptionState.getOffsetRecord()
-        .getOffset();
-    if(lastOffset >= record.offset()) {
-      logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
-      return false;
-    }
 
     if (partitionConsumptionState.isEndOfPushReceived() &&
         partitionConsumptionState.isBatchOnly()) {
@@ -875,7 +767,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * This function will be invoked in {@link StoreBufferService} to process buffered {@link ConsumerRecord}.
    * @param record
    */
-  public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) throws InterruptedException {
     int partition = record.partition();
     //The partitionConsumptionStateMap can be modified by other threads during consumption (for example when unsubscribing)
     //in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
@@ -908,9 +800,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
       if (needToUnsub) {
         unSubscribePartition(topic, faultyPartition);
       }
-    } catch (VeniceMessageException | UnsupportedOperationException ex) {
+    } catch (VeniceMessageException | UnsupportedOperationException excp) {
       throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
-          + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", ex);
+          + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", excp);
     }
 
     partitionConsumptionState.incrementProcessedRecordNum();
@@ -947,15 +839,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
       syncOffset(topic, partitionConsumptionState);
     }
 
-    boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-    boolean isCompletionReported = partitionConsumptionState.isCompletionReported();
-    if (recordsProcessedAboveSyncIntervalThreshold || (endOfPushReceived && !isCompletionReported)) {
-      if (isReadyToServe(partitionConsumptionState)) {
-        notificationDispatcher.reportCompleted(partitionConsumptionState);
-      } else {
-        notificationDispatcher.reportProgress(partitionConsumptionState);
-      }
-    }
+    // Check whether it's ready to serve
+    defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
   }
 
   private void syncOffset(String topic, PartitionConsumptionState ps) {
@@ -1000,7 +885,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long offsetLag = partitionConsumptionStateMap.values().parallelStream()
         .filter(pcs -> pcs.isEndOfPushReceived() &&
             pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent())
-        .mapToLong(pcs -> measureHybridOffsetLag(svs.get().startOfBufferReplay, pcs, false))
+        .mapToLong(pcs -> measureHybridOffsetLag(pcs, false))
         .sum();
 
     return minZeroLag(offsetLag);
@@ -1035,68 +920,133 @@ public class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
+  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+    StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
+    /**
+     * Notify the underlying store engine about starting batch push.
+     */
+    beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
+
+    notificationDispatcher.reportStarted(partitionConsumptionState);
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
+    if (!storeVersionState.isPresent()) {
+      // No other partition of the same topic has started yet, let's initialize the StoreVersionState
+      StoreVersionState newStoreVersionState = new StoreVersionState();
+      newStoreVersionState.sorted = startOfPush.sorted;
+      newStoreVersionState.chunked = startOfPush.chunked;
+      newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
+      storageMetadataService.put(topic, newStoreVersionState);
+    } else if (storeVersionState.get().sorted != startOfPush.sorted) {
+      // Something very wrong is going on ): ...
+      throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name() +
+          " control messages with inconsistent 'sorted' fields within the same topic!");
+    } else if (storeVersionState.get().chunked != startOfPush.chunked) {
+      // Something very wrong is going on ): ...
+      throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name() +
+          " control messages with inconsistent 'chunked' fields within the same topic!");
+    } // else, no need to persist it once more.
+  }
+
+  protected void processEndOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+    // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
+    partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
+
+    /**
+     * Right now, we assume there are no sorted message after EndOfPush control message.
+     * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
+     */
+    StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partition, false, partitionConsumptionState);
+
+    /**
+     * Update the transactional/deferred mode of the partition.
+     */
+    partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
+
+    /**
+     * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
+     */
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+    storageEngine.endBatchWrite(storagePartitionConfig);
+
+    /**
+     * It's a bit of tricky here. Since the offset is not updated yet, it's actually previous offset reported
+     * here.
+     * TODO: sync up offset before invoking dispatcher
+     */
+    notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);
+  }
+
+  private void processStartOfBufferReplay(ControlMessage controlMessage, long offset, PartitionConsumptionState partitionConsumptionState) {
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
+    if (storeVersionState.isPresent()) {
+      // Update StoreVersionState, if necessary
+      StartOfBufferReplay startOfBufferReplay = (StartOfBufferReplay) controlMessage.controlMessageUnion;
+      if (null == storeVersionState.get().startOfBufferReplay) {
+        // First time we receive a SOBR
+        storeVersionState.get().startOfBufferReplay = startOfBufferReplay;
+        storageMetadataService.put(topic, storeVersionState.get());
+      } else if (!Utils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
+        // Something very wrong is going on ): ...
+        throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_BUFFER_REPLAY.name() +
+            " control messages with inconsistent 'startOfBufferReplay.offsets' fields within the same topic!" +
+            "\nPrevious SOBR: " + storeVersionState.get().startOfBufferReplay.sourceOffsets +
+            "\nIncoming SOBR: " + startOfBufferReplay.sourceOffsets);
+      }
+
+      partitionConsumptionState.getOffsetRecord().setStartOfBufferReplayDestinationOffset(offset);
+      notificationDispatcher.reportStartOfBufferReplayReceived(partitionConsumptionState);
+    } else {
+      // TODO: If there are cases where this can legitimately happen, then we need a less stringent reaction here...
+      throw new VeniceException("Unexpected: received some " + ControlMessageType.START_OF_BUFFER_REPLAY.name() +
+          " control message in a topic where we have not yet received a " +
+          ControlMessageType.START_OF_PUSH.name() + " control message.");
+    }
+  }
+
+  private void processStartOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
+    CharSequence startVersion = ((StartOfIncrementalPush) controlMessage.controlMessageUnion).version;
+    IncrementalPush newIncrementalPush = new IncrementalPush();
+    newIncrementalPush.version = startVersion;
+
+    partitionConsumptionState.setIncrementalPush(newIncrementalPush);
+    notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+  }
+
+  private void processEndOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
+    // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
+    CharSequence endVersion = ((EndOfIncrementalPush) controlMessage.controlMessageUnion).version;
+    //reset incremental push version
+    partitionConsumptionState.setIncrementalPush(null);
+    notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, endVersion.toString());
+  }
+
+  protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
+      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+    throw new VeniceException(ControlMessageType.TOPIC_SWITCH.name() + " control message should not be received in"
+        + "Online/Offline state model. Topic " + topic + " partition " + partition);
+  }
+
   /**
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private ControlMessageType processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    Optional<StoreVersionState> storeVersionState;
+  private ControlMessageType processControlMessage(ControlMessage controlMessage, int partition, long offset,
+      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+    /**
+     * If leader consumes control messages from topics other than version topic, it should produce
+     * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
+     * because the leader producer will keep track of its own segment state; besides, leader/follower
+     * model will not encounter START_OF_BUFFER_REPLAY because TOPIC_SWITCH will replace it in L/F
+     * model; incremental push is also a mutually exclusive feature with hybrid stores.
+     */
     ControlMessageType type = ControlMessageType.valueOf(controlMessage);
     logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
     switch(type) {
       case START_OF_PUSH:
-        StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
-        /**
-         * Notify the underlying store engine about starting batch push.
-         */
-        beginBatchWrite(partition, startOfPush.sorted, partitionConsumptionState);
-
-        notificationDispatcher.reportStarted(partitionConsumptionState);
-        storeVersionState = storageMetadataService.getStoreVersionState(topic);
-        if (!storeVersionState.isPresent()) {
-          // No other partition of the same topic has started yet, let's initialize the StoreVersionState
-          StoreVersionState newStoreVersionState = new StoreVersionState();
-          newStoreVersionState.sorted = startOfPush.sorted;
-          newStoreVersionState.chunked = startOfPush.chunked;
-          newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
-          storageMetadataService.put(topic, newStoreVersionState);
-        } else if (storeVersionState.get().sorted != startOfPush.sorted) {
-          // Something very wrong is going on ): ...
-          throw new VeniceException("Unexpected: received multiple " + type.name() +
-              " control messages with inconsistent 'sorted' fields within the same topic!");
-        } else if (storeVersionState.get().chunked != startOfPush.chunked) {
-          // Something very wrong is going on ): ...
-          throw new VeniceException("Unexpected: received multiple " + type.name() +
-              " control messages with inconsistent 'chunked' fields within the same topic!");
-        } // else, no need to persist it once more.
+        processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_PUSH:
-        // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
-        partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
-
-        /**
-         * Right now, we assume there are no sorted message after EndOfPush control message.
-         * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
-         */
-        StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partition, false, partitionConsumptionState);
-
-        /**
-         * Update the transactional/deferred mode of the partition.
-         */
-        partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
-
-        /**
-         * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
-         */
-        storageEngine.endBatchWrite(storagePartitionConfig);
-
-        /**
-         * It's a bit of tricky here. Since the offset is not updated yet, it's actually previous offset reported
-         * here.
-         * TODO: sync up offset before invoking dispatcher
-         */
-        notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);
+        processEndOfPush(controlMessage, partition, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
@@ -1106,45 +1056,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
          */
         break;
       case START_OF_BUFFER_REPLAY:
-        storeVersionState = storageMetadataService.getStoreVersionState(topic);
-        if (storeVersionState.isPresent()) {
-          // Update StoreVersionState, if necessary
-          StartOfBufferReplay startOfBufferReplay = (StartOfBufferReplay) controlMessage.controlMessageUnion;
-          if (null == storeVersionState.get().startOfBufferReplay) {
-            // First time we receive a SOBR
-            storeVersionState.get().startOfBufferReplay = startOfBufferReplay;
-            storageMetadataService.put(topic, storeVersionState.get());
-          } else if (!Utils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
-            // Something very wrong is going on ): ...
-            throw new VeniceException("Unexpected: received multiple " + type.name() +
-                " control messages with inconsistent 'startOfBufferReplay.offsets' fields within the same topic!" +
-                "\nPrevious SOBR: " + storeVersionState.get().startOfBufferReplay.sourceOffsets +
-                "\nIncoming SOBR: " + startOfBufferReplay.sourceOffsets);
-          }
-
-          partitionConsumptionState.getOffsetRecord().setStartOfBufferReplayDestinationOffset(offset);
-          notificationDispatcher.reportStartOfBufferReplayReceived(partitionConsumptionState);
-        } else {
-          // TODO: If there are cases where this can legitimately happen, then we need a less stringent reaction here...
-          throw new VeniceException("Unexpected: received some " + type.name() +
-              " control message in a topic where we have not yet received a " +
-              ControlMessageType.START_OF_PUSH.name() + " control message.");
-        }
+        processStartOfBufferReplay(controlMessage, offset, partitionConsumptionState);
        break;
       case START_OF_INCREMENTAL_PUSH:
-        CharSequence startVersion = ((StartOfIncrementalPush) controlMessage.controlMessageUnion).version;
-        IncrementalPush newIncrementalPush = new IncrementalPush();
-        newIncrementalPush.version = startVersion;
-
-        partitionConsumptionState.setIncrementalPush(newIncrementalPush);
-        notificationDispatcher.reportStartOfIncrementalPushReceived(partitionConsumptionState, startVersion.toString());
+        processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
         break;
       case END_OF_INCREMENTAL_PUSH:
-        // TODO: it is possible that we could turn incremental store to be read-only when incremental push is done
-        CharSequence endVersion = ((EndOfIncrementalPush) controlMessage.controlMessageUnion).version;
-        //reset incremental push version
-        partitionConsumptionState.setIncrementalPush(null);
-        notificationDispatcher.reportEndOfIncrementalPushRecived(partitionConsumptionState, endVersion.toString());
+        processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+        break;
+      case TOPIC_SWITCH:
+        processTopicSwitch(controlMessage, partition, offset, partitionConsumptionState);
         break;
       default:
         throw new UnsupportedMessageTypeException("Unrecognized Control message type " + controlMessage.controlMessageType);
@@ -1154,13 +1075,20 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Update the metadata in OffsetRecord, including "offset" which indicates the last successfully consumed message offset
+   * of version topic, "leaderOffset" which indicates the last successfully consumed message offset from leader topic.
+   */
+  protected abstract void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord);
+
+  /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
    *
    * @param consumerRecord {@link ConsumerRecord} consumed from Kafka.
    * @return the size of the data written to persistent storage.
    */
   private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-                                            PartitionConsumptionState partitionConsumptionState) {
+                                            PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -1205,7 +1133,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
         int keySize = kafkaKey.getKeyLength();
-        int valueSize = processVeniceMessage(kafkaKey, kafkaValue, consumerRecord.partition());
+        int valueSize = processVeniceMessage(consumerRecord);
         if (emitMetrics.get()) {
           storeIngestionStats.recordKeySize(storeNameWithoutVersionInfo, keySize);
           storeIngestionStats.recordValueSize(storeNameWithoutVersionInfo, valueSize);
@@ -1243,6 +1171,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
     if (null == partitionConsumptionState) {
       logger.info("Topic " + topic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
     } else {
+      /**
+       * update the timestamp of the last consumed message for this partition;
+       * the message can come from version topic, real-time topic or grandfathering topic.
+       */
+      partitionConsumptionState.setLastConsumedMessageTimestamp(consumerRecord.timestamp());
+
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       if (offsetRecordTransformer.isPresent()) {
         /**
@@ -1254,7 +1188,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
         offsetRecord.setOffsetRecordTransformer(offsetRecordTransformer.get());
       } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
 
-      offsetRecord.setOffset(consumerRecord.offset());
+      // Potentially update the offset metadata in the OffsetRecord
+      updateOffset(partitionConsumptionState, offsetRecord, consumerRecord);
+
       partitionConsumptionState.setOffsetRecord(offsetRecord);
       if (syncOffset) {
         syncOffset(topic, partitionConsumptionState);
@@ -1281,19 +1217,24 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * Write to database and potentially produce to version topic
+   */
+  protected abstract void writeToDatabaseAndProduce(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      WriteToStorageEngine writeFunction, ProduceToTopic produceFunction);
+
+  /**
    * @return the size of the data which was written to persistent storage.
    */
-  private int processVeniceMessage(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaValue, int partition) {
-    long startTimeNs = -1;
+  private int processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    KafkaKey kafkaKey = consumerRecord.key();
+    KafkaMessageEnvelope kafkaValue = consumerRecord.value();
+    int partition = consumerRecord.partition();
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
 
     byte[] keyBytes = kafkaKey.getKey();
 
     switch (MessageType.valueOf(kafkaValue)) {
       case PUT:
-        if (logger.isTraceEnabled()) {
-          startTimeNs = System.nanoTime();
-        }
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
         Put put = (Put) kafkaValue.payloadUnion;
         // Validate schema id first
@@ -1307,34 +1248,49 @@ public class StoreIngestionTask implements Runnable, Closeable {
         if (putValue.position() < ByteUtils.SIZE_OF_INT) {
           throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + ByteUtils.SIZE_OF_INT);
         }
-        // Back up the original 4 bytes
-        putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
-        int backupBytes = putValue.getInt();
-        putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
-        ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
-        storageEngine.put(partition, keyBytes, putValue);
-        /**
-         * We still want to recover the original position to make this function idempotent.
-         */
-        putValue.putInt(backupBytes);
 
-        if (logger.isTraceEnabled()) {
-          logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
-                  (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
-        }
+        // Write to storage engine; potentially produce the PUT message to version topic
+        writeToDatabaseAndProduce(consumerRecord,
+            () -> {
+              long putStartTimeNs = System.nanoTime();
+              // Back up the original 4 bytes
+              putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
+              int backupBytes = putValue.getInt();
+              putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
+              ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
+              storageEngine.put(partition, keyBytes, putValue);
+              /**
+               * We still want to recover the original position to make this function idempotent.
+               */
+              putValue.putInt(backupBytes);
+
+              if (logger.isTraceEnabled()) {
+                logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
+                    (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
+              }
+            },
+            (callback, sourceTopicOffset) ->
+                veniceWriter.put(keyBytes, put.putValue.array(), put.schemaId, callback, sourceTopicOffset)
+            );
+
         return valueLen;
 
       case DELETE:
-        if (logger.isTraceEnabled()) {
-          startTimeNs = System.nanoTime();
-        }
+        // Write to storage engine; potentially produce the DELETE message to version topic
+        writeToDatabaseAndProduce(consumerRecord,
+            () -> {
+              long deleteStartTimeNs = System.nanoTime();
+              storageEngine.delete(partition, keyBytes);
 
-        storageEngine.delete(partition, keyBytes);
+              if (logger.isTraceEnabled()) {
+                logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " in " +
+                    (System.nanoTime() - deleteStartTimeNs) + " ns at " + System.currentTimeMillis());
+              }
+            },
+            (callback, sourceTopicOffset) ->
+                veniceWriter.delete(keyBytes, callback, sourceTopicOffset)
+        );
 
-        if (logger.isTraceEnabled()) {
-          logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " in " +
-              (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
-        }
         return 0;
       default:
         throw new VeniceMessageException(
@@ -1456,10 +1412,59 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   /**
+   * A function that would apply on a specific partition to check whether the partition is ready to serve.
+   */
+  @FunctionalInterface
+  interface ReadyToServeCheck {
+    default void apply(PartitionConsumptionState partitionConsumptionState) {
+      apply(partitionConsumptionState, false);
+    }
+
+    void apply(PartitionConsumptionState partitionConsumptionState, boolean extraDisjunctionCondition);
+  }
+
+  /**
+   * @return the default way of checking whether a partition is ready to serve or not:
+   *         i.  if completion has been reported, no need to report anything again;
+   *         ii. if completion hasn't been reported and EndOfPush message has been received,
+   *             call {@link StoreIngestionTask#isReadyToServe(PartitionConsumptionState)} to
+   *             check whether we can report completion.
+   */
+  private ReadyToServeCheck getDefaultReadyToServeChecker() {
+    return (partitionConsumptionState, extraDisjunctionCondition) -> {
+      if (extraDisjunctionCondition ||
+          (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
+        if (isReadyToServe(partitionConsumptionState)) {
+          notificationDispatcher.reportCompleted(partitionConsumptionState);
+          logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " is ready to serve");
+        } else {
+          notificationDispatcher.reportProgress(partitionConsumptionState);
+        }
+      }
+    };
+  }
+
+  /**
+   * A function that would apply updates on the storage engine.
+   */
+  @FunctionalInterface
+  interface WriteToStorageEngine {
+    void apply();
+  }
+
+  /**
+   * A function that would produce messages to topic.
+   */
+  @FunctionalInterface
+  interface ProduceToTopic {
+    Future<RecordMetadata> apply(Callback callback, long sourceTopicOffset);
+  }
+
+  /**
    * Since get real-time topic offset is expensive, so we will only retrieve source topic offset after the predefined
    * ttlMs
    */
-  private static class CachedLatestOffsetGetter {
+  protected static class CachedLatestOffsetGetter {
     private class TopicAndPartition {
       String topic;
       int partitionId;
@@ -1515,4 +1520,5 @@ public class StoreIngestionTask implements Runnable, Closeable {
       tp -> topicManager.getLatestOffsetAndRetry(tp.topic(), tp.partition(), 10));
     }
   }
+
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -58,6 +59,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
@@ -259,25 +261,26 @@ public class StoreIngestionTaskTest {
     return recordMetadataFuture.get().offset();
   }
 
-  private void runTest(Set<Integer> partitions, Runnable assertions) throws Exception {
-    runTest(partitions, () -> {}, assertions);
+  private void runTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
+    runTest(partitions, () -> {}, assertions, isLeaderFollowerModelEnabled);
   }
 
-  private void runHybridTest(Set<Integer> partitions, Runnable assertions) throws Exception {
+  private void runHybridTest(Set<Integer> partitions, Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(new RandomPollStrategy(), partitions, () -> {}, assertions,
         Optional.of(new HybridStoreConfig(100,100)),
-        Optional.empty());
+        Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
   private void runTest(Set<Integer> partitions,
                        Runnable beforeStartingConsumption,
-                       Runnable assertions) throws Exception {
-    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions);
+                       Runnable assertions,
+                       boolean isLeaderFollowerModelEnabled) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions, isLeaderFollowerModelEnabled);
   }
 
   private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
-                       Runnable assertions) throws Exception {
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty());
+                       Runnable assertions, boolean isLeaderFollowerModelEnabled) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig, Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -285,8 +288,9 @@ public class StoreIngestionTaskTest {
       Runnable beforeStartingConsumption,
       Runnable assertions,
       Optional<HybridStoreConfig> hybridStoreConfig,
-      Optional<DiskUsage> diskUsageForTest) throws Exception{
-    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest);
+      Optional<DiskUsage> diskUsageForTest,
+      boolean isLeaderFollowerModelEnabled) throws Exception{
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, hybridStoreConfig, false, diskUsageForTest, isLeaderFollowerModelEnabled);
   }
 
   private void runTest(PollStrategy pollStrategy,
@@ -295,11 +299,14 @@ public class StoreIngestionTaskTest {
                        Runnable assertions,
                        Optional<HybridStoreConfig> hybridStoreConfig,
                        boolean incrementalPushEnabled,
-                       Optional<DiskUsage> diskUsageForTest) throws Exception {
+                       Optional<DiskUsage> diskUsageForTest,
+                       boolean isLeaderFollowerModelEnabled) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
+    VeniceWriterFactory mockWriterFactory = mock(VeniceWriterFactory.class);
+    doReturn(null).when(mockWriterFactory).getBasicVeniceWriter(any());
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
@@ -330,11 +337,28 @@ public class StoreIngestionTaskTest {
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig).getDatabaseSyncBytesIntervalForDeferredWriteMode();
     doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
 
-    storeIngestionTaskUnderTest =
-        new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
-            mockBandwidthThrottler, mockRecordsThrottler, mockSchemaRepo, mockTopicManager,
-            mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion,
-            hybridStoreConfig, incrementalPushEnabled,storeConfig, diskUsage, true);
+    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
+    doReturn(500l).when(serverConfig).getServerPromotionToLeaderReplicaDelayMs();
+    doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(serverConfig).getKafkaBootstrapServers();
+
+    StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
+        .setVeniceWriterFactory(mockWriterFactory)
+        .setVeniceConsumerFactory(mockFactory)
+        .setStoreRepository(mockStoreRepository)
+        .setStorageMetadataService(offsetManager)
+        .setNotifiersQueue(notifiers)
+        .setBandwidthThrottler(mockBandwidthThrottler)
+        .setRecordsThrottler(mockRecordsThrottler)
+        .setSchemaRepository(mockSchemaRepo)
+        .setTopicManager(mockTopicManager)
+        .setStoreIngestionStats(mockStoreIngestionStats)
+        .setVersionedDIVStats(mockVersionedDIVStats)
+        .setStoreBufferService(storeBufferService)
+        .setServerConfig(serverConfig)
+        .setDiskUsage(diskUsage)
+        .build();
+    storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
+        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -358,9 +382,8 @@ public class StoreIngestionTaskTest {
     }
   }
 
-  private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    OffsetRecord offsetRecord = getOffsetRecord(recordMetadata.offset());
-    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), offsetRecord);
+  private Pair<TopicPartition, Long> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
+    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), recordMetadata.offset());
   }
 
   private <STUFF> Set<STUFF> getSet(STUFF... stuffs) {
@@ -371,23 +394,28 @@ public class StoreIngestionTaskTest {
     return set;
   }
 
+  @DataProvider(name = "isLeaderFollowerModelEnabled")
+  public static Object[][] isLeaderFollowerModelEnabled() {
+    return new Object[][]{{false}, {true}};
+  }
+
   /**
    * Verifies that the VeniceMessages from KafkaConsumer are processed appropriately as follows:
    * 1. A VeniceMessage with PUT requests leads to invoking of AbstractStorageEngine#put.
    * 2. A VeniceMessage with DELETE requests leads to invoking of AbstractStorageEngine#delete.
    * 3. A VeniceMessage with a Kafka offset that was already processed is ignored.
    */
-  @Test
-  public void testVeniceMessagesProcessing() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testVeniceMessagesProcessing(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
-    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo).get();
+    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo, null).get();
 
     Queue<AbstractPollStrategy> pollStrategies = new LinkedList<>();
     pollStrategies.add(new RandomPollStrategy());
 
     // We re-deliver the old put out of order, so we can make sure it's ignored.
-    Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder = new LinkedList<>();
+    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata));
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
 
@@ -408,11 +436,11 @@ public class StoreIngestionTaskTest {
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testVeniceMessagesProcessingWithExistingSchemaId() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testVeniceMessagesProcessingWithExistingSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
 
@@ -430,15 +458,15 @@ public class StoreIngestionTaskTest {
       // Verify it commits the offset to Offset Manager
       OffsetRecord expected = getOffsetRecord(fooLastOffset);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   /**
    * Test the situation where records arrive faster than the schemas.
    * In this case, Venice would keep polling schemaRepo until schemas arrive.
    */
-  @Test
-  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     long existingSchemaOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
@@ -463,14 +491,14 @@ public class StoreIngestionTaskTest {
 
       OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).put(topic, PARTITION_FOO, expected);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   /**
    * Test the situation where records' schemas never arrive. In the case, the StoreIngestionTask will keep being blocked.
    */
-  @Test
-  public void testVeniceMessagesProcessingWithNonExistingSchemaId() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testVeniceMessagesProcessingWithNonExistingSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
@@ -490,25 +518,23 @@ public class StoreIngestionTaskTest {
 
       // Only two records(start_of_segment, start_of_push) offset were able to be recorded before thread being blocked
       verify(mockStorageMetadataService, atMost(2)).put(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testReportStartWhenRestarting() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testReportStartWhenRestarting(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     final long STARTING_OFFSET = 2;
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       doReturn(getOffsetRecord(STARTING_OFFSET)).when(mockStorageMetadataService).getLastOffset(anyString(), anyInt());
     }, () -> {
-      // Verify RESTARTED is reported when offset is larger than 0 is invoked.
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).restarted(topic, PARTITION_FOO, STARTING_OFFSET);
       // Verify STARTED is NOT reported when offset is 0
       verify(mockNotifier, never()).started(topic, PARTITION_BAR);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testNotifier() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testNotifier(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
@@ -541,11 +567,11 @@ public class StoreIngestionTaskTest {
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
       verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
       verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testResetPartition() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testResetPartition(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
@@ -557,11 +583,11 @@ public class StoreIngestionTaskTest {
 
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
           .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testResetPartitionAfterUnsubscription() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testResetPartitionAfterUnsubscription(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
@@ -577,7 +603,7 @@ public class StoreIngestionTaskTest {
       verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).unSubscribe(topic, PARTITION_FOO);
       verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).resetOffset(topic, PARTITION_FOO);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   /**
@@ -585,8 +611,8 @@ public class StoreIngestionTaskTest {
    *
    * The {@link VeniceNotifier} should see the completion and error reported for the appropriate partitions.
    */
-  @Test
-  public void testDetectionOfMissingRecord() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testDetectionOfMissingRecord(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToSkip = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
@@ -594,7 +620,7 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(),
-        getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), getOffsetRecord(barOffsetToSkip))));
+        getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToSkip)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
@@ -606,23 +632,22 @@ public class StoreIngestionTaskTest {
 
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   /**
    * In this test, partition FOO will complete normally, but partition BAR will contain a duplicate record. The
    * {@link VeniceNotifier} should see the completion for both partitions.
    */
-  @Test
-  public void testSkippingOfDuplicateRecord() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testSkippingOfDuplicateRecord(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToDupe = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    OffsetRecord offsetRecord = getOffsetRecord(barOffsetToDupe);
     PollStrategy pollStrategy = new DuplicatingPollStrategy(new RandomPollStrategy(),
-        getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
+        getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), barOffsetToDupe)));
 
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
@@ -633,20 +658,20 @@ public class StoreIngestionTaskTest {
 
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testThrottling() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testThrottling(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
-    veniceWriter.delete(deleteKeyFoo);
+    veniceWriter.delete(deleteKeyFoo, null);
 
     runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
       // START_OF_SEGMENT, START_OF_PUSH, PUT, DELETE
       verify(mockBandwidthThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(anyDouble());
       verify(mockRecordsThrottler, timeout(TEST_TIMEOUT).times(4)).maybeThrottle(1);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   /**
@@ -654,8 +679,8 @@ public class StoreIngestionTaskTest {
    * message in {@link #PARTITION_FOO} will receive a bad message type, whereas the message in {@link #PARTITION_BAR}
    * will receive a bad control message type.
    */
-  @Test
-  public void testBadMessageTypesFailFast() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testBadMessageTypesFailFast(boolean isLeaderFollowerModelEnabled) throws Exception {
     int badMessageTypeId = 99; // Venice got 99 problems, but a bad message type ain't one.
 
     // Dear future maintainer,
@@ -715,7 +740,7 @@ public class StoreIngestionTaskTest {
       verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   /**
@@ -723,8 +748,8 @@ public class StoreIngestionTaskTest {
    * including a corrupt message followed by a good one. We expect the Notifier to not report any errors after the
    * EOP.
    */
-  @Test
-  public void testCorruptMessagesDoNotFailFastAfterEOP() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testCorruptMessagesDoNotFailFastAfterEOP(boolean isLeaderFollowerModelEnabled) throws Exception {
     VeniceWriter veniceWriterForDataDuringPush = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     VeniceWriter veniceWriterForDataAfterPush = getCorruptedVeniceWriter(putValueToCorrupt);
 
@@ -772,7 +797,7 @@ public class StoreIngestionTaskTest {
           && args[3] instanceof CorruptDataException);
         }
 
-      });
+      }, isLeaderFollowerModelEnabled);
     } catch (VerifyError e) {
       StringBuilder msg = new StringBuilder();
       ClassLoader cl = ClassLoader.getSystemClassLoader();
@@ -793,8 +818,8 @@ public class StoreIngestionTaskTest {
    * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
    * annotation parameter makes the test skip any invocation after the first failure.
    */
-  @Test(invocationCount = 100, skipFailedInvocations = true)
-  public void testCorruptMessagesFailFast() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled", invocationCount = 100, skipFailedInvocations = true)
+  public void testCorruptMessagesFailFast(boolean isLeaderFollowerModelEnabled) throws Exception {
     VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -821,24 +846,24 @@ public class StoreIngestionTaskTest {
        * this test is to detect this edge case.
        */
       verify(mockNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testSubscribeCompletedPartition() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testSubscribeCompletedPartition(boolean isLeaderFollowerModelEnabled) throws Exception {
     final int offset = 100;
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     runTest(getSet(PARTITION_FOO),
         () -> doReturn(getOffsetRecord(offset, true)).when(mockStorageMetadataService).getLastOffset(topic, PARTITION_FOO),
         () -> {
-          verify(mockNotifier, timeout(TEST_TIMEOUT)).restarted(topic, PARTITION_FOO, offset);
           verify(mockNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
-        }
+        },
+        isLeaderFollowerModelEnabled
     );
   }
 
-  @Test
-  public void testUnsubscribeConsumption() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testUnsubscribeConsumption(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
 
@@ -848,11 +873,11 @@ public class StoreIngestionTaskTest {
       storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testKillConsumption() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testKillConsumption(boolean isLeaderFollowerModelEnabled) throws Exception {
     final Thread writingThread = new Thread(() -> {
       while (true) {
         veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
@@ -885,14 +910,14 @@ public class StoreIngestionTaskTest {
 
         waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
             () -> storeIngestionTaskUnderTest.isRunning() == false);
-      });
+      }, isLeaderFollowerModelEnabled);
     } finally {
       writingThread.interrupt();
     }
   }
 
-  @Test
-  public void testKillActionPriority() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testKillActionPriority(boolean isLeaderFollowerModelEnabled) throws Exception {
     runTest(getSet(PARTITION_FOO), () -> {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
@@ -917,7 +942,7 @@ public class StoreIngestionTaskTest {
 
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
   private byte[] getNumberedKey(int number) {
@@ -927,17 +952,13 @@ public class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  @DataProvider(name = "sortedInput")
-  public static Object[][] sortedInput() {
-    List<Boolean[]> returnList = new ArrayList<>();
-    returnList.add(new Boolean[]{true});
-    returnList.add(new Boolean[]{false});
-    Boolean[][] valuesToReturn = new Boolean[returnList.size()][1];
-    return returnList.toArray(valuesToReturn);
+  @DataProvider(name = "sortedInput_isLeaderFollowerModelEnabled")
+  public static Object[][] sortedInputAndStateTransitionModel() {
+    return new Object[][]{{false, false}, {true, false}, {false, true}, {true, true}};
   }
 
-  @Test(dataProvider = "sortedInput", invocationCount = 3, skipFailedInvocations = true)
-  public void testDataValidationCheckPointing(boolean sortedInput) throws Exception {
+  @Test(dataProvider = "sortedInput_isLeaderFollowerModelEnabled", invocationCount = 3, skipFailedInvocations = true)
+  public void testDataValidationCheckPointing(boolean sortedInput, boolean isLeaderFollowerModelEnabled) throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
@@ -977,7 +998,7 @@ public class StoreIngestionTaskTest {
                 storeIngestionTaskUnderTest.subscribePartition(topic, partition));
           } else {
             logger.info("TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() +
-                ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
+                ", Offset: " + topicPartitionOffsetRecordPair.getSecond());
           }
         }
     );
@@ -1000,7 +1021,7 @@ public class StoreIngestionTaskTest {
 
       // Verify that we really unsubscribed and re-subscribed.
       relevantPartitions.stream().forEach(partition -> {
-        verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts + 1)).subscribe(eq(topic), eq(partition), any());
+        verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts + 1)).subscribe(eq(topic), eq(partition), anyLong());
         verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts)).unSubscribe(topic, partition);
 
         if (sortedInput) {
@@ -1008,7 +1029,7 @@ public class StoreIngestionTaskTest {
           StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, partition);
           deferredWritePartitionConfig.setDeferredWrite(true);
           // SOP control message and restart
-          verify(mockAbstractStorageEngine, atLeast(totalNumberOfConsumptionRestarts + 1))
+          verify(mockAbstractStorageEngine, atLeast(1))
               .beginBatchWrite(eq(deferredWritePartitionConfig), any());
           StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, partition);
           // only happen after EOP control message
@@ -1027,11 +1048,11 @@ public class StoreIngestionTaskTest {
         byte[] value = ValueRecord.create(SCHEMA_ID, entry.getValue().get()).serialize();
         verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, ByteBuffer.wrap(value));
       });
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testKillAfterPartitionIsCompleted()
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testKillAfterPartitionIsCompleted(boolean isLeaderFollowerModelEnabled)
       throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
@@ -1043,11 +1064,11 @@ public class StoreIngestionTaskTest {
 
       storeIngestionTaskUnderTest.kill();
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testNeverReportProgressBeforeStart()
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testNeverReportProgressBeforeStart(boolean isLeaderFollowerModelEnabled)
       throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Read one message for each poll.
@@ -1058,11 +1079,11 @@ public class StoreIngestionTaskTest {
       // of messages in bytes, since control message is being counted as 0 bytes (no data persisted in disk),
       // then no progress will be reported during start, but only for processed messages.
       verify(mockNotifier, after(TEST_TIMEOUT).never()).progress(any(), anyInt(), anyInt());
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testOffsetPersistent()
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testOffsetPersistent(boolean isLeaderFollowerModelEnabled)
       throws Exception {
     // Do not persist every message.
     databaseSyncBytesIntervalForTransactionalMode = 1000;
@@ -1077,20 +1098,23 @@ public class StoreIngestionTaskTest {
        * START_OF_SEGMENT, START_OF_PUSH, END_OF_PUSH, END_OF_SEGMENT, START_OF_SEGMENT, START_OF_BUFFER_REPLAY
 
        */
-      runHybridTest(getSet(PARTITION_FOO), () -> {
-        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(6)).put(eq(topic), eq(PARTITION_FOO), any());
-      });
+      runHybridTest(
+          getSet(PARTITION_FOO),
+          () -> {
+            verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(6)).put(eq(topic), eq(PARTITION_FOO), any());
+          },
+          isLeaderFollowerModelEnabled);
     }finally {
       databaseSyncBytesIntervalForTransactionalMode = 1;
     }
 
   }
 
-  @Test
-  public void testVeniceMessagesProcessingWithSortedInput() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testVeniceMessagesProcessingWithSortedInput(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
     RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
-    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo).get();
+    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo, null).get();
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO), () -> {
@@ -1120,11 +1144,11 @@ public class StoreIngestionTaskTest {
       StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
       verify(mockAbstractStorageEngine, times(1))
           .endBatchWrite(transactionalPartitionConfig);
-    });
+    }, isLeaderFollowerModelEnabled);
   }
 
-  @Test
-  public void testDelayedTransitionToOnlineInHybridMode() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testDelayedTransitionToOnlineInHybridMode(boolean isLeaderFollowerModelEnabled) throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;
 
@@ -1150,11 +1174,18 @@ public class StoreIngestionTaskTest {
           verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
           verify(mockNotifier, never()).completed(anyString(), anyInt(), anyLong());
 
-          veniceWriter.broadcastStartOfBufferReplay(
-              Arrays.asList(10L, 9L, 8L, 7L, 6L, 5L, 4L, 3L, 2L, 1L),
-              "source K cluster",
-              "source K topic",
-              new HashMap<>());
+          if (isLeaderFollowerModelEnabled) {
+            veniceWriter.broadcastTopicSwitch(Arrays.asList(inMemoryKafkaBroker.getKafkaBootstrapServer()),
+                Version.composeRealTimeTopic(storeNameWithoutVersionInfo),
+                System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
+                new HashMap<>());
+          } else {
+            veniceWriter.broadcastStartOfBufferReplay(
+                Arrays.asList(10L, 9L, 8L, 7L, 6L, 5L, 4L, 3L, 2L, 1L),
+                "source K cluster",
+                "source K topic",
+                new HashMap<>());
+          }
 
           for (int i = 0; i < MESSAGES_AFTER_EOP; i++) {
             try {
@@ -1165,7 +1196,8 @@ public class StoreIngestionTaskTest {
           }
 
           verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
-        }
+        },
+        isLeaderFollowerModelEnabled
     );
   }
 
@@ -1175,8 +1207,8 @@ public class StoreIngestionTaskTest {
    * the record, it will receive a disk full error.  This test checks for that disk full error on the Notifier object.
    * @throws Exception
    */
-  @Test
-  public void StoreIngestionTaskRespectsDiskUsage() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void StoreIngestionTaskRespectsDiskUsage(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1193,11 +1225,11 @@ public class StoreIngestionTaskTest {
         Assert.assertTrue(errorMessages.contains("Disk is full"),
             "Expected disk full error, found following error messages: " + errorMessages);
       });
-    }, Optional.empty(), Optional.of(diskFullUsage));
+    }, Optional.empty(), Optional.of(diskFullUsage), isLeaderFollowerModelEnabled);
   }
 
-  @Test
-    public void testIncrementalPush() throws Exception {
+  @Test(dataProvider = "isLeaderFollowerModelEnabled")
+    public void testIncrementalPush(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1224,7 +1256,7 @@ public class StoreIngestionTaskTest {
         verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooOffset);
         verify(mockNotifier, atLeastOnce()).endOfIncrementalPushReceived(topic, PARTITION_FOO, fooNewOffset, version);
       });
-    }, Optional.empty(), true, Optional.empty());
+    }, Optional.empty(), true, Optional.empty(), isLeaderFollowerModelEnabled);
   }
 
   private static class TestVeniceWriter<K,V> extends VeniceWriter{

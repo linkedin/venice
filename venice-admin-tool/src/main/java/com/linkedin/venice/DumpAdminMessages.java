@@ -54,10 +54,8 @@ public class DumpAdminMessages {
     consumerProperties = getKafkaConsumerProperties(kafkaUrl, consumerProperties);
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     try (KafkaConsumerWrapper consumer = new ApacheKafkaConsumer(consumerProperties)) {
-      OffsetRecord startOffset = new OffsetRecord();
       // include the message with startingOffset
-      startOffset.setOffset(startingOffset - 1);
-      consumer.subscribe(adminTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, startOffset);
+      consumer.subscribe(adminTopic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, startingOffset - 1);
       AdminOperationSerializer deserializer = new AdminOperationSerializer();
       List<AdminOperationInfo> adminOperations = new ArrayList<>();
       int curMsgCnt = 0;
