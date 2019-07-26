@@ -28,7 +28,7 @@ public class RandomPollStrategy extends AbstractPollStrategy {
   }
 
   @Override
-  protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
+  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
     if (offsets.isEmpty()) {
       Utils.sleep(50); //So that keepPollingWhenEmpty doesn't lead to 10 null polls per ms
       return null;
@@ -36,8 +36,8 @@ public class RandomPollStrategy extends AbstractPollStrategy {
     List<TopicPartition> topicPartitionList = Arrays.asList(offsets.keySet().toArray(new TopicPartition[]{}));
     int numberOfTopicPartitions = offsets.size();
     TopicPartition topicPartition = topicPartitionList.get((int) Math.round(Math.random() * (numberOfTopicPartitions - 1)));
-    OffsetRecord offsetRecord = offsets.get(topicPartition);
+    Long offset = offsets.get(topicPartition);
 
-    return new Pair<>(topicPartition, offsetRecord);
+    return new Pair<>(topicPartition, offset);
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import java.util.Comparator;
 
 
@@ -9,18 +10,27 @@ import java.util.Comparator;
  * The kinds of changes that can be triggered by a {@link ConsumerAction} are defined in the
  * {@link ConsumerActionType} enum.
  */
-public class ConsumerAction {
+public class ConsumerAction implements Comparable<ConsumerAction> {
 
   private final ConsumerActionType type;
   private final String topic;
   private final int partition;
+  private final int sequenceNumber;
+  private final LeaderFollowerParticipantModel.LeaderSessionIdChecker checker;
 
   private int attempts = 0;
 
-  public ConsumerAction(ConsumerActionType type, String topic, int partition) {
+  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber) {
+    this(type, topic, partition, sequenceNumber, null);
+  }
+
+  public ConsumerAction(ConsumerActionType type, String topic, int partition, int sequenceNumber,
+      LeaderFollowerParticipantModel.LeaderSessionIdChecker checker) {
     this.type = type;
     this.topic = topic;
     this.partition = partition;
+    this.sequenceNumber = sequenceNumber;
+    this.checker = checker;
   }
 
   public ConsumerActionType getType() {
@@ -43,6 +53,14 @@ public class ConsumerAction {
     return attempts;
   }
 
+  public int getSequenceNumber() {
+    return sequenceNumber;
+  }
+
+  public LeaderFollowerParticipantModel.LeaderSessionIdChecker getLeaderSessionIdChecker() {
+    return checker;
+  }
+
   @Override
   public String toString() {
     return "KafkaTaskMessage{" +
@@ -50,22 +68,51 @@ public class ConsumerAction {
         ", topic='" + topic + '\'' +
         ", partition=" + partition +
         ", attempts=" + attempts +
+        ", sequenceNumber=" + sequenceNumber +
         '}';
+  }
+
+  @Override
+  public int compareTo(ConsumerAction other) {
+    if (this.type.getActionPriority() == other.type.getActionPriority()) {
+      /**
+       * If this ConsumerAction has a smaller sequence number, which indicates it's added before the other ConsumerAction,
+       * we should return negative for the `compareTo()` API indicating that this ConsumerAction is smaller and should
+       * be polled first.
+       */
+      return this.sequenceNumber - other.sequenceNumber;
+    }
+
+    /**
+     * If this ConsumerAction has a higher priority number, which indicates that it should be polled out first,
+     * so we need to return negative in such case, indicating that this ConsumerAction is "smaller" and needs to be in
+     * the head of the queue.
+     */
+    return other.type.getActionPriority() - this.type.getActionPriority();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (obj == null || !(obj instanceof ConsumerAction)) {
+      return false;
+    }
+    ConsumerAction other = (ConsumerAction) obj;
+
+    if (topic.equals(other.topic)
+        && partition == other.partition
+        && sequenceNumber == other.sequenceNumber
+        && type.equals(other.type)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
    * Create a kill consumer action. As kill action apply on all of partitions in given topic, so use 0 as partition
    * value for no meaning.
    */
-  public static ConsumerAction createKillAction(String topic) {
-    return new ConsumerAction(ConsumerActionType.KILL, topic, 0);
-  }
-
-  public static class ConsumerActionPriorityComparator implements Comparator<ConsumerAction> {
-
-    @Override
-    public int compare(ConsumerAction o1, ConsumerAction o2) {
-      return o1.type.getActionPriority() - o2.type.getActionPriority();
-    }
+  public static ConsumerAction createKillAction(String topic, int sequenceNumber) {
+    return new ConsumerAction(ConsumerActionType.KILL, topic, 0, sequenceNumber);
   }
 }

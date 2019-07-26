@@ -21,11 +21,11 @@ public class CompositePollStrategy extends AbstractPollStrategy {
   }
 
   @Override
-  protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
+  protected Pair<TopicPartition, Long> getNextPoll(Map<TopicPartition, Long> offsets) {
     // We need to make sure some topic + partition has been subscribed before polling
     while (!pollStrategies.isEmpty() && !offsets.isEmpty()) {
       AbstractPollStrategy pollStrategy = pollStrategies.peek();
-      Pair<TopicPartition, OffsetRecord> nextPoll = pollStrategy.getNextPoll(offsets);
+      Pair<TopicPartition, Long> nextPoll = pollStrategy.getNextPoll(offsets);
       if (null == nextPoll) {
         pollStrategies.poll();
       } else {

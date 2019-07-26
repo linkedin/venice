@@ -68,7 +68,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeBootstrapFromOffline() throws Exception {
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    Mockito.verify(mockStoreIngestionService, Mockito.times(1)).startConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.times(1)).startConsumption(mockStoreConfig, testPartition, false);
     Mockito.verify(mockStorageService, Mockito.times(1)).openStoreForNewPartition(mockStoreConfig, testPartition);
     Mockito.verify(mockNotifier, Mockito.times(1)).startConsumption(mockMessage.getResourceName(), testPartition);
   }

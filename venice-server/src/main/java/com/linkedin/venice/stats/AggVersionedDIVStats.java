@@ -70,4 +70,14 @@ public class AggVersionedDIVStats extends AbstractVeniceAggVersionedStats<DIVSta
     getTotalStats(storeName).recordProducerConsumerLatencyMs(value);
     getStats(storeName, version).recordProducerConsumerLatencyMs(value);
   }
+
+  public void recordLeaderOffsetRewind(String storeName, int version) {
+    getTotalStats(storeName).recordLeaderOffsetRewind();
+    getStats(storeName, version).recordLeaderOffsetRewind();
+  }
+
+  public void recordLeaderProducerFailure(String storeName, int version) {
+    getTotalStats(storeName).recordLeaderProducerFailure();
+    getStats(storeName, version).recordLeaderProducerFailure();
+  }
 }

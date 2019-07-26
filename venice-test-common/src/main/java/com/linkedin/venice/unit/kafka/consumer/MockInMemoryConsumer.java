@@ -21,7 +21,7 @@ import org.apache.kafka.common.TopicPartition;
  */
 public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   private final InMemoryKafkaBroker broker;
-  private final Map<TopicPartition, OffsetRecord> offsets = new HashMap<>();
+  private final Map<TopicPartition, Long> offsets = new HashMap<>();
   private final PollStrategy pollStrategy;
   private final KafkaConsumerWrapper delegate;
 
@@ -37,9 +37,9 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void subscribe(String topic, int partition, OffsetRecord offset) {
-    delegate.subscribe(topic, partition, offset);
-    offsets.put(new TopicPartition(topic, partition), offset);
+  public void subscribe(String topic, int partition, long lastReadOffset) {
+    delegate.subscribe(topic, partition, lastReadOffset);
+    offsets.put(new TopicPartition(topic, partition), lastReadOffset);
   }
 
   @Override
@@ -51,7 +51,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   @Override
   public void resetOffset(String topic, int partition) {
     delegate.resetOffset(topic, partition);
-    offsets.put(new TopicPartition(topic, partition), new OffsetRecord());
+    offsets.put(new TopicPartition(topic, partition), OffsetRecord.LOWEST_OFFSET);
   }
 
   @Override
@@ -99,8 +99,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
     delegate.seek(topicPartition, nextOffset);
   }
 
-  public Map<TopicPartition, OffsetRecord> getOffsets() {
+  public Map<TopicPartition, Long> getOffsets() {
     return offsets;
   }
-
 }

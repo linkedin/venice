@@ -48,6 +48,7 @@ public class VeniceClusterConfig {
   private long kafkaFetchMaxTimeMS;
   private long kafkaFetchPartitionMaxSizePerSecond;
 
+  private final VeniceProperties clusterProperties;
 
   private String kafkaSecurityProtocol;
   // SSL related config
@@ -56,6 +57,7 @@ public class VeniceClusterConfig {
   public VeniceClusterConfig(VeniceProperties clusterProperties)
       throws ConfigurationException {
     checkProperties(clusterProperties);
+    this.clusterProperties = clusterProperties;
   }
 
   protected void checkProperties(VeniceProperties clusterProps) throws ConfigurationException {
@@ -213,5 +215,9 @@ public class VeniceClusterConfig {
 
   public long getKafkaFetchQuotaRecordPerSecond() {
     return kafkaFetchQuotaRecordPerSecond;
+  }
+
+  public VeniceProperties getClusterProperties() {
+    return this.clusterProperties;
   }
 }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import java.util.Set;
 
@@ -15,7 +16,7 @@ public interface StoreIngestionService {
    * @param veniceStore Venice Store for the partition.
    * @param partitionId Venice partition's id.
    */
-  void startConsumption(VeniceStoreConfig veniceStore, int partitionId);
+  void startConsumption(VeniceStoreConfig veniceStore, int partitionId, boolean isLeaderFollowerModel);
 
   /**
    * Stops consuming messages from Kafka Partition corresponding to Venice Partition.
@@ -37,6 +38,12 @@ public interface StoreIngestionService {
    * @param topicName Venice topic (store and version number) for the corresponding consumer task that needs to be killed.
    */
   void killConsumptionTask(String topicName);
+
+//  void promoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, long sessionId);
+
+  void promoteToLeader(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
+
+  void demoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, LeaderFollowerParticipantModel.LeaderSessionIdChecker checker);
 
   /**
    * Adds Notifier to get Notifications for get various status of the consumption

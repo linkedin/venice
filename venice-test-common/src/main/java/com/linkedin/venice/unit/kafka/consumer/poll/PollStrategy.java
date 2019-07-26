@@ -14,5 +14,5 @@ import org.apache.kafka.common.TopicPartition;
  * arbitrary messages, skip messages...
  */
 public interface PollStrategy {
-  ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsets, long timeout);
+  ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, Long> offsets, long timeout);
 }

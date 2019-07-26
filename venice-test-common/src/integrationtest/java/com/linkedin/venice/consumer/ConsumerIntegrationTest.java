@@ -219,8 +219,8 @@ public class ConsumerIntegrationTest {
     }
 
     @Override
-    protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition, boolean incrementSequenceNumber) {
-      KafkaMessageEnvelope normalKME = super.getKafkaMessageEnvelope(messageType, partition, true);
+    protected KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition, boolean incrementSequenceNumber, long upstreamOffset) {
+      KafkaMessageEnvelope normalKME = super.getKafkaMessageEnvelope(messageType, partition, true, upstreamOffset);
 
       NewKafkaMessageEnvelopeWithExtraField newKME = new NewKafkaMessageEnvelopeWithExtraField();
       for (int index = 0; index < newKME.newFieldIndex; index++) {

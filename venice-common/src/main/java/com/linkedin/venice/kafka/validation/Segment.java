@@ -180,6 +180,7 @@ public class Segment {
           case START_OF_BUFFER_REPLAY:
           case START_OF_INCREMENTAL_PUSH:
           case END_OF_INCREMENTAL_PUSH:
+          case TOPIC_SWITCH:
             // All other control messages are handled the same way.
             updateCheckSum(messageEnvelope.messageType);
             updateCheckSum(controlMessage.controlMessageType);

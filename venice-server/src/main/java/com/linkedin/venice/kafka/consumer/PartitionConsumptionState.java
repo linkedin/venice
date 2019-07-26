@@ -2,6 +2,9 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.offsets.OffsetRecord;
+import java.util.concurrent.Future;
+import org.apache.kafka.clients.producer.RecordMetadata;
+
 
 /**
  * This class is used to maintain internal state for consumption of each partition.
@@ -16,6 +19,10 @@ class PartitionConsumptionState {
   private boolean errorReported;
   private boolean lagCaughtUp;
   private boolean completionReported;
+  private LeaderFollowerStateType leaderState;
+  private long lastConsumedMessageTimestamp = 0L;
+
+  private volatile Future<RecordMetadata> lastLeaderProduceCallback = null;
   /**
    * The following priorities are used to store the progress of processed records since it is not efficient to
    * update offset db for every record.
@@ -49,6 +56,7 @@ class PartitionConsumptionState {
     this.processedRecordSizeSinceLastSync = 0;
     this.lastTimeOfSourceTopicOffsetLookup = -1;
     this.sourceTopicMaxOffset = -1;
+    this.leaderState = LeaderFollowerStateType.STANDBY;
   }
 
   public int getPartition() {
@@ -169,5 +177,29 @@ class PartitionConsumptionState {
 
   public boolean isIncrementalPushEnabled() {
     return isIncrementalPushEnabled;
+  }
+
+  public void setLeaderState(LeaderFollowerStateType state) {
+    this.leaderState = state;
+  }
+
+  public LeaderFollowerStateType getLeaderState() {
+    return this.leaderState;
+  }
+
+  public void setLastLeaderProduceFuture(Future<RecordMetadata> future) {
+    this.lastLeaderProduceCallback = future;
+  }
+
+  public Future<RecordMetadata> getLastLeaderProduceFuture() {
+    return this.lastLeaderProduceCallback;
+  }
+
+  public void setLastConsumedMessageTimestamp(long timestamp) {
+    this.lastConsumedMessageTimestamp = timestamp;
+  }
+
+  public long getLastConsumedMessageTimestamp() {
+    return this.lastConsumedMessageTimestamp;
   }
 }

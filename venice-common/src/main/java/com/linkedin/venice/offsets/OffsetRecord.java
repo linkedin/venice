@@ -163,6 +163,23 @@ public class OffsetRecord {
     return this.partitionState.incrementalPushInfo;
   }
 
+  public void setLeaderConsumptionState(String topic, long startOffset) {
+    this.partitionState.leaderTopic = topic;
+    this.partitionState.leaderOffset = startOffset;
+  }
+
+  public void setLeaderTopicOffset(long leaderOffset) {
+    this.partitionState.leaderOffset = leaderOffset;
+  }
+
+  public String getLeaderTopic() {
+    return (partitionState.leaderTopic != null) ? partitionState.leaderTopic.toString() : null;
+  }
+
+  public long getLeaderOffset() {
+    return this.partitionState.leaderOffset;
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *

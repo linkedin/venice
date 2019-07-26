@@ -66,4 +66,11 @@ public class InMemoryKafkaBroker {
     }
     return topic;
   }
+
+  /**
+   * @return an synthetic broker server url.
+   */
+  public String getKafkaBootstrapServer() {
+    return "InMemoryKafkaBroker:16637";
+  }
 }

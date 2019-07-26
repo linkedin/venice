@@ -36,7 +36,7 @@
             "type": "long"
           }, {
             "name": "upstreamOffset",
-            "doc": "Where this message is located in RT topic. This value will be determined and modified by leader SN at runtime.",
+            "doc": "Where this message is located in RT/GF topic. This value will be determined and modified by leader SN at runtime.",
             "type": "long",
             "default": -1
           }

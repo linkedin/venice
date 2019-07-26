@@ -36,6 +36,8 @@ import javax.net.ssl.SSLParameters;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
+import static com.linkedin.venice.offsets.OffsetRecord.*;
+
 
 public class BrooklinTopicReplicator extends TopicReplicator {
   public static final String BROOKLIN_CONFIG_PREFIX = TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.";
@@ -157,7 +159,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
     metadata.put(DatastreamMetadataConstants.CREATION_MS, String.valueOf(Instant.now().toEpochMilli()));
     Map<String, Long> startingOffsetsStringMap = new HashMap<>();
     for (Map.Entry<Integer, Long> entry : startingOffsetsMap.entrySet()){
-      startingOffsetsStringMap.put(Integer.toString(entry.getKey()), entry.getValue());
+      startingOffsetsStringMap.put(Integer.toString(entry.getKey()), (entry.getValue() == LOWEST_OFFSET) ? 0L : entry.getValue());
     }
     try {
       String startingOffsetsJson = mapper.writeValueAsString(startingOffsetsStringMap);
