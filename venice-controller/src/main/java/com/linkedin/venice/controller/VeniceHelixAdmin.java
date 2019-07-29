@@ -2665,15 +2665,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public Instance getMasterController(String clusterName) {
+        final int maxAttempts = 10;
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-        LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-        if (instance == null) {
-            throw new VeniceException("Can not find a master controller in the cluster:" + clusterName);
-        } else {
-            String instanceId = instance.getId();
-            return new Instance(instanceId, Utils.parseHostFromHelixNodeIdentifier(instanceId),
-                Utils.parsePortFromHelixNodeIdentifier(instanceId));
+
+        for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+          LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
+          if (instance != null) {
+            String id = instance.getId();
+            return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id), Utils.parsePortFromHelixNodeIdentifier(id));
+          }
+
+          if (attempt < maxAttempts) {
+            logger.warn("Master controller does not exist, cluster=" + clusterName + ", attempt=" + attempt + "/" + maxAttempts);
+            Utils.sleep(5 * Time.MS_PER_SECOND);
+          }
         }
+
+        String message = "Master controller does not exist, cluster=" + clusterName;
+        logger.error(message);
+        throw new VeniceException(message);
     }
 
     @Override
