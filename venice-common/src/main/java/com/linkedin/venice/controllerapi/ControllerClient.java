@@ -566,31 +566,31 @@ public class ControllerClient implements Closeable {
       int timeoutMs, int maxAttempts) {
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport()) {
-      for (int attempt = 0; attempt < maxAttempts; ++attempt) {
+      for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
           return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs);
         } catch (ExecutionException | TimeoutException e) {
           // Controller is unreachable. Let's wait for a new master to be elected.
           // Total wait time should be at least master election time (~30 seconds)
-          if (attempt < maxAttempts - 1) {
-            Utils.sleep(5 * Time.MS_PER_SECOND);
-          }
           lastException = e;
         } catch (VeniceHttpException e) {
           if (e.getHttpStatusCode() != HttpConstants.SC_MISDIRECTED_REQUEST) {
             throw e;
           }
-          // Master controller has changed. Let's try one more time, no need to wait.
+          // Master controller has changed. Let's wait for a new master to realize it.
           lastException = e;
         }
 
-        logger.info("Retrying controller request" +
-            ", attempt=" + attempt +
-            ", controller=" + this.masterControllerUrl +
-            ", route=" + route.getPath() +
-            ", params=" + params.getNameValuePairs() +
-            ", timeout=" + timeoutMs,
-            lastException);
+        if (attempt < maxAttempts) {
+          logger.info("Retrying controller request" +
+                  ", attempt=" + attempt + "/" + maxAttempts +
+                  ", controller=" + this.masterControllerUrl +
+                  ", route=" + route.getPath() +
+                  ", params=" + params.getNameValuePairs() +
+                  ", timeout=" + timeoutMs,
+              lastException);
+          Utils.sleep(5 * Time.MS_PER_SECOND);
+        }
       }
     } catch (Exception e) {
       lastException = e;
