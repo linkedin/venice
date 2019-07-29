@@ -98,8 +98,9 @@ public class RouterHeartbeat extends AbstractVeniceService {
               if (code != SC_OK) {
                 logger.warn("Heartbeat returns " + code + " for " + instanceUrl);
                 health.setHostAsUnhealthy(instance);
+              } else {
+                health.setHostAsHealthy(instance);
               }
-              health.setHostAsHealthy(instance);
             } catch (ExecutionException e) {
               logger.warn("Failed to execute heartbeat on " + instanceUrl, e.getCause());
               health.setHostAsUnhealthy(instance);
