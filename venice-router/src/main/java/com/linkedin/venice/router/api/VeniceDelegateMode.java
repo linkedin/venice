@@ -353,7 +353,10 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
   protected static <H, K> H chooseHostByKey(K key, List<H> hosts) {
     int hostsSize = hosts.size();
-    int chosenIndex = Math.abs(key.hashCode()) % hostsSize;
+    /**
+     * Use {@link Math.floorMod} to avoid negative index here.
+     */
+    int chosenIndex = Math.floorMod(key.hashCode(), hostsSize);
     return hosts.get(chosenIndex);
   }
 
