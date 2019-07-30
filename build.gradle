@@ -195,7 +195,7 @@ subprojects {
 }
 
 task unitTests {
-  dependsOn build
+  dependsOn subprojects.check
 }
 
 task flakyTests {
@@ -213,7 +213,7 @@ task buildAll {
   dependsOn 'venice-common:buildJar'
   dependsOn 'venice-router:installDist'
   dependsOn 'venice-server:installDist'
-  dependsOn 'venice-controller:installDist'  
+  dependsOn 'venice-controller:installDist'
 }
 
 task compile {
