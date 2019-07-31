@@ -9,6 +9,8 @@ import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.HashSet;
@@ -89,6 +91,38 @@ public class TestRouterHeartbeat {
 
     // our instance should stay healthy since it responds to the health check.
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
+    heartbeat.stop();
+    server.close();
+  }
+
+  @Test
+  public void heartBeatKeepBadNodesUnHealthy() throws Exception {
+    // We want to verify the heartbeat can get a response from a server, so we create a server that
+    // responds to a health check.
+    MockHttpServerWrapper server = ServiceFactory.getMockHttpServer("storage-node");
+    FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH,0);
+    server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), badHealthResponse);
+
+    // now our dummy instance lives at the port where a good health check will return
+    int port = server.getPort();
+    String nodeId = "localhost_" + port;
+    Instance dummyInstance = Instance.fromNodeId(nodeId);
+    Set<Instance> instanceSet = new HashSet<>();
+    instanceSet.add(dummyInstance);
+
+    LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor);
+    Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
+
+    VeniceRouterConfig config = mockVeniceRouterConfig();
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
+    heartbeat.start();
+    Thread.sleep(1000);
+
+    // our instance should report unhealthy
+    Assert.assertFalse(healthMon.isHostHealthy(dummyInstance, "partition"));
+
     heartbeat.stop();
     server.close();
   }
