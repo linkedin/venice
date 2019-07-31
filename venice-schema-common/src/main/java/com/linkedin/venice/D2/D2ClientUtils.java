@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 public class D2ClientUtils {
   private static Logger logger = Logger.getLogger(D2ClientUtils.class);
   private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 5000;
-  private static long DEFAULT_D2_SHUTDOWN_TIMEOUT_MS = 5000;
+  private static long DEFAULT_D2_SHUTDOWN_TIMEOUT_MS = 60000;
 
   static public void startClient(D2Client client) {
     startClient(client, DEFAULT_D2_STARTUP_TIMEOUT_MS);
@@ -59,6 +59,7 @@ public class D2ClientUtils {
   }
 
   static public void shutdownClient(D2Client client, long timeoutInMs) {
+    long startTime = System.nanoTime();
     CountDownLatch latch = new CountDownLatch(1);
 
     try {
@@ -85,6 +86,8 @@ public class D2ClientUtils {
       latch.await(timeoutInMs, TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       throw new VeniceException("latch wait was interrupted, d2 client may not have had enough time to shutdown", e);
+    } finally {
+      logger.info("D2 client shutdown took " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime) + "ms.");
     }
 
     if (latch.getCount() > 0) {
