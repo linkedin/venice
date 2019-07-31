@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import org.apache.http.HttpHeaders;
 import org.mockito.Mockito;
 
 import static com.linkedin.venice.router.api.TestRouterHeartbeat.*;
@@ -177,6 +178,7 @@ public class TestHostFinder {
 
     // server response unhealthy for the heartbeat check
     FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    badHealthResponse.headers().set(HttpHeaders.CONTENT_LENGTH, 0);
     server.clearResponseMapping();
     server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), badHealthResponse);
 
