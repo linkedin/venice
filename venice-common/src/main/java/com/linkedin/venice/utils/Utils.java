@@ -18,6 +18,7 @@ import java.net.URLClassLoader;
 import java.net.UnknownHostException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -520,6 +521,53 @@ public class Utils {
     double divider = Math.pow(1000, suffixIndex);
     int prettyNumber = (int) Math.round(doubleNumber / divider);
     return prettyNumber + LARGE_NUMBER_SUFFIXES[suffixIndex];
+  }
+
+  private static class TimeUnitInfo {
+    String suffix;
+    int multiplier;
+    DecimalFormat format;
+
+    public TimeUnitInfo(String suffix, int multiplier, DecimalFormat format) {
+      this.suffix = suffix;
+      this.multiplier = multiplier;
+      this.format = format;
+    }
+  }
+
+  private static final Pair<String, Integer>[] TIME_SUFFIX_AND_MULTIPLIER = Arrays.asList(
+      new Pair<>("ns", 1),
+      new Pair<>("us", Time.NS_PER_US),
+      new Pair<>("ms", Time.US_PER_MS),
+      new Pair<>("s", Time.MS_PER_SECOND),
+      new Pair<>("m", Time.SECONDS_PER_MINUTE),
+      new Pair<>("h", Time.MINUTES_PER_HOUR)
+  ).toArray(new Pair[6]);
+
+
+  private static final TimeUnitInfo[] TIME_UNIT_INFO = {
+      new TimeUnitInfo("ns", 1, new DecimalFormat("0")),
+      new TimeUnitInfo("us", Time.NS_PER_US, new DecimalFormat("0")),
+      new TimeUnitInfo("ms", Time.US_PER_MS, new DecimalFormat("0")),
+      new TimeUnitInfo("s", Time.MS_PER_SECOND, new DecimalFormat("0.0")),
+      new TimeUnitInfo("m", Time.SECONDS_PER_MINUTE, new DecimalFormat("0.0")),
+      new TimeUnitInfo("h", Time.MINUTES_PER_HOUR, new DecimalFormat("0.0")),
+  };
+
+  public static String makeTimePretty(long nanoSecTime) {
+    double formattedTime = nanoSecTime;
+    int timeUnitIndex = 0;
+    while (timeUnitIndex < TIME_UNIT_INFO.length - 1) {
+      int nextMultiplier = TIME_UNIT_INFO[timeUnitIndex + 1].multiplier;
+      if (formattedTime < nextMultiplier) {
+        break;
+      } else {
+        formattedTime = formattedTime / (double) nextMultiplier;
+        timeUnitIndex++;
+      }
+    }
+    DecimalFormat df = TIME_UNIT_INFO[timeUnitIndex].format;
+    return df.format(formattedTime) + TIME_UNIT_INFO[timeUnitIndex].suffix;
   }
 
   public static String getCurrentWorkingDirectory() {

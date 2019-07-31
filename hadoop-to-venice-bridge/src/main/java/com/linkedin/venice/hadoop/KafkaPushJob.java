@@ -172,6 +172,23 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   public static final String REDUCER_MINIMUM_LOGGING_INTERVAL_MS = "reducer.minimum.logging.interval.ms";
 
+  /**
+   * The interval of number of messages upon which some telemetry code is executed, including logging certain info
+   * in the reducer logs, as well as updating the counters specified in {@value KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS}.
+   */
+  public static final String TELEMETRY_MESSAGE_INTERVAL = "telemetry.message.interval";
+
+  /**
+   * The Kafka producer metric names included in this list will be reported as MapReduce counters by grouping
+   * them according to which broker they interacted with. This means the semantic of these counters may not be
+   * the same as that of the metrics they stem from. For example, the average queue time representing how log a
+   * record stays stuck in the Kafka producer's buffer would not represent the average queue time anymore, since
+   * the counter will sum up that value multiple times.
+   *
+   * The point of having these per-broker aggregates is to identify whether Kafka brokers are performing unevenly.
+   */
+  public static final String KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS = "kafka.metrics.to.report.as.mr.counters";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -955,6 +972,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
       conf.set(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
     }
+    conf.set(TELEMETRY_MESSAGE_INTERVAL, props.getString(TELEMETRY_MESSAGE_INTERVAL, "10000"));
+    conf.set(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, props.getString(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS,
+        "record-queue-time-avg,request-latency-avg,record-send-rate,byte-rate"));
   }
 
   protected void setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo, String inputDirectory) {

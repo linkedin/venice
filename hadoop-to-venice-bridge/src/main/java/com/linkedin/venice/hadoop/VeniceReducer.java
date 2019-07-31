@@ -12,13 +12,18 @@ import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -62,9 +67,10 @@ import static com.linkedin.venice.hadoop.MapReduceConstants.*;
 public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, NullWritable, NullWritable> {
   public static final String MAP_REDUCE_JOB_ID_PROP = "mapred.job.id";
   private static final Logger LOGGER = Logger.getLogger(VeniceReducer.class);
-  private static final int COUNTER_STATEMENT_COUNT = 100000;
+  private static final String NON_INITIALIZED_LEADER = "N/A";
 
-  private long lastTimeChecked = System.currentTimeMillis();
+  private long lastTimeThroughputWasLoggedInNS = System.nanoTime();
+  private long lastMessageCompletedCount = 0;
 
   private AbstractVeniceWriter<byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
@@ -72,7 +78,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private VeniceProperties props;
   private JobID mapReduceJobId;
   private long nextLoggingTime = 0;
-  private long minimumLoggingIntervalInMs;
+  private long minimumLoggingIntervalInMS;
+  private long telemetryMessageInterval;
+  private List<String> kafkaMetricsToReportAsMrCounters;
+  private Map<Integer, String> partitionLeaderMap = new VeniceConcurrentHashMap<>();
 
   /**
    * Having dup key checking does not make sense in Mapper only mode
@@ -94,7 +103,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long messageSent = 0;
   private final AtomicLong messageCompleted = new AtomicLong();
   private final AtomicLong messageErrored = new AtomicLong();
-
+  private long timeOfLastReduceFunctionStartInNS = 0;
+  private long timeOfLastReduceFunctionEndInNS = 0;
+  private long aggregateTimeOfReduceExecutionInNS = 0;
+  private long aggregateTimeOfInBetweenReduceInvocationsInNS = 0;
 
   public VeniceReducer() {
     this(true);
@@ -105,7 +117,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   }
 
   @Override
-  public void reduce(BytesWritable key, Iterator<BytesWritable> values, OutputCollector<NullWritable, NullWritable> output, Reporter reporter) throws IOException {
+  public void reduce(BytesWritable key, Iterator<BytesWritable> values, OutputCollector<NullWritable, NullWritable> output, Reporter reporter)throws IOException {
+    timeOfLastReduceFunctionStartInNS = System.nanoTime();
+    if (timeOfLastReduceFunctionEndInNS > 0) {
+      // Will only be true starting from the 2nd invocation.
+      aggregateTimeOfInBetweenReduceInvocationsInNS += (timeOfLastReduceFunctionStartInNS - timeOfLastReduceFunctionEndInNS);
+    }
     /**
      * Don't use {@link BytesWritable#getBytes()} since it could be padded or modified by some other records later on.
      */
@@ -121,6 +138,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if(checkDupKey) {
       duplicateKeyPrinter.handleDuplicateKeys(keyBytes, valueBytes, values, reporter);
     }
+    timeOfLastReduceFunctionEndInNS = System.nanoTime();
+    aggregateTimeOfReduceExecutionInNS += (timeOfLastReduceFunctionEndInNS - timeOfLastReduceFunctionStartInNS);
   }
 
   protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, Reporter reporter) {
@@ -158,18 +177,38 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     ++messageSent;
 
-    if (messageSent % COUNTER_STATEMENT_COUNT == 0) {
-      double transferRate = COUNTER_STATEMENT_COUNT * 1000 / (System.currentTimeMillis() - lastTimeChecked);
-      LOGGER.info("Record count: " + messageSent + " rec/s:" + transferRate);
-      lastTimeChecked = System.currentTimeMillis();
+    telemetry();
+
+    reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS, 1);
+  }
+
+  private void telemetry() {
+    if (messageSent % telemetryMessageInterval == 0) {
+      double timeSinceLastMeasurementInSeconds = (System.nanoTime() - lastTimeThroughputWasLoggedInNS) / (double) Time.NS_PER_SECOND;
+
+      // Mapping rate measurement
+      long mrFrameworkRate = (long) (telemetryMessageInterval / timeSinceLastMeasurementInSeconds);
+      LOGGER.info("MR Framework records processed: " + messageSent
+          + ", total time spent: " + Utils.makeTimePretty(aggregateTimeOfInBetweenReduceInvocationsInNS)
+          + ", current throughput: " + Utils.makeLargeNumberPretty(mrFrameworkRate) + " rec/s");
+
+      // Produce rate measurement
+      long newMessageCompletedCount = messageCompleted.get();
+      long messagesProducedSinceLastLog = newMessageCompletedCount - lastMessageCompletedCount;
+      long produceRate = (long) (messagesProducedSinceLastLog / timeSinceLastMeasurementInSeconds);
+      LOGGER.info("Kafka records produced: " + newMessageCompletedCount
+          + ", total time spent: " + Utils.makeTimePretty(aggregateTimeOfReduceExecutionInNS)
+          + ", current throughput: " + Utils.makeLargeNumberPretty(produceRate) + " rec/s");
+
+      // Bookkeeping for the next measurement iteration
+      lastTimeThroughputWasLoggedInNS = System.nanoTime();
+      lastMessageCompletedCount = newMessageCompletedCount;
     }
 
     if (nextLoggingTime < System.currentTimeMillis()) {
-      LOGGER.info("Internal producer metrics: " + getProducerMetricsPrettyPrint());
-      nextLoggingTime = System.currentTimeMillis() + minimumLoggingIntervalInMs;
+      LOGGER.info("Internal producer metrics (triggered by minimum time interval): " + getProducerMetricsPrettyPrint());
+      nextLoggingTime = System.currentTimeMillis() + minimumLoggingIntervalInMS;
     }
-
-    reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS, 1);
   }
 
   @Override
@@ -207,7 +246,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     mapReduceJobId = JobID.forName(job.get(MAP_REDUCE_JOB_ID_PROP));
     prepushStorageQuotaCheck(job, props.getLong(STORAGE_QUOTA_PROP), props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO));
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
-    this.minimumLoggingIntervalInMs = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
+    this.minimumLoggingIntervalInMS = props.getLong(REDUCER_MINIMUM_LOGGING_INTERVAL_MS);
 
     if (checkDupKey) {
       this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
@@ -215,6 +254,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     this.compressor =
         CompressorFactory.getCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
+
+    this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
+    this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
   }
 
   private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {
@@ -254,13 +296,22 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     return (long) (inputFileSize / storageEngineOverheadRatio);
   }
 
+  private void printKafkaProducerMetrics(Map<String, Double> producerMetrics) {
+    LOGGER.info("Internal producer metrics: " + getProducerMetricsPrettyPrint(producerMetrics));
+    nextLoggingTime = System.currentTimeMillis() + minimumLoggingIntervalInMS;
+  }
+
   private String getProducerMetricsPrettyPrint() {
+    return getProducerMetricsPrettyPrint(veniceWriter.getProducerMetrics());
+  }
+
+  private String getProducerMetricsPrettyPrint(Map<String, Double> producerMetrics) {
     StringWriter prettyPrintWriter = new StringWriter();
     PrintWriter writer = new PrintWriter(prettyPrintWriter, true);
     if (this.veniceWriter != null) {
       try {
         writer.println();
-        for (Map.Entry<String, String> entry : veniceWriter.getProducerMetrics().entrySet()) {
+        for (Map.Entry<String, Double> entry : producerMetrics.entrySet()) {
           writer.println(entry.getKey() + ": " + entry.getValue());
         }
       } catch (Exception e) {
@@ -293,10 +344,10 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
 
   protected class KafkaMessageCallback implements Callback {
-    private final Progressable progress;
+    private final Reporter reporter;
 
-    public KafkaMessageCallback(Progressable progress) {
-      this.progress = progress;
+    public KafkaMessageCallback(Reporter reporter) {
+      this.reporter = reporter;
     }
 
     @Override
@@ -307,16 +358,77 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
         LOGGER.info("Internal producer metrics when exception is encountered: " + getProducerMetricsPrettyPrint());
         sendException = e;
       } else {
-        messageCompleted.incrementAndGet();
+        long messageCount = messageCompleted.incrementAndGet();
+        int partition = recordMetadata.partition();
+        partitionLeaderMap.computeIfAbsent(partition, k -> NON_INITIALIZED_LEADER);
+        if (messageCount % telemetryMessageInterval == 0) {
+          kafkaTelemetry(reporter);
+        }
       }
       // Report progress so map-reduce framework won't kill current reducer when it finishes
       // sending all the messages to Kafka broker, but not yet flushed and closed.
-      progress.progress();
+      reporter.progress();
     }
 
     protected Progressable getProgressable() {
-      return progress;
+      return reporter;
     }
+  }
+
+  private void kafkaTelemetry(Reporter reporter) {
+    if (partitionLeaderMap.size() != 1) {
+      /**
+       * When running the push job in map-only mode, we can write to more than one partition, in which case
+       * the per-broker counters don't make much sense, since the metrics they are based on are per-producer
+       * and therefore co-mingle numbers relating to any broker.
+       *
+       * If there is a need to expose those metrics in map-only mode, we can revisit later.
+       */
+      return;
+    }
+
+    Map<String, Double> producerMetrics = veniceWriter.getProducerMetrics();
+
+    // We already checked that we're dealing with only one partition, so this is safe
+    int partition = partitionLeaderMap.keySet().iterator().next();
+
+    String oldLeader = partitionLeaderMap.get(partition);
+    String newLeader;
+    try {
+      newLeader = veniceWriter.getBrokerLeaderHostname(props.getString(TOPIC_PROP), partition);
+    } catch (VeniceException e) {
+      LOGGER.warn("Got an exception while determining the broker leader for partition " + partition
+          + ". Will skip this round of Kafka telemetry.", e);
+      return;
+    }
+
+    // Partition leadership info
+    if (!oldLeader.equals(newLeader)) {
+      partitionLeaderMap.put(partition, newLeader);
+      if (oldLeader.equals(NON_INITIALIZED_LEADER)) {
+        kafkaBrokerCounter(reporter, "initial partition ownership", newLeader, 1);
+      } else {
+        kafkaBrokerCounter(reporter, "observed partition leadership loss", oldLeader, 1);
+        kafkaBrokerCounter(reporter, "observed partition leadership gain", newLeader, 1);
+      }
+    }
+
+    // Other producer metrics, as configured
+    kafkaMetricsToReportAsMrCounters.forEach(metricName -> {
+      if (producerMetrics.containsKey(metricName)) {
+        double value = producerMetrics.get(metricName);
+        long longValue = Math.round(value);
+        kafkaBrokerCounter(reporter, metricName, newLeader, longValue);
+      }
+    });
+
+    // So that we also have a log for each time we incremented a MR counter
+    printKafkaProducerMetrics(producerMetrics);
+  }
+
+  private void kafkaBrokerCounter(Reporter reporter, String metric, String broker, long value) {
+    String counterName = String.format(KAFKA_PRODUCER_METRIC_FOR_BROKER, metric, broker);
+    reporter.incrCounter(COUNTER_GROUP_KAFKA_BROKER, counterName, value);
   }
 
   /**
@@ -364,14 +476,14 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
         while (values.hasNext()) {
           if (Arrays.equals(values.next().copyBytes(), valueBytes)) {
-            reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
+            reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
 
             if (shouldPrint) {
               shouldPrint = false;
               LOGGER.warn(printDuplicateKey(keyBytes));
             }
           } else {
-            reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
+            reporter.incrCounter(COUNTER_GROUP_DATA_QUALITY, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
 
             if (!isDupKeyAllowed) {
               throw new VeniceException(printDuplicateKey(keyBytes));

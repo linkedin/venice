@@ -5,6 +5,9 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import io.tehuti.utils.SystemTime;
+import io.tehuti.utils.Time;
 import java.util.concurrent.CompletableFuture;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -17,6 +20,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 public class D2ServiceDiscovery {
   private static final Logger LOGGER = Logger.getLogger(D2ServiceDiscovery.class);
   public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
+  private final Time time = new SystemTime(); // TODO: Make it injectable if we need to control time via tests.
 
   public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
     String d2ServiceNameForStore = discoverD2Service(client, storeName);
@@ -25,8 +29,25 @@ public class D2ServiceDiscovery {
 
   protected String discoverD2Service(D2TransportClient client, String storeName) {
     try {
-      CompletableFuture<TransportClientResponse> response = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName);
-      byte[] body = response.get().getBody();
+      TransportClientResponse response = null;
+      int currentAttempt = 0;
+      final int MAX_ATTEMPT = 10;
+      final long SLEEP_TIME_BETWEEN_ATTEMPTS = 5 * Time.MS_PER_SECOND;
+      while (response == null) {
+        if (currentAttempt >= MAX_ATTEMPT) {
+          throw new VeniceException("Could not fetch from the service discovery endpoint after " + MAX_ATTEMPT + " attempts.");
+        }
+        if (currentAttempt > 0) {
+          // Back off
+          LOGGER.warn("Failed to fetch from the service discovery endpoint. Attempt: " + currentAttempt + "/" + MAX_ATTEMPT
+              + ". Will sleep " + SLEEP_TIME_BETWEEN_ATTEMPTS + " ms and retry.");
+          time.sleep(SLEEP_TIME_BETWEEN_ATTEMPTS);
+        }
+        CompletableFuture<TransportClientResponse> responseFuture = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName);
+        response = responseFuture.get();
+        currentAttempt++;
+      }
+      byte[] body = response.getBody();
       ObjectMapper mapper = new ObjectMapper();
       D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponse.class);
       if (d2ServiceDiscoveryResponse.isError()) {

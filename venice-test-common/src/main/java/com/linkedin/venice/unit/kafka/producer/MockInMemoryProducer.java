@@ -1,5 +1,6 @@
 package com.linkedin.venice.unit.kafka.producer;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -77,7 +78,12 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, String> getProducerMetrics() {
+  public Map<String, Double> getProducerMetrics() {
     return Collections.emptyMap();
+  }
+
+  @Override
+  public String getBrokerLeaderHostname(String topic, int partition) {
+    throw new VeniceException("Not implemented");
   }
 }

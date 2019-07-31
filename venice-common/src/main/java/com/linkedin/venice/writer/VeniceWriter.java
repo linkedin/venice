@@ -284,8 +284,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   @Override
-  public Map<String, String> getProducerMetrics() {
+  public Map<String, Double> getProducerMetrics() {
     return producer.getProducerMetrics();
+  }
+
+  @Override
+  public String getBrokerLeaderHostname(String topic, int partition) {
+    return producer.getBrokerLeaderHostname(topic, partition);
   }
 
   /**
