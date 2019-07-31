@@ -13,7 +13,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   private static final Logger logger = Logger.getLogger(VeniceHostHealth.class);
 
   private Set<String> slowPartitionHosts = new ConcurrentSkipListSet<>();
-  private Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
+  protected Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
 
   private final LiveInstanceMonitor liveInstanceMonitor;
 
