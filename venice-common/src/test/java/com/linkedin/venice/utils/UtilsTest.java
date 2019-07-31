@@ -151,6 +151,33 @@ public class UtilsTest {
             entry.getKey() + " does not get converted properly!"));
   }
 
+  @Test
+  public void testMakeTimePretty() {
+    Map<Long, String> inputOutput = new TreeMap<>();
+    inputOutput.put(0L, "0ns");
+    inputOutput.put(1L, "1ns");
+    inputOutput.put(21L, "21ns");
+    inputOutput.put(321L, "321ns");
+    inputOutput.put(4321L, "4us");
+    inputOutput.put(54321L, "54us");
+    inputOutput.put(654321L, "654us");
+    inputOutput.put(7654321L, "8ms");
+    inputOutput.put(87654321L, "88ms");
+    inputOutput.put(987654321L, "988ms");
+    inputOutput.put(1987654321L, "2.0s");
+    inputOutput.put(21987654321L, "22.0s");
+    inputOutput.put(321987654321L, "5.4m");
+    inputOutput.put(4321987654321L, "1.2h");
+    inputOutput.put(54321987654321L, "15.1h");
+    inputOutput.put(654321987654321L, "181.8h");
+
+    inputOutput.entrySet().stream()
+        .forEach(entry -> Assert.assertEquals(
+            Utils.makeTimePretty(entry.getKey()),
+            entry.getValue(),
+            entry.getKey() + " does not get converted properly!"));
+  }
+
   private void populateIntegerList(List<Integer> list) {
     list.add(1);
     list.add(2);

@@ -25,6 +25,7 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.log4j.Logger;
 
@@ -192,12 +193,26 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, String> getProducerMetrics() {
-    Map<String, String> extractedMetrics = new HashMap<>();
+  public Map<String, Double> getProducerMetrics() {
+    Map<String, Double> extractedMetrics = new HashMap<>();
     for (Map.Entry<MetricName, ? extends Metric> entry : producer.metrics().entrySet()) {
-      extractedMetrics.put(entry.getKey().name(), Double.toString(entry.getValue().value()));
+      extractedMetrics.put(entry.getKey().name(), entry.getValue().value());
     }
     return extractedMetrics;
+  }
+
+  /**
+   * @return the leader for the specified {@param topic} and {@param partition}, if any
+   * @throws VeniceException if there is no leader
+   */
+  @Override
+  public String getBrokerLeaderHostname(String topic, int partition) {
+    Node leader = producer.partitionsFor(topic).get(0).leader();
+    if (leader != null) {
+      return leader.host() + "/" + leader.id();
+    } else {
+      throw new VeniceException("No broker leader for topic '" + topic + ", partition: " + partition);
+    }
   }
 
   /**
