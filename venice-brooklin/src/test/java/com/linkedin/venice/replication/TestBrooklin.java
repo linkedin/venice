@@ -12,9 +12,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -80,11 +78,13 @@ public class TestBrooklin {
     String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
+    Properties properties = new Properties();
+    properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
     TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
         100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     TopicReplicator replicator =
         new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
-            brooklin.getBrooklinDmsUri(), kafka.getAddress(), dummyVeniceClusterName, "venice-test-service", false,
+            brooklin.getBrooklinDmsUri(), new VeniceProperties(properties), dummyVeniceClusterName, "venice-test-service", false,
             Optional.empty());
 
     //Create topics
@@ -103,16 +103,9 @@ public class TestBrooklin {
     producer.flush();
     producer.close();
 
-    //get starting offsets
-    String brokerConnection = kafka.getAddress();
-    Map<Integer, Long> startingSourceOffsets = new HashMap<>();
-    for (int p=0;p<partitionCount;p++) {
-      startingSourceOffsets.put(p, 0L);
-    }
-
     //create replication stream
     try {
-      replicator.beginReplication(sourceTopic, destinationTopic, Optional.of(startingSourceOffsets));
+      replicator.beginReplication(sourceTopic, destinationTopic, 0);
     } catch (TopicException e) {
       throw new VeniceException(e);
     }
@@ -130,7 +123,8 @@ public class TestBrooklin {
     long startTime = System.currentTimeMillis();
     while (true) {
       ConsumerRecords<byte[], byte[]> records = consumer.poll(100);
-      if (records.isEmpty() && buffer.size() > 0){
+      if (records.isEmpty() && buffer.size() > 3){
+        // first 3 records are control messages.
         break;
       }
       if (System.currentTimeMillis() - startTime > TimeUnit.MILLISECONDS.convert(30, TimeUnit.SECONDS)){
@@ -146,8 +140,8 @@ public class TestBrooklin {
       }
     }
 
-    assertEquals(buffer.get(0).key(), key);
-    assertEquals(buffer.get(0).value(), value);
+    assertEquals(buffer.get(3).key(), key);
+    assertEquals(buffer.get(3).value(), value);
 
     try {
       replicator.terminateReplication(sourceTopic, destinationTopic);

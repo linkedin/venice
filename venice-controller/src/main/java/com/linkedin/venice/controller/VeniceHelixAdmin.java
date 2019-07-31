@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.VeniceConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
@@ -61,7 +60,9 @@ import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
+import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -163,7 +164,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final HelixAdapterSerializer adapterSerializer;
     private final ZkWhitelistAccessor whitelistAccessor;
     private final ExecutionIdAccessor executionIdAccessor;
-    private final Optional<TopicReplicator> topicReplicator;
+    private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
+    private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
     private final long deprecatedJobTopicRetentionMs;
     private final long deprecatedJobTopicMaxRetentionMs;
     private final ZkStoreConfigAccessor storeConfigAccessor;
@@ -242,8 +244,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             commonConfig.getRefreshAttemptsForZkReconnect(), commonConfig.getRefreshIntervalForZkReconnectInMs());
         this.storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, multiClusterConfigs.getClusters());
         veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
-        this.topicReplicator =
+        this.onlineOfflineTopicReplicator =
             TopicReplicator.getTopicReplicator(topicManager, commonConfig.getProps(), veniceWriterFactory);
+        this.leaderFollowerTopicReplicator = TopicReplicator.getTopicReplicator(
+            LeaderStorageNodeReplicator.class.getName(), topicManager, commonConfig.getProps(), veniceWriterFactory);
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
 
@@ -1343,12 +1347,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             killOfflinePush(clusterName, resourceName);
 
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
-            if (topicReplicator.isPresent()) {
+            if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
                 // Do not delete topic replicator during store migration
                 // In such case, the topic replicator will be deleted after store migration, triggered by a new push job
                 if (!store.isMigrating()) {
                     String realTimeTopic = Version.composeRealTimeTopic(storeName);
-                    topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+                    onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, resourceName);
                 }
             }
 
@@ -2016,9 +2020,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         String realTimeTopic = Version.composeRealTimeTopic(storeName);
                         truncateKafkaTopic(realTimeTopic);
                         // Also remove the Brooklin replication streams
-                        if (topicReplicator.isPresent()) {
+                        if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
                             store.getVersions().stream().forEach(version ->
-                                topicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
+                                onlineOfflineTopicReplicator.get().terminateReplication(realTimeTopic, version.kafkaTopicName()));
                         }
                     } else {
                         store.setHybridStoreConfig(finalHybridConfig);
@@ -2989,8 +2993,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
-        PushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
-        offlinePushMonitor.setTopicReplicator(topicReplicator);
+        PushMonitorDelegator offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
+        offlinePushMonitor.setTopicReplicator(onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
         offlinePushMonitor.startMonitorOfflinePush(
             kafkaTopic,
             numberOfPartition,

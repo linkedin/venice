@@ -183,9 +183,9 @@ public class PushMonitorDelegator implements PushMonitor {
     getPushMonitor(topic).recordPushPreparationDuration(topic, offlinePushWaitTimeInSecond);
   }
 
-  @Override
-  public void setTopicReplicator(Optional<TopicReplicator> topicReplicator) {
-    partitionStatusBasedPushStatusMonitor.setTopicReplicator(topicReplicator);
-    offlinePushMonitor.setTopicReplicator(topicReplicator);
+  public void setTopicReplicator(Optional<TopicReplicator> onlineOfflineTopicReplicator,
+      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
+    partitionStatusBasedPushStatusMonitor.setTopicReplicator(leaderFollowerTopicReplicator);
+    offlinePushMonitor.setTopicReplicator(onlineOfflineTopicReplicator);
   }
 }

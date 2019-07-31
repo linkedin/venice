@@ -21,7 +21,8 @@ public enum ControlMessageType {
   END_OF_SEGMENT(3),
   START_OF_BUFFER_REPLAY(4),
   START_OF_INCREMENTAL_PUSH(5),
-  END_OF_INCREMENTAL_PUSH(6);
+  END_OF_INCREMENTAL_PUSH(6),
+  TOPIC_SWITCH(7);
 
   /** The value is the byte used on the wire format */
   private final int value;
@@ -39,11 +40,14 @@ public enum ControlMessageType {
    * Simple utility function to generate the right type of control message, based on message type.
    *
    * @return an empty instance of either:
-   *         - {@link com.linkedin.venice.kafka.protocol.StartOfPush}
-   *         - {@link com.linkedin.venice.kafka.protocol.EndOfPush}
-   *         - {@link com.linkedin.venice.kafka.protocol.StartOfSegment}
-   *         - {@link com.linkedin.venice.kafka.protocol.EndOfSegment}
-   *         - {@link com.linkedin.venice.kafka.protocol.StartOfBufferReplay}
+   *         - {@link StartOfPush}
+   *         - {@link EndOfPush}
+   *         - {@link StartOfSegment}
+   *         - {@link EndOfSegment}
+   *         - {@link StartOfBufferReplay}
+   *         - {@link StartOfIncrementalPush}
+   *         - {@link EndOfIncrementalPush}
+   *         - {@link TopicSwitch}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
@@ -54,6 +58,8 @@ public enum ControlMessageType {
       case START_OF_BUFFER_REPLAY: return new StartOfBufferReplay();
       case START_OF_INCREMENTAL_PUSH: return new StartOfIncrementalPush();
       case END_OF_INCREMENTAL_PUSH: return new EndOfIncrementalPush();
+      case TOPIC_SWITCH: return new TopicSwitch();
+
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

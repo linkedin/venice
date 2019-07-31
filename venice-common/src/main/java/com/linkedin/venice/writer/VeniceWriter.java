@@ -349,6 +349,18 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     producer.flush();
   }
 
+  public void broadcastTopicSwitch(List<CharSequence> sourceKafkaCluster, String sourceTopicName, Long rewindStartTimestamp,
+      Map<String, String> debugInfo) {
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.TOPIC_SWITCH);
+    TopicSwitch topicSwitch = new TopicSwitch();
+    topicSwitch.sourceKafkaServers = Utils.notNull(sourceKafkaCluster);
+    topicSwitch.sourceTopicName = Utils.notNull(sourceTopicName);
+    topicSwitch.rewindStartTimestamp = Utils.notNull(rewindStartTimestamp);
+    controlMessage.controlMessageUnion = topicSwitch;
+    broadcastControlMessage(controlMessage, debugInfo);
+    producer.flush();
+  }
+
   public void broadcastStartOfIncrementalPush(String version, Map<String, String> debugInfo) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_INCREMENTAL_PUSH);
     StartOfIncrementalPush startOfIncrementalPush = new StartOfIncrementalPush();

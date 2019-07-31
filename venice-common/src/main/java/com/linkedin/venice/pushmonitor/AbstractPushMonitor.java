@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -454,7 +453,7 @@ public abstract class AbstractPushMonitor
               logger.info("Skip buffer replay for hybrid store version: " + offlinePushStatus.getKafkaTopic());
             } else {
               topicReplicatorOptional.get()
-                  .startBufferReplay(Version.composeRealTimeTopic(storeName), offlinePushStatus.getKafkaTopic(), store);
+                  .prepareAndStartReplication(Version.composeRealTimeTopic(storeName), offlinePushStatus.getKafkaTopic(), store);
               newStatusDetails = "kicked off buffer replay";
             }
             updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED, Optional.of(newStatusDetails));
@@ -570,7 +569,6 @@ public abstract class AbstractPushMonitor
     aggPushHealthStats.recordPushPrepartionDuration(storeName, offlinePushWaitTimeInSecond);
   }
 
-  @Override
   public void setTopicReplicator(Optional<TopicReplicator> topicReplicator) {
     this.topicReplicator = topicReplicator;
   }

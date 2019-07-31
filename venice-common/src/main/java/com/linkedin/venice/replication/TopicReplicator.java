@@ -10,13 +10,8 @@ import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import java.io.Closeable;
-import java.util.*;
-import static java.util.concurrent.TimeUnit.*;
-import java.util.stream.Collectors;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
@@ -24,7 +19,7 @@ import org.apache.log4j.Logger;
  * Extend this class with an implementation that can start and end replication of data between two kafka topics
  * within the same kafka cluster.
  */
-public abstract class TopicReplicator implements Closeable {
+public abstract class TopicReplicator {
 
   private static final Logger LOGGER = Logger.getLogger(TopicReplicator.class);
 
@@ -54,26 +49,40 @@ public abstract class TopicReplicator implements Closeable {
     return this.veniceWriterFactory;
   }
 
-  private TopicReplicator(TopicManager topicManager, String destKafkaBootstrapServers, VeniceWriterFactory veniceWriterFactory, Time timer) {
+  private TopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory, Time timer,
+      VeniceProperties veniceProperties) {
     this.topicManager = topicManager;
-    this.destKafkaBootstrapServers = destKafkaBootstrapServers;
     this.veniceWriterFactory = veniceWriterFactory;
     this.timer = timer;
+    if (veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false)) {
+      destKafkaBootstrapServers = veniceProperties.getString(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER,
+          () -> veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS)); // fallback
+    } else {
+      destKafkaBootstrapServers = veniceProperties.getString(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER,
+          () -> veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS)); // fallback
+    }
   }
 
-  public TopicReplicator(TopicManager topicManager, String destKafkaBootstrapServers, VeniceWriterFactory veniceWriterFactory) {
-    this(topicManager, destKafkaBootstrapServers, veniceWriterFactory, new SystemTime());
+  public TopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory,
+      VeniceProperties veniceProperties) {
+    this(topicManager, veniceWriterFactory, new SystemTime(), veniceProperties);
   }
 
-  public void beginReplication(String sourceTopic, String destinationTopic, Optional<Map<Integer, Long>> startingOffsets)
-      throws TopicException {
+  /**
+   * Performs some topic related validation and call internal replication methods to start replication between source
+   * and destination topic.
+   * @param rewindStartTimestamp to indicate the rewind start time for underlying replicators to start replicating
+   *                             records from this timestamp.
+   * @throws TopicException
+   */
+  public void beginReplication(String sourceTopic, String destinationTopic, long rewindStartTimestamp) throws TopicException {
     if (doesReplicationExist(sourceTopic, destinationTopic)) {
       LOGGER.info("Replication already exists from src: " + sourceTopic + " to dest: " + destinationTopic
           + ". Skip starting replication.");
       return;
     }
     LOGGER.info("Starting topic replication from: " + sourceTopic + " to " + destinationTopic);
-    String errorPrefix = "Cannot create replication datastream from " + sourceTopic + " to " + destinationTopic + " because";
+    String errorPrefix = "Cannot begin replication from " + sourceTopic + " to " + destinationTopic + " because";
     if (sourceTopic.equals(destinationTopic)){
       throw new DuplicateTopicException(errorPrefix + " they are the same topic.");
     }
@@ -89,7 +98,7 @@ public abstract class TopicReplicator implements Closeable {
       throw new PartitionMismatchException(errorPrefix + " topic " + sourceTopic + " has " + sourcePartitionCount + " partitions"
           + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );
     }
-    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, startingOffsets);
+    beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, rewindStartTimestamp);
     LOGGER.info("Successfully started topic replication from: " + sourceTopic + " to " + destinationTopic);
   }
 
@@ -97,33 +106,29 @@ public abstract class TopicReplicator implements Closeable {
     terminateReplicationInternal(sourceTopic, destinationTopic);
   }
 
-  public Map<Integer, Long> startBufferReplay(String srcTopicName,
-                                              String destTopicName,
-                                              Store store) throws TopicException {
-    String srcKafkaBootstrapServers = destKafkaBootstrapServers; // TODO: Add this as a function parameter
+  /**
+   * General verification and topic creation for any {@link TopicReplicator} implementation used for hybrid stores.
+   */
+  protected void checkPreconditions(String srcTopicName, String destTopicName, Store store) {
     // Carrying on assuming that there needs to be only one and only TopicManager
     if (!store.isHybrid()) {
-      throw new VeniceException("Buffer replay is only supported for Hybrid Stores.");
+      throw new VeniceException("Topic replication is only supported for Hybrid Stores.");
     }
     if (!getTopicManager().containsTopic(srcTopicName)) {
       int partitionCount = getTopicManager().getPartitions(destTopicName).size();
       int replicationFactor = getTopicManager().getReplicationFactor(destTopicName);
       getTopicManager().createTopic(srcTopicName, partitionCount, replicationFactor, false);
     }
-    long bufferReplayStartTime = getTimer().getMilliseconds()
-        - MILLISECONDS.convert(store.getHybridStoreConfig().getRewindTimeInSeconds(), SECONDS);
-    Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(srcTopicName, bufferReplayStartTime);
-    List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()
-        .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
-        .map(entry -> entry.getValue())
-        .collect(Collectors.toList());
-    VeniceWriter<byte[], byte[]> veniceWriter = getVeniceWriterFactory().getBasicVeniceWriter(destTopicName, getTimer());
-    veniceWriter.broadcastStartOfBufferReplay(startingOffsets, srcKafkaBootstrapServers, srcTopicName, new HashMap<>());
-    beginReplication(srcTopicName, destTopicName, Optional.of(startingOffsetsMap));
-    return startingOffsetsMap;
   }
 
-  abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount, Optional<Map<Integer, Long>> startingOffsets);
+  protected long getRewindStartTime(Store store) {
+    // TODO to get a more deterministic timestamp across colo we could use the timestamp from the EOP control message.
+    return getTimer().getMilliseconds() - store.getHybridStoreConfig().getRewindTimeInSeconds() * Time.MS_PER_SECOND;
+  }
+
+  abstract public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store);
+  abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
+      long rewindStartTimestamp);
   abstract void terminateReplicationInternal(String sourceTopic, String destinationTopic);
 
   /**
@@ -144,6 +149,17 @@ public abstract class TopicReplicator implements Closeable {
    * @return an instance of {@link Optional<TopicReplicator>}, or empty if {@param veniceProperties} is empty.
    */
   public static Optional<TopicReplicator> getTopicReplicator(TopicManager topicManager,
+      VeniceProperties veniceProperties, VeniceWriterFactory veniceWriterFactory) {
+    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false);
+    if (!enableTopicReplicator) {
+      return Optional.empty();
+    }
+    String className = veniceProperties.getString(TOPIC_REPLICATOR_CLASS_NAME); // Will throw if absent
+    return getTopicReplicator(className, topicManager, veniceProperties, veniceWriterFactory);
+  }
+
+  public static Optional<TopicReplicator> getTopicReplicator(String className,
+                                                             TopicManager topicManager,
                                                              VeniceProperties veniceProperties,
                                                              VeniceWriterFactory veniceWriterFactory) {
     boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false);
@@ -152,8 +168,6 @@ public abstract class TopicReplicator implements Closeable {
     }
 
     try {
-      String className = veniceProperties.getString(TOPIC_REPLICATOR_CLASS_NAME); // Will throw if absent
-
       Class<? extends TopicReplicator> topicReplicatorClass = ReflectUtils.loadClass(className);
       Class<TopicManager> param1Class = ReflectUtils.loadClass(TopicManager.class.getName());
       Class<VeniceWriterFactory> param2Class = ReflectUtils.loadClass(VeniceWriterFactory.class.getName());

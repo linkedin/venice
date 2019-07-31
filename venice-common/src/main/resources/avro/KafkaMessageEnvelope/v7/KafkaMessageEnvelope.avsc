@@ -63,7 +63,7 @@
           ]
         }, {
           "name": "Update",
-          "doc": "Partial put / compute put / update existing k-v pairs",
+          "doc": "Partial update operation, which merges the update value with the existing value.",
           "type": "record",
           "fields": [
             {
