@@ -17,7 +17,9 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
@@ -25,6 +27,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -62,12 +65,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
    */
   public BrooklinTopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory, VeniceProperties veniceProperties) {
     this(topicManager, veniceWriterFactory, veniceProperties.getString(BROOKLIN_CONNECTION_STRING),
-        veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false)
-            ? veniceProperties.getString(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, // ssl kafka address
-                () -> veniceProperties.getString(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS))  //fall-back
-            : veniceProperties.getString(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, // non-ssl kafka address
-                () -> veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS) // fall-back
-            ),
+        veniceProperties,
         veniceProperties.getString(ConfigKeys.CLUSTER_NAME),
         veniceProperties.getString(BROOKLIN_CONNECTION_APPLICATION_ID),
         veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false),
@@ -81,16 +79,16 @@ public class BrooklinTopicReplicator extends TopicReplicator {
    * Strongly-typed constructor. Used in unit tests...
    *
    * @param brooklinConnectionString For connecting to the brooklin cluster, http://host:port or d2://service
-   * @param destKafkaBootstrapServers For connecting to kafka brokers, host:port
+   * @param veniceProperties with the corresponding configs for the replicator.
    * @param topicManager TopicManager for checking information about the Kafka topics.
    * @param veniceCluster Name of the venice cluster, used to create unique datastream names
    * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
    * @param sslConfig Configs required for SSL connection to Brooklin
    */
   public BrooklinTopicReplicator(TopicManager topicManager, VeniceWriterFactory veniceWriterFactory,
-      String brooklinConnectionString, String destKafkaBootstrapServers, String veniceCluster, String applicationId,
+      String brooklinConnectionString, VeniceProperties veniceProperties, String veniceCluster, String applicationId,
       boolean isKafkaSSL, Optional<SSLConfig> sslConfig) {
-    super(topicManager, destKafkaBootstrapServers, veniceWriterFactory);
+    super(topicManager, veniceWriterFactory, veniceProperties);
     this.veniceCluster = veniceCluster;
     this.applicationId = applicationId;
     this.isSSLToKafka = isKafkaSSL;
@@ -127,8 +125,25 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   }
 
   @Override
+  public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store) {
+    checkPreconditions(srcTopicName, destTopicName, store);
+    long bufferReplayStartTime = getRewindStartTime(store);
+    beginReplication(srcTopicName, destTopicName, bufferReplayStartTime);
+  }
+
+  @Override
   void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount,
-      Optional<Map<Integer, Long>> startingOffsets) {
+      long rewindStartTimestamp) {
+
+    Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(sourceTopic, rewindStartTimestamp);
+    List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()
+        .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
+        .map(entry -> entry.getValue())
+        .collect(Collectors.toList());
+    try (VeniceWriter<byte[], byte[]> veniceWriter =
+        getVeniceWriterFactory().getBasicVeniceWriter(destinationTopic, getTimer())) {
+      veniceWriter.broadcastStartOfBufferReplay(startingOffsets, destKafkaBootstrapServers, sourceTopic, new HashMap<>());
+    }
 
     String name = datastreamName(sourceTopic, destinationTopic);
 
@@ -140,17 +155,15 @@ public class BrooklinTopicReplicator extends TopicReplicator {
 
     metadata.put(DatastreamMetadataConstants.OWNER_KEY, applicationId); // application Id
     metadata.put(DatastreamMetadataConstants.CREATION_MS, String.valueOf(Instant.now().toEpochMilli()));
-    if (startingOffsets.isPresent()) {
-      Map<String, Long> startingOffsetsStringMap = new HashMap<>();
-      for (Map.Entry<Integer, Long> entry : startingOffsets.get().entrySet()){
-        startingOffsetsStringMap.put(Integer.toString(entry.getKey()), entry.getValue());
-      }
-      try {
-        String startingOffsetsJson = mapper.writeValueAsString(startingOffsetsStringMap);
-        metadata.put(DatastreamMetadataConstants.START_POSITION, startingOffsetsJson);
-      } catch (IOException e) { // This shouldn't happen
-        throw new VeniceException("There was a failure parsing starting offsets map to json: " + startingOffsetsStringMap.toString(), e);
-      }
+    Map<String, Long> startingOffsetsStringMap = new HashMap<>();
+    for (Map.Entry<Integer, Long> entry : startingOffsetsMap.entrySet()){
+      startingOffsetsStringMap.put(Integer.toString(entry.getKey()), entry.getValue());
+    }
+    try {
+      String startingOffsetsJson = mapper.writeValueAsString(startingOffsetsStringMap);
+      metadata.put(DatastreamMetadataConstants.START_POSITION, startingOffsetsJson);
+    } catch (IOException e) { // This shouldn't happen
+      throw new VeniceException("There was a failure parsing starting offsets map to json: " + startingOffsetsStringMap.toString(), e);
     }
     datastream.setMetadata(metadata);
 
@@ -220,11 +233,6 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   private String datastreamName(String source, String destination){
     return Arrays.asList(veniceCluster, source, destination).stream()
         .collect(Collectors.joining("__"));
-  }
-
-  @Override
-  public void close() {
-    // new brooklin version remove the shutdown method, so we do nonthing here.
   }
 
   public String getKafkaURL(String topic) {

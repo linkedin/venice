@@ -48,7 +48,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixReadWriteSchemaRepository schemaRepository;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
-  private final PushMonitor pushMonitor;
+  private final PushMonitorDelegator pushMonitor;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
@@ -148,7 +148,7 @@ public class VeniceHelixResources implements VeniceResource {
     return config;
   }
 
-  public PushMonitor getPushMonitor() {
+  public PushMonitorDelegator getPushMonitor() {
     return pushMonitor;
   }
 

@@ -15,8 +15,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import org.mockito.AdditionalMatchers;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -41,33 +39,34 @@ public class TopicReplicatorTest {
     VeniceWriter<byte[], byte[]> veniceWriter = mock(VeniceWriter.class);
     TopicReplicator topicReplicator = mock(TopicReplicator.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
+    MockTime mockTime = new MockTime();
 
     when(topicReplicator.getTopicManager()).thenReturn(topicManager);
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
-    when(topicReplicator.getTimer()).thenReturn(new MockTime());
+    when(topicReplicator.getTimer()).thenReturn(mockTime);
     when(topicManager.getOffsetsByTime(anyString(), anyLong())).thenReturn(startingOffsets);
+    when(topicManager.containsTopic(anyString())).thenReturn(true);
     when(veniceWriterFactory.getBasicVeniceWriter(
         anyString(),
         any(ReflectUtils.loadClass(Time.class.getName()))))
         .thenReturn(veniceWriter);
 
-    // Method under test
-    when(topicReplicator.startBufferReplay(anyString(), anyString(), any())).thenCallRealMethod();
+    // Methods under test
+    doCallRealMethod().when(topicReplicator).checkPreconditions(anyString(), anyString(), any());
+    doCallRealMethod().when(topicReplicator).getRewindStartTime(store);
+    doCallRealMethod().when(topicReplicator).beginReplication(anyString(), anyString(), anyLong());
 
-    topicReplicator.startBufferReplay(
-        sourceTopicName,
-        destinationTopicName,
-        store);
+    topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store);
+    long rewindStartTime = topicReplicator.getRewindStartTime(store);
+    assertEquals(rewindStartTime, mockTime.getMilliseconds() - Time.MS_PER_SECOND * REWIND_TIME,
+        "Rewind start timestamp is not calculated properly");
+    topicReplicator.beginReplication(sourceTopicName, destinationTopicName, rewindStartTime);
 
-    verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, Optional.of(startingOffsets));
-    verify(veniceWriter).broadcastStartOfBufferReplay(eq(startingOffsetsList), any(), eq(sourceTopicName), eq(new HashMap<>()));
+    verify(topicReplicator).beginReplication(sourceTopicName, destinationTopicName, rewindStartTime);
 
     try {
       store.setHybridStoreConfig(null);
-      topicReplicator.startBufferReplay(
-          sourceTopicName,
-          destinationTopicName,
-          store);
+      topicReplicator.checkPreconditions(sourceTopicName, destinationTopicName, store);
       fail("topicReplicator.startBufferReplay should fail (FOR NOW) for non-Hybrid stores.");
     } catch (VeniceException e) {
       // expected

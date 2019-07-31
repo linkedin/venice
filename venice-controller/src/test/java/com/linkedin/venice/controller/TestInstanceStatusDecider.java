@@ -12,7 +12,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,7 +35,7 @@ public class TestInstanceStatusDecider {
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
   private String resourceName = Version.composeKafkaTopic(storeName, version);
-  private OfflinePushMonitor mockMontior;
+  private PushMonitorDelegator mockMontior;
 
   @BeforeMethod
   public void setup() {
@@ -43,7 +43,7 @@ public class TestInstanceStatusDecider {
     resources = Mockito.mock(VeniceHelixResources.class);
     routingDataRepository = Mockito.mock(HelixRoutingDataRepository.class);
     readWriteStoreRepository = Mockito.mock(HelixReadWriteStoreRepository.class);
-    mockMontior = Mockito.mock(OfflinePushMonitor.class);
+    mockMontior = Mockito.mock(PushMonitorDelegator.class);
     SafeHelixManager manager = Mockito.mock(SafeHelixManager.class);
     accessor = Mockito.mock(SafeHelixDataAccessor.class);
     Mockito.doReturn(routingDataRepository).when(resources).getRoutingDataRepository();

@@ -315,7 +315,7 @@ public abstract class AbstractPushMonitorTest {
     // Check hybrid push status
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
-    verify(mockReplicator, never()).startBufferReplay(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
     Assert.assertEquals(testMonitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
@@ -324,7 +324,7 @@ public abstract class AbstractPushMonitorTest {
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // no buffer replay should be sent
     verify(mockReplicator, never())
-        .startBufferReplay(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
     Assert.assertEquals(testMonitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
@@ -334,7 +334,7 @@ public abstract class AbstractPushMonitorTest {
     testMonitor.setTopicReplicator(Optional.of(mockReplicator));
     testMonitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
-    verify(mockReplicator, never()).startBufferReplay(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
   }
 
   @Test
@@ -362,7 +362,7 @@ public abstract class AbstractPushMonitorTest {
     // Check hybrid push status
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Not ready to send SOBR
-    verify(mockReplicator, never()).startBufferReplay(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED,
         "Hybrid push is not ready to send SOBR.");
 
@@ -370,7 +370,7 @@ public abstract class AbstractPushMonitorTest {
     replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
     monitor.onPartitionStatusChange(topic, partitionStatus);
     verify(mockReplicator,times(1))
-        .startBufferReplay(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
 
@@ -380,7 +380,7 @@ public abstract class AbstractPushMonitorTest {
     monitor.setTopicReplicator(Optional.of(mockReplicator));
     monitor.onPartitionStatusChange(topic, partitionStatus);
     // Should not send SOBR again
-    verify(mockReplicator, never()).startBufferReplay(any(), any(), any());
+    verify(mockReplicator, never()).prepareAndStartReplication(any(), any(), any());
   }
 
   @Test
@@ -421,7 +421,7 @@ public abstract class AbstractPushMonitorTest {
     }
     // Only send one SOBR
     verify(mockReplicator, only())
-        .startBufferReplay(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+        .prepareAndStartReplication(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
         "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }

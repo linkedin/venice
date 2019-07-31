@@ -220,7 +220,7 @@ public class TestHybrid {
 
     // Verify replication exists for versions 2 and 3, but not for version 1
     VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getMasterVeniceController().getVeniceAdmin();
-    Field topicReplicatorField = veniceHelixAdmin.getClass().getDeclaredField("topicReplicator");
+    Field topicReplicatorField = veniceHelixAdmin.getClass().getDeclaredField("onlineOfflineTopicReplicator");
     topicReplicatorField.setAccessible(true);
     Optional<TopicReplicator> topicReplicatorOptional = (Optional<TopicReplicator>) topicReplicatorField.get(veniceHelixAdmin);
     if (topicReplicatorOptional.isPresent()){

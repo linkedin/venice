@@ -42,7 +42,7 @@ public interface PushMonitor {
 
   /**
    * Clean up all push statuses related to a store including all error pushes. This is called when
-   * a store gets deleted. 
+   * a store gets deleted.
    */
   void cleanupStoreStatus(String storeName);
 
@@ -100,10 +100,4 @@ public interface PushMonitor {
    * TODO: we may want to move it out of the interface
    */
   void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond);
-
-  /**
-   * set up topicReplicator.
-   * TODO: we may want to move it out of the interface
-   */
-  void setTopicReplicator(Optional<TopicReplicator> topicReplicator);
 }
