@@ -14,6 +14,7 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.http.HttpHeaders;
@@ -138,7 +140,7 @@ public class TestHostFinder {
   }
 
   @Test
-  public void testFindNothingWhenHeartBeatFailed() {
+  public void testFindNothingWhenHeartBeatFailed() throws Exception {
     // create one instance
     MockHttpServerWrapper server = ServiceFactory.getMockHttpServer("storage-node");
     int port = server.getPort();
@@ -152,8 +154,10 @@ public class TestHostFinder {
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
     doReturn(instanceSet).when(mockLiveInstanceMonitor).getAllLiveInstances();
 
+    Set<String> unhealthyHostsSet = getMockSetWithRealFunctionality();
     // mock VeniceHostHealth
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor);
+    VeniceHostHealthTest healthMon = new VeniceHostHealthTest(mockLiveInstanceMonitor);
+    healthMon.setUnhealthyHostSet(unhealthyHostsSet);
 
     // mock VeniceHostFinder
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
@@ -167,7 +171,9 @@ public class TestHostFinder {
 
     // mock HeartBeat
     FullHttpResponse goodHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-    server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), goodHealthResponse);
+    goodHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
+    String uri = "/" + QueryAction.HEALTH.toString().toLowerCase();
+    server.addResponseForUri(uri, goodHealthResponse);
     VeniceRouterConfig mockConfig = mockVeniceRouterConfig();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, mockConfig, Optional.empty());
     heartbeat.start();
@@ -178,12 +184,54 @@ public class TestHostFinder {
 
     // server response unhealthy for the heartbeat check
     FullHttpResponse badHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    badHealthResponse.headers().set(HttpHeaders.CONTENT_LENGTH, 0);
-    server.clearResponseMapping();
-    server.addResponseForUri("/" + QueryAction.HEALTH.toString().toLowerCase(), badHealthResponse);
+    badHealthResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, 0);
+    server.addResponseForUri(uri, badHealthResponse);
 
     // the HostFinder should find nothing now because heartbeat marks host as unhealthy in the VeniceHostHealth
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS,
         () -> Assert.assertEquals(0, finder.findHosts("get", "store_v0", "store_v0_3", healthMon, null).size()));
+
+    /**
+     * Verify that the unhealthy host is never removed from unhealthy set after a few healthy check cycles
+     */
+    Thread.sleep(2 * (long)(mockConfig.getHeartbeatCycleMs() + mockConfig.getHeartbeatTimeoutMs()));
+    verify(unhealthyHostsSet, times(0)).remove(any());
+  }
+
+  private Set<String> getMockSetWithRealFunctionality() {
+    Set<String> mockSet = mock(ConcurrentSkipListSet.class);
+    Set<String> trueSet = new ConcurrentSkipListSet<>();
+    doAnswer(invocation -> {
+      trueSet.add(invocation.getArgument(0));
+      return null;
+    }).when(mockSet).add(any());
+    doAnswer(invocation -> {
+      return trueSet.contains(invocation.getArgument(0));
+    }).when(mockSet).contains(any());
+    doAnswer(invocation -> {
+      trueSet.remove(invocation.getArgument(0));
+      return null;
+    }).when(mockSet).remove(any());
+    return mockSet;
+  }
+
+  /**
+   * VeniceHostHealthTest extends the actual VeniceHostHealth;
+   * the purpose of this subclass is to override the unhealthy host
+   * set inside VeniceHostHealth with the mocking set which can
+   * keep track of whether some APIs inside the set have been invoked.
+   */
+  private class VeniceHostHealthTest extends VeniceHostHealth {
+    public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor) {
+      super(liveInstanceMonitor);
+    }
+
+    /**
+     * This API is used for testing only.
+     * @param unhealthyHostSet
+     */
+    public void setUnhealthyHostSet(Set<String> unhealthyHostSet) {
+      this.unhealthyHosts = unhealthyHostSet;
+    }
   }
 }
