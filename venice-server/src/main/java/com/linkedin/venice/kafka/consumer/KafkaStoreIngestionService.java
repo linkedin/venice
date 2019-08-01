@@ -181,16 +181,24 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStore.getStoreName());
     int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStore.getStoreName());
     Store store = metadataRepo.getStore(storeName);
-    BooleanSupplier isStoreVersionCurrent = () -> store.getCurrentVersion() == storeVersion;
+    Optional<Version> version = store.getVersion(storeVersion);
+    if (!version.isPresent()) {
+      // In theory, the version should exist since the corresponding store ingestion is ready to start.
+      // The issue could be caused by race condition that the in-memory metadata hasn't been refreshed yet,
+      // So here will refresh that store explicitly once.
+      store = metadataRepo.refreshOneStore(storeName);
+      version = store.getVersion(storeVersion);
+      if (!version.isPresent()) {
+        throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
+      }
+    }
+    final Store finalStore = store;
+    BooleanSupplier isStoreVersionCurrent = () -> finalStore.getCurrentVersion() == storeVersion;
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
     DiskUsage diskUsage = new DiskUsage(
         veniceConfigLoader.getVeniceServerConfig().getDataBasePath(),
         veniceConfigLoader.getVeniceServerConfig().getDiskFullThreshold());
 
-    Optional<Version> version = store.getVersion(storeVersion);
-    if (!version.isPresent()) {
-      throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
-    }
     boolean bufferReplayEnabledForHybrid = version.get().isBufferReplayEnabledForHybrid();
 
     Properties kafkaProperties = getKafkaConsumerProperties(veniceStore);
