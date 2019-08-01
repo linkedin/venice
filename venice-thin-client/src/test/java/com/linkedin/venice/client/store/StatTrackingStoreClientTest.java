@@ -72,7 +72,6 @@ public class StatTrackingStoreClientTest {
         e.printStackTrace();
       }
       return value;
-
     });
 
     doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
@@ -139,20 +138,12 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(successKeyRatioMetric.value() > 0, "Success Key Ratio should be positive");
   }
 
+
+
   @Test
-  public void testGetWithException() throws ExecutionException, InterruptedException {
+  public void testGetWithException() throws InterruptedException {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
-    mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
-      try {
-        Thread.sleep(50);
-        handleStoreExceptionInternally(throwable);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-      return value;
-
-    });
     doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
     MetricsRepository repository = new MetricsRepository();
@@ -163,7 +154,6 @@ public class StatTrackingStoreClientTest {
       statTrackingStoreClient.get("key").get();
       Assert.fail("ExecutionException should be thrown");
     } catch (ExecutionException e) {
-      System.out.println(e);
       // expected
     }
 
@@ -172,6 +162,37 @@ public class StatTrackingStoreClientTest {
     Metric healthyRequestMetric = metrics.get(metricPrefix + "--healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--unhealthy_request.OccurrenceRate");
     Metric http400RequestMetric = metrics.get(metricPrefix + "--http_400_request.OccurrenceRate");
+
+    Assert.assertTrue(requestMetric.value() > 0.0);
+    Assert.assertEquals(healthyRequestMetric.value(), 0.0);
+    Assert.assertTrue(unhealthyRequestMetric.value() > 0.0);
+    Assert.assertTrue(http400RequestMetric.value() > 0.0);
+  }
+
+  @Test
+  public void testMultiGetWithException() throws InterruptedException {
+    CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
+    mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
+    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any(), any(), anyLong());
+
+    MetricsRepository repository = new MetricsRepository();
+
+    StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient,
+        ClientConfig.defaultGenericClientConfig(mockStoreClient.getStoreName()).setMetricsRepository(repository));
+    Set<String> keySet = new HashSet<>();
+    keySet.add("key");
+    try {
+      statTrackingStoreClient.batchGet(keySet).get();
+      Assert.fail("ExecutionException should be thrown");
+    } catch (ExecutionException e) {
+      // expected
+    }
+
+    Map<String, ? extends Metric> metrics = repository.metrics();
+    Metric requestMetric = metrics.get(metricPrefix + "--multiget_request.OccurrenceRate");
+    Metric healthyRequestMetric = metrics.get(metricPrefix + "--multiget_healthy_request.OccurrenceRate");
+    Metric unhealthyRequestMetric = metrics.get(metricPrefix + "--multiget_unhealthy_request.OccurrenceRate");
+    Metric http400RequestMetric = metrics.get(metricPrefix + "--multiget_http_400_request.OccurrenceRate");
 
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertEquals(healthyRequestMetric.value(), 0.0);

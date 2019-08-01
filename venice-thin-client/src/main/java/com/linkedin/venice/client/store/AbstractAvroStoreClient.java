@@ -281,48 +281,67 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
     byte[] serializedKey = getKeySerializer().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
+    CompletableFuture<V> valueFuture = new CompletableFuture<>();
 
-    return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
+    requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
         () -> transportClient.get(requestPath, GET_HEADER_MAP),
-        (response, throwable) -> {
-          if (null != throwable) {
-            handleStoreExceptionInternally(throwable);
+        (response, throwable, responseCompleteReporter) -> {
+          try {
+            if (null != throwable) {
+              valueFuture.completeExceptionally(throwable);
+            } else if (null == response) {
+              // Doesn't exist
+              valueFuture.complete(null);
+            } else if (!response.isSchemaIdValid()) {
+              valueFuture.completeExceptionally(new VeniceClientException("No valid schema id received for single-get request!"));
+            } else {
+              CompressionStrategy compressionStrategy = response.getCompressionStrategy();
+              long decompressionStartTime = System.nanoTime();
+              ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
+              stats.ifPresent((clientStats) -> clientStats.recordResponseDecompressionTime(LatencyUtils.getLatencyInMS(decompressionStartTime)));
+              RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
+              valueFuture.complete(deserializer.deserialize(data.array()));
+              responseCompleteReporter.report();
+            }
+          } catch (Exception e) {
+            // Defensive code
+            if (!valueFuture.isDone()) {
+              valueFuture.completeExceptionally(e);
+            }
           }
-          if (null == response) {
-            // Doesn't exist
-            return null;
-          }
-          if (!response.isSchemaIdValid()) {
-            throw new VeniceClientException("No valid schema id received for single-get request!");
-          }
-
-          CompressionStrategy compressionStrategy = response.getCompressionStrategy();
-          long decompressionStartTime = System.nanoTime();
-          ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(response.getBody()));
-          stats.ifPresent((clientStats) ->
-            clientStats.recordResponseDecompressionTime(LatencyUtils.getLatencyInMS(decompressionStartTime))
-          );
-          RecordDeserializer<V> deserializer = getDataRecordDeserializer(response.getSchemaId());
-          return deserializer.deserialize(data.array());
-        }
+          return null;
+      }
     );
+
+    return valueFuture;
   }
 
   @Override
   public CompletableFuture<byte[]> getRaw(String requestPath, Optional<ClientStats> stats, final long preRequestTimeInNS) {
-    return requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, false,
+    CompletableFuture<byte[]> valueFuture = new CompletableFuture<>();
+    requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, false,
         () -> transportClient.get(requestPath),
-        (clientResponse, throwable) -> {
-          if (null != throwable) {
-            handleStoreExceptionInternally(throwable);
+        (clientResponse, throwable, responseCompleteReporter) -> {
+          try {
+            if (null != throwable) {
+              valueFuture.completeExceptionally(throwable);
+            } else if (null == clientResponse) {
+              // Doesn't exist
+              valueFuture.complete(null);
+            } else {
+              valueFuture.complete(clientResponse.getBody());
+              responseCompleteReporter.report();
+            }
+          } catch (Exception e) {
+            // Defensive code
+            if (!valueFuture.isDone()) {
+              valueFuture.completeExceptionally(e);
+            }
           }
-          if (null == clientResponse) {
-            // Doesn't exist
-            return null;
-          }
-          return clientResponse.getBody();
+          return null;
         }
     );
+    return valueFuture;
   }
 
   private byte[] serializeMultiGetRequest(List<K> keyList) {
@@ -445,33 +464,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     } else {
       return transportFuture.handle(responseHandlerWithStats);
     }
-  }
-
-  /**
-   * Calls the overloaded function of the same, but executes the deserialization time reporting after the
-   * {@param responseHandler} has returned.
-   *
-   * @see {@link #requestSubmissionWithStatsHandling(Optional, long, boolean, Supplier, ResponseHandler)}
-   */
-  private <R> CompletableFuture<R> requestSubmissionWithStatsHandling(
-      final Optional<ClientStats> stats,
-      final long preRequestTimeInNS,
-      final boolean handleResponseOnDeserializationExecutor,
-      final Supplier<CompletableFuture<TransportClientResponse>> requestSubmitter,
-      final BiFunction<TransportClientResponse, Throwable, R> responseHandler) throws VeniceClientException {
-    return requestSubmissionWithStatsHandling(
-        stats,
-        preRequestTimeInNS,
-        handleResponseOnDeserializationExecutor,
-        requestSubmitter,
-        (clientResponse, throwable, responseDeserializationComplete) -> {
-          try {
-            return responseHandler.apply(clientResponse, throwable);
-          } finally {
-            responseDeserializationComplete.report();
-          }
-        }
-    );
   }
 
   private interface ResponseHandler<R> {

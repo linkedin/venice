@@ -153,19 +153,9 @@ public class RetriableStoreClientTest {
   }
 
   @Test
-  public void testGetWithException() throws ExecutionException, InterruptedException {
+  public void testGetWithException() throws InterruptedException {
     CompletableFuture<Object> mockInnerFuture = new CompletableFuture();
     mockInnerFuture.completeExceptionally(new VeniceClientHttpException("Inner mock exception", HttpResponseStatus.BAD_REQUEST.code()));
-    mockInnerFuture = mockInnerFuture.handle((value, throwable) -> {
-      try {
-        Thread.sleep(50);
-        handleStoreExceptionInternally(throwable);
-      } catch (InterruptedException e) {
-        e.printStackTrace();
-      }
-      return value;
-
-    });
     doReturn(mockInnerFuture).when(mockStoreClient).get(any(), any(), anyLong());
 
     RetriableStoreClient<String, Object> retriableStoreClient = new RetriableStoreClient<>(mockStoreClient,

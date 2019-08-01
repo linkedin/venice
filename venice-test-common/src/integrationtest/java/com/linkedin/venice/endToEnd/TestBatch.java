@@ -543,7 +543,7 @@ public abstract class TestBatch {
                 + Utils.round(latencyMetric99.value(), 1) + " ms.");
 
           }).get();
-        });
+        }, new UpdateStoreQueryParams().setBatchGetLimit(1000).setReadQuotaInCU(Integer.MAX_VALUE));
   }
 
   @Test(timeOut = TEST_TIMEOUT)
