@@ -788,22 +788,28 @@ public class VeniceParentHelixAdmin implements Admin {
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
-      Optional<Version> version = getStore(clusterName, storeName).getVersion(currentPushVersion);
+      Store store = getStore(clusterName, storeName);
+      Optional<Version> version = store.getVersion(currentPushVersion);
       if (!version.isPresent()) {
         throw new VeniceException("A corresponding version should exist with the ongoing push with topic "
             + currentPushTopic);
       }
       String existingPushJobId = version.get().getPushJobId();
       if (!existingPushJobId.equals(pushJobId)) {
-        throw new VeniceException(
-            "Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
-                + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
-                + " is found and it must be terminated before another push can be started.");
+        if (checkLingeringVersion(store, version.get())) {
+          // Kill the lingering version and allow the new push to start.
+          logger.info("Found lingering topic: " +  currentPushTopic.get() + " with push id: " + existingPushJobId
+              + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
+          killOfflinePush(clusterName, currentPushTopic.get());
+        } else {
+          throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
+              + " is found and it must be terminated before another push can be started.");
+        }
       }
     }
     // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
     Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions,
-        replicationFactor, false, isIncrementalPush, sendStartOfPush);;
+        replicationFactor, false, isIncrementalPush, sendStartOfPush);
     if (addVersionViaAdminProtocol && !isIncrementalPush) {
       acquireLock(clusterName);
       try {
@@ -1908,5 +1914,17 @@ public class VeniceParentHelixAdmin implements Admin {
     });
 
     thread.start();
+  }
+
+  /**
+   * Check if a version has been lingering around for more than the bootstrap to online timeout because of bugs or other
+   * unexpected events.
+   * @param store of interest.
+   * @param version of interest that may be lingering around.
+   * @return true if the provided version is has been lingering around for long enough and is killed, otherwise false.
+   */
+  private boolean checkLingeringVersion(Store store, Version version) {
+    long bootstrapTimeLimit = version.getCreatedTime() + store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
+    return timer.getMilliseconds() > bootstrapTimeLimit;
   }
 }

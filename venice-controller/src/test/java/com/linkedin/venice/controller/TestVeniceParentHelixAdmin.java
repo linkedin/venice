@@ -1716,4 +1716,39 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v2");
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
   }
+
+  @Test
+  public void testAdminCanKillLingeringVersion() throws ExecutionException, InterruptedException {
+    boolean expectedExceptionThrown = false;
+    long startTime = System.currentTimeMillis();
+    MockTime mockTime = new MockTime(startTime);
+    parentAdmin.setTimer(mockTime);
+    mockTime.addMilliseconds(30 * Time.MS_PER_HOUR);
+    String storeName = "test_store";
+    String existingTopicName = storeName + "_v1";
+    Store store = mock(Store.class);
+    Version version = new Version(storeName, 1, startTime, "test-push");
+    String newPushJobId = "new-test-push";
+    Version newVersion = new Version(storeName, 2, mockTime.getMilliseconds(), newPushJobId);
+
+    doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    doReturn(Optional.of(version)).when(store).getVersion(1);
+    doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
+    doReturn(newVersion).when(internalAdmin).incrementVersionIdempotent(clusterName, storeName, newPushJobId,
+        3, 3, false, false, false);
+
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, true, false, false);
+  }
 }
