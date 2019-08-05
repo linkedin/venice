@@ -1723,7 +1723,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn(Optional.of(version)).when(store).getVersion(1);
     doReturn(new HashSet<>(Arrays.asList(topicName, existingTopicName))).when(topicManager).listTopics();
     doReturn(newVersion).when(internalAdmin).incrementVersionIdempotent(clusterName, storeName, newPushJobId,
-        3, 3, false, false, false);
+        3, 3, false, false, false, true);
 
     Future future = mock(Future.class);
     doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
@@ -1736,6 +1736,6 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
-    parentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, true, false, false);
+    parentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, true, false, false, true);
   }
 }
