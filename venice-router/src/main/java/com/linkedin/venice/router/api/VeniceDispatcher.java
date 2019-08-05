@@ -18,6 +18,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -106,6 +107,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private final PendingRequestThrottler pendingRequestThrottler;
 
+  private final RouteHttpRequestStats routeHttpRequestStats;
   public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
       ReadOnlyStoreRepository storeRepository, Optional<RouterCache> routerCache,
       RouterStats routerStats, MetricsRepository metricsRepository,
@@ -117,6 +119,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     this.routerStats = routerStats;
     this.perRouteStats = new RouterStats<>( requestType -> new RouteHttpStats(metricsRepository, requestType) );
 
+    this.routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
     this.storageNodeClient = storageNodeClient;
 
     this.pendingRequestThrottler = new PendingRequestThrottler(config.getMaxPendingRequest());
@@ -164,6 +167,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       throw e;
     }
 
+
     List<MultiGetResponseRecordV1> cacheResultForMultiGet = new ArrayList<>();
     if (handleCacheLookupAndThrottling(path, host, responseFuture, contextExecutor, cacheResultForMultiGet, aggStats)) {
       // Single get hits cache or all keys in batch get hit cache
@@ -191,12 +195,16 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
     RouteHttpStats currentRouteStat = perRouteStats.getStatsByType(path.getRequestType());
 
+    routeHttpRequestStats.recordPendingRequest(host.getHost());
+
     String address = host.getHost() + ":" + host.getHost() + "/";
 
     Consumer<PortableHttpResponse> completedCallBack = new Consumer<PortableHttpResponse>() {
       @Override
       public void accept(PortableHttpResponse result) {
         pendingRequestThrottler.take();
+        routeHttpRequestStats.recordFinishedRequest(host.getHost());
+
         int statusCode = result.getStatusCode();
         if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR || statusCode == HttpStatus.SC_SERVICE_UNAVAILABLE) {
           // Retry errored request
@@ -453,6 +461,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public void accept(Throwable ex) {
         pendingRequestThrottler.take();
+        routeHttpRequestStats.recordFinishedRequest(host.getHost());
         completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, ex);
         recordResponseWaitingTime(host.getHost(), currentRouteStat, dispatchStartTSInNS);
       }
@@ -482,6 +491,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public boolean getAsBoolean() {
         pendingRequestThrottler.take();
+        routeHttpRequestStats.recordFinishedRequest(host.getHost());
         completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, new VeniceException("Request to storage node was cancelled"));
         recordResponseWaitingTime(host.getHost(), currentRouteStat, dispatchStartTSInNS);
         return true;
