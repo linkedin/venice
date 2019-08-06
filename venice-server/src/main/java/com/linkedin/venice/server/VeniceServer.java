@@ -33,6 +33,7 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.DiskHealthCheckService;
+import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -67,13 +68,9 @@ public class VeniceServer {
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private LeakedResourceCleaner leakedResourceCleaner;
   private DiskHealthCheckService diskHealthCheckService;
-
   private MetricsRepository metricsRepository;
-
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
-
-
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
@@ -86,7 +83,7 @@ public class VeniceServer {
 
   public VeniceServer(
       VeniceConfigLoader veniceConfigLoader,
-      MetricsRepository  metricsRepository,
+      MetricsRepository metricsRepository,
       Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
       Optional<StaticAccessController> accessController,
       Optional<ClientConfig> clientConfigForConsumer) {
@@ -99,7 +96,7 @@ public class VeniceServer {
     if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
                              veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
                              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
-                             veniceConfigLoader.getVeniceServerConfig().isServerWhiteLIstEnabled())) {
+                             veniceConfigLoader.getVeniceServerConfig().isServerWhitelistEnabled())) {
       throw new VeniceException(
           "Can not create a venice server because this server has not been added into white list.");
     }
@@ -134,10 +131,9 @@ public class VeniceServer {
     /* Services are created in the order they must be started */
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
-    VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
-
     // Create and add Offset Service.
-    storageMetadataService = new BdbStorageMetadataService(veniceConfigLoader.getVeniceClusterConfig());
+    VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
+    storageMetadataService = new BdbStorageMetadataService(clusterConfig);
     services.add(storageMetadataService);
 
     // Create ReadOnlyStore/SchemaRepository
@@ -153,7 +149,7 @@ public class VeniceServer {
     Optional<SchemaReader> schemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE))));
 
-    //create and add KafkaSimpleConsumerService
+    // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStoreRepository(),
         veniceConfigLoader,
@@ -164,13 +160,13 @@ public class VeniceServer {
         schemaReader,
         clientConfigForConsumer);
 
-    VeniceServerConfig veniceServerConfig = veniceConfigLoader.getVeniceServerConfig();
-    this.diskHealthCheckService = new DiskHealthCheckService(veniceServerConfig.isDiskHealthCheckServiceEnabled(),
-                                                             veniceServerConfig.getDiskHealthCheckIntervalInMS(),
-                                                             veniceServerConfig.getDiskHealthCheckTimeoutInMs(),
-                                                             veniceServerConfig.getDataBasePath());
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    this.diskHealthCheckService = new DiskHealthCheckService(
+        serverConfig.isDiskHealthCheckServiceEnabled(),
+        serverConfig.getDiskHealthCheckIntervalInMS(),
+        serverConfig.getDiskHealthCheckTimeoutInMs(),
+        serverConfig.getDataBasePath());
     services.add(diskHealthCheckService);
-
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
 
@@ -184,36 +180,33 @@ public class VeniceServer {
       return routingData;
     });
 
-    //create and add ListenerServer for handling GET requests
-    ListenerService listenerService = new ListenerService(storageService.getStoreRepository(), metadataRepo, schemaRepo,
-        routingRepositoryFuture, kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory,
-        accessController, diskHealthCheckService);
+    // create and add ListenerServer for handling GET requests
+    ListenerService listenerService = createListenerService(storageService.getStoreRepository(), metadataRepo, schemaRepo,
+        routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory, accessController, diskHealthCheckService);
     services.add(listenerService);
 
     /**
      * Helix participator service should start last since we need to make sure current Storage Node is ready to take
      * read requests if it claims to be available in Helix.
      */
-    // start venice participant service if Helix is enabled.
     HelixParticipationService helixParticipationService =
         new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader, metadataRepo,
             metricsRepository, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
             veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
     services.add(helixParticipationService);
+
     // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
     // that helix is disconnected but consumption service try to send message by helix.
     services.add(kafkaStoreIngestionService);
 
-    //
     /**
      * Create and add storage resource clean up service;
      * the cleanup service can be extended to clean up any resources, but for now, we only use it to do BDB clean up.
      */
-    if (veniceServerConfig.getBdbServerConfig().isBdbDroppedDbCleanUpEnabled()) {
-      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStoreRepository(), veniceServerConfig.getStorageLeakedResourceCleanUpIntervalInMS());
+    if (serverConfig.getBdbServerConfig().isBdbDroppedDbCleanUpEnabled()) {
+      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStoreRepository(), serverConfig.getStorageLeakedResourceCleanUpIntervalInMS());
       services.add(leakedResourceCleaner);
     }
-
 
     /**
      * TODO Create an admin service later. The admin service will need both StorageService and KafkaSimpleConsumerService
@@ -244,9 +237,8 @@ public class VeniceServer {
     schemaRepo.refresh();
   }
 
-
-  public StorageService getStorageService(){
-    if (isStarted()){
+  public StorageService getStorageService() {
+    if (isStarted()) {
       return storageService;
     } else {
       throw new VeniceException("Cannot get storage service if server is not started");
@@ -267,8 +259,7 @@ public class VeniceServer {
    *
    * @throws Exception
    */
-  public void start()
-      throws VeniceException {
+  public void start() throws VeniceException {
     boolean isntStarted = isStarted.compareAndSet(false, true);
     if (!isntStarted) {
       throw new IllegalStateException("Service is already started!");
@@ -288,8 +279,7 @@ public class VeniceServer {
    * JVM.
    * @throws Exception
    * */
-  public void shutdown()
-      throws VeniceException {
+  public void shutdown() throws VeniceException {
     List<Exception> exceptions = new ArrayList<Exception>();
     logger.info("Stopping all services ");
 
@@ -322,8 +312,7 @@ public class VeniceServer {
     }
   }
 
-  protected boolean isServerInWhiteList(String zkAddress, String clusterName, int listenPort,
-      boolean enableServerWhitelist) {
+  protected boolean isServerInWhiteList(String zkAddress, String clusterName, int listenPort, boolean enableServerWhitelist) {
     if (!enableServerWhitelist) {
       logger.info("Check whitelist is disable, continue to start participant.");
       return true;
@@ -346,12 +335,12 @@ public class VeniceServer {
     }
   }
 
-  protected static boolean directoryExists(String dataDirectory){
+  protected static boolean directoryExists(String dataDirectory) {
     File dir = new File(dataDirectory).getAbsoluteFile();
     return dir.isDirectory();
   }
 
-  protected VeniceConfigLoader getConfigLoader(){
+  protected VeniceConfigLoader getConfigLoader() {
     return veniceConfigLoader;
   }
 
@@ -359,8 +348,23 @@ public class VeniceServer {
     return metricsRepository;
   }
 
-  public static void main(String args[])
-      throws Exception {
+  protected ListenerService createListenerService(
+      StoreRepository storeRepository,
+      ReadOnlyStoreRepository storeMetadataRepository,
+      ReadOnlySchemaRepository schemaRepository,
+      CompletableFuture<RoutingDataRepository> routingRepository,
+      MetadataRetriever metadataRetriever,
+      VeniceServerConfig serverConfig,
+      MetricsRepository metricsRepository,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<StaticAccessController> accessController,
+      DiskHealthCheckService diskHealthService) {
+    return new ListenerService(
+        storeRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
+        metricsRepository, sslFactory, accessController, diskHealthService);
+  }
+
+  public static void main(String args[]) throws Exception {
     VeniceConfigLoader veniceConfigService = null;
     try {
       if (args.length == 0) {
@@ -374,6 +378,7 @@ public class VeniceServer {
       logger.error("Error starting Venice Server ", e);
       Utils.croak("Error while loading configuration: " + e.getMessage());
     }
+
     final VeniceServer server = new VeniceServer(veniceConfigService);
     if (!server.isStarted()) {
       server.start();
@@ -391,6 +396,5 @@ public class VeniceServer {
         }
       }
     });
-
   }
 }

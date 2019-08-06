@@ -224,7 +224,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return rocksDBServerConfig;
   }
 
-  public boolean isServerWhiteLIstEnabled() {
+  public boolean isServerWhitelistEnabled() {
     return enableServerWhiteList;
   }
 

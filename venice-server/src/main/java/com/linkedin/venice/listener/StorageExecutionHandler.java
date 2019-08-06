@@ -94,12 +94,10 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final MetadataRetriever metadataRetriever;
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(false);
-
   private final Map<Utf8, Schema> computeResultSchemaCache;
-
   private final boolean fastAvroEnabled;
 
-  private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>(){
+  private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>() {
     {
       put(ComputeOperationType.DOT_PRODUCT.getValue(), new DotProductOperator());
       put(ComputeOperationType.COSINE_SIMILARITY.getValue(), new CosineSimilarityOperator());
@@ -108,17 +106,16 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   };
 
   public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
-      @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepo,
+      @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepository,
       @NotNull MetadataRetriever metadataRetriever, @NotNull DiskHealthCheckService healthCheckService,
       boolean fastAvroEnabled) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storeRepository = storeRepository;
-    this.schemaRepo = schemaRepo;
+    this.schemaRepo = schemaRepository;
     this.metadataRetriever = metadataRetriever;
     this.diskHealthCheckService = healthCheckService;
     this.fastAvroEnabled = fastAvroEnabled;
-
     this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
   }
 
@@ -145,10 +142,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
      *    be sent out.
      */
 
-
     if (message instanceof RouterRequest) {
       RouterRequest request = (RouterRequest) message;
-      getExecutor(request.getRequestType()).submit(new LabeledRunnable(request.getStoreName(), ()-> {
+      getExecutor(request.getRequestType()).submit(new LabeledRunnable(request.getStoreName(), () -> {
         double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
         ReadResponse response;
         try {
@@ -174,6 +170,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       }));
+
     } else if (message instanceof HealthCheckRequest) {
       if (diskHealthCheckService.isDiskHealthy()) {
         context.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
@@ -186,7 +183,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
           HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
-
   }
 
   private ExecutorService getExecutor(RequestType requestType) {
@@ -200,18 +196,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         throw new VeniceException("Request type " + requestType + " is not supported.");
     }
   }
-
-  private static IOFileFilter listEverything = new IOFileFilter() {
-    @Override
-    public boolean accept(File file) {
-      return true;
-    }
-
-    @Override
-    public boolean accept(File dir, String name) {
-      return true;
-    }
-  };
 
   private ReadResponse handleSingleGetRequest(GetRouterRequest request) {
     int partition = request.getPartition();

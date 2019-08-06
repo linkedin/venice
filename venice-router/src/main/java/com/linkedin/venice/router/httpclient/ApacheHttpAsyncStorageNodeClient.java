@@ -48,7 +48,6 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
 
   private final HttpConnectionPoolStats poolStats;
 
-
   public ApacheHttpAsyncStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactory, MetricsRepository metricsRepository) {
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
 
@@ -84,7 +83,6 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     }
   }
 
-
   @Override
   public void close() {
     clientPool.stream().forEach( client -> IOUtils.closeQuietly(client));
@@ -118,6 +116,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     private final Consumer<PortableHttpResponse> completedCallBack;
     private final Consumer<Throwable> failedCallBack;
     private final BooleanSupplier cancelledCallBack;
+
     private HttpAsyncClientFutureCallBack(
         Consumer<PortableHttpResponse> completedCallBack,
         Consumer<Throwable> failedCallBack,
@@ -126,24 +125,30 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       this.failedCallBack = failedCallBack;
       this.cancelledCallBack = cancelledCallBack;
     }
+
     @Override
     public void completed(HttpResponse result) {
       completedCallBack.accept(new HttpAsyncClientPortableHttpResponse(result));
     }
+
     @Override
     public void failed(Exception ex) {
       failedCallBack.accept(ex);
     }
+
     @Override
     public void cancelled() {
       cancelledCallBack.getAsBoolean();
     }
   }
+
   private static class HttpAsyncClientPortableHttpResponse implements PortableHttpResponse {
     private final HttpResponse httpResponse;
+
     private HttpAsyncClientPortableHttpResponse(HttpResponse httpResponse) {
       this.httpResponse = httpResponse;
     }
+
     @Override
     public int getStatusCode() {
       return httpResponse.getStatusLine().getStatusCode();
@@ -157,14 +162,15 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       }
       return contentToByte;
     }
+
     @Override
     public boolean containsHeader(String headerName) {
       return httpResponse.containsHeader(headerName);
     }
+
     @Override
     public String getFirstHeader(String headerName) {
       return httpResponse.getFirstHeader(headerName).getValue();
     }
   }
-
 }
