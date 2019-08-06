@@ -27,6 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -34,6 +35,8 @@ import org.apache.avro.generic.GenericRecord;
  * @param <V>
  */
 public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
+  private static final Logger LOGGER = Logger.getLogger(StatTrackingStoreClient.class);
+
   private static String STAT_VENICE_CLIENT_NAME = "venice_client";
   private static String STAT_SCHEMA_READER = "schema_reader";
 
@@ -212,6 +215,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
       if (veniceException.get() instanceof VeniceClientHttpException) {
         VeniceClientHttpException httpException = (VeniceClientHttpException)veniceException.get();
         clientStats.recordHttpRequest(httpException.getHttpStatus());
+      } else {
+        // Http related exception logging is being taken care by underlying transporting layer,
+        // and here will dump other kinds of exceptions
+        LOGGER.error("Received exception in streaming callback", veniceException.get());
       }
     } else {
       emitRequestHealthyMetrics(clientStats, latency);
