@@ -7,6 +7,7 @@ import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.PartitionFinder;
+import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
@@ -16,6 +17,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceDelegateModeConfig;
@@ -88,13 +90,14 @@ public class RouterRequestThrottlingTest {
 
     VeniceHostHealth healthMonitor = mock(VeniceHostHealth.class);
 
-    MetricsRepository metricsRepository = mock(MetricsRepository.class);
+    MetricsRepository metricsRepository = new MetricsRepository();
     StorageNodeClient storageNodeClient = mock(StorageNodeClient.class);
 
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, healthMonitor, storeRepository, Optional.empty(),
         mock(RouterStats.class), metricsRepository, storageNodeClient);
     // set the ReadRequestThrottler
     dispatcher.initReadRequestThrottler(throttler);
+    RouterExceptionAndTrackingUtils.setRouterStats(new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType)));
 
     // mock inputs for VeniceDispatcher#dispatch()
     Scatter<Instance, VenicePath, RouterKey> scatter = mock(Scatter.class);
@@ -126,7 +129,11 @@ public class RouterRequestThrottlingTest {
           dispatcher.dispatch(scatter, part, path, request, hostSelected, responseFuture, retryFuture, timeoutFuture,
               contextExecutor);
         } catch (Exception e) {
-          Assert.fail("router shouldn't throttle any single-get requests if the QPS is below 1000");
+          if (e instanceof RouterException) {
+            Assert.fail("Router shouldn't throttle any single-get requests if the QPS is below 1000");
+          } else {
+            Assert.fail("Router should not throw exception : ", e);
+          }
         }
       }
 
