@@ -32,7 +32,7 @@ public class TransportClientCallback {
       //Only convert body from `byte[]` to `String` when necessary since it is quite expensive
       String msg = new String(body, StandardCharsets.UTF_8);
       Throwable exception;
-      switch (statusCode){
+      switch (statusCode) {
         case VeniceClientRateExceededException.HTTP_TOO_MANY_REQUESTS:
           exception = new VeniceClientRateExceededException(msg);
           break;

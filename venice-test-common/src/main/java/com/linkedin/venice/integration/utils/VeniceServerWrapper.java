@@ -43,11 +43,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   public static final String SERVER_SSL_TO_KAFKA = "server_ssl_to_kafka";
   public static final String CLIENT_CONFIG_FOR_CONSUMER = "client_config_for_consumer";
 
-  private VeniceServer veniceServer;
+  private TestVeniceServer veniceServer;
   private final VeniceProperties serverProps;
   private final VeniceConfigLoader config;
 
-  VeniceServerWrapper(String serviceName, File dataDirectory, VeniceServer veniceServer, VeniceProperties serverProps, VeniceConfigLoader config) {
+  VeniceServerWrapper(String serviceName, File dataDirectory, TestVeniceServer veniceServer, VeniceProperties serverProps, VeniceConfigLoader config) {
     super(serviceName, dataDirectory);
     this.veniceServer = veniceServer;
     this.serverProps = serverProps;
@@ -112,7 +112,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         sslFactory = Optional.of(SslUtils.getLocalSslFactory());
       }
 
-      VeniceServer server = new VeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty(), clientConfigForConsumer);
+      TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty(), clientConfigForConsumer);
       return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader);
     };
   }
@@ -160,12 +160,11 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
-    this.veniceServer = new VeniceServer(config);
+  protected void newProcess() throws Exception {
+    this.veniceServer = new TestVeniceServer(config);
   }
 
-  public VeniceServer getVeniceServer(){
+  public TestVeniceServer getVeniceServer() {
     return veniceServer;
   }
 

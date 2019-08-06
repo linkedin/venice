@@ -55,14 +55,14 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
       QueryAction action = getQueryActionFromRequest(req);
       statsHandler.setRequestSize(req.content().readableBytes());
       switch (action){
-        case STORAGE:  // GET /storage/store/partition/key
+        case STORAGE: // GET /storage/store/partition/key
           HttpMethod requestMethod = req.method();
           if (requestMethod.equals(HttpMethod.GET)) {
             // TODO: evaluate whether we can replace single-get by multi-get
             GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
             statsHandler.setRequestInfo(getRouterRequest);
             ctx.fireChannelRead(getRouterRequest);
-          } else if (requestMethod.equals(HttpMethod.POST)){
+          } else if (requestMethod.equals(HttpMethod.POST)) {
             // Multi-get
             MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
             statsHandler.setRequestInfo(multiGetRouterReq);
@@ -71,8 +71,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
             throw new VeniceException("Unknown request method: " + requestMethod + " for " + QueryAction.STORAGE);
           }
           break;
-        case COMPUTE:
-          // compute request
+        case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
             ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
             statsHandler.setRequestInfo(computeRouterReq);
@@ -89,11 +88,8 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
         default:
           throw new VeniceException("Unrecognized query action");
       }
-    } catch (VeniceException e){
-      ctx.writeAndFlush(new HttpShortcutResponse(
-          e.getMessage(),
-          HttpResponseStatus.BAD_REQUEST
-      ));
+    } catch (VeniceException e) {
+      ctx.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.BAD_REQUEST));
     }
   }
 
