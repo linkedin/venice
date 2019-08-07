@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.StringJoiner;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -454,8 +455,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    Executors.newCachedThreadPool().execute(() -> {
-      // Stop called in reverse order of dependency
+    ExecutorService executor = Executors.newCachedThreadPool();
+    executor.execute(() -> {
       veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
       veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
       veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
@@ -463,11 +464,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       IOUtils.closeQuietly(kafkaBrokerWrapper);
       IOUtils.closeQuietly(brooklinWrapper);
     });
+    executor.shutdown();
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
+  protected void newProcess() throws Exception {
     throw new UnsupportedOperationException("Cluster does not support to create new process.");
   }
 
