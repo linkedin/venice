@@ -10,9 +10,9 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -25,27 +25,21 @@ import static com.linkedin.venice.ConfigKeys.*;
  * A wrapper for the {@link VeniceRouterWrapper}.
  */
 public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware {
-
   public static final String SERVICE_NAME = "VeniceRouter";
 
   private RouterServer service;
-  private final int port;
-  private final String clusterName;
-  private final String zkAddress;
-  private final boolean sslToStorageNode;
+  private VeniceProperties properties;
+  private String zkAddress;
 
-
-  VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port, String zkAddress, boolean sslToStorageNode) {
+  VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, VeniceProperties properties, String zkAddress) {
     super(serviceName, dataDirectory);
     this.service = service;
-    this.port = port;
-    this.clusterName = clusterName;
+    this.properties = properties;
     this.zkAddress = zkAddress;
-    this.sslToStorageNode = sslToStorageNode;
   }
 
-  static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes, String clusterToD2, Properties properties) {
+  static StatefulServiceProvider<VeniceRouterWrapper> generateService(
+      String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes, String clusterToD2, Properties properties) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
@@ -66,14 +60,16 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(MAX_READ_CAPCITY, 1000000000)
           .put(properties);
+
       // setup d2 config first
       D2TestUtils.setupD2Config(zkAddress, false);
       // Announce to d2 by default
-      List<D2Server>
-          d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
+      List<D2Server> d2Servers = D2TestUtils.getD2Servers(
+          zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
 
-      RouterServer router = new RouterServer(builder.build(), d2ServerList, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
-      return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
+      VeniceProperties routerProperties = builder.build();
+      RouterServer router = new RouterServer(routerProperties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
+      return new VeniceRouterWrapper(serviceName, dataDirectory, router, routerProperties, zkAddress);
     };
   }
 
@@ -84,16 +80,17 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   public int getPort() {
-    return port;
+    return properties.getInt(LISTENER_PORT);
   }
 
   public int getSslPort() {
-    return sslPortFromPort(port);
+    return properties.getInt(LISTENER_SSL_PORT);
   }
 
   public String getD2Service() {
     return D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
   }
+
   @Override
   protected void internalStart() throws Exception {
     service.start();
@@ -110,19 +107,13 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
-    PropertyBuilder builder = new PropertyBuilder()
-        .put(CLUSTER_NAME, clusterName)
-        .put(LISTENER_PORT, port)
-        .put(LISTENER_SSL_PORT, sslPortFromPort(port))
-        .put(ZOOKEEPER_ADDRESS, zkAddress)
-        .put(SSL_TO_STORAGE_NODES, sslToStorageNode)
-        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
-    service = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
+  protected void newProcess() throws Exception {
+    List<D2Server> d2Servers = D2TestUtils.getD2Servers(
+        zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
+    service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
-  public HelixRoutingDataRepository getRoutingDataRepository(){
+  public HelixRoutingDataRepository getRoutingDataRepository() {
     return service.getRoutingDataRepository();
   }
 

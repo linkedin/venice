@@ -7,6 +7,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
 
@@ -100,29 +101,29 @@ public class StoreBufferService extends AbstractVeniceService {
   private static class StoreBufferDrainer implements Runnable {
     private static final Logger LOGGER = Logger.getLogger(StoreBufferDrainer.class);
     private final BlockingQueue<QueueNode> blockingQueue;
-    private boolean isRunning = true;
+    private final AtomicBoolean isRunning = new AtomicBoolean(true);
 
     public StoreBufferDrainer(BlockingQueue<QueueNode> blockingQueue) {
       this.blockingQueue = blockingQueue;
     }
 
     public void stop() {
-      isRunning = false;
+      isRunning.set(false);
     }
 
     @Override
     public void run() {
-      QueueNode node = null;
-      while (isRunning) {
+      while (isRunning.get()) {
+        QueueNode node = null;
         try {
           node = blockingQueue.take();
         } catch (InterruptedException e) {
           LOGGER.error("Received InterruptedException, will exit");
           break;
         }
+
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = node.getConsumerRecord();
         StoreIngestionTask ingestionTask = node.getIngestionTask();
-
         try {
           ingestionTask.processConsumerRecord(consumerRecord);
         } catch (Exception e) {
@@ -232,7 +233,7 @@ public class StoreBufferService extends AbstractVeniceService {
     // Graceful shutdown
     drainerList.forEach(drainer -> drainer.stop());
     if (null != this.executorService) {
-      this.executorService.shutdown();
+      this.executorService.shutdownNow();
       this.executorService.awaitTermination(10, TimeUnit.SECONDS);
     }
   }
@@ -242,7 +243,6 @@ public class StoreBufferService extends AbstractVeniceService {
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
       totalUsage += queue.getMemoryUsage();
     }
-
     return totalUsage;
   }
 
