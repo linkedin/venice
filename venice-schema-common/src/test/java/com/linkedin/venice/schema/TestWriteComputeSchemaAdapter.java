@@ -16,19 +16,16 @@ public class TestWriteComputeSchemaAdapter {
       "{\n" +
       "  \"type\" : \"record\",\n" +
       "  \"name\" : \"testRecord\",\n" +
-      "  \"fields\" : [ {\n" +
-      "       \"name\" : \"intArray\",\n" +
-      "       \"type\" : {\n" +
-      "           \"type\" : \"array\",\n" +
-      "           \"items\" : \"int\"\n" +
-      "         }\n" +
-      "      }, {\n" +
-      "       \"name\" : \"floatArray\",\n" +
-      "       \"type\" : {\n" + " " +
-      "           \"type\" : \"array\",\n" +
-      "           \"items\" : \"float\"\n" +
-      "         }\n" +
-      "     } ]\n" +
+      "  \"namespace\" : \"avro.example\",\n" +
+      "  \"fields\" : [ {\n" + "    \"name\" : \"intArray\",\n" +
+      "    \"type\" : {\n" +
+      "      \"type\" : \"array\",\n" +
+      "      \"items\" : \"int\"\n" +
+      "    }\n" + "  }, {\n" +
+      "    \"name\" : \"floatArray\",\n" + "    \"type\" : {\n" +
+      "      \"type\" : \"array\",\n" +
+      "      \"items\" : \"float\"\n" + "    }\n" +
+      "  } ]\n" +
       "}";
 
   @Test
@@ -76,7 +73,6 @@ public class TestWriteComputeSchemaAdapter {
     //test parsing record
     Schema recordWriteSchema = WriteComputeSchemaAdapter.parse(recordSchemaStr);
     Assert.assertEquals(recordWriteSchema.getType(), RECORD);
-    System.out.println(recordWriteSchema.toString(true));
     Assert.assertEquals(recordWriteSchema.getFields().size(), 3);
     Assert.assertEquals(recordWriteSchema.getField("age").schema().getType(), UNION);
     Assert.assertEquals(recordWriteSchema.getField("age").schema().getTypes().get(1), Schema.create(INT));
@@ -85,9 +81,9 @@ public class TestWriteComputeSchemaAdapter {
     //test parsing record of arrays
     Schema recordOfArraysWriteSchema = WriteComputeSchemaAdapter.parse(Schema.parse(recordOfArraySchemaStr));
     Schema intArrayFieldWriteSchema = recordOfArraysWriteSchema.getField("intArray").schema();
-    Assert.assertEquals(intArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "intArray");
+    Assert.assertEquals(intArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "avro.example");
 
     Schema floatArrayFieldWriteSchema = recordOfArraysWriteSchema.getField("floatArray").schema();
-    Assert.assertEquals(floatArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "floatArray");
+    Assert.assertEquals(floatArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "avro.example");
   }
 }
