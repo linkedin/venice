@@ -2,6 +2,7 @@ package com.linkedin.venice.schema.avro;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Optional;
@@ -15,7 +16,6 @@ import org.codehaus.jackson.node.ObjectNode;
 import static org.apache.avro.Schema.Field;
 import static org.apache.avro.Schema.Type.*;
 import static com.linkedin.venice.schema.avro.WriteComputeSchemaAdapter.WriteComputeOperation.*;
-
 
 /**
  * A util class that parses arbitrary Avro schema to its' write compute schema.
@@ -82,14 +82,18 @@ public class WriteComputeSchemaAdapter {
     String getName() {
       return name;
     }
+
+    String getUpperCamelName() {
+      if (name.isEmpty()) {
+        return  name;
+      }
+
+      return name.substring(0, 1).toUpperCase() + name.substring(1);
+    }
   }
 
   //Instantiate some constants here so that they could be reused.
-  private static final Schema NO_OP_SCHEMA;
-  static {
-    NO_OP_SCHEMA = Schema.createRecord(NO_OP.getName(), null, null, false);
-    NO_OP_SCHEMA.setFields(new ArrayList<>());
-  }
+  private static final String WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX = "WriteOpRecord";
 
   private static final ArrayNode ARRAY_NODE = JsonNodeFactory.instance.arrayNode();
   private static final ObjectNode OBJECT_NODE = JsonNodeFactory.instance.objectNode();
@@ -101,27 +105,37 @@ public class WriteComputeSchemaAdapter {
   }
 
   public static Schema parse(Schema schema) {
-    return parse(schema, null);
+    String name = null;
+
+    /*if this is a record, we'd like to append a suffix to the name so that the write
+    schema name wouldn't collide with the original schema name
+    */
+    if (schema.getType() == RECORD) {
+      name = schema.getName() + WRITE_COMPUTE_RECORD_SCHEMA_SUFFIX;
+    }
+
+    return parse(schema, name, null);
   }
 
   /**
    * Parse the given schema to its corresponding write compute schema
-   * @param originSchema
+   * @param derivedSchemaName the name of the output derived schema. This can be null and in that case, it will
+   *                          inherit the same name from the original schema.
    * @param namespace This can be null and it is only set up for arrays/maps in a record. Since the write compute
    *                  operation record will be called "ListOps"/"MapOps" regardless of the element type, duplicate
    *                  definition error might occur when a Record contains multiple arrays/maps. In case it happens,
    *                  we inherit field name as the namespace to distinguish them.
    */
-  private static Schema parse(Schema originSchema, String namespace) {
+  private static Schema parse(Schema originSchema, String derivedSchemaName, String namespace) {
     WriteComputeSchemaAdapter adapter = new WriteComputeSchemaAdapter();
 
     switch (originSchema.getType()) {
       case RECORD:
-        return adapter.parseRecord(originSchema);
+        return adapter.parseRecord(originSchema, derivedSchemaName);
       case ARRAY:
-        return adapter.parseArray(originSchema, namespace);
+        return adapter.parseArray(originSchema, derivedSchemaName, namespace);
       case MAP:
-        return adapter.parseMap(originSchema, namespace);
+        return adapter.parseMap(originSchema, derivedSchemaName, namespace);
       case UNION:
         return adapter.parseUnion(originSchema, namespace);
       default:
@@ -153,20 +167,20 @@ public class WriteComputeSchemaAdapter {
    * write compute record schema:
    * {
    *   "type" : "record",
-   *   "name" : "testRecord",
+   *   "name" : "testRecordWriteOpRecord",
    *   "fields" : [ {
    *     "name" : "intField",
    *     "type" : [ {
    *       "type" : "record",
    *       "name" : "NoOp",
    *       "fields" : [ ]
-   *     }, "int" ]
+   *     }, "int" ],
+   *     "default" : { }
    *   }, {
    *     "name" : "floatArray",
    *     "type" : [ "NoOp", {
    *       "type" : "record",
-   *       "name" : "ListOps",
-   *       "namespace" : "floatArray",
+   *       "name" : "floatArrayListOps",
    *       "fields" : [ {
    *         "name" : "setUnion",
    *         "type" : {
@@ -185,19 +199,31 @@ public class WriteComputeSchemaAdapter {
    *     }, {
    *       "type" : "array",
    *       "items" : "float"
-   *     } ]
+   *     } ],
+   *     "default" : { }
    *   } ]
    * }
    *
    * @param recordSchema the original record schema
-   * @return
    */
-  private Schema parseRecord(Schema recordSchema) {
-    Schema newSchema = Schema.createRecord(recordSchema.getName(), recordSchema.getDoc(), recordSchema.getNamespace(), recordSchema.isError());
+  private Schema parseRecord(Schema recordSchema, String derivedSchemaName) {
+    String recordNamespace = recordSchema.getNamespace();
+
+    if (derivedSchemaName == null) {
+      derivedSchemaName = recordSchema.getName();
+    }
+
+    Schema newSchema = Schema.createRecord(derivedSchemaName, recordSchema.getDoc(), recordNamespace,
+        recordSchema.isError());
     List<Field> fieldList = new ArrayList<>();
     for (Field field : recordSchema.getFields()) {
-      fieldList.add(new Field(field.name(), wrapNoopUnion(parse(field.schema(), field.name())),
-          field.doc(), field.defaultValue(), field.order()));
+      String fieldName = null;
+      if (field.schema().getType() != RECORD) {
+        fieldName = field.name();
+      }
+
+      fieldList.add(new Field(field.name(), wrapNoopUnion(recordNamespace, parse(field.schema(),
+          fieldName, recordNamespace)), field.doc(), OBJECT_NODE, field.order()));
     }
 
     newSchema.setFields(fieldList);
@@ -207,6 +233,10 @@ public class WriteComputeSchemaAdapter {
 
   /**
    * Wrap an array schema with possible write compute array operations.
+   * N. B. We're not supporting nested operation such as adding elements to the inner array for an
+   * array of array. Nested operations increase the complexity on both schema generation side and
+   * write compute process side. We'll add the support in the future if it's needed.
+   *
    * e.g.
    * origin array schema:
    * { "type": "array", "items": "int" }
@@ -236,10 +266,12 @@ public class WriteComputeSchemaAdapter {
    * } ]
    *
    * @param arraySchema the original array schema
-   * @param namespace The namespace in "ListOps" record. See {@link #parse(Schema, String)} for details.
+   * @param name
+   * @param namespace The namespace in "ListOps" record. See {@link #parse(Schema, String, String)} for details.
    */
-  private Schema parseArray(Schema arraySchema, String namespace) {
-    return Schema.createUnion(Arrays.asList(getCollectionOperation(LIST_OPS, arraySchema, namespace), arraySchema));
+  private Schema parseArray(Schema arraySchema, String name, String namespace) {
+    return Schema.createUnion(Arrays.asList(getCollectionOperation(LIST_OPS, arraySchema, name, namespace),
+        arraySchema));
   }
 
   /**
@@ -273,15 +305,16 @@ public class WriteComputeSchemaAdapter {
    * } ]
    *
    * @param mapSchema the original map schema
-   * @param namespace the namespace in "MapOps" record. See {@link #parse(Schema, String)} for details.
+   * @param namespace the namespace in "MapOps" record. See {@link #parse(Schema, String, String)} for details.
    */
-  private Schema parseMap(Schema mapSchema, String namespace) {
-    return Schema.createUnion(Arrays.asList(getCollectionOperation(MAP_OPS, mapSchema, namespace), mapSchema));
+  private Schema parseMap(Schema mapSchema, String name, String namespace) {
+    return Schema.createUnion(Arrays.asList(getCollectionOperation(MAP_OPS, mapSchema, name, namespace),
+        mapSchema));
   }
 
   private Schema parseUnion(Schema unionSchema, String namespace) {
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
-        .map(type -> parse(type, namespace))
+        .map(type -> parse(type, null, namespace))
         .collect(Collectors.toList()));
   }
 
@@ -291,10 +324,10 @@ public class WriteComputeSchemaAdapter {
    * @param schemaList
    * @return an union schema that contains all schemas in the list plus Noop record
    */
-  private Schema wrapNoopUnion(Schema... schemaList) {
+  private Schema wrapNoopUnion(String namespace, Schema... schemaList) {
     LinkedList<Schema> list = new LinkedList<>(Arrays.asList(schemaList));
     //always put NO_OP at the first place so that it will be the default value of the union
-    list.addFirst(getNoopOperation());
+    list.addFirst(getNoOpOperation(namespace));
 
     return createFlattenedUnion(list);
   }
@@ -314,15 +347,28 @@ public class WriteComputeSchemaAdapter {
     return Schema.createUnion(flattenedSchemaList);
   }
 
-  private Schema getCollectionOperation(WriteComputeOperation collectionOperation, Schema collectionSchema, String namespace) {
-    Schema operationSchema = Schema.createRecord(collectionOperation.getName(), null, namespace, false);
+  private Schema getCollectionOperation(WriteComputeOperation collectionOperation, Schema collectionSchema, String name,
+      String namespace) {
+    if (name == null) {
+      name = collectionOperation.getName();
+    } else {
+      name = name + collectionOperation.getUpperCamelName();
+    }
+
+    Schema operationSchema = Schema.createRecord(name, null, namespace, false);
     operationSchema.setFields(Arrays.stream(collectionOperation.params.get())
         .map(param -> param.apply(collectionSchema))
         .collect(Collectors.toList()));
     return operationSchema;
   }
 
-  public static Schema getNoopOperation() {
-    return NO_OP_SCHEMA;
+  public Schema getNoOpOperation(String namespace) {
+    Schema noOpSchema = Schema.createRecord(NO_OP.getName(), null, namespace, false);
+
+    //Avro requires every record to have a list of fields even if it's empty... Otherwise, NPE
+    //will be thrown out during parsing the schema.
+    noOpSchema.setFields(Collections.EMPTY_LIST);
+
+    return noOpSchema;
   }
 }
