@@ -30,6 +30,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
+import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
+import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
@@ -392,6 +395,7 @@ public class TestVeniceHelixAdmin {
 
   @Test(groups = {"flaky"})
   public void testHandleVersionCreationFailure() {
+    participantMessageStoreSetup();
     String storeName = "test";
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
@@ -418,6 +422,7 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testDeleteOldVersions() throws InterruptedException {
+    participantMessageStoreSetup();
     String storeName = "test";
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
@@ -1047,10 +1052,35 @@ public class TestVeniceHelixAdmin {
         "After removing the instance, white list should be empty.");
   }
 
-  //TODO slow test, ~15 seconds.  Can we improve it?
-  @Test(groups = {"flaky"})
+  /**
+   * Set up the participant store manually for testing purpose. This is done through the parent controller in production
+   * code.
+   */
+  private void participantMessageStoreSetup() {
+    int participantStorePartitionCount = 3;
+    String participantStoreName = ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName);
+    veniceAdmin.addStore(clusterName, participantStoreName, "venice-internal", ParticipantMessageKey.SCHEMA$.toString(),
+        ParticipantMessageValue.SCHEMA$.toString());
+    UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams();
+    queryParams.setPartitionCount(participantStorePartitionCount);
+    queryParams.setHybridOffsetLagThreshold(100L);
+    queryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
+    veniceAdmin.updateStore(clusterName, participantStoreName, queryParams);
+    veniceAdmin.incrementVersionIdempotent(clusterName, participantStoreName, Version.guidBasedDummyPushId(),
+        participantStorePartitionCount, veniceAdmin.getReplicationFactor(clusterName, participantStoreName), true);
+    TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(veniceAdmin.getStore(clusterName, participantStoreName).getVersions().size(), 1));
+    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS,
+        () -> Assert.assertEquals(veniceAdmin.getRealTimeTopic(clusterName, participantStoreName),
+        Version.composeRealTimeTopic(participantStoreName)));
+  }
+
+  @Test
   public void testKillOfflinePush()
       throws Exception {
+    participantMessageStoreSetup();
+    String participantStoreRTTopic =
+        Version.composeRealTimeTopic(ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName));
     String newNodeId = Utils.getHelixNodeIdentifier(9786);
     startParticipant(true, newNodeId);
     String storeName = "testKillPush";
@@ -1080,50 +1110,27 @@ public class TestVeniceHelixAdmin {
         return false;
       }
     });
-    //Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
-
-    try {
-      veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName());
-      Assert.fail("Storage node have not registered the handler to process kill message, sending should fail");
-    } catch (VeniceException e) {
-      //expected
-    }
-
-    final CopyOnWriteArrayList<KillOfflinePushMessage> processedMessage = new CopyOnWriteArrayList<>();
-    for (SafeHelixManager manager : this.participants.values()) {
-      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
-      channel.registerHandler(KillOfflinePushMessage.class, message -> {
-        processedMessage.add(message);
-        //make ST error to simulate kill consumption task.
-        if (nodesToPartitionMap.containsKey(manager.getInstanceName())) {
-          stateModelFactory.makeTransitionError(message.getKafkaTopic(),
-              nodesToPartitionMap.get(manager.getInstanceName()));
+    // Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
+    Map<Integer, Long> participantTopicOffsets = veniceAdmin.getTopicManager().getLatestOffsets(participantStoreRTTopic);
+    veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName());
+    // Verify the kill offline push message have been written to the participant message store RT topic.
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
+      Map<Integer, Long> newPartitionTopicOffsets =
+          veniceAdmin.getTopicManager().getLatestOffsets(participantStoreRTTopic);
+      for (Map.Entry<Integer, Long> entry : participantTopicOffsets.entrySet()) {
+        if (newPartitionTopicOffsets.get(entry.getKey()) > entry.getValue()) {
+          return true;
         }
-      });
-    }
-    veniceAdmin.deleteHelixResource(clusterName, version.kafkaTopicName());
-
-    // TODO: Fix the flaky assertions below and get rid of the fixed sleep. It doesn't sense the way it's written.
-
-    Thread.sleep(2000);
-    //Make sure the resource has been deleted, because after registering handler, kill message should be processed.
-    Assert.assertFalse(veniceAdmin.getVeniceHelixResource(clusterName)
-        .getRoutingDataRepository()
-        .containsKafkaTopic(version.kafkaTopicName()));
-    Assert.assertTrue(processedMessage.size() >=2 );
-
-    // Ensure that after killing, resource could continue to be deleted.
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
-        () -> !veniceAdmin.getVeniceHelixResource(clusterName)
-            .getRoutingDataRepository()
-            .containsKafkaTopic(version.kafkaTopicName()));
+      }
+      return false;
+    });
   }
 
   @Test
   public void testDeleteAllVersionsInStore() throws Exception {
+    participantMessageStoreSetup();
     stopParticipants();
     startParticipant(true, nodeId);
-
     String storeName = TestUtils.getUniqueString("testDeleteAllVersions");
     // register kill message handler for participants.
     for (SafeHelixManager manager : this.participants.values()) {
@@ -1199,6 +1206,7 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testDeleteAllVersionsInStoreWithoutJobAndResource() {
+    participantMessageStoreSetup();
     String storeName = "testDeleteVersionInWithoutJobAndResource";
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     Version version = store.increaseVersion();
@@ -1215,6 +1223,7 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testDeleteOldVersionInStore() {
+    participantMessageStoreSetup();
     String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
     for (SafeHelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
@@ -1245,6 +1254,7 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testDeleteStore() {
+    participantMessageStoreSetup();
     String storeName = "testDeleteStore";
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     for (SafeHelixManager manager : this.participants.values()) {
@@ -1284,6 +1294,7 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testDeleteStoreWithLargestUsedVersionNumberOverwritten() {
+    participantMessageStoreSetup();
     String storeName = "testDeleteStore";
     int largestUsedVersionNumber = 1000;
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
@@ -1683,6 +1694,8 @@ public class TestVeniceHelixAdmin {
     properties.put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
     properties.put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true);
     properties.put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false);
+    properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
+    properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
 
     return properties;
   }
