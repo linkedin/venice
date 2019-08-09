@@ -1123,7 +1123,7 @@ public class StoreIngestionTaskTest {
     });
   }
 
-  @Test(groups = {"flaky"})
+  @Test
   public void testDelayedTransitionToOnlineInHybridMode() throws Exception {
     final long MESSAGES_BEFORE_EOP = 100;
     final long MESSAGES_AFTER_EOP = 100;

@@ -416,9 +416,8 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(offlinePushStatus.getStatusDetails().get(), statusDetails);
   }
 
-  @Test(groups = {"flaky"})
-  public void testDeleteOldVersions()
-      throws InterruptedException {
+  @Test
+  public void testDeleteOldVersions() throws InterruptedException {
     String storeName = "test";
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
@@ -1120,9 +1119,8 @@ public class TestVeniceHelixAdmin {
             .containsKafkaTopic(version.kafkaTopicName()));
   }
 
-  @Test(groups = {"flaky"})
-  public void testDeleteAllVersionsInStore()
-      throws Exception {
+  @Test
+  public void testDeleteAllVersionsInStore() throws Exception {
     stopParticipants();
     startParticipant(true, nodeId);
 

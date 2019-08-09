@@ -58,7 +58,7 @@ public class MirrorMakerTest {
    * Unfortunately, MirrorMaker is a little flaky and sometimes fails. I have seen failures about 2% of the
    * time when running this test repeatedly, hence why I am adding the {@link FlakyTestRetryAnalyzer}. -FGV
    */
-  @Test(groups = {"flaky"}, timeOut = 30 * Time.MS_PER_SECOND)
+  @Test(timeOut = 30 * Time.MS_PER_SECOND)
   void testMirrorMakerProcessWrapper() throws ExecutionException, InterruptedException {
     MirrorMakerWrapper mirrorMaker = null;
 

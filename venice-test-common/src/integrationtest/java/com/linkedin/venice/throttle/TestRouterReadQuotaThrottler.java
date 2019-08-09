@@ -74,9 +74,8 @@ public class TestRouterReadQuotaThrottler {
     cluster.close();
   }
 
-  @Test(groups = {"flaky"})
-  public void testReadRequestBeThrottled()
-      throws InterruptedException {
+  @Test
+  public void testReadRequestBeThrottled() throws InterruptedException {
     long timeWindowInSec = TimeUnit.MILLISECONDS.toSeconds(ReadRequestThrottler.DEFAULT_STORE_QUOTA_TIME_WINDOW);
     // Setup read quota for the store.
     long totalQuota = 10;

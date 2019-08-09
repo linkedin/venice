@@ -66,13 +66,13 @@ public class StoreClientBenchmark {
   private D2Client d2Client;
   private AvroGenericStoreClient<String, Object> d2StoreClient;
 
-  @BeforeTest(alwaysRun = true)
+  @BeforeTest
   public void setUp() throws Exception {
     routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
     setupStoreClient();
   }
 
-  @AfterTest(alwaysRun = true)
+  @AfterTest
   public void cleanUp() throws Exception {
     closeStoreClient();
     routerServer.close();
@@ -176,7 +176,7 @@ public class StoreClientBenchmark {
 //    return new Object[][]{{false}};
   }
 
-  @Test(dataProvider = "useFastAvroOptionsProvider", groups = {"flaky"})
+  @Test(dataProvider = "useFastAvroOptionsProvider", enabled = false)
   public void testStoreClientWithMultiThreads(boolean useFastAvro) throws ExecutionException, InterruptedException {
     d2StoreClient = getD2StoreClient(useFastAvro);
     long startTs = System.currentTimeMillis();
