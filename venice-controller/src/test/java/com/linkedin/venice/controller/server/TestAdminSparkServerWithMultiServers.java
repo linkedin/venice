@@ -51,7 +51,7 @@ public class TestAdminSparkServerWithMultiServers {
     venice.close();
   }
 
-  @Test(groups = {"flaky"}, timeOut = TIME_OUT)
+  @Test(timeOut = TIME_OUT)
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
@@ -112,7 +112,7 @@ public class TestAdminSparkServerWithMultiServers {
    * After the attempt, the version is made current so the next attempt generates a new version.
    * @throws InterruptedException
    */
-  @Test(timeOut = TIME_OUT, groups = {"flaky"}) // TODO: Fix this flaky test.
+  @Test(timeOut = TIME_OUT)
   public void requestTopicIsIdempotentWithConcurrency() throws InterruptedException {
     String storeName = TestUtils.getUniqueString("store");
     venice.getNewStore(storeName);

@@ -412,7 +412,7 @@ public abstract class TestBatch {
     }
   }
 
-  @Test(groups = {"flaky"})
+  @Test(enabled = false) // disabled because performance testing is not very amenable to the unit test environment
   public void stressTestLargeMultiGet() throws Exception {
     int valueSize = 800;
     int numberOfRecords = 100000;
