@@ -172,8 +172,8 @@ public class VeniceRouterConfig {
     streamingEnabled = props.getBoolean(ROUTER_STREAMING_ENABLED, false);
     computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
 
-    socketTimeout = props.getInt(ROUTER_SOCKET_TIMEOUT, 10000); // 10s
-    connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 10000); // 10s
+    socketTimeout = props.getInt(ROUTER_SOCKET_TIMEOUT, 5000); // 5s
+    connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
   }
 
   public String getClusterName() {
