@@ -38,6 +38,7 @@ public enum Arg {
       + MigrationPushStrategy.getAllEnumString() + "]"),
   VSON_STORE("vson_store", "vson", true, "indicate whether it is Vson store or Avro store"),
   COMPRESSION_STRATEGY("compression-strategy", "cs", true, "strategies used to compress/decompress Record's value"),
+  CLIENT_DECOMPRESSION_ENABLED("client-decompression-enabled", "csd", true, "Enable/Disable client-side record decompression (default: true)"),
   CHUNKING_ENABLED("chunking-enabled", "ce", true, "Enable/Disable value chunking, mostly for large value store support"),
   INCREMENTAL_PUSH_ENABLED("incremental-push-enabled", "ipe", true, "a flag to see if the store supports incremental push or not"),
   SINGLE_GET_ROUTER_CACHE_ENABLED("single-get-router-cache-enabled", "srce", true, "Enable/Disable single get cache in Router"),
@@ -72,13 +73,12 @@ public enum Arg {
   FORCE("force", "f", false, "Force execute this operation"),
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system.");
 
-
   private final String argName;
   private final String first;
   private final boolean parameterized;
   private final String helpText;
 
-  Arg(String argName, String first, boolean parameterized, String helpText){
+  Arg(String argName, String first, boolean parameterized, String helpText) {
     this.argName = argName;
     this.first = first;
     this.parameterized = parameterized;
@@ -86,19 +86,19 @@ public enum Arg {
   }
 
   @Override
-  public String toString(){
+  public String toString() {
     return argName;
   }
 
-  public String first(){
+  public String first() {
     return first;
   }
 
-  public String getHelpText(){
+  public String getHelpText() {
     return helpText;
   }
 
-  public boolean isParameterized(){
+  public boolean isParameterized() {
     return parameterized;
   }
 }

@@ -1760,7 +1760,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public synchronized  void setStoreCompressionStrategy(String clusterName, String storeName,
+    public synchronized void setStoreCompressionStrategy(String clusterName, String storeName,
                                                           CompressionStrategy compressionStrategy) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setCompressionStrategy(compressionStrategy);
@@ -1769,7 +1769,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public synchronized  void setChunkingEnabled(String clusterName, String storeName,
+    public synchronized void setClientDecompressionEnabled(String clusterName, String storeName, boolean clientDecompressionEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setClientDecompressionEnabled(clientDecompressionEnabled);
+            return store;
+        });
+    }
+
+    public synchronized void setChunkingEnabled(String clusterName, String storeName,
         boolean chunkingEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setChunkingEnabled(chunkingEnabled);
@@ -1923,6 +1930,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> hybridOffsetLagThreshold,
         Optional<Boolean> accessControlled,
         Optional<CompressionStrategy> compressionStrategy,
+        Optional<Boolean> clientDecompressionEnabled,
         Optional<Boolean> chunkingEnabled,
         Optional<Boolean> singleGetRouterCacheEnabled,
         Optional<Boolean> batchGetRouterCacheEnabled,
@@ -2033,6 +2041,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (compressionStrategy.isPresent()) {
                 setStoreCompressionStrategy(clusterName, storeName, compressionStrategy.get());
+            }
+
+            if (clientDecompressionEnabled.isPresent()) {
+                setClientDecompressionEnabled(clusterName, storeName, clientDecompressionEnabled.get());
             }
 
             if (chunkingEnabled.isPresent()) {
