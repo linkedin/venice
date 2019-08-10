@@ -508,6 +508,7 @@ public class AdminTool {
     longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p));
     booleanParam(cmd, Arg.ACCESS_CONTROL, p -> params.setAccessControlled(p));
     genericParam(cmd, Arg.COMPRESSION_STRATEGY, s -> CompressionStrategy.valueOf(s), p -> params.setCompressionStrategy(p));
+    booleanParam(cmd, Arg.CLIENT_DECOMPRESSION_ENABLED, p -> params.setClientDecompressionEnabled(p));
     booleanParam(cmd, Arg.CHUNKING_ENABLED, p -> params.setChunkingEnabled(p));
     booleanParam(cmd, Arg.SINGLE_GET_ROUTER_CACHE_ENABLED, p -> params.setSingleGetRouterCacheEnabled(p));
     booleanParam(cmd, Arg.BATCH_GET_ROUTER_CACHE_ENABLED, p -> params.setBatchGetRouterCacheEnabled(p));
@@ -521,7 +522,6 @@ public class AdminTool {
     genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p));
 
     ControllerResponse response = controllerClient.updateStore(storeName, params);
-
     printSuccess(response);
   }
 

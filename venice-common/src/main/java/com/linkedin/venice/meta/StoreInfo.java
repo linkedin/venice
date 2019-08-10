@@ -35,6 +35,7 @@ public class StoreInfo {
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
     storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
     storeInfo.setCompressionStrategy(store.getCompressionStrategy());
+    storeInfo.setClientDecompressionEnabled(store.getClientDecompressionEnabled());
     storeInfo.setNumVersionsToPreserve(store.getNumVersionsToPreserve());
     storeInfo.setMigrating(store.isMigrating());
     storeInfo.setWriteComputationEnabled(store.isWriteComputationEnabled());
@@ -139,6 +140,11 @@ public class StoreInfo {
    * strategies used to compress/decompress Record's value
    */
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+
+  /**
+   * Enable/Disable client-side record decompression (default: true)
+   */
+  private boolean clientDecompressionEnabled = true;
 
   /**
    * How many versions this store preserve at most. By default it's 0 means we use the cluster level config to
@@ -366,6 +372,14 @@ public class StoreInfo {
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
+  }
+
+  public boolean getClientDecompressionEnabled() {
+    return clientDecompressionEnabled;
+  }
+
+  public void setClientDecompressionEnabled(boolean clientDecompressionEnabled) {
+    this.clientDecompressionEnabled = clientDecompressionEnabled;
   }
 
   public int getNumVersionsToPreserve() {

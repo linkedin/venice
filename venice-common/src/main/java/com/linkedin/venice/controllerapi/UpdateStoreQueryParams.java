@@ -36,6 +36,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBatchGetLimit(srcStore.getBatchGetLimit())
             .setOwner(srcStore.getOwner())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
+            .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
             .setEnableReads(srcStore.isEnableStoreReads())
             .setEnableWrites(srcStore.isEnableStoreWrites())
             .setPartitionCount(srcStore.getPartitionCount())
@@ -143,6 +144,15 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<CompressionStrategy> getCompressionStrategy() {
     return Optional.ofNullable(params.get(COMPRESSION_STRATEGY)).map(CompressionStrategy::valueOf);
+  }
+
+  public UpdateStoreQueryParams setClientDecompressionEnabled(boolean clientDecompressionEnabled) {
+    putBoolean(CLIENT_DECOMPRESSION_ENABLED, clientDecompressionEnabled);
+    return this;
+  }
+
+  public Optional<Boolean> getClientDecompressionEnabled() {
+    return getBoolean(CLIENT_DECOMPRESSION_ENABLED);
   }
 
   public UpdateStoreQueryParams setChunkingEnabled(boolean chunkingEnabled) {

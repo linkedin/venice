@@ -326,6 +326,7 @@ public class AdminExecutionTask implements Callable<Void> {
             : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline),
         Optional.of(message.accessControlled),
         CompressionStrategy.optionalValueOf(message.compressionStrategy),
+        Optional.of(message.clientDecompressionEnabled),
         Optional.of(message.chunkingEnabled),
         Optional.of(message.singleGetRouterCacheEnabled),
         Optional.of(message.batchGetRouterCacheEnabled),

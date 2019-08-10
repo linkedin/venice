@@ -215,6 +215,7 @@ public class TestVeniceParentHelixAdmin {
         Optional<Long> hybridOffsetLagThreshold,
         Optional<Boolean> accessControlled,
         Optional<CompressionStrategy> compressionStrategy,
+        Optional<Boolean> clientDecompressionEnabled,
         Optional<Boolean> chunkingEnabled,
         Optional<Boolean> singleGetRouterCacheEnabled,
         Optional<Boolean> batchGetRouterCacheEnabled,

@@ -1039,6 +1039,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> hybridOffsetLagThreshold,
       Optional<Boolean> accessControlled,
       Optional<CompressionStrategy> compressionStrategy,
+      Optional<Boolean> clientDecompressionEnabled,
       Optional<Boolean> chunkingEnabled,
       Optional<Boolean> singleGetRouterCacheEnabled,
       Optional<Boolean> batchGetRouterCacheEnabled,
@@ -1096,6 +1097,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.accessControlled = accessControlled.isPresent() ? accessControlled.get() : store.isAccessControlled();
       setStore.compressionStrategy = compressionStrategy.isPresent()
           ? compressionStrategy.get().getValue() : store.getCompressionStrategy().getValue();
+      setStore.clientDecompressionEnabled =  clientDecompressionEnabled.orElseGet(() -> store.getClientDecompressionEnabled());
       setStore.chunkingEnabled = chunkingEnabled.isPresent() ? chunkingEnabled.get() : store.isChunkingEnabled();
       setStore.singleGetRouterCacheEnabled = singleGetRouterCacheEnabled.isPresent() ? singleGetRouterCacheEnabled.get() : store.isSingleGetRouterCacheEnabled();
       setStore.batchGetRouterCacheEnabled =

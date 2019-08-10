@@ -140,6 +140,11 @@ public class Store {
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
   /**
+   * Enable/Disable client-side record decompression (default: true)
+   */
+  private boolean clientDecompressionEnabled = true;
+
+  /**
    * Whether current store supports large value (typically more than 1MB).
    * By default, the chunking feature is disabled.
    */
@@ -397,6 +402,14 @@ public class Store {
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
+  }
+
+  public boolean getClientDecompressionEnabled() {
+    return clientDecompressionEnabled;
+  }
+
+  public void setClientDecompressionEnabled(boolean clientDecompressionEnabled) {
+    this.clientDecompressionEnabled = clientDecompressionEnabled;
   }
 
   public boolean isChunkingEnabled() {
@@ -726,6 +739,7 @@ public class Store {
     result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
     result = 31 * result + (accessControlled ? 1 : 0);
     result = 31 * result + (compressionStrategy.hashCode());
+    result = 31 * result + (clientDecompressionEnabled ? 1 : 0);
     result = 31 * result + (chunkingEnabled ? 1 : 0);
     result = 31 * result + (singleGetRouterCacheEnabled ? 1 : 0);
     result = 31 * result + (batchGetRouterCacheEnabled ? 1 : 0);
@@ -765,6 +779,7 @@ public class Store {
     if (!versions.equals(store.versions)) return false;
     if (accessControlled != store.accessControlled) return false;
     if (compressionStrategy != store.compressionStrategy) return false;
+    if (clientDecompressionEnabled != store.clientDecompressionEnabled) return false;
     if (chunkingEnabled != store.chunkingEnabled) return false;
     if (singleGetRouterCacheEnabled != store.singleGetRouterCacheEnabled) return false;
     if (batchGetRouterCacheEnabled != store.batchGetRouterCacheEnabled) return false;
@@ -803,6 +818,7 @@ public class Store {
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setAccessControlled(accessControlled);
     clonedStore.setCompressionStrategy(compressionStrategy);
+    clonedStore.setClientDecompressionEnabled(clientDecompressionEnabled);
     clonedStore.setChunkingEnabled(chunkingEnabled);
     clonedStore.setSingleGetRouterCacheEnabled(singleGetRouterCacheEnabled);
     clonedStore.setBatchGetRouterCacheEnabled(batchGetRouterCacheEnabled);

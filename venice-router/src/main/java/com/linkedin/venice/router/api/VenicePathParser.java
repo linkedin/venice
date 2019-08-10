@@ -6,6 +6,7 @@ import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -27,6 +28,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 import org.apache.log4j.Logger;
+import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
 import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
@@ -152,11 +154,20 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         }
       }
 
+      boolean decompressOnClient = routerConfig.isDecompressOnClient();
+      if (decompressOnClient) {
+        Store store = storeRepository.getStore(storeName);
+        if (store == null){
+          throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
+              "Store: " + store + " does not exist on this cluster", false);
+        }
+        decompressOnClient = store.getClientDecompressionEnabled();
+      }
+
       // TODO: maybe we should use the builder pattern here??
       // Setup decompressor
       VeniceResponseDecompressor responseDecompressor =
-          new VeniceResponseDecompressor(routerConfig.isDecompressOnClient(), routerStats, fullHttpRequest, storeName,
-              version);
+          new VeniceResponseDecompressor(decompressOnClient, routerStats, fullHttpRequest, storeName, version);
       path.setResponseDecompressor(responseDecompressor);
 
       AggRouterHttpRequestStats stats = routerStats.getStatsByType(requestType);
