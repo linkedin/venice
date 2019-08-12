@@ -327,7 +327,6 @@ public class StatTrackingStoreClientTest {
     Map<String, ? extends Metric> metrics = repository.metrics();
     String storeMetricPrefix = "." + storeName;
 
-
     Metric requestMetric = metrics.get(storeMetricPrefix + "--compute_request.OccurrenceRate");
     Metric healthyRequestMetric = metrics.get(storeMetricPrefix + "--compute_healthy_request.OccurrenceRate");
     Metric unhealthyRequestMetric = metrics.get(storeMetricPrefix + "--compute_unhealthy_request.OccurrenceRate");
@@ -336,9 +335,14 @@ public class StatTrackingStoreClientTest {
     Assert.assertTrue(requestMetric.value() > 0.0);
     Assert.assertTrue(healthyRequestMetric.value() > 0.0);
     Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
-    // Added some delay to fix the flakiness since it seems the metric window will be missed if the delay between
-    // metric recording and metric retrieval in the unit test.
-    Utils.sleep(3);
+
+    /**
+     * Response deserialization metric is being tracked after the result future is completed.
+     * Check {@link com.linkedin.venice.client.store.deserialization.BlockingDeserializer#deserialize}
+     * and other {@link com.linkedin.venice.client.store.deserialization.BatchDeserializer} implementations as well.
+     * To make sure the metric is available during verification, the following wait is necessary.
+     */
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> !Double.isNaN(deserializationMetric.value()));
     Assert.assertTrue(deserializationMetric.value() > 0.0);
   }
 
