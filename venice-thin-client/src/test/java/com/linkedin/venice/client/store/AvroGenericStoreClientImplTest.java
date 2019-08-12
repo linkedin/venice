@@ -7,7 +7,6 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
-import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -18,6 +17,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -511,11 +511,23 @@ public class AvroGenericStoreClientImplTest {
     Assert.assertEquals(unhealthyRequestMetric.value(), 0.0);
     Assert.assertTrue(requestSerializationTimeMetric.value() > 0.0);
     Assert.assertTrue(requestSubmissionToResponseHandlingTimeMetric.value() > 0.0);
+
+    /**
+     * Response deserialization metric is being tracked after the result future is completed.
+     * Check {@link com.linkedin.venice.client.store.deserialization.BlockingDeserializer#deserialize}
+     * and other {@link com.linkedin.venice.client.store.deserialization.BatchDeserializer} implementations as well.
+     * To make sure the metric is available during verification, the following wait is necessary.
+     */
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,
+        () -> {
+          Double responseDeserializationTimeMetricValue = responseDeserializationTimeMetric.value();
+          Assert.assertFalse(responseDeserializationTimeMetricValue.isNaN());
+        });
     Assert.assertTrue(responseDeserializationTimeMetric.value() > 0.0);
-    Assert.assertTrue(requestSerializationTimeMetric99.value() > 0.0);
-    Assert.assertTrue(requestSubmissionToResponseHandlingTimeMetric99.value() > 0.0);
     Assert.assertTrue(responseDeserializationTimeMetric99.value() > 0.0);
 
+    Assert.assertTrue(requestSerializationTimeMetric99.value() > 0.0);
+    Assert.assertTrue(requestSubmissionToResponseHandlingTimeMetric99.value() > 0.0);
   }
 
   @Test
