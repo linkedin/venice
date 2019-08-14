@@ -135,7 +135,7 @@ class IngestionNotificationDispatcher {
 
           if (!isCurrentVersion.getAsBoolean() && // The currently-active version should always report progress.
               (!pcs.isStarted() ||
-                  pcs.isComplete() ||
+                  pcs.isEndOfPushReceived() ||
                   pcs.isErrorReported())) {
             if (logger.isDebugEnabled()) {
               logger.debug("Can not report progress for topic '" + topic +
@@ -183,7 +183,7 @@ class IngestionNotificationDispatcher {
             String logMessage = "Partition: " + pcs.getPartition() + " has already been ";
             boolean report = true;
 
-            if (pcs.isComplete()) {
+            if (pcs.isEndOfPushReceived()) {
               logMessage += "marked as completed so an error will not be reported.";
               report = false;
             }
