@@ -22,6 +22,7 @@ import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -29,48 +30,54 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 
 public class TestRouterReadQuotaThrottler {
   private VeniceClusterWrapper cluster;
   private int testTimeOutMS = 3000;
   private int numberOfRouter = 2;
-
-  private VeniceWriter<Object, Object> veniceWriter;
   private String storeName;
   private int currentVersion;
 
   @BeforeClass(alwaysRun = true)
-  public void setup()
-      throws Exception {
-    int numberOfController = 1;
-    int numberOfServer = 1;
-
-    cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter);
+  public void setup() throws Exception {
+    cluster = ServiceFactory.getVeniceCluster(1, 1, numberOfRouter);
 
     VersionCreationResponse response = cluster.getNewStoreVersion();
     Assert.assertFalse(response.isError());
     storeName = response.getName();
     currentVersion = response.getVersion();
 
-
     String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    TestUtils.VeniceTestWriterFactory writerFactory = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress());
+    try (
+        VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+        VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
+        VeniceWriter<Object, Object> writer = writerFactory.getVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
 
-    int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress()).getVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer);
-    String key = TestUtils.getUniqueString("key");
-    String value = TestUtils.getUniqueString("value");
-    veniceWriter.broadcastStartOfPush(new HashMap<>());
-    // Insert test record and wait synchronously for it to succeed
-    veniceWriter.put(key, value, valueSchemaId).get();
-    // Write end of push message to make node become ONLINE from BOOTSTRAP
-    veniceWriter.broadcastEndOfPush(new HashMap<String, String>());
+      String key = TestUtils.getUniqueString("key");
+      String value = TestUtils.getUniqueString("value");
+      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+
+      writer.broadcastStartOfPush(new HashMap<>());
+      // Insert test record and wait synchronously for it to succeed
+      writer.put(key, value, valueSchemaId).get();
+      // Write end of push message to make node become ONLINE from BOOTSTRAP
+      writer.broadcastEndOfPush(new HashMap<String, String>());
+    }
+
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+      if (ControllerClient.getStore(cluster.getAllControllersURLs(), cluster.getClusterName(), storeName).getStore().getCurrentVersion() == 0) {
+        return false;
+      }
+      cluster.refreshAllRouterMetaData();
+      return true;
+    });
   }
 
   @AfterClass(alwaysRun = true)
   public void cleanup() {
-    veniceWriter.close();
     cluster.close();
   }
 
@@ -136,32 +143,39 @@ public class TestRouterReadQuotaThrottler {
     }
   }
 
-  @Test
+  @Test(priority = 1)
   public void testNoopThrottlerCanReportPerRouterStoreQuota() {
-    // Get default read quota
-    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    StoreInfo storeInfo = storeResponse.getStore();
-    long expectedDefaultQuota = storeInfo.getReadQuotaInCU();
+    Properties props = new Properties();
+    props.put(ROUTER_ENABLE_READ_THROTTLING, "false");
+    for (VeniceRouterWrapper router : cluster.getVeniceRouters()) {
+      cluster.removeVeniceRouter(router.getPort());
+      cluster.addVeniceRouter(props);
+    }
 
-    VeniceRouterWrapper veniceRouterWrapper = cluster.getRandomVeniceRouter();
-    MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+    VeniceRouterWrapper router = cluster.getRandomVeniceRouter();
+    MetricsRepository metricsRepository = router.getMetricsRepository();
     Map<String, ? extends Metric> metrics = metricsRepository.metrics();
 
-    TestUtils.waitForNonDeterministicAssertion(2000, TimeUnit.MILLISECONDS, () -> {
+    // Get default read quota
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
+    StoreResponse response = controllerClient.getStore(storeName);
+    Assert.assertFalse(response.isError());
+    final double expectedDefaultQuota = (double)response.getStore().getReadQuotaInCU() / numberOfRouter;
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(metrics.containsKey("." + storeName + "--read_quota_per_router.Gauge"));
-      Assert.assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), (double)expectedDefaultQuota / 2.0, 0.0001d);
+      Assert.assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), expectedDefaultQuota, 0.0001);
     });
 
-    // test the stats change after changing updating store read quota config
-    long newQuota = 1000000l; // 1 million
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(newQuota));
-    storeResponse = controllerClient.getStore(storeName);
-    storeInfo = storeResponse.getStore();
-    long expectedQuota = storeInfo.getReadQuotaInCU();
-    TestUtils.waitForNonDeterministicAssertion(2000, TimeUnit.MILLISECONDS, () -> {
+    // Test that the stats change after updating store read quota config
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadQuotaInCU(1000 * 1000));
+    response = controllerClient.getStore(storeName);
+    Assert.assertFalse(response.isError());
+    final double expectedQuota = (double)response.getStore().getReadQuotaInCU() / numberOfRouter;
+
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(metrics.containsKey("." + storeName + "--read_quota_per_router.Gauge"));
-      Assert.assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), (double)expectedQuota / 2.0, 0.0001d);
+      Assert.assertEquals(metrics.get("." + storeName + "--read_quota_per_router.Gauge").value(), expectedQuota, 0.0001);
     });
   }
 }

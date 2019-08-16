@@ -351,6 +351,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     restartVeniceComponent(veniceRouterWrappers, port);
   }
 
+  public synchronized void removeVeniceRouter(int port) {
+    stopVeniceRouter(port);
+    veniceRouterWrappers.remove(port);
+  }
+
   /**
    * Stop the venice server listen on given port.
    *
