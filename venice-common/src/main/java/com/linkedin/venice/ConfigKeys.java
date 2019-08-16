@@ -781,4 +781,12 @@ public class ConfigKeys {
    * ongoing push job has been killed.
    */
   public static final String PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS = "participant.message.consumption.delay.ms";
+
+  public static final String ROUTER_STATEFUL_HEALTHCHECK_ENABLED = "router.stateful.healthcheck.enabled";
+  /**
+  * Maximum number of pending router request per storage node after which router concludes that host to be unhealthy
+  * and stops sending further request to it..
+  */
+  public static final String ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE = "router.unhealthy.pending.connection.threshold.per.host";
+
 }

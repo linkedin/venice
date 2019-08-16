@@ -17,6 +17,7 @@ import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
@@ -112,6 +113,7 @@ public class TestVeniceDispatcher {
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
     MetricsRepository mockMetricsRepo = new MetricsRepository();
     RouterStats mockRouterStats = mock(RouterStats.class);
+    RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
     VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
 
@@ -135,7 +137,7 @@ public class TestVeniceDispatcher {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo);
     }
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo, Optional.empty(),
-        mockRouterStats, mockMetricsRepo, storageNodeClient);
+        mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats);
     dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;
   }
