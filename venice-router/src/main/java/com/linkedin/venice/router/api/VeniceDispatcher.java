@@ -17,9 +17,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.VeniceRouterConfig;
-import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.router.stats.RouteHttpRequestStats;
-import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
@@ -27,7 +24,10 @@ import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpStats;
+import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
 import com.linkedin.venice.router.throttle.PendingRequestThrottler;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -111,7 +111,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
       ReadOnlyStoreRepository storeRepository, Optional<RouterCache> routerCache,
       RouterStats routerStats, MetricsRepository metricsRepository,
-      StorageNodeClient storageNodeClient) {
+      StorageNodeClient storageNodeClient, RouteHttpRequestStats routeHttpRequestStats) {
     this.healthMonitor = healthMonitor;
     this.storeRepository = storeRepository;
     this.routerCache = routerCache;
@@ -119,7 +119,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     this.routerStats = routerStats;
     this.perRouteStats = new RouterStats<>( requestType -> new RouteHttpStats(metricsRepository, requestType) );
 
-    this.routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
+    this.routeHttpRequestStats = routeHttpRequestStats;
     this.storageNodeClient = storageNodeClient;
 
     this.pendingRequestThrottler = new PendingRequestThrottler(config.getMaxPendingRequest());

@@ -34,6 +34,14 @@ public class RouteHttpRequestStats {
       stats.recordFinishedRequestCount();
     }
 
+    public long getPendingRequestCount(String hostName) {
+      InternalHostStats stat = routeStatsMap.get(hostName);
+      if (stat == null) {
+        return 0;
+      }
+      return stat.pendingRequestCount.get();
+    }
+
     class InternalHostStats extends AbstractVeniceStats  {
       private final Sensor pendingRequestCountSensor;
       private AtomicLong pendingRequestCount;

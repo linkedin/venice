@@ -52,6 +52,7 @@ import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
@@ -303,10 +304,12 @@ public class RouterServer extends AbstractVeniceService {
     TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry, true, 1);
     Map<String, Object> serverSocketOptions = null;
 
+    RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
+
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
-    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor);
-    scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config));
+    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, routeHttpRequestStats,
+        config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute());
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +
@@ -350,7 +353,8 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
-        routerStats, metricsRepository, storageNodeClient);
+        routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats);
+    scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config));
 
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests);
     heartbeat.startInner();

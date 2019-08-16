@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -153,10 +154,11 @@ public class TestHostFinder {
     LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
     doReturn(instanceSet).when(mockLiveInstanceMonitor).getAllLiveInstances();
+    RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
 
     Set<String> unhealthyHostsSet = getMockSetWithRealFunctionality();
     // mock VeniceHostHealth
-    VeniceHostHealthTest healthMon = new VeniceHostHealthTest(mockLiveInstanceMonitor);
+    VeniceHostHealthTest healthMon = new VeniceHostHealthTest(mockLiveInstanceMonitor, routeHttpRequestStats);
     healthMon.setUnhealthyHostSet(unhealthyHostsSet);
 
     // mock VeniceHostFinder
@@ -222,8 +224,8 @@ public class TestHostFinder {
    * keep track of whether some APIs inside the set have been invoked.
    */
   private class VeniceHostHealthTest extends VeniceHostHealth {
-    public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor) {
-      super(liveInstanceMonitor);
+    public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats) {
+      super(liveInstanceMonitor, routeHttpRequestStats, false, 10);
     }
 
     /**

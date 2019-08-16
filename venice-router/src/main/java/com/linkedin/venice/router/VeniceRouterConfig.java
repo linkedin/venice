@@ -13,7 +13,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.router.api.VeniceHostHealth.*;
 
 
 /**
@@ -78,6 +77,9 @@ public class VeniceRouterConfig {
   private boolean computeFastAvroEnabled;
   private int socketTimeout;
   private int connectionTimeout;
+  private boolean statefulRouterHealthCheckEnabled;
+  private int routerUnhealthyPendingConnThresholdPerRoute;
+
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -174,6 +176,9 @@ public class VeniceRouterConfig {
 
     socketTimeout = props.getInt(ROUTER_SOCKET_TIMEOUT, 5000); // 5s
     connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
+
+    statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, false);
+    routerUnhealthyPendingConnThresholdPerRoute = props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 50);
   }
 
   public String getClusterName() {
@@ -398,6 +403,14 @@ public class VeniceRouterConfig {
 
   public int getConnectionTimeout() {
     return connectionTimeout;
+  }
+
+  public boolean isStatefulRouterHealthCheckEnabled() {
+    return statefulRouterHealthCheckEnabled;
+  }
+
+  public int getRouterUnhealthyPendingConnThresholdPerRoute() {
+    return routerUnhealthyPendingConnThresholdPerRoute;
   }
 
   /**

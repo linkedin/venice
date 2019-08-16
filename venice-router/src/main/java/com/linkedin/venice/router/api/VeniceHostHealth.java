@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 import org.apache.log4j.Logger;
@@ -11,13 +12,19 @@ import org.apache.log4j.Logger;
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private static final Logger logger = Logger.getLogger(VeniceHostHealth.class);
-
+  private final int maxPendingConnectionPerHost;
+  private final boolean statefulRouterHealthCheckEnabled;
   private Set<String> slowPartitionHosts = new ConcurrentSkipListSet<>();
   protected Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
 
   private final LiveInstanceMonitor liveInstanceMonitor;
+  private RouteHttpRequestStats routeHttpRequestStats;
 
-  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor) {
+  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats,
+      boolean statefulRouterHealthCheckEnabled, int maxPendingConnectionPerHost) {
+    this.routeHttpRequestStats = routeHttpRequestStats;
+    this.statefulRouterHealthCheckEnabled = statefulRouterHealthCheckEnabled;
+    this.maxPendingConnectionPerHost = maxPendingConnectionPerHost;
     this.liveInstanceMonitor = liveInstanceMonitor;
   }
 
@@ -63,11 +70,17 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   public boolean isHostHealthy(Instance hostName, String partitionName) {
     if (!liveInstanceMonitor.isInstanceAlive(hostName) // not alive
         || slowPartitionHosts.contains(hostPartitionString(hostName, partitionName))
+        || checkPendingRequestCount(hostName.getNodeId())
         || unhealthyHosts.contains(hostName.getUrl())){
       return false; /* can't check-then-get, would cause a race condition and might get null */
     } else {
       return true;
     }
+  }
+
+  private boolean checkPendingRequestCount(String hostName) {
+    return (statefulRouterHealthCheckEnabled
+        && routeHttpRequestStats.getPendingRequestCount(hostName) > maxPendingConnectionPerHost);
   }
 
   private static String hostPartitionString(Instance host, String partition){
