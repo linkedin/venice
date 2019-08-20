@@ -5,11 +5,14 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -29,6 +32,23 @@ public class TestPartitionStatusOnlineInstanceFinder {
 
     Assert.assertEquals(onlineInstanceList.size(), 1);
     Assert.assertEquals(onlineInstanceList.get(0).getNodeId(), "host1_1");
+  }
+
+  @Test
+  public void testGetReplicaStates() {
+    PartitionStatusOnlineInstanceFinder finder = initFinder();
+    List<ReplicaState> replicaStates = finder.getReplicaStates(testTopic, testPartition);
+    Assert.assertEquals(replicaStates.size(), 2, "Unexpected replication factor");
+    List<String> veniceStatuses = Stream.of(ExecutionStatus.values()).map(ExecutionStatus::toString).collect(Collectors.toList());
+    for (ReplicaState replicaState : replicaStates) {
+      Assert.assertEquals(replicaState.getPartition(), 0, "Unexpected partition number");
+      Assert.assertTrue(replicaState.getParticipantId().equals("host0_1")
+          || replicaState.getParticipantId().equals("host1_1"));
+      Assert.assertTrue(replicaState.getExternalViewStatus().equals(HelixState.LEADER_STATE)
+          || replicaState.getExternalViewStatus().equals(HelixState.STANDBY_STATE));
+      Assert.assertTrue(veniceStatuses.contains(replicaState.getVenicePushStatus()));
+      Assert.assertEquals(replicaState.isReadyToServe(), replicaState.getVenicePushStatus().equals(ExecutionStatus.COMPLETED.toString()));
+    }
   }
 
   @Test

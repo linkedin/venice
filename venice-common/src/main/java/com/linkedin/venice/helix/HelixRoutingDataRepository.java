@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -22,7 +23,6 @@ import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
 import org.apache.helix.api.listeners.IdealStateChangeListener;
-import org.apache.helix.api.listeners.LiveInstanceChangeListener;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
@@ -48,6 +48,8 @@ import org.apache.log4j.Logger;
 @BatchMode
 public class HelixRoutingDataRepository implements RoutingDataRepository, ControllerChangeListener, IdealStateChangeListener, RoutingTableChangeListener {
     private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class);
+
+    private static final String ONLINE_OFFLINE_VENICE_STATE_FILLER = "N/A";
     /**
      * Manager used to communicate with Helix.
      */
@@ -126,6 +128,19 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
 
     public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
         return getPartitionAssignments(kafkaTopic).getPartition(partitionId).getAllInstances();
+    }
+
+    @Override
+    public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
+        Partition partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
+        if (partition == null) {
+            return Collections.emptyList();
+        }
+        return partition.getAllInstances().entrySet().stream()
+            .flatMap(e -> e.getValue().stream()
+                .map(instance -> new ReplicaState(partitionId, instance.getNodeId(), e.getKey(),
+                    ONLINE_OFFLINE_VENICE_STATE_FILLER, e.getKey().equals(HelixState.ONLINE_STATE))))
+            .collect(Collectors.toList());
     }
 
     /**

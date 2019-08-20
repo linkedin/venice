@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.List;
 import java.util.Map;
 
@@ -25,6 +26,11 @@ public interface OnlineInstanceFinder {
    * @return a map that has {@link com.linkedin.venice.helix.HelixState} as the key and list of instances as the value
    */
   Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId);
+
+  /**
+   * @return a list of {@link ReplicaState} with replica level details about a given store name, version and partition.
+   */
+  List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId);
 
   /**
    * Query number of partition in given kafka topic.

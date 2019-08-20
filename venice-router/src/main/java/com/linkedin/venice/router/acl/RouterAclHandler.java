@@ -4,6 +4,7 @@ import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
@@ -45,8 +46,16 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
     X509Certificate clientCert = (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
-    String storeName = new VenicePathParserHelper(req.uri()).getResourceName();
+    VenicePathParserHelper helper = new VenicePathParserHelper(req.uri());
+    String storeName = helper.getResourceName();
     String method = req.method().name();
+
+    if (VenicePathParser.TYPE_RESOURCE_STATE.equals(helper.getResourceType())) {
+      // White list acl or ignore permission for /resource_state requests
+      ReferenceCountUtil.retain(req);
+      ctx.fireChannelRead(req);
+      return;
+    }
 
     if (metadataRepository.hasStore(storeName)) {
       if (!metadataRepository.getStore(storeName).isAccessControlled()) {

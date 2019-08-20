@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
+import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,11 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
   @Override
   public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
     return getInstanceFinder(kafkaTopic).getAllInstances(kafkaTopic, partitionId);
+  }
+
+  @Override
+  public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
+    return getInstanceFinder(kafkaTopic).getReplicaStates(kafkaTopic, partitionId);
   }
 
   @Override
