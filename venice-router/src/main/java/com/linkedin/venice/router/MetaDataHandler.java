@@ -5,12 +5,17 @@ import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
+import com.linkedin.venice.routerapi.ReplicaState;
+import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -23,7 +28,10 @@ import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.security.cert.CertificateExpiredException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.log4j.Logger;
@@ -54,16 +62,20 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final String clusterName;
   private final Map<String, String> clusterToD2Map;
+  private final OnlineInstanceFinder onlineInstanceFinder;
 
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName, ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map){
+  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName,
+      ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
+      OnlineInstanceFinder onlineInstanceFinder){
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
     this.clusterName = clusterName;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
+    this.onlineInstanceFinder = onlineInstanceFinder;
   }
 
   @Override
@@ -85,6 +97,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else if (VenicePathParser.TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
       // URI: /discover_cluster/${storeName}
       hanldeD2ServiceLookup(ctx, helper);
+    } else if (VenicePathParser.TYPE_RESOURCE_STATE.equals(resourceType)) {
+      // URI: /resource_state
+      handleResourceStateLookup(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
       // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -105,7 +120,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleKeySchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkStoreName(storeName, "/" + VenicePathParser.TYPE_KEY_SCHEMA + "/${storeName}");
+    checkResourceName(storeName, "/" + VenicePathParser.TYPE_KEY_SCHEMA + "/${storeName}");
     SchemaEntry keySchema = schemaRepo.getKeySchema(storeName);
     if (null == keySchema) {
       byte[] errBody = new String("Key schema for store: " + storeName + " doesn't exist").getBytes();
@@ -122,7 +137,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    checkStoreName(storeName,
+    checkResourceName(storeName,
         "/" + VenicePathParser.TYPE_VALUE_SCHEMA + "/${storeName} or /" + VenicePathParser.TYPE_VALUE_SCHEMA
             + "/${storeName}/${valueSchemaId}");
     String id = helper.getKey();
@@ -166,7 +181,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper)
       throws IOException {
     String storeName = helper.getResourceName();
-    checkStoreName(storeName, "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/${storeName}");
+    checkResourceName(storeName, "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/${storeName}");
     Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
     if (!config.isPresent() || Utils.isNullOrEmpty(config.get().getCluster())) {
       byte[] errBody = new String("Cluster for store: " + storeName + " doesn't exist").getBytes();
@@ -187,13 +202,59 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 
+  private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String resourceName = helper.getResourceName();
+    boolean isResourceReadyToServe = true;
+    checkResourceName(resourceName, "/" + VenicePathParser.TYPE_RESOURCE_STATE + "/${resourceName}");
+    if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
+      byte[] errBody =
+          ("Cannot fetch the state for resource: " + resourceName + " because the store: "
+              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    List<ReplicaState> replicaStates = new ArrayList<>();
+    List<ReplicaState> partitionReplicaStates;
+    List<Integer> unretrievablePartitions = new ArrayList<>();
+    for (int p = 0; p < onlineInstanceFinder.getNumberOfPartitions(resourceName); p++) {
+      try {
+        partitionReplicaStates = onlineInstanceFinder.getReplicaStates(resourceName, p);
+        if (partitionReplicaStates.isEmpty()) {
+          unretrievablePartitions.add(p);
+          continue;
+        }
+      } catch (VeniceNoHelixResourceException e) {
+        byte[] errBody = ("Cannot find metadata for resource: " + resourceName).getBytes();
+        setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+        return;
+      }
+      if (isResourceReadyToServe) {
+        isResourceReadyToServe = partitionReplicaStates.stream().filter(ReplicaState::isReadyToServe).count()
+            > (partitionReplicaStates.size() / 2);
+      }
+      replicaStates.addAll(partitionReplicaStates);
+    }
+    ResourceStateResponse response = new ResourceStateResponse();
+    if (!unretrievablePartitions.isEmpty()) {
+      response.setUnretrievablePartitions(unretrievablePartitions);
+      response.setError("Unable to retrieve replica states for partition(s): "
+          + Arrays.toString(unretrievablePartitions.toArray()));
+      isResourceReadyToServe = false;
+    }
+    response.setCluster(clusterName);
+    response.setName(resourceName);
+    response.setReplicaStates(replicaStates);
+    response.setReadyToServe(isResourceReadyToServe);
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(response), true, ctx);
+  }
+
   private String getD2ServiceByClusterName(String clusterName) {
     return clusterToD2Map.get(clusterName);
   }
 
-  private void checkStoreName(String storeName, String path) {
-    if (Utils.isNullOrEmpty(storeName)) {
-      throw new VeniceException("storeName required, valid path should be : " + path);
+  private void checkResourceName(String resourceName, String path) {
+    if (Utils.isNullOrEmpty(resourceName)) {
+      throw new VeniceException("Resource name required, valid path should be : " + path);
     }
   }
 

@@ -358,9 +358,6 @@ public class RouterServer extends AbstractVeniceService {
 
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests);
     heartbeat.startInner();
-    MetaDataHandler metaDataHandler =
-        new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
-            config.getClusterToD2Map());
 
     /**
      * TODO: find a way to add read compute stats in host finder;
@@ -372,6 +369,10 @@ public class RouterServer extends AbstractVeniceService {
     OnlineInstanceFinder onlineInstanceFinder =
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, new PartitionStatusOnlineInstanceFinder(
         new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter), routingDataRepository));
+
+    MetaDataHandler metaDataHandler =
+        new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
+            config.getClusterToD2Map(), onlineInstanceFinder);
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
         config.isStickyRoutingEnabledForSingleGet(),

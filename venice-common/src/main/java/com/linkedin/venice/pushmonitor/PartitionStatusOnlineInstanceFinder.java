@@ -2,10 +2,11 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
-import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -31,6 +32,9 @@ public class PartitionStatusOnlineInstanceFinder
   private static final Logger logger = Logger.getLogger(PartitionStatusOnlineInstanceFinder.class);
   private final OfflinePushAccessor offlinePushAccessor;
   private final RoutingDataRepository routingDataRepository;
+
+  // TODO: We should use a Map of PartitionStatus that is similar to idToPartitionMap in PartitionAssignment instead of
+  //  a List so we can still get partial results even when some partitions are missing.
   private final Map<String, List<PartitionStatus>> topicToPartitionMap;
 
   public PartitionStatusOnlineInstanceFinder(OfflinePushAccessor offlinePushAccessor, RoutingDataRepository routingDataRepository) {
@@ -89,6 +93,30 @@ public class PartitionStatusOnlineInstanceFinder
   @Override
   public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
     return routingDataRepository.getAllInstances(kafkaTopic, partitionId);
+  }
+
+  @Override
+  public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
+    List<PartitionStatus> partitionStatusList = topicToPartitionMap.get(kafkaTopic);
+    if (partitionStatusList == null || partitionId >= partitionStatusList.size()) {
+      logger.warn("Unable to find resource: " + kafkaTopic + " in the partition status list");
+      throw new VeniceNoHelixResourceException(kafkaTopic);
+    }
+
+    if (partitionId != partitionStatusList.get(partitionId).getPartitionId()) {
+      logger.warn("Corrupted partition status list causing " + PartitionStatusOnlineInstanceFinder.class.getSimpleName()
+          + " to retrieve the wrong PartitionStatus for partition: " + partitionId + " for resource: " + kafkaTopic);
+      throw new VeniceNoHelixResourceException(kafkaTopic);
+    }
+
+    return getAllInstances(kafkaTopic, partitionId).entrySet().stream()
+        .flatMap(e -> e.getValue().stream()
+            .map(instance -> {
+              ExecutionStatus executionStatus = PushStatusDecider.getReplicaCurrentStatus(
+                  partitionStatusList.get(partitionId).getReplicaHistoricStatusList(instance.getNodeId()));
+              return new ReplicaState(partitionId, instance.getNodeId(), e.getKey(), executionStatus.toString(),
+                  executionStatus.equals(ExecutionStatus.COMPLETED));
+            })).collect(Collectors.toList());
   }
 
   @Override

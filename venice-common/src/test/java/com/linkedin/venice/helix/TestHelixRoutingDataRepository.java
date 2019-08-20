@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -14,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -129,6 +129,17 @@ public class TestHelixRoutingDataRepository {
         }
     );
     newManager.disconnect();
+  }
+
+  @Test
+  public void testGetReplicaStates() {
+    List<ReplicaState> replicaStates = repository.getReplicaStates(resourceName, 0);
+    Assert.assertEquals(replicaStates.size(), 1, "Unexpected replication factor");
+    ReplicaState replicaState = replicaStates.iterator().next();
+    Assert.assertEquals(replicaState.getPartition(), 0, "Unexpected partition number");
+    Assert.assertNotNull(replicaState.getParticipantId(), "Participant id should not be null");
+    Assert.assertEquals(replicaState.getExternalViewStatus(), HelixState.ONLINE_STATE);
+    Assert.assertEquals(replicaState.isReadyToServe(), replicaState.getExternalViewStatus().equals(HelixState.ONLINE_STATE));
   }
 
   @Test

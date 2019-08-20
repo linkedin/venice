@@ -12,7 +12,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.tehuti.MetricsAware;
+import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -28,18 +28,15 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.DoubleAccumulator;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -51,6 +48,7 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpOptions;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -65,6 +63,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 @Test(singleThreaded = true)
 public abstract class TestRead {
   private static final int MAX_KEY_LIMIT = 10;
+  private static final Logger logger = Logger.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
   private String storeVersionName;
@@ -434,6 +433,31 @@ public abstract class TestRead {
           "Router fails to respond to health check.");
     } catch (Exception e) {
       Assert.fail("Met an exception:", e);
+    }
+  }
+
+  @Test
+  public void testResourceStateLookup() {
+    String routerURL = veniceCluster.getRandomRouterURL();
+    try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
+        .build()) {
+      client.start();
+      HttpGet routerRequest =
+          new HttpGet(routerURL + "/" + TYPE_RESOURCE_STATE + "/" + storeVersionName);
+      HttpResponse response = client.execute(routerRequest, null).get();
+      String responseBody;
+      try (InputStream bodyStream = response.getEntity().getContent()) {
+        responseBody = IOUtils.toString(bodyStream);
+      }
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+          "Failed to get resource state for " + storeVersionName + ". Response: " + responseBody);
+      ObjectMapper mapper = new ObjectMapper();
+      ResourceStateResponse resourceStateResponse = mapper.readValue(responseBody.getBytes(), ResourceStateResponse.class);
+      Assert.assertEquals(resourceStateResponse.getName(), storeVersionName);
+      logger.info(responseBody);
+    } catch (Exception e) {
+      Assert.fail("Unexpected exception", e);
     }
   }
 }
