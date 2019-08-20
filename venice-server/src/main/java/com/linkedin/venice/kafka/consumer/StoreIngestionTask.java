@@ -692,16 +692,31 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         );
         break;
       case RESET_OFFSET:
-        try {
-          consumer.resetOffset(topic, partition);
-          logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition);
-        } catch (UnsubscribedTopicPartitionException e) {
+        /**
+         * After auditing all the calls that can result in the RESET_OFFSET action, it turns out we always unsubscribe
+         * from the topic/partition before resetting offset, which is unnecessary; but we decided to keep this action
+         * for now in case that in future, we do want to reset the consumer without unsubscription.
+         */
+        if (consumer.hasSubscription(topic, partition)) {
+          /**
+           * Only update the consumer and partitionConsumptionStateMap when consumer actually has
+           * subscription to this topic/partition; otherwise, we would blindly update the StateMap
+           * and mess up other operations on the StateMap.
+           */
+          try {
+            consumer.resetOffset(topic, partition);
+            logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition);
+          } catch (UnsubscribedTopicPartitionException e) {
+            logger.error(consumerTaskId + " Kafka consumer should have subscribed to the partition already but it fails "
+                + "on resetting offset for Topic: " + topic + " Partition Id: " + partition);
+          }
+          partitionConsumptionStateMap.put(
+              partition,
+              new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
+        } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
         }
-        partitionConsumptionStateMap.put(
-            partition,
-            new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );

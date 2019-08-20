@@ -107,12 +107,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public void resetOffset(String topic, int partition) {
-    TopicPartition topicPartition = new TopicPartition(topic, partition);
-    Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
-
-    if (!topicPartitionSet.contains(topicPartition)) {
+    if (!hasSubscription(topic, partition)) {
       throw new UnsubscribedTopicPartitionException(topic, partition);
     }
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
     kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
   }
 
@@ -152,6 +150,12 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   @Override
   public boolean hasSubscription() {
     return !kafkaConsumer.assignment().isEmpty();
+  }
+
+  @Override
+  public boolean hasSubscription(String topic, int partition) {
+    TopicPartition tp = new TopicPartition(topic, partition);
+    return kafkaConsumer.assignment().contains(tp);
   }
 
   @Override

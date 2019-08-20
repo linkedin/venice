@@ -162,10 +162,9 @@ public abstract class AbstractParticipantModel extends StateModel {
     }
     /**
      * TODO: After checking all the calls to function, I noticed that we have already unsubscribe from
-     * this topic/partition before calling this reset function; previously we remove this partition from
-     * the partitionConsumptionStateMap during unsubscription, but we add it back to the map when we reset
-     * offset. Consider removing the RESET_OFFSET action completely and move one special logic
-     * "storageMetadataService.clearOffset(topic, partition)" from RESET_OFFSET handling branch to UNSUBSCRIBE branch.
+     * this topic/partition before calling this reset function. Consider removing the RESET_OFFSET action
+     * completely and move one special logic "storageMetadataService.clearOffset(topic, partition)"
+     * from RESET_OFFSET handling branch to UNSUBSCRIBE branch.
      */
     getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), getPartition());
   }
