@@ -26,33 +26,30 @@ import org.apache.log4j.Logger;
  * We should be cautious about it and ramp up resources gradually in case it impacts router's performance.
  */
 public class PartitionStatusOnlineInstanceFinder
-    implements OfflinePushAccessor.PartitionStatusListener, OnlineInstanceFinder,
-               VeniceResource, IZkChildListener {
+    implements OfflinePushAccessor.PartitionStatusListener, OnlineInstanceFinder, VeniceResource, IZkChildListener {
+
   private static final Logger logger = Logger.getLogger(PartitionStatusOnlineInstanceFinder.class);
   private final OfflinePushAccessor offlinePushAccessor;
   private final RoutingDataRepository routingDataRepository;
-
   private final Map<String, List<PartitionStatus>> topicToPartitionMap;
 
-  public PartitionStatusOnlineInstanceFinder(OfflinePushAccessor offlinePushAccessor,
-      RoutingDataRepository routingDataRepository) {
+  public PartitionStatusOnlineInstanceFinder(OfflinePushAccessor offlinePushAccessor, RoutingDataRepository routingDataRepository) {
     this.offlinePushAccessor = offlinePushAccessor;
     this.routingDataRepository = routingDataRepository;
     this.topicToPartitionMap = new HashMap<>();
-
     refresh();
   }
 
   @Override
   public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
     List<PartitionStatus> statusList = topicToPartitionMap.get(kafkaTopic);
-
-    // have not yet received partition status for this topic yet. return;
     if (statusList == null ) {
+      // have not yet received partition status for this topic yet. return;
       logger.info("Instance finder received unknown partition status notification." +
           " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId() + ". Will ignore.");
       return;
     }
+
     if (routingDataRepository.containsKafkaTopic(kafkaTopic)) {
       if (partitionStatus.getPartitionId() >= routingDataRepository.getNumberOfPartitions(kafkaTopic)) {
         logger.error("Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
@@ -66,20 +63,24 @@ public class PartitionStatusOnlineInstanceFinder
 
   /**
    * TODO: check if we need to cache the result since this method is called very frequently.
+   * The method is synchronized with other methods that modify topicToPartitionMap.
    */
   @Override
-  public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
-    List<PartitionStatus> partitionStatusList = topicToPartitionMap.get(kafkaTopic);
-
-    if (partitionStatusList == null) {
-      //haven't received partition info related to this topic. Return empty list
+  public synchronized List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
+    List<PartitionStatus> statusList = topicToPartitionMap.get(kafkaTopic);
+    if (statusList == null || partitionId >= statusList.size()) {
+      // have not received partition info related to this topic. Return empty list
+      logger.warn("Unknown partition id, partitionId=" + partitionId + ", partitionStatusCount=" + statusList.size() +
+          ", partitionCount=" + routingDataRepository.getNumberOfPartitions(kafkaTopic));
       return Collections.emptyList();
     }
 
+    PartitionStatus partitionStatus = statusList.get(partitionId);
     return routingDataRepository.getAllInstances(kafkaTopic, partitionId).values().stream()
         .flatMap(List::stream)
-        .filter(instance -> PushStatusDecider.getReplicaCurrentStatus(partitionStatusList
-            .get(partitionId).getReplicaHistoricStatusList(instance.getNodeId()))
+        .filter(instance ->
+            PushStatusDecider.getReplicaCurrentStatus(
+                partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
             .equals(ExecutionStatus.COMPLETED))
         .collect(Collectors.toList());
   }
@@ -128,18 +129,7 @@ public class PartitionStatusOnlineInstanceFinder
 
     newPushStatusList.forEach(pushStatusName -> {
       OfflinePushStatus status = getPushStatusFromZk(pushStatusName);
-
       if (status != null) {
-        // if partition list size is 0 it means the partition status node is not properly created yet
-        // but the child ZK nodes are causing to this method to get called. 
-        // In that case create place holder statuses baased on the partition count.
-        if (status.getPartitionStatuses().size() == 0) {
-          List<PartitionStatus> partitionStatuses = new ArrayList<>(status.getNumberOfPartition());
-          for (int i = 0; i < status.getNumberOfPartition(); i++) {
-            partitionStatuses.add(new PartitionStatus(i));
-          }
-          status.setPartitionStatuses(partitionStatuses);
-        }
         topicToPartitionMap.put(pushStatusName, new ArrayList<>(status.getPartitionStatuses()));
         offlinePushAccessor.subscribePartitionStatusChange(status, this);
       }
