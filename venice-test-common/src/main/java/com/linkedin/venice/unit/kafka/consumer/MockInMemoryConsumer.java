@@ -75,6 +75,11 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
+  public boolean hasSubscription(String topic, int partition) {
+    return offsets.containsKey(new TopicPartition(topic, partition));
+  }
+
+  @Override
   public Map<String, List<PartitionInfo>> listTopics() {
     return delegate.listTopics();
   }
