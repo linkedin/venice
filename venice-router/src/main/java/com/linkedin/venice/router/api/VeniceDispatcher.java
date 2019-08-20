@@ -195,7 +195,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
     RouteHttpStats currentRouteStat = perRouteStats.getStatsByType(path.getRequestType());
 
-    routeHttpRequestStats.recordPendingRequest(host.getHost());
+    routeHttpRequestStats.recordPendingRequest(host.getNodeId());
 
     String address = host.getHost() + ":" + host.getHost() + "/";
 
@@ -203,7 +203,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public void accept(PortableHttpResponse result) {
         pendingRequestThrottler.take();
-        routeHttpRequestStats.recordFinishedRequest(host.getHost());
+        routeHttpRequestStats.recordFinishedRequest(host.getNodeId());
 
         int statusCode = result.getStatusCode();
         if (statusCode == HttpStatus.SC_INTERNAL_SERVER_ERROR || statusCode == HttpStatus.SC_SERVICE_UNAVAILABLE) {
@@ -461,7 +461,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public void accept(Throwable ex) {
         pendingRequestThrottler.take();
-        routeHttpRequestStats.recordFinishedRequest(host.getHost());
+        routeHttpRequestStats.recordFinishedRequest(host.getNodeId());
         completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, ex);
         recordResponseWaitingTime(host.getHost(), currentRouteStat, dispatchStartTSInNS);
       }
@@ -491,7 +491,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Override
       public boolean getAsBoolean() {
         pendingRequestThrottler.take();
-        routeHttpRequestStats.recordFinishedRequest(host.getHost());
+        routeHttpRequestStats.recordFinishedRequest(host.getNodeId());
         completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, new VeniceException("Request to storage node was cancelled"));
         recordResponseWaitingTime(host.getHost(), currentRouteStat, dispatchStartTSInNS);
         return true;
