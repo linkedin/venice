@@ -70,7 +70,8 @@ public class PartitionStatusOnlineInstanceFinder
     List<PartitionStatus> statusList = topicToPartitionMap.get(kafkaTopic);
     if (statusList == null || partitionId >= statusList.size()) {
       // have not received partition info related to this topic. Return empty list
-      logger.warn("Unknown partition id, partitionId=" + partitionId + ", partitionStatusCount=" + statusList.size() +
+      logger.warn("Unknown partition id, partitionId=" + partitionId +
+          ", partitionStatusCount=" + (statusList == null ? 0 : statusList.size()) +
           ", partitionCount=" + routingDataRepository.getNumberOfPartitions(kafkaTopic));
       return Collections.emptyList();
     }
