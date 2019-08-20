@@ -163,8 +163,15 @@ public class TestHybrid {
         .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
     );
 
+    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
+        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+
     //Do an H2V push
     runH2V(h2vProperties, 1, controllerClient);
+
+    // verify the topic compaction policy
+    String topicForStoreVersion1 = Version.composeKafkaTopic(storeName, 1);
+    Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion1), "topic: " + topicForStoreVersion1 + " should have compaction enabled");
 
     //Verify some records (note, records 1-100 have been pushed)
     AvroGenericStoreClient client =
@@ -198,6 +205,9 @@ public class TestHybrid {
     });
 
     runH2V(h2vProperties, 2, controllerClient);
+    // verify the topic compaction policy
+    String topicForStoreVersion2 = Version.composeKafkaTopic(storeName, 2);
+    Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion2), "topic: " + topicForStoreVersion2 + " should have compaction enabled");
 
     // Verify streaming record in second version
     assertEquals(client.get("2").get().toString(),"stream_2");
@@ -223,6 +233,9 @@ public class TestHybrid {
 
     // Run H2V a third Time
     runH2V(h2vProperties, 3, controllerClient);
+    // verify the topic compaction policy
+    String topicForStoreVersion3 = Version.composeKafkaTopic(storeName, 3);
+    Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion3), "topic: " + topicForStoreVersion3 + " should have compaction enabled");
 
     // Verify new streaming record in third version
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
@@ -302,6 +315,7 @@ public class TestHybrid {
       });
     }
     veniceProducer.stop();
+    IOUtils.closeQuietly(topicManager);
     venice.close();
   }
 

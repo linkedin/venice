@@ -499,13 +499,19 @@ public abstract class AbstractPushMonitor
     logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " old status: "
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
 
+    String topic = pushStatus.getKafkaTopic();
     updatePushStatus(pushStatus, ExecutionStatus.COMPLETED, Optional.empty());
-    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
-    int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
     aggPushHealthStats.recordSuccessfulPush(storeName, getDurationInSec(pushStatus));
     // If we met some error to retire the old version, we should not throw the exception out to fail this operation,
     // because it will be collected once a new push is completed for this store.
+    try {
+      storeCleaner.topicCleanupWhenPushComplete(clusterName, storeName, versionNumber);
+    } catch (Exception e) {
+      logger.warn("Couldn't perform topic cleanup when push job completes for topic: " + topic + " in cluster: " + clusterName);
+    }
     try {
       storeCleaner.retireOldStoreVersions(clusterName, storeName, false);
     } catch (Exception e) {

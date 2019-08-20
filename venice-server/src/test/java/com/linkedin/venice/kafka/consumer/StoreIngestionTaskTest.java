@@ -162,6 +162,7 @@ public class StoreIngestionTaskTest {
   private static final int NON_EXISTING_SCHEMA_ID = 2;
 
   private static final byte[] putKeyFoo = getRandomKey(PARTITION_FOO);
+  private static final byte[] putKeyFoo2 = getRandomKey(PARTITION_FOO);
   private static final byte[] putKeyBar = getRandomKey(PARTITION_BAR);
   private static final byte[] putValue = "TestValuePut".getBytes(StandardCharsets.UTF_8);
   private static final byte[] putValueToCorrupt = "Please corrupt me!".getBytes(StandardCharsets.UTF_8);
@@ -440,6 +441,46 @@ public class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "isLeaderFollowerModelEnabled")
+  public void testMissingMessagesForTopicWithLogCompactionEnabled(boolean isLeaderFollowerModelEnabled) throws Exception {
+    // enable log compaction
+    when(mockTopicManager.isTopicCompactionEnabled(topic)).thenReturn(true);
+
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    RecordMetadata putMetadata1 = (RecordMetadata) veniceWriter.put(putKeyFoo, putValueToCorrupt, SCHEMA_ID).get();
+    RecordMetadata putMetadata2 = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+    RecordMetadata putMetadata3 = (RecordMetadata) veniceWriter.put(putKeyFoo2, putValueToCorrupt, SCHEMA_ID).get();
+    RecordMetadata putMetadata4 = (RecordMetadata) veniceWriter.put(putKeyFoo2, putValue, SCHEMA_ID).get();
+
+    // We will only deliver the unique entries after compaction: putMetadata2 and putMetadata4
+    Queue<Pair<TopicPartition, Long>> pollDeliveryOrder = new LinkedList<>();
+    /**
+     * The reason to put "putMetadata1" and "putMetadata3" in the deliveryOrder queue is that {@link AbstractPollStrategy#poll(InMemoryKafkaBroker, Map, long)}
+     * is always trying to return the next message.
+     * If it is not expected, we need to change it.
+     */
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata1));
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(putMetadata3));
+    PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
+
+    runTest(pollStrategy, getSet(PARTITION_FOO), () -> {}, () -> {
+      // Verify it retrieves the offset from the OffSet Manager
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+
+      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+          .put(PARTITION_FOO, putKeyFoo, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+          .put(PARTITION_FOO, putKeyFoo2, ByteBuffer.wrap(ValueRecord.create(SCHEMA_ID, putValue).serialize()));
+
+      // Verify it commits the offset to Offset Manager
+      OffsetRecord expectedOffsetRecordForLastMessage = getOffsetRecord(putMetadata4.offset());
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
+          .put(topic, PARTITION_FOO, expectedOffsetRecordForLastMessage);
+    }, isLeaderFollowerModelEnabled);
+  }
+
+    @Test(dataProvider = "isLeaderFollowerModelEnabled")
   public void testVeniceMessagesProcessingWithExistingSchemaId(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));

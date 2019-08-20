@@ -297,6 +297,31 @@ public class TopicManager implements Closeable {
     return false;
   }
 
+  /**
+   * Update topic compaction policy.
+   * @throws TopicDoesNotExistException, if the topic doesn't exist
+   */
+  public synchronized void updateTopicCompactionPolicy(String topicName, boolean logCompaction) {
+    Properties topicProperties = getTopicConfig(topicName);
+    // If the compaction policy doesn't exist, by default it is disabled.
+    String currentCompactionPolicy = topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) ?
+        (String)topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG) : TopicConfig.CLEANUP_POLICY_DELETE;
+    String expectedCompactionPolicy = logCompaction ? TopicConfig.CLEANUP_POLICY_COMPACT : TopicConfig.CLEANUP_POLICY_DELETE;
+    if (! expectedCompactionPolicy.equals(currentCompactionPolicy)) {
+      // Different, then update
+      topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, expectedCompactionPolicy);
+      AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
+      logger.info("Kafka compaction policy for topic: " + topicName + " has been updated from " +
+          currentCompactionPolicy + " to " + expectedCompactionPolicy);
+    }
+  }
+
+  public boolean isTopicCompactionEnabled(String topicName) {
+    Properties topicProperties = getTopicConfig(topicName);
+    return topicProperties.containsKey(TopicConfig.CLEANUP_POLICY_CONFIG) &&
+        topicProperties.get(TopicConfig.CLEANUP_POLICY_CONFIG).equals(TopicConfig.CLEANUP_POLICY_COMPACT);
+  }
+
   public Map<String, Long> getAllTopicRetentions() {
     scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
     Map<String, Long> topicRetentions = new HashMap<>();

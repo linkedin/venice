@@ -80,9 +80,12 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
       TopicPartition topicPartition = nextPoll.getFirst();
       long offset = nextPoll.getSecond();
-
       String topic = topicPartition.topic();
       int partition = topicPartition.partition();
+      /**
+       * TODO: need to understand why "+ 1" here, since for {@link ArbitraryOrderingPollStrategy}, it always
+       * returns the next message specified in the delivery order, which is causing confusion.
+        */
       long nextOffset = offset + 1;
       Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextOffset);
       if (message.isPresent()) {
