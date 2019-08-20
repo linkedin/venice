@@ -15,6 +15,8 @@ import java.util.List;
 
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
@@ -102,7 +104,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         case ERROR:
         case COMPLETED:
         case STARTED:
-          List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic());
+          List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition());
           pushStatus.setPartitionStatuses(partitionStatuses);
           break;
         default:
@@ -125,7 +127,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       throw new VeniceException(
           "Can not find offline push status in ZK from path:" + getOfflinePushStatusPath(kafkaTopic));
     }
-    offlinePushStatus.setPartitionStatuses(getPartitionStatuses(kafkaTopic));
+    offlinePushStatus.setPartitionStatuses(getPartitionStatuses(kafkaTopic, offlinePushStatus.getNumberOfPartition()));
     return offlinePushStatus;
   }
 
@@ -250,13 +252,29 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   /**
    * Get all partition status ZNodes under offline push of given topic from ZK.
    */
-  protected List<PartitionStatus> getPartitionStatuses(String topic) {
+  protected List<PartitionStatus> getPartitionStatuses(String topic, int partitionCount) {
     logger.debug("Start reading partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
     List<PartitionStatus> result =
         HelixUtils.getChildren(partitionStatusAccessor, getOfflinePushStatusPath(topic), refreshAttemptsForZkReconnect,
             refreshIntervalForZkReconnectInMs);
-    logger.debug(
-        "Read " + result.size() + " partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
+    logger.debug("Read " + result.size() + " partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
+
+    if (result.size() != partitionCount) {
+      logger.error("Number of partition status found in Zk does not match expected count" +
+          ", cluster=" + clusterName +
+          ", topic=" + topic +
+          ", foundPartitionCount=" + result.size() +
+          ", expectedPartitionCount=" + partitionCount);
+
+      if (result.isEmpty()) {
+        // Partition status list is empty means that partition status node hasn't been fully created yet.
+        // In this case, create placeholder statuses based on the partition count from OfflinePushStatus.
+        for (int i = 0; i < partitionCount; ++i) {
+          result.add(new PartitionStatus(i));
+        }
+      }
+    }
+
     return result;
   }
 
