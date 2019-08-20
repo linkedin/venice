@@ -245,4 +245,15 @@ public class TopicManagerTest {
     Assert.assertFalse(manager.isRetentionBelowTruncatedThreshold(TopicManager.UNKNOWN_TOPIC_RETENTION, deprecatedTopicRetentionMaxMs));
     Assert.assertTrue(manager.isRetentionBelowTruncatedThreshold(deprecatedTopicRetentionMaxMs - 1, deprecatedTopicRetentionMaxMs));
   }
+
+  @Test
+  public void testUpdateTopicCompactionPolicy() {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic, 1, 1, true);
+    Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
+    manager.updateTopicCompactionPolicy(topic, true);
+    Assert.assertTrue(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction enabled");
+    manager.updateTopicCompactionPolicy(topic, false);
+    Assert.assertFalse(manager.isTopicCompactionEnabled(topic), "topic: " + topic + " should be with compaction disabled");
+  }
 }

@@ -17,7 +17,6 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -81,20 +80,6 @@ public class ProducerTracker {
   }
 
   /**
-   * This function is intended to be used in AdminConsumptionTask, not StoreIngestionTask.
-   * @param partition
-   * @param key
-   * @param messageEnvelope
-   * @param endOfPushReceived
-   * @return
-   * @throws DataValidationException
-   */
-  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope,
-      boolean endOfPushReceived) throws DataValidationException {
-    return addMessage(partition, key, messageEnvelope, endOfPushReceived, Optional.empty());
-  }
-
-  /**
    * Ensures the integrity of the data by maintaining state about all of the data produced by a specific
    * upstream producer:
    *
@@ -112,11 +97,11 @@ public class ProducerTracker {
    * @throws DataValidationException
    */
   public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope,
-      boolean endOfPushReceived, Optional<DIVErrorMetricCallback> errorMetricCallback)
+      boolean tolerateMissingMessage, Optional<DIVErrorMetricCallback> errorMetricCallback)
       throws DataValidationException {
 
-    Segment segment = trackSegment(partition, messageEnvelope, endOfPushReceived);
-    trackSequenceNumber(segment, messageEnvelope, endOfPushReceived, errorMetricCallback);
+    Segment segment = trackSegment(partition, messageEnvelope, tolerateMissingMessage);
+    trackSequenceNumber(segment, messageEnvelope, tolerateMissingMessage, errorMetricCallback);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, key, messageEnvelope);
 
@@ -175,16 +160,16 @@ public class ProducerTracker {
    * @param messageEnvelope of the incoming message
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
    */
-  private Segment trackSegment(int partition, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived) throws DuplicateDataException {
+  private Segment trackSegment(int partition, KafkaMessageEnvelope messageEnvelope, boolean tolerateMissingMessage) throws DuplicateDataException {
     int incomingSegment = messageEnvelope.producerMetadata.segmentNumber;
     Segment previousSegment = segments.get(partition);
     if (previousSegment == null) {
       if (incomingSegment != 0) {
         handleUnregisteredProducer("track new segment with non-zero incomingSegment=" + incomingSegment,
-            messageEnvelope, null, endOfPushReceived);
+            messageEnvelope, null, tolerateMissingMessage);
       }
 
-      Segment newSegment = initializeNewSegment(partition, messageEnvelope, endOfPushReceived, true);
+      Segment newSegment = initializeNewSegment(partition, messageEnvelope, tolerateMissingMessage, true);
       return newSegment;
     } else {
       int previousSegmentNumber = previousSegment.getSegmentNumber();
@@ -192,8 +177,8 @@ public class ProducerTracker {
         return previousSegment;
       } else if (incomingSegment == previousSegmentNumber + 1) {
         if (previousSegment.isEnded()) {
-          /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
-          return initializeNewSegment(partition, messageEnvelope, endOfPushReceived, false);
+          /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param tolerateMissingMessage} */
+          return initializeNewSegment(partition, messageEnvelope, tolerateMissingMessage, false);
         } else {
           throw DataFaultType.MISSING.getNewException(previousSegment, messageEnvelope);
         }
@@ -219,7 +204,7 @@ public class ProducerTracker {
    */
   private Segment initializeNewSegment(int partition,
                                        KafkaMessageEnvelope messageEnvelope,
-                                       boolean endOfPushReceived,
+                                       boolean tolerateMissingMessage,
                                        boolean tolerateAnyMessageType) {
     CheckSumType checkSumType = CheckSumType.NONE;
     boolean unregisteredProducer = true;
@@ -252,7 +237,7 @@ public class ProducerTracker {
     if (unregisteredProducer) {
       handleUnregisteredProducer(
           "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message",
-          messageEnvelope, null, endOfPushReceived, Optional.of(tolerateAnyMessageType));
+          messageEnvelope, null, tolerateMissingMessage, Optional.of(tolerateAnyMessageType));
     }
 
     return newSegment;
@@ -261,23 +246,23 @@ public class ProducerTracker {
   private void handleUnregisteredProducer(String scenario,
                                           KafkaMessageEnvelope messageEnvelope,
                                           Segment segment,
-                                          boolean endOfPushReceived) {
-      handleUnregisteredProducer(scenario, messageEnvelope, segment, endOfPushReceived, Optional.empty());
+                                          boolean tolerateMissingMessage) {
+      handleUnregisteredProducer(scenario, messageEnvelope, segment, tolerateMissingMessage, Optional.empty());
   }
 
   private void handleUnregisteredProducer(String scenario,
                                           KafkaMessageEnvelope messageEnvelope,
                                           Segment segment,
-                                          boolean endOfPushReceived,
+                                          boolean tolerateMissingMessage,
                                           Optional<Boolean> tolerateAnyMessageType) {
-    String extraInfoWithEndOfPush = scenario + ", endOfPushReceived=" + endOfPushReceived;
+    String extraInfo= scenario + ", tolerateMissingMessage=" + tolerateMissingMessage;
     if (tolerateAnyMessageType.isPresent()) {
-      extraInfoWithEndOfPush += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
+      extraInfo += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
     }
-    if (endOfPushReceived && tolerateAnyMessageType.orElse(true)) {
-      logger.info("Will " + extraInfoWithEndOfPush);
+    if (tolerateMissingMessage && tolerateAnyMessageType.orElse(true)) {
+      logger.info("Will " + extraInfo);
     } else {
-      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(segment, messageEnvelope, Optional.of("Cannot " + extraInfoWithEndOfPush));
+      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(segment, messageEnvelope, Optional.of("Cannot " + extraInfo));
     }
   }
 
@@ -289,11 +274,12 @@ public class ProducerTracker {
    *
    * @param segment for which the incoming message belongs to
    * @param messageEnvelope of the incoming message
+   * @param tolerateMissingMessage whether to tolerate missing message, which could happen for RT topic rewinding or in log-compaction enabled topic
    * @param errorMetricCallback metricCallback for DIV error when not throwing exception (hacky, need refactoring)
    * @throws MissingDataException if the incoming sequence number is greater than the previous sequence number + 1
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
-  private void trackSequenceNumber(Segment segment, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived,
+  private void trackSequenceNumber(Segment segment, KafkaMessageEnvelope messageEnvelope, boolean tolerateMissingMessage,
       Optional<DIVErrorMetricCallback> errorMetricCallback)
       throws MissingDataException, DuplicateDataException {
 
@@ -304,7 +290,7 @@ public class ProducerTracker {
       if (previousSequenceNumber != 0) {
         handleUnregisteredProducer(
             "mark segment as started with non-zero previousSequenceNumber=" + previousSequenceNumber, messageEnvelope,
-            segment, endOfPushReceived);
+            segment, tolerateMissingMessage);
       }
       segment.start();
     } else if (incomingSequenceNumber == previousSequenceNumber + 1) {
@@ -322,15 +308,18 @@ public class ProducerTracker {
 
       DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, messageEnvelope);
 
-      if (endOfPushReceived) {
+      if (tolerateMissingMessage) {
         /**
          * In this branch of the if, we need to adjust the sequence number, otherwise,
          * this will cause spurious missing data metrics on further events...
          * and the partition won't become 'ONLINE' if it is not 'ONLINE' yet.
           */
-        logger.error("Encountered missing data message after EOP.", dataMissingException);
         segment.setSequenceNumber(incomingSequenceNumber);
         if (errorMetricCallback.isPresent()) {
+          /**
+           * Only log and report error if the error metric tracking callback is not empty.
+           */
+          logger.error("Encountered missing data message, which could happen if EOP has been received", dataMissingException);
           errorMetricCallback.get().execute(dataMissingException);
         }
       } else {
@@ -441,20 +430,22 @@ public class ProducerTracker {
         previousSegment = String.valueOf(segment.getSegmentNumber());
         previousSequenceNumber = String.valueOf(segment.getSequenceNumber());
       }
+      StringBuilder sb = new StringBuilder();
+      sb.append(name() + " data detected for producer GUID: ")
+          .append(GuidUtils.getHexFromGuid(producerMetadata.producerGUID) + ",\n")
+          .append("message type: " + messageTypeString + ",\n")
+          .append("partition: " + partition + ",\n")
+          .append("previous segment: " + previousSegment + ",\n")
+          .append("incoming segment: " + producerMetadata.segmentNumber + ",\n")
+          .append("previous sequence number: " + previousSequenceNumber + ",\n")
+          .append("incoming sequence number: " + producerMetadata.messageSequenceNumber);
+      if (segment != null) {
+        sb.append(",\naggregates: " + printMap(segment.getAggregates()) + ",\n")
+            .append("debugInfo: " + printMap(segment.getDebugInfo()));
+      }
+      sb.append(extraInfo.map(info -> ",\nextra info: " + info).orElse(""));
 
-      String exceptionMsg = name() + " data detected for producer GUID: "
-          + GuidUtils.getHexFromGuid(producerMetadata.producerGUID) + ",\n"
-          + "message type: " + messageTypeString + ",\n"
-          + "partition: " + partition + ",\n"
-          + "previous segment: " + previousSegment + ",\n"
-          + "incoming segment: " + producerMetadata.segmentNumber + ",\n"
-          + "previous sequence number: " + previousSequenceNumber + ",\n"
-          + "incoming sequence number: " + producerMetadata.messageSequenceNumber + ",\n"
-          + "aggregates: " + printMap(segment.getAggregates()) + ",\n"
-          + "debugInfo: " + printMap(segment.getDebugInfo())
-          + extraInfo.map(info -> ",\n" + "extra info: " + info).orElse("");
-
-      return exceptionSupplier.apply(exceptionMsg);
+      return exceptionSupplier.apply(sb.toString());
     }
 
     private <K, V> String printMap(Map<K, V> map) {

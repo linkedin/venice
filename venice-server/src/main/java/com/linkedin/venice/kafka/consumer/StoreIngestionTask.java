@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
+import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
@@ -21,8 +22,8 @@ import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
+import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -60,6 +61,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.Future;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -171,6 +173,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   //this indicates whether it polls nothing from Kafka
   //It's for stats measuring purpose
   protected boolean recordsPolled = true;
+
+  /**
+   * Track all the topics with Kafka log-compaction enabled.
+   * The expectation is that the compaction strategy is immutable once Kafka log compaction is enabled.
+   */
+  private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
 
   public StoreIngestionTask(VeniceWriterFactory writerFactory,
                             VeniceConsumerFactory consumerFactory,
@@ -1118,7 +1126,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       try {
-        offsetRecordTransformer = Optional.of(validateMessage(consumerRecord.partition(), kafkaKey, kafkaValue, endOfPushReceived));
+        offsetRecordTransformer = validateMessage(consumerRecord.topic(), consumerRecord.partition(), kafkaKey, kafkaValue, endOfPushReceived);
         versionedDIVStats.recordSuccessMsg(storeNameWithoutVersionInfo, storeVersion);
       } catch (FatalDataValidationException fatalException) {
         divErrorMetricCallback.get().execute(fatalException);
@@ -1128,7 +1136,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           throw fatalException;
         }
       }
-
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
@@ -1139,7 +1146,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * is already coming with Control Message.
          *
          * If we don't sync offset this way, it is very possible to encounter
-         * {@link com.linkedin.venice.kafka.validation.ProducerTracker.DataFaultType.UNREGISTERED_PRODUCER} since
+         * {@link ProducerTracker.DataFaultType.UNREGISTERED_PRODUCER} since
          * {@link syncOffset} is not being called for every message, we might miss some historical producer guids.
          */
         syncOffset = true;
@@ -1224,11 +1231,63 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         producerConsumerLatencyMs);
   }
 
-  private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
+  /**
+   * The {@param topicName} maybe different from the store version topic, since in {@link LeaderFollowerStoreIngestionTask},
+   * the topic could be other topics, such as RT topic or GF topic.
+   **/
+  private Optional<OffsetRecordTransformer> validateMessage(String topicName, int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
     ProducerTracker producerTracker = producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerCreator);
-
-    return producerTracker.addMessage(partition, key, message, endOfPushReceived, divErrorMetricCallback);
+    Optional<ProducerTracker.DIVErrorMetricCallback> errorCallback = divErrorMetricCallback;
+    try {
+      boolean tolerateMissingMessage = endOfPushReceived;
+      if (topicWithLogCompaction.contains(topicName)) {
+        /**
+         * For log-compacted topic, no need to report error metric when message missing issue happens.
+         */
+        errorCallback = Optional.empty();
+        tolerateMissingMessage = true;
+      }
+      return Optional.of(producerTracker.addMessage(partition, key, message, tolerateMissingMessage, errorCallback));
+    } catch (FatalDataValidationException e) {
+      /**
+       * Check whether Kafka compaction is enabled in current topic.
+       * This function shouldn't be invoked very frequently since {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+       * will update the sequence id if it could tolerate the missing messages.
+       *
+       * If it is not this case, we need to revisit this logic since this operation is expensive.
+       */
+      if (! topicManager.isTopicCompactionEnabled(topicName)) {
+        /**
+         * Not enabled, then bubble up the exception.
+         * We couldn't cache this in {@link topicWithLogCompaction} since the log compaction could be enabled in the same topic later.
+         */
+        logger.error("Encountered DIV error when topic: " + topicName + " doesn't enable log compaction");
+        throw e;
+      }
+      topicWithLogCompaction.add(topicName);
+      /**
+       * Since Kafka compaction is enabled, DIV will start tolerating missing messages.
+       */
+      logger.info("Encountered DIV exception when consuming from topic: " + topicName, e);
+      logger.info("Kafka compaction is enabled in topic: " + topicName + ", so DIV will tolerate missing message in the future");
+      if (e instanceof ImproperlyStartedSegmentException) {
+        /**
+         * ImproperlyStartedSegmentException is not retriable since internally it has already updated the sequence id of current
+         * segment. Retry will throw {@link DuplicateDataException}.
+         * So, this function will return empty here, which is being handled properly by the caller {@link #internalProcessConsumerRecord}.
+         */
+        return Optional.empty();
+      } else {
+        /**
+         * Verify the message again.
+         * The assumption here is that {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+         * won't update the sequence id of the current segment if it couldn't tolerate missing messages.
+         * In this case, no need to report error metric.
+         */
+        return Optional.of(producerTracker.addMessage(partition, key, message, true, Optional.empty()));
+      }
+    }
   }
 
   /**

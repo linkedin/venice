@@ -940,7 +940,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         OfflinePushStrategy strategy;
         boolean isLeaderFollowerStateModel = false;
         VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
-        boolean logCompaction = false;
         BackupStrategy backupStrategy;
 
         try {
@@ -951,12 +950,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     Store store = repository.getStore(storeName);
                     if (store == null) {
                         throwStoreDoesNotExist(clusterName, storeName);
-                    }
-                    if (store.isHybrid()) {
-                        logCompaction = clusterConfig.isKafkaLogCompactionForHybridStoresEnabled();
-                    }
-                    if (store.isIncrementalPushEnabled()) {
-                        logCompaction = clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled();
                     }
                     // Update default partition count if it have not been assigned.
                     //TODO: persist numberOfPartitions at the version level
@@ -978,13 +971,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } finally {
                     repository.unLock();
                 }
-
+                // Topic created by Venice Controller is always without Kafka compaction.
                 topicManager.createTopic(
                     version.kafkaTopicName(),
                     numberOfPartitions,
                     clusterConfig.getKafkaReplicationFactor(),
                     true,
-                    logCompaction,
+                    false,
                     clusterConfig.getMinIsr(),
                     useFastKafkaOperationTimeout
                 );
@@ -1403,6 +1396,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             truncateOldKafkaTopics(store, false);
         } finally {
             resources.unlockForMetadataOperation();
+        }
+    }
+
+    /**
+     * In this function, Controller will setup proper compaction strategy when the push job is full completed, and here are the
+     * reasons to set it up after the job completes:
+     * 1. For batch push jobs to batch-only store, there is no impact. There could still be duplicate entries because of
+     * speculative executions in map-reduce job, but we are not planning to clean them up now.
+     * 2. For batch push jobs to hybrid/incremental stores, if the compaction is enabled at the beginning of the job,
+     * Kafka compaction could kick in during push job, and storage node could detect DIV error, such as missing messages,
+     * checksum mismatch, because speculative execution could produce duplicate entries, and we don't want to fail the push in this scenario
+     * and we still want to perform the strong DIV validation in batch push, so we could only enable compaction after the batch push completes.
+     * 3. For GF jobs to hybrid store, it is similar as #2, and it contains duplicate entries because there is no de-dedup
+     * happening anywhere.
+     *
+     * With this way, when load rebalance happens for hybrid/incremental stores, DIV error could be detected during ingestion
+     * at any phase since compaction might be enabled long-time ago. So in storage node, we need to add one more safeguard
+     * before throwing the DIV exception to check whether the topic is compaction-enabled or not.
+     * Since Venice is not going to change the compaction policy between non-compact and compact back and forth, checking
+     * whether topic is compaction-enabled or not when encountering DIV error should be good enough.
+     */
+    @Override
+    public void topicCleanupWhenPushComplete(String clusterName, String storeName, int versionNumber) {
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        VeniceControllerClusterConfig clusterConfig = resources.getConfig();
+        HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+        Store store = storeRepository.getStore(storeName);
+        if ((store.isHybrid() && clusterConfig.isKafkaLogCompactionForHybridStoresEnabled())
+            || (store.isIncrementalPushEnabled() && clusterConfig.isKafkaLogCompactionForIncrementalPushStoresEnabled())) {
+            topicManager.updateTopicCompactionPolicy(Version.composeKafkaTopic(storeName, versionNumber), true);
         }
     }
 
