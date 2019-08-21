@@ -7,6 +7,7 @@ import com.linkedin.venice.kafka.protocol.Delete;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 
+import com.linkedin.venice.kafka.protocol.Update;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -20,7 +21,9 @@ import java.util.Map;
 public enum MessageType {
   PUT(0, (byte) 0),
   DELETE(1, (byte) 0),
-  CONTROL_MESSAGE(2, (byte) 2);
+  CONTROL_MESSAGE(2, (byte) 2),
+  UPDATE(3, (byte) 4);
+
 
   private static final Map<Integer, MessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
 
@@ -62,6 +65,7 @@ public enum MessageType {
       case PUT: return new Put();
       case DELETE: return new Delete();
       case CONTROL_MESSAGE: return new ControlMessage();
+      case UPDATE: return new Update();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

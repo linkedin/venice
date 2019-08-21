@@ -36,7 +36,7 @@ public class TopicReplicatorTest {
     final String destinationTopicName = "destination topic name";
 
     TopicManager topicManager = mock(TopicManager.class);
-    VeniceWriter<byte[], byte[]> veniceWriter = mock(VeniceWriter.class);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = mock(VeniceWriter.class);
     TopicReplicator topicReplicator = mock(TopicReplicator.class);
     VeniceWriterFactory veniceWriterFactory = mock(VeniceWriterFactory.class);
     MockTime mockTime = new MockTime();

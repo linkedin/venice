@@ -588,7 +588,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void writeToDatabaseAndProduce(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  protected void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
     int partition = consumerRecord.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
@@ -774,7 +774,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
               ByteBuffer chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(i);
               ByteBuffer chunkValue = chunks[i];
-              putInStorageEngine(versionTopic, partition, ByteUtils.extractByteArray(chunkKey), chunkValue, schemaId);
+              prependHeaderAndWriteToStorageEngine(versionTopic, partition, ByteUtils.extractByteArray(chunkKey), chunkValue, schemaId);
             }
 
             // Write the manifest inside the top-level key
@@ -786,7 +786,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * the padding in order for this trick to work.
              */
             manifest.position(SCHEMA_HEADER_LENGTH);
-            putInStorageEngine(versionTopic, partition, key, manifest, schemaId);
+            prependHeaderAndWriteToStorageEngine(versionTopic, partition, key, manifest, schemaId);
           }
         }
 

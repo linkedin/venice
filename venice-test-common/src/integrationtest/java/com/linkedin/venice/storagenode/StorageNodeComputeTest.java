@@ -158,7 +158,7 @@ public class StorageNodeComputeTest {
 
     VeniceWriterFactory vwFactory =
         TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress());
-    try (VeniceWriter<Object, byte[]> veniceWriter =
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter =
         vwFactory.getVeniceWriter(topic, keySerializer, new DefaultSerializer(), valueLargerThan1MB);
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
@@ -237,7 +237,7 @@ public class StorageNodeComputeTest {
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
     final int pushVersion = newVersion.getVersion();
 
-    try (VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+    try (VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(routerAddr))) {
@@ -300,7 +300,7 @@ public class StorageNodeComputeTest {
   }
 
   private void pushSyntheticDataForCompute(String topic, String keyPrefix, String valuePrefix, int numOfRecords,
-                                           VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[]> veniceWriter,
+                                           VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[], byte[]> veniceWriter,
                                            int pushVersion, CompressionStrategy compressionStrategy, boolean valueLargerThan1MB) throws Exception {
     veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, new HashMap<>());
     Schema valueSchema = Schema.parse(valueSchemaForCompute);

@@ -407,6 +407,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.ADD_VALUE_SCHEMA, params, SchemaResponse.class);
   }
 
+  public SchemaResponse addDerivedSchema(String storeName, int valueSchemaId, String derivedSchemaStr) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(SCHEMA_ID, valueSchemaId)
+        .add(DERIVED_SCHEMA, derivedSchemaStr);
+    return request(ControllerRoute.ADD_DERIVED_SCHEMA, params, SchemaResponse.class);
+  }
+
   public PartitionResponse setStorePartitionCount(String storeName, String partitionNum) {
     QueryParams params = newParams()
         .add(NAME, storeName)
@@ -440,9 +448,21 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.GET_VALUE_SCHEMA_ID, params, SchemaResponse.class);
   }
 
+  public SchemaResponse getValueOrDerivedSchemaId(String storeName, String derivedSchemaStr) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(DERIVED_SCHEMA, derivedSchemaStr);
+    return request(ControllerRoute.GET_VALUE_OR_DERIVED_SCHEMA_ID, params, SchemaResponse.class);
+  }
+
   public MultiSchemaResponse getAllValueSchema(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.GET_ALL_VALUE_SCHEMA, params, MultiSchemaResponse.class);
+  }
+
+  public MultiSchemaResponse getAllValueAndDerivedSchema(String storeName) {
+    QueryParams params = newParams().add(NAME, storeName);
+    return request(ControllerRoute.GET_ALL_VALUE_AND_DERIVED_SCHEMA, params, MultiSchemaResponse.class);
   }
 
   public AdminCommandExecutionResponse getAdminCommandExecution(long executionId) {

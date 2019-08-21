@@ -20,6 +20,7 @@ import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
@@ -40,8 +41,10 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
+import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
@@ -69,6 +72,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.collections4.map.PassiveExpiringMap;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -167,8 +171,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // Non-final
   /** Should never be accessed directly. Always use {@link #getVeniceWriter()} instead, so that lazy init can occur. */
-  private VeniceWriter<byte[], byte[]> veniceWriter;
+  private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
   protected KafkaConsumerWrapper consumer;
+
   protected Set<Integer> schemaIdSet;
   protected int idleCounter = 0;
 
@@ -181,6 +186,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The expectation is that the compaction strategy is immutable once Kafka log compaction is enabled.
    */
   private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
+
+  private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
 
   public StoreIngestionTask(VeniceWriterFactory writerFactory,
                             VeniceConsumerFactory consumerFactory,
@@ -253,6 +260,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.serverConfig = serverConfig;
 
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
+
+    this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeAdapter(storeNameWithoutVersionInfo, schemaRepo);
   }
 
   protected void validateState() {
@@ -1294,7 +1303,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   /**
    * Write to database and potentially produce to version topic
    */
-  protected abstract void writeToDatabaseAndProduce(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+  protected abstract void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       WriteToStorageEngine writeFunction, ProduceToTopic produceFunction);
 
   /**
@@ -1302,7 +1311,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
    * of GC.
    */
-  protected void putInStorageEngine(String topic, int partition, byte[] keyBytes, ByteBuffer putValue, int schemaId) {
+  protected void prependHeaderAndWriteToStorageEngine(String topic, int partition, byte[] keyBytes, ByteBuffer putValue, int schemaId) {
     /**
      * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
@@ -1311,23 +1320,25 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + SCHEMA_HEADER_LENGTH);
     }
 
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
-
     // Back up the original 4 bytes
     putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
     int backupBytes = putValue.getInt();
     putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
     ByteUtils.writeInt(putValue.array(), schemaId, putValue.position());
 
+    writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition, keyBytes, putValue);
+
+    /** We still want to recover the original position to make this function idempotent. */
+    putValue.putInt(backupBytes);
+  }
+
+  private void writeToStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, ByteBuffer putValue) {
     long putStartTimeNs = System.nanoTime();
     storageEngine.put(partition, keyBytes, putValue);
     if (logger.isTraceEnabled()) {
       logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
           (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
     }
-
-    /** We still want to recover the original position to make this function idempotent. */
-    putValue.putInt(backupBytes);
   }
 
   /**
@@ -1373,8 +1384,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int valueLen = putValue.remaining();
 
         // Write to storage engine; potentially produce the PUT message to version topic
-        writeToDatabaseAndProduce(consumerRecord,
-            key -> putInStorageEngine(topic, partition, key, putValue, put.schemaId),
+        produceAndWriteToDatabase(consumerRecord,
+            key -> prependHeaderAndWriteToStorageEngine(topic, partition, key, putValue, put.schemaId),
             (callback, sourceTopicOffset) -> {
               /**
                * Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
@@ -1393,10 +1404,52 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             });
 
         return valueLen;
+      case UPDATE:
+        Update update = (Update) kafkaValue.payloadUnion;
+        int valueSchemaId = update.schemaId;
+        int derivedSchemaId = update.updateSchemaId;
+        checkValueSchemaAvail(valueSchemaId);
 
+        //Since we have an async call to produce the message before writing it to the disk, there is a race
+        //condition where, if a record gets updated multiple times shortly, the updates may be still
+        //pending in the producer queue and have not been written into disk. In order to prevent such
+        //async read case, we wait and do not perform read operation until producer finishes firing
+        //the message and persisting it to the disk.
+        //TODO: this is not efficient. We should consider optimizing the "waiting" behavior here
+        try {
+          Future<RecordMetadata> lastLeaderProduceFuture =
+              partitionConsumptionStateMap.get(partition).getLastLeaderProduceFuture();
+          if (lastLeaderProduceFuture != null) {
+            lastLeaderProduceFuture.get();
+          }
+        } catch (Exception e) {
+          versionedDIVStats.recordLeaderProducerFailure(storeNameWithoutVersionInfo, storeVersion);
+        }
+
+        GenericRecord originalValue = ComputeChunkingAdapter.get(storeRepository.getLocalStorageEngine(topic), partition,
+            ByteBuffer.wrap(keyBytes), storageMetadataService.isStoreVersionChunked(topic), null,
+            null, null, storageMetadataService.getStoreVersionCompressionStrategy(topic),
+            serverConfig.isComputeFastAvroEnabled(), schemaRepo, storeNameWithoutVersionInfo);
+
+        byte[] updatedValueBytes = ingestionTaskWriteComputeAdapter.getUpdatedValueBytes((GenericRecord) originalValue,
+            update.updateValue, valueSchemaId, derivedSchemaId, partition);
+
+        ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + updatedValueBytes.length)
+            .putInt(valueSchemaId).put(updatedValueBytes);
+        updateValueWithSchemaId.flip();
+
+        valueLen = updatedValueBytes.length;
+
+        // Write to storage engine; potentially produce the PUT message to version topic
+        //TODO: tweak here. write compute doesn't need to do fancy offset manipulation here.
+        produceAndWriteToDatabase(consumerRecord,
+            key -> writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition, keyBytes, updateValueWithSchemaId),
+            (callback, sourceTopicOffset) ->
+                getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId, callback, sourceTopicOffset));
+        return valueLen;
       case DELETE:
         // Write to storage engine; potentially produce the DELETE message to version topic
-        writeToDatabaseAndProduce(consumerRecord,
+        produceAndWriteToDatabase(consumerRecord,
             key -> {
               long deleteStartTimeNs = System.nanoTime();
               storageEngine.delete(partition, key);

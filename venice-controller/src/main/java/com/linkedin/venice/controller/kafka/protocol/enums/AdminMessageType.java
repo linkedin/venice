@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -40,7 +41,8 @@ public enum AdminMessageType {
   DELETE_OLD_VERSION(13),
   MIGRATE_STORE(14),
   ABORT_MIGRATION(15),
-  ADD_VERSION(16);
+  ADD_VERSION(16),
+  DERIVED_SCHEMA_CREATION(17);
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -68,6 +70,7 @@ public enum AdminMessageType {
       case MIGRATE_STORE: return new MigrateStore();
       case ABORT_MIGRATION: return new AbortMigration();
       case ADD_VERSION: return new AddVersion();
+      case DERIVED_SCHEMA_CREATION: return new DerivedSchemaCreation();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

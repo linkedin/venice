@@ -51,7 +51,7 @@ public class TestRestartController {
     String topicName = response.getKafkaTopic();
     int versionNum = response.getVersion();
 
-    VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
+    VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getRandomRouterURL());
     Assert.assertEquals(
         controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());

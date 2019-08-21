@@ -528,7 +528,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * Get a venice writer to write string key-value pairs to given version for this cluster.
    * @return
    */
-  public VeniceWriter<String, String> getVeniceWriter(String storeVersionName) {
+  public VeniceWriter<String, String, byte[]> getVeniceWriter(String storeVersionName) {
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
@@ -542,7 +542,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   }
 
-  public VeniceWriter<String, String> getSslVeniceWriter(String storeVersionName) {
+  public VeniceWriter<String, String, byte[]> getSslVeniceWriter(String storeVersionName) {
 
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());

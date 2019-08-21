@@ -8,7 +8,7 @@ import org.apache.avro.Schema;
  * available operations that SN could apply on top of the record. Derived
  * schemas can be generated automatically from value schemas and each value
  * schema can have multiple derived schemas.Check out
- * {@link com.linkedin.venice.schema.avro.WriteComputeSchemaAdapter} for all
+ * {@link WriteComputeSchemaAdapter} for all
  * available operations and how it gets generated.
  */
 public class DerivedSchemaEntry extends SchemaEntry {
@@ -24,7 +24,7 @@ public class DerivedSchemaEntry extends SchemaEntry {
     this.valueSchemaId = valueSchemaId;
   }
 
-  public DerivedSchemaEntry(int id, int valueSchemaId, byte[] bytes) {
+  public DerivedSchemaEntry(int valueSchemaId, int id, byte[] bytes) {
     super(id, bytes);
     this.valueSchemaId = valueSchemaId;
   }

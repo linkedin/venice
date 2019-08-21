@@ -150,6 +150,7 @@ public class TestAdminConsumptionTask {
         topicName,
         new DefaultSerializer(),
         new DefaultSerializer(),
+        new DefaultSerializer(),
         new SimplePartitioner(),
         SystemTime.INSTANCE,
         () -> new MockInMemoryProducer(inMemoryKafkaBroker));
@@ -393,7 +394,7 @@ public class TestAdminConsumptionTask {
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
     String storeName = "test-store";
 
-    VeniceWriter<byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).getBasicVeniceWriter(adminTopic);
+    VeniceWriter<byte[], byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).getBasicVeniceWriter(adminTopic);
 
     byte[] message = getStoreCreationMessage(clusterName, storeName, owner, "invalid_key_schema", valueSchema, 1); // This name is special
     long badOffset =
@@ -1019,10 +1020,10 @@ public class TestAdminConsumptionTask {
    * and create an instance of this sub-class.
    */
   private static class TestVeniceWriter<K,V> extends VeniceWriter{
-
     protected TestVeniceWriter(VeniceProperties props, String topicName, VeniceKafkaSerializer keySerializer,
-        VeniceKafkaSerializer valueSerializer, VenicePartitioner partitioner, Time time, Supplier supplier) {
-      super(props, topicName, keySerializer, valueSerializer, partitioner, time, supplier);
+        VeniceKafkaSerializer valueSerializer, VeniceKafkaSerializer updateSerializer, VenicePartitioner partitioner,
+        Time time, Supplier supplier) {
+      super(props, topicName, keySerializer, valueSerializer, updateSerializer, partitioner, time, supplier);
     }
   }
 }

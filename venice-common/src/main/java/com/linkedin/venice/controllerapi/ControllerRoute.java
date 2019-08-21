@@ -45,11 +45,14 @@ public enum ControllerRoute {
 
   GET_KEY_SCHEMA("/get_key_schema", HttpMethod.GET, Arrays.asList(NAME)),
   ADD_VALUE_SCHEMA("/add_value_schema", HttpMethod.POST,  Arrays.asList(NAME, VALUE_SCHEMA)),
+  ADD_DERIVED_SCHEMA("/add_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA)),
   SET_OWNER("/set_owner", HttpMethod.POST, Arrays.asList(NAME, OWNER)),
   SET_PARTITION_COUNT("/set_partition_count", HttpMethod.POST, Arrays.asList(NAME, PARTITION_COUNT)),
   GET_ALL_VALUE_SCHEMA("/get_all_value_schema", HttpMethod.GET, Arrays.asList(NAME)),
+  GET_ALL_VALUE_AND_DERIVED_SCHEMA("/get_all_value_and_derived_schema", HttpMethod.GET, Arrays.asList(NAME)),
   GET_VALUE_SCHEMA("/get_value_schema", HttpMethod.GET, Arrays.asList(NAME, SCHEMA_ID)),
   GET_VALUE_SCHEMA_ID("/get_value_schema_id", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA)),
+  GET_VALUE_OR_DERIVED_SCHEMA_ID("/get_value_or_derived_schema_id", HttpMethod.POST, Arrays.asList(NAME, DERIVED_SCHEMA)),
   MASTER_CONTROLLER("/master_controller", HttpMethod.GET, Arrays.asList()),
 
   EXECUTION("/execution", HttpMethod.GET, Arrays.asList(EXECUTION_ID)),

@@ -142,7 +142,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
         .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
         .map(entry -> entry.getValue())
         .collect(Collectors.toList());
-    try (VeniceWriter<byte[], byte[]> veniceWriter =
+    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
         getVeniceWriterFactory().getBasicVeniceWriter(destinationTopic, getTimer())) {
       veniceWriter.broadcastStartOfBufferReplay(startingOffsets, destKafkaBootstrapServers, sourceTopic, new HashMap<>());
     }

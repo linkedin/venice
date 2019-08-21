@@ -65,6 +65,7 @@ import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.replication.LeaderStorageNodeReplicator;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -192,7 +193,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private String pushJobStatusTopicName;
 
-    private VeniceWriter<PushJobStatusRecordKey, PushJobStatusRecordValue> pushJobStatusWriter = null;
+    private VeniceWriter<PushJobStatusRecordKey, PushJobStatusRecordValue, byte[]> pushJobStatusWriter = null;
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
@@ -2283,10 +2284,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public Collection<DerivedSchemaEntry> getDerivedSchemas(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getDerivedSchemas(storeName);
+    }
+
+    @Override
     public int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr) {
         checkControllerMastership(clusterName);
         HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+    }
+
+    @Override
+    public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getDerivedSchemaId(storeName, schemaStr);
     }
 
     @Override
@@ -2303,12 +2318,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
         SchemaEntry schemaEntry = schemaRepository.addValueSchema(storeName, valueSchemaStr, expectedCompatibilityType);
 
-        //if we find this is a duplicate schema, return the existing schema id
-        if (schemaEntry.getId() == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-            return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
-        }
-
-        return schemaEntry;
+        return new SchemaEntry(schemaRepository.getValueSchemaId(storeName, valueSchemaStr), valueSchemaStr);
     }
 
     @Override
@@ -2318,11 +2328,36 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .addValueSchema(storeName, valueSchemaStr, schemaId);
     }
 
+    @Override
+    public DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr) {
+        checkControllerMastership(clusterName);
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        schemaRepository.addDerivedSchema(storeName, derivedSchemaStr, valueSchemaId);
+
+        return new DerivedSchemaEntry(valueSchemaId,
+            schemaRepository.getDerivedSchemaId(storeName, derivedSchemaStr).getSecond(), derivedSchemaStr );
+    }
+
+    @Override
+    public DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId,
+        int derivedSchemaId, String derivedSchemaStr) {
+        checkControllerMastership(clusterName);
+        return getVeniceHelixResource(clusterName).getSchemaRepository()
+            .addDerivedSchema(storeName, derivedSchemaStr, valueSchemaId, derivedSchemaId);
+    }
+
     protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
         String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);
         return getVeniceHelixResource(clusterName).getSchemaRepository()
             .preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr, expectedCompatibilityType);
+    }
+
+    protected int checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(String clusterName, String storeName,
+        int valueSchemaId, String derivedSchemaStr) {
+        checkControllerMastership(clusterName);
+        return getVeniceHelixResource(clusterName).getSchemaRepository()
+            .preCheckDerivedSchemaAndGetNextAvailableId(storeName, valueSchemaId, derivedSchemaStr);
     }
 
     @Override

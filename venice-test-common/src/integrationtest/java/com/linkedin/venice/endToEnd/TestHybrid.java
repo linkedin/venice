@@ -10,8 +10,6 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
-import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -405,7 +403,7 @@ public class TestHybrid {
     // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, veniceClusterWrapper.getKafka().getAddress());
-    VeniceWriter<byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(storeName + "_v1");
+    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(storeName + "_v1");
     writer.broadcastEndOfPush(new HashMap<>());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
@@ -504,7 +502,7 @@ public class TestHybrid {
     // Continue to write more records to the version topic
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
-    VeniceWriter<byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber));
+    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber));
 
     // Mock buffer replay message
     List<Long> bufferReplyOffsets = new ArrayList<>();

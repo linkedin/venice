@@ -125,7 +125,7 @@ public abstract class TestRestartServerDuringIngestion {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
-    VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topic);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topic);
     veniceWriter.broadcastStartOfPush(true, Collections.emptyMap());
 
     /**
@@ -196,7 +196,7 @@ public abstract class TestRestartServerDuringIngestion {
     restartPointSetForUnsortedInput.add(831);
     cur = 0;
 
-    VeniceWriter<byte[], byte[]> streamingWriter = veniceWriterFactory.getBasicVeniceWriter(
+    VeniceWriter<byte[], byte[], byte[]> streamingWriter = veniceWriterFactory.getBasicVeniceWriter(
         Version.composeRealTimeTopic(storeName));
     for (Map.Entry<byte[], byte[]> entry : unsortedInputRecords.entrySet()) {
       if (restartPointSetForUnsortedInput.contains(++cur)) {

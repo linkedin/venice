@@ -1,6 +1,5 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.venice.schema.avro.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.TestPushUtils;
 import java.util.Arrays;
 import org.apache.avro.Schema;
@@ -12,21 +11,27 @@ import static org.apache.avro.Schema.Type.*;
 
 public class TestWriteComputeSchemaAdapter {
   private String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING;
-  private String recordOfArraySchemaStr =
-      "{\n" +
-      "  \"type\" : \"record\",\n" +
-      "  \"name\" : \"testRecord\",\n" +
-      "  \"namespace\" : \"avro.example\",\n" +
-      "  \"fields\" : [ {\n" + "    \"name\" : \"intArray\",\n" +
-      "    \"type\" : {\n" +
-      "      \"type\" : \"array\",\n" +
-      "      \"items\" : \"int\"\n" +
-      "    }\n" + "  }, {\n" +
-      "    \"name\" : \"floatArray\",\n" + "    \"type\" : {\n" +
-      "      \"type\" : \"array\",\n" +
-      "      \"items\" : \"float\"\n" + "    }\n" +
-      "  } ]\n" +
-      "}";
+  private String recordOfArraySchemaStr = "{\n"
+      +"  \"type\" : \"record\",\n"
+      +"  \"name\" : \"testRecord\",\n"
+      +"  \"namespace\" : \"avro.example\",\n"
+      +"  \"fields\" : [ {\n"
+      +"    \"name\" : \"intArray\",\n"
+      +"    \"type\" : {\n"
+      +"      \"type\" : \"array\",\n"
+      +"      \"items\" : \"int\"\n"
+      +"    },\n"
+      +"    \"default\" : [ ]\n"
+      +"  }, {\n"
+      +"    \"name\" : \"floatArray\",\n"
+      +"    \"type\" : {\n"
+      +"      \"type\" : \"array\",\n"
+      +"      \"items\" : \"float\"\n"
+      +"    },\n"
+      +"    \"default\" : [ ]\n"
+      +"  } ]\n"
+      +"}";
+
 
   @Test
   public void testAdapterCanParseBasicSchema() {

@@ -17,7 +17,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  * @see VeniceWriter
  * // @see MockVeniceWriter in the H2V tests (commented because this module does not depend on H2V)
  */
-public abstract class AbstractVeniceWriter <K, V> implements Closeable {
+public abstract class AbstractVeniceWriter <K, V, U> implements Closeable {
   protected final String topicName;
 
   public AbstractVeniceWriter(String topicName) {
@@ -35,6 +35,8 @@ public abstract class AbstractVeniceWriter <K, V> implements Closeable {
   public abstract void close(boolean shouldEndAllSegments) throws IOException;
 
   public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback);
+
+  public abstract Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback);
 
   public abstract void flush();
 

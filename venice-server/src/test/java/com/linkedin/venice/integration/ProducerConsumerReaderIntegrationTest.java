@@ -53,7 +53,7 @@ public class ProducerConsumerReaderIntegrationTest {
   private int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
   // TODO: Make serializers parameterized so we test them all.
-  private VeniceWriter<Object, Object> veniceWriter;
+  private VeniceWriter<Object, Object, byte[]> veniceWriter;
   private AvroGenericStoreClient<String, Object> storeClient;
 
   @DataProvider(name = "PersistenceType")
@@ -172,10 +172,10 @@ public class ProducerConsumerReaderIntegrationTest {
       }
       k++;
     }
-    VeniceWriter<byte[], byte[]> basicVeniceWriter = writerFactory.getBasicVeniceWriter(topicName);
-    VeniceWriter<String, String> veniceWriter1 =
+    VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.getBasicVeniceWriter(topicName);
+    VeniceWriter<String, String, byte[]> veniceWriter1 =
         veniceTestWriterFactory.getVeniceWriter(topicName, keySerializer, valueSerializer);
-    VeniceWriter<String, String> veniceWriter2 =
+    VeniceWriter<String, String, byte[]> veniceWriter2 =
         veniceTestWriterFactory.getVeniceWriter(topicName, keySerializer, valueSerializer);
     basicVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.

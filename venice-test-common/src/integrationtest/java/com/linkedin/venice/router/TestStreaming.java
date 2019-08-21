@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import clojure.lang.Obj;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -74,7 +75,7 @@ public class TestStreaming {
 
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
-  private VeniceWriter<Object, Object> veniceWriter;
+  private VeniceWriter<Object, Object, Object> veniceWriter;
 
   private static final String keyPrefix = "key_";
   private static final String KEY_SCHEMA = "\"string\"";

@@ -12,6 +12,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -45,7 +46,7 @@ import org.apache.log4j.Logger;
  * Class which acts as the primary writer API.
  */
 @Threadsafe
-public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
+public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   // log4j logger
   private final Logger logger;
@@ -112,6 +113,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   // Immutable state
   private final VeniceKafkaSerializer<K> keySerializer;
   private final VeniceKafkaSerializer<V> valueSerializer;
+  private final VeniceKafkaSerializer<U> writeComputeSerializer;
   private final KafkaProducerWrapper producer;
   private final GUID producerGUID;
   private final Time time;
@@ -134,6 +136,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       String topicName,
       VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer,
+      VeniceKafkaSerializer<U> writeComputeSerializer,
       VenicePartitioner partitioner,
       Time time,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
@@ -141,6 +144,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
     this.keySerializer = keySerializer;
     this.valueSerializer = valueSerializer;
+    this.writeComputeSerializer = writeComputeSerializer;
     this.time = time;
     this.partitioner = partitioner;
     this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
@@ -173,12 +177,14 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       String topicName,
       VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer,
+      VeniceKafkaSerializer<U> writeComputeSerializer,
       Time time) {
     this(
         props,
         topicName,
         keySerializer,
         valueSerializer,
+        writeComputeSerializer,
         new DefaultVenicePartitioner(props),
         time,
         () -> new ApacheKafkaProducer(props));
@@ -255,7 +261,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public Future<RecordMetadata> delete(K key, Callback callback, long upstreamOffset) {
-    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, keySerializer.serialize(topicName, key));
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    if (isChunkingEnabled) {
+      serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    }
+
+    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, serializedKey);
+
     int partition = getPartition(kafkaKey);
     return sendMessage(producerMetadata -> kafkaKey, MessageType.DELETE, new Delete(), partition, callback, upstreamOffset);
   }
@@ -317,6 +329,30 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     putPayload.schemaId = valueSchemaId;
 
     return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback, upstreamOffset);
+  }
+
+  @Override
+  public Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback) {
+    if (isChunkingEnabled) {
+      throw new VeniceException("Chunking is not supported for update operation in VeniceWriter");
+    }
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    byte[] serializedUpdate = writeComputeSerializer.serialize(topicName, update);
+    int partition = getPartition(serializedKey);
+
+    //large value is not supported for "update" yet
+    if (serializedKey.length + serializedUpdate.length > DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES) {
+      throw new VeniceException("This partial update exceeds the maximum size. " + getSizeReport(serializedKey, serializedUpdate));
+    }
+
+    KafkaKey kafkaKey = new KafkaKey((MessageType.UPDATE), serializedKey);
+
+    Update updatePayLoad = new Update();
+    updatePayLoad.updateValue = ByteBuffer.wrap(serializedUpdate);
+    updatePayLoad.schemaId = valueSchemaId;
+    updatePayLoad.updateSchemaId = derivedSchemaId;
+
+    return sendMessage(producerMetadata -> kafkaKey, MessageType.UPDATE, updatePayLoad, partition, callback, DEFAULT_UPSTREAM_OFFSET);
   }
 
   @Override

@@ -239,7 +239,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private long pushStartTime;
   private String pushId;
 
-  private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
+  private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
 
   protected class SchemaInfo {
     boolean isAvro = true;
@@ -728,7 +728,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return versionTopicInfo;
   }
 
-  private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
+  private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
     if (null == this.veniceWriter) {
       // Initialize VeniceWriter
       Properties veniceWriterProperties = new Properties();
@@ -760,7 +760,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
 
-      VeniceWriter<KafkaKey, byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(versionTopicInfo.topic);
+      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(versionTopicInfo.topic);
       logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       this.veniceWriter = newVeniceWriter;
     }

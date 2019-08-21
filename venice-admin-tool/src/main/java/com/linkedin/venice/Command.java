@@ -49,6 +49,8 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORE, VERSION}),
   ADD_SCHEMA("add-schema", "",
       new Arg[] {URL, CLUSTER, STORE, VALUE_SCHEMA}),
+  ADD_DERIVED_SCHEMA("add-derived-schema", "",
+      new Arg[] {URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA}),
   LIST_STORAGE_NODES("list-storage-nodes", "",
       new Arg[] {URL, CLUSTER}),
   CLUSTER_HEALTH_INSTANCES("cluster-health-instances", "List the status for every instance",

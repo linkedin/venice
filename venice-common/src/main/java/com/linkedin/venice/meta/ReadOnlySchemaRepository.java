@@ -48,6 +48,10 @@ public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChang
    */
   Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr);
 
+  DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId);
+
+  Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName);
+
   /**
    * Get the most recent derived schema added to the given store and value schema id
    */

@@ -49,7 +49,7 @@ public class TestRestartServer {
     Assert.assertEquals(response.getReplicas(), replicaFactor);
     Assert.assertEquals(response.getPartitions(), dataSize / partitionSize);
 
-    VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
+    VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put("test", "test", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());

@@ -148,6 +148,13 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       }
 
       @Override
+      public Future<RecordMetadata> update(Object key, Object update, int valueSchemaId,
+          int derivedSchemaId, Callback callback) {
+        // no-op
+        return null;
+      }
+
+      @Override
       public void flush() {
         // no-op
       }
@@ -181,6 +188,13 @@ public class TestVeniceReducer extends AbstractTestVeniceMR {
       @Override
       public Future<RecordMetadata> put(Object key, Object value, int valueSchemaId, Callback callback) {
         callback.onCompletion(null, new VeniceException("Some writer exception"));
+        return null;
+      }
+
+      @Override
+      public Future<RecordMetadata> update(Object key, Object update, int valueSchemaId,
+          int derivedSchemaId, Callback callback) {
+        // no-op
         return null;
       }
 

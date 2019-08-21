@@ -73,7 +73,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long lastTimeThroughputWasLoggedInNS = System.nanoTime();
   private long lastMessageCompletedCount = 0;
 
-  private AbstractVeniceWriter<byte[], byte[]> veniceWriter = null;
+  private AbstractVeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
 
   private VeniceProperties props;

@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.validation.*;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
@@ -197,6 +198,15 @@ public class Segment {
         updateCheckSum(putPayload.schemaId);
         ByteBuffer putValue = putPayload.putValue;
         updateCheckSum(putValue.array(), putValue.position(), putValue.remaining());
+        return true;
+      case UPDATE:
+        updateCheckSum(messageEnvelope.messageType);
+        updateCheckSum(key.getKey());
+        Update updatePayload = (Update) messageEnvelope.payloadUnion;
+        updateCheckSum(updatePayload.schemaId);
+        updateCheckSum(updatePayload.updateSchemaId);
+        ByteBuffer updateValue = updatePayload.updateValue;
+        updateCheckSum(updateValue.array(), updateValue.position(), updateValue.remaining());
         return true;
       case DELETE:
         updateCheckSum(messageEnvelope.messageType);

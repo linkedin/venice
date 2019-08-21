@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -167,7 +168,11 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName);
 
+    Collection<DerivedSchemaEntry> getDerivedSchemas(String clusterName, String storeName);
+
     int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr);
+
+    Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr);
 
     SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
@@ -181,6 +186,13 @@ public interface Admin extends AutoCloseable, Closeable {
      * TODO: make it private and remove from the interface list
      */
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
+
+    DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr);
+
+    /**
+     * This method skips most of precondition checks and is intended for only internal use.
+     */
+    DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr);
 
     void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 
