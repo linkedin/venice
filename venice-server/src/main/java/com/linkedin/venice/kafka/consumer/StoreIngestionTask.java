@@ -1207,7 +1207,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * See {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
          * to find more details.
          */
-        offsetRecord.setOffsetRecordTransformer(offsetRecordTransformer.get());
+        offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID, offsetRecordTransformer.get());
       } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
 
       // Potentially update the offset metadata in the OffsetRecord

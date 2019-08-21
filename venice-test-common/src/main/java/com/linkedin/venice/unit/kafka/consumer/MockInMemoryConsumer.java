@@ -1,5 +1,6 @@
 package com.linkedin.venice.unit.kafka.consumer;
 
+import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -50,6 +51,9 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
 
   @Override
   public void resetOffset(String topic, int partition) {
+    if (!hasSubscription(topic, partition)) {
+      throw new UnsubscribedTopicPartitionException(topic, partition);
+    }
     delegate.resetOffset(topic, partition);
     offsets.put(new TopicPartition(topic, partition), OffsetRecord.LOWEST_OFFSET);
   }

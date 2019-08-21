@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
@@ -26,7 +27,7 @@ public class OffsetRecord {
 
   private final PartitionState partitionState;
 
-  private Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
+  private Map<GUID, OffsetRecordTransformer> offsetRecordTransformers = new VeniceConcurrentHashMap<>();
 
   public OffsetRecord(PartitionState partitionState) {
     this.partitionState = partitionState;
@@ -59,13 +60,11 @@ public class OffsetRecord {
   }
 
   /**
-   * This function will keep a reference of passed {@link OffsetRecordTransformer},
-   * which will be used in {@link #transform()}.
-   *
-   * @param transformer
+   * This function will keep a map of reference to all the {@link OffsetRecordTransformer}
+   * from different producers.
    */
-  public void setOffsetRecordTransformer(OffsetRecordTransformer transformer) {
-    offsetRecordTransformer = Optional.of(transformer);
+  public void addOffsetRecordTransformer(GUID producerGUID, OffsetRecordTransformer transformer) {
+    offsetRecordTransformers.put(producerGUID, transformer);
   }
 
   /**
@@ -73,9 +72,10 @@ public class OffsetRecord {
    * so this function should be only invoked when necessary.
    */
   public void transform() {
-    if (offsetRecordTransformer.isPresent()) {
-      offsetRecordTransformer.get().transform(this);
+    for (OffsetRecordTransformer transformer : offsetRecordTransformers.values()) {
+      transformer.transform(this);
     }
+    offsetRecordTransformers.clear();
   }
 
   public long getOffset() {
