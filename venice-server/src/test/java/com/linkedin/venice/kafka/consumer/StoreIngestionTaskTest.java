@@ -642,7 +642,8 @@ public class StoreIngestionTaskTest {
       // Reset should be able to handle the scenario, when the topic partition has been unsubscribed.
       storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
       verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).unSubscribe(topic, PARTITION_FOO);
-      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).resetOffset(topic, PARTITION_FOO);
+      // StoreIngestionTask won't invoke consumer.resetOffset() if it already unsubscribe from that topic/partition
+      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT).times(0)).resetOffset(topic, PARTITION_FOO);
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
     }, isLeaderFollowerModelEnabled);
   }
