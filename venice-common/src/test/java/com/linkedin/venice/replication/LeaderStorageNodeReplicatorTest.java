@@ -48,7 +48,7 @@ public class LeaderStorageNodeReplicatorTest {
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
     List<PartitionInfo> partitionInfos = new ArrayList<>();
-    VeniceWriter<byte[], byte[]> mockVeniceWriter = mock(VeniceWriter.class);
+    VeniceWriter<byte[], byte[], byte[]> mockVeniceWriter = mock(VeniceWriter.class);
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();

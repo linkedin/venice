@@ -103,14 +103,14 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testDeleteTopic() throws InterruptedException {
+  public void testDeleteTopic() {
     String topicName = getTopic();
     manager.ensureTopicIsDeletedAndBlock(topicName);
     Assert.assertFalse(manager.containsTopic(topicName));
   }
 
   @Test
-  public void testSyncDeleteTopic() throws InterruptedException {
+  public void testSyncDeleteTopic() {
     String topicName = getTopic();
     // Delete that topic
     manager.ensureTopicIsDeletedAndBlock(topicName);
@@ -149,7 +149,7 @@ public class TopicManagerTest {
     Properties properties = new Properties();
     properties.put(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory(kafka.getAddress());
-    VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topicName);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topicName);
 
     // Test starting conditions
     assertOffsetsByTime(topicName, 0, LOWEST_OFFSET);
@@ -158,8 +158,8 @@ public class TopicManagerTest {
     mockTime.addMilliseconds(TIME_SKIP);
     RecordMetadata[] offsetsByMessageNumber = new RecordMetadata[NUMBER_OF_MESSAGES];
     for (int messageNumber = 0; messageNumber < NUMBER_OF_MESSAGES; messageNumber++) {
-      byte[] key = new String("key" + messageNumber).getBytes();
-      byte[] value = new String("value" + messageNumber).getBytes();
+      byte[] key = ("key" + messageNumber).getBytes();
+      byte[] value = ("value" + messageNumber).getBytes();
       offsetsByMessageNumber[messageNumber] = veniceWriter.put(key, value, 0, null).get();
       long offset = offsetsByMessageNumber[messageNumber].offset();
       LOGGER.info("Wrote messageNumber: " + messageNumber + ", at time: " + mockTime + ", offset: " + offset);
@@ -208,7 +208,7 @@ public class TopicManagerTest {
   }
 
   @Test
-  public void testUpdateTopicRetention() throws InterruptedException {
+  public void testUpdateTopicRetention() {
     String topic = TestUtils.getUniqueString("topic");
     manager.createTopic(topic, 1, 1, true);
     manager.updateTopicRetention(topic, 0);

@@ -56,9 +56,9 @@ public class TestPushUtils {
       "  \"type\": \"record\",   " +
       "  \"name\": \"User\",     " +
       "  \"fields\": [           " +
-      "       { \"name\": \"id\", \"type\": \"string\" },  " +
-      "       { \"name\": \"name\", \"type\": \"string\" },  " +
-      "       { \"name\": \"age\", \"type\": \"int\" }" +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"name\" },  " +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" +
       "  ] " +
       " } ";
 

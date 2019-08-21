@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
@@ -162,7 +163,7 @@ public class ConsumerIntegrationTest {
   @Test(timeOut = 60 * Time.MS_PER_SECOND)
   public void testForwardCompatibility() throws ExecutionException, InterruptedException {
     // Verify that the regular writer can update the store
-    try (VeniceWriter<String, String> regularVeniceWriter = cluster.getVeniceWriter(topicName)) {
+    try (VeniceWriter<String, String, byte[]> regularVeniceWriter = cluster.getVeniceWriter(topicName)) {
       writeAndVerifyRecord(regularVeniceWriter, client, "value1");
     }
 
@@ -188,7 +189,7 @@ public class ConsumerIntegrationTest {
     }
   }
 
-  private void writeAndVerifyRecord(VeniceWriter<String, String> veniceWriter,
+  private void writeAndVerifyRecord(VeniceWriter<String, String, byte[]> veniceWriter,
                                     AvroGenericStoreClient client,
                                     String testValue) throws ExecutionException, InterruptedException {
     veniceWriter.put(TEST_KEY, testValue, 1).get();
@@ -206,7 +207,7 @@ public class ConsumerIntegrationTest {
     });
   }
 
-  private static class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String> {
+  private static class VeniceWriterWithNewerProtocol extends VeniceWriter<String, String, byte[]> {
     protected VeniceWriterWithNewerProtocol(
         VeniceProperties props,
         String topicName,
@@ -215,7 +216,8 @@ public class ConsumerIntegrationTest {
         VenicePartitioner partitioner,
         Time time,
         Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
-      super(props, topicName, keySerializer, valueSerializer, partitioner, time, producerWrapperSupplier);
+      super(props, topicName, keySerializer, valueSerializer, new DefaultSerializer(), partitioner, time,
+          producerWrapperSupplier);
     }
 
     @Override

@@ -12,6 +12,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
@@ -51,6 +52,7 @@ import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
@@ -113,7 +115,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   protected final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
-  private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
+  private final Map<String, VeniceWriter<byte[], byte[], byte[]>> veniceWriterMap;
   private final AdminTopicMetadataAccessor adminTopicMetadataAccessor;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
@@ -133,7 +135,8 @@ public class VeniceParentHelixAdmin implements Admin {
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
    * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, TopicManager)} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String)} won't truncate them;
-   * 3. {@link #getTopicForCurrentPushJob(String, String)} will truncate the errored topics based on {@link #maxErroredTopicNumToKeep};
+   * 3. {@link #getTopicForCurrentPushJob(String, String, boolean)} will truncate the errored topics based on
+   * {@link #maxErroredTopicNumToKeep};
    *
    * It means error topic retiring is only be triggered by next push.
    *
@@ -365,7 +368,7 @@ public class VeniceParentHelixAdmin implements Admin {
     AdminCommandExecution execution =
         adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
     message.executionId = execution.getExecutionId();
-    VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     byte[] serializedValue = adminOperationSerializer.serialize(message);
     try {
       Future<RecordMetadata> future = veniceWriter.put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
@@ -1143,8 +1146,18 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Collection<DerivedSchemaEntry> getDerivedSchemas(String clusterName, String storeName) {
+    return veniceHelixAdmin.getDerivedSchemas(clusterName, storeName);
+  }
+
+  @Override
   public int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr) {
     return veniceHelixAdmin.getValueSchemaId(clusterName, storeName, valueSchemaStr);
+  }
+
+  @Override
+  public Pair<Integer, Integer> getDerivedSchemaId(String clusterName, String storeName, String schemaStr) {
+    return veniceHelixAdmin.getDerivedSchemaId(clusterName, storeName, schemaStr);
   }
 
   @Override
@@ -1158,12 +1171,13 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
-      logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
       //if we find this is a duplicate schema, return the existing schema id
       if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         return new SchemaEntry(veniceHelixAdmin.getValueSchemaId(clusterName, storeName, valueSchemaStr), valueSchemaStr);
       }
+
+      logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
       ValueSchemaCreation valueSchemaCreation = (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
       valueSchemaCreation.clusterName = clusterName;
@@ -1180,6 +1194,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
 
+      //defensive code checking
       int actualValueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
       if (actualValueSchemaId != newValueSchemaId) {
         throw new VeniceException("Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: " + actualValueSchemaId);
@@ -1194,6 +1209,57 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
     throw new VeniceUnsupportedOperationException("addValueSchema");
+  }
+
+  @Override
+  public DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr) {
+    acquireLock(clusterName);
+    try {
+      int newDerivedSchemaId = veniceHelixAdmin
+          .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
+
+      //if we find this is a duplicate schema, return the existing schema id
+      if (newDerivedSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
+        return new DerivedSchemaEntry(valueSchemaId,
+            veniceHelixAdmin.getDerivedSchemaId(clusterName, storeName, derivedSchemaStr).getSecond(), derivedSchemaStr);
+      }
+
+      logger.info("Adding derived schema: " + derivedSchemaStr + " to store: " + storeName + ", version: " +
+          valueSchemaId + " in cluster: " + clusterName);
+
+      DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) AdminMessageType.DERIVED_SCHEMA_CREATION.getNewInstance();
+      derivedSchemaCreation.clusterName = clusterName;
+      derivedSchemaCreation.storeName = storeName;
+      SchemaMeta schemaMeta = new SchemaMeta();
+      schemaMeta.definition = derivedSchemaStr;
+      schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+      derivedSchemaCreation.schema = schemaMeta;
+      derivedSchemaCreation.valueSchemaId = valueSchemaId;
+      derivedSchemaCreation.derivedSchemaId = newDerivedSchemaId;
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.DERIVED_SCHEMA_CREATION.getValue();
+      message.payloadUnion = derivedSchemaCreation;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+
+      //defensive code checking
+      Pair<Integer, Integer> actualValueSchemaIdPair = getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
+      if (actualValueSchemaIdPair.getFirst() != valueSchemaId || actualValueSchemaIdPair.getSecond() != newDerivedSchemaId) {
+        throw new VeniceException(String.format("Something bad happens, the expected new value schema id pair is:"
+            + "%d_%d, but got: %d_%d", valueSchemaId, newDerivedSchemaId, actualValueSchemaIdPair.getFirst(),
+            actualValueSchemaIdPair.getSecond()));
+      }
+
+      return new DerivedSchemaEntry(valueSchemaId, newDerivedSchemaId, derivedSchemaStr);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr) {
+    throw new VeniceUnsupportedOperationException("addDerivedSchema");
   }
 
   @Override
@@ -1613,7 +1679,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public synchronized void stop(String clusterName) {
     veniceHelixAdmin.stop(clusterName);
     // Close the admin producer for this cluster
-    VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     if (null != veniceWriter) {
       veniceWriter.close();
     }

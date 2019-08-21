@@ -58,7 +58,7 @@ import java.util.Collection;
  * Instantiating multiple ReadWriteSchemaRepository will lead to race conditions in
  * ZK.
  */
-public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
+  public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository {
   private Logger logger = Logger.getLogger(HelixReadWriteSchemaRepository.class);
 
   private final HelixSchemaAccessor accessor;
@@ -188,6 +188,13 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
+  public Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName) {
+    preCheckStoreCondition(storeName);
+
+    return accessor.getAllDerivedSchemas(storeName);
+  }
+
+  @Override
   public SchemaEntry getLatestValueSchema(String storeName) {
     Collection<SchemaEntry>  valueSchemas = getValueSchemas(storeName);
     int maxValueSchemaId = -1;
@@ -211,6 +218,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     }
 
     return derivedSchemaList.stream().max(Comparator.comparing(DerivedSchemaEntry::getId)).get();
+  }
+
+  @Override
+  public DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
+    preCheckStoreCondition(storeName);
+
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.DERIVED_SCHEMA_DELIMITER + derivedSchemaId;
+
+    return accessor.getDerivedSchema(storeName, idPairStr);
   }
 
   /**
@@ -294,6 +310,16 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
   }
 
+  public int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr) {
+    preCheckStoreCondition(storeName);
+
+    DerivedSchemaEntry derivedSchemaEntry =
+        new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchemaStr);
+
+    return getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId),
+        derivedSchemaEntry, DirectionalSchemaCompatibilityType.BACKWARD);
+  }
+
   @Override
   public DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId) {
     preCheckStoreCondition(storeName);
@@ -301,7 +327,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     DerivedSchemaEntry newDerivedSchemaEntry =
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, schemaStr);
     return addDerivedSchema(storeName, schemaStr, valueSchemaId,
-        getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId), newDerivedSchemaEntry, DirectionalSchemaCompatibilityType.FULL));
+        getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId), newDerivedSchemaEntry, DirectionalSchemaCompatibilityType.BACKWARD));
   }
 
   @Override
@@ -322,7 +348,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     int newValueSchemaId;
     try {
-      if (schemaEntries.isEmpty()) {
+      if (schemaEntries == null || schemaEntries.isEmpty()) {
         newValueSchemaId = HelixSchemaAccessor.VALUE_SCHEMA_STARTING_ID;
       } else {
         newValueSchemaId = schemaEntries.stream().map(schemaEntry -> {
@@ -347,18 +373,14 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     Schema derivedSchema = Schema.parse(derivedSchemaStr);
-    Pair<Integer, Integer> derivedSchemaIdPair =
-        new Pair<>(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
-
     for (DerivedSchemaEntry derivedSchemaEntry : getDerivedSchemaMap(storeName).values().stream()
         .flatMap(List::stream).collect(Collectors.toList())) {
       if (derivedSchemaEntry.getSchema().equals(derivedSchema)) {
-        derivedSchemaIdPair.create(derivedSchemaEntry.getValueSchemaId(), derivedSchemaEntry.getId());
-        return derivedSchemaIdPair;
+        return new Pair<>(derivedSchemaEntry.getValueSchemaId(), derivedSchemaEntry.getId());
       }
     }
 
-    return derivedSchemaIdPair;
+    return new Pair<>(SchemaData.INVALID_VALUE_SCHEMA_ID, SchemaData.INVALID_VALUE_SCHEMA_ID);
   }
 
   private Map<Integer, List<DerivedSchemaEntry>> getDerivedSchemaMap(String storeName) {

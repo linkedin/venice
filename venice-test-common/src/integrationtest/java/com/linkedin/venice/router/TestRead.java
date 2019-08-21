@@ -73,7 +73,7 @@ public abstract class TestRead {
   private String routerAddr;
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
-  private VeniceWriter<Object, Object> veniceWriter;
+  private VeniceWriter<Object, Object, Object> veniceWriter;
 
   private static final String KEY_SCHEMA_STR = "\"string\"";
   private static final String VALUE_FIELD_NAME = "int_field";
@@ -84,7 +84,7 @@ public abstract class TestRead {
   protected abstract StorageNodeClientType getStorageNodeClientType();
 
   @BeforeClass(alwaysRun = true)
-  public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
+  public void setUp() throws VeniceClientException {
     /**
      * The following config is used to detect Netty resource leaking.
      * If memory leak happens, you will see the following log message:

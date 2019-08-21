@@ -51,7 +51,7 @@ public class TestInstanceRemovable {
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
-    VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
+    VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
 
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
@@ -100,7 +100,7 @@ public class TestInstanceRemovable {
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
-    VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
+    VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put("test", "test", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -113,7 +113,7 @@ public class TestInstanceRemovable {
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 
-    String cluserName = cluster.getClusterName();
+    String clusterName = cluster.getClusterName();
     String urls = cluster.getAllControllersURLs();
     int serverPort1 = cluster.getVeniceServers().get(0).getPort();
     int serverPort2 = cluster.getVeniceServers().get(1).getPort();
@@ -121,9 +121,9 @@ public class TestInstanceRemovable {
 
     cluster.stopVeniceServer(serverPort1);
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
-        () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(cluserName, topicName).size() == 4);
+        () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 4);
     // Can not remove node cause, it will trigger re-balance.
-    ControllerClient client = new ControllerClient(cluserName, urls);
+    ControllerClient client = new ControllerClient(clusterName, urls);
     Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
     Assert.assertFalse(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
     Assert.assertFalse(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
@@ -133,7 +133,7 @@ public class TestInstanceRemovable {
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
-            .getReplicasOfStorageNode(cluserName, Utils.getHelixNodeIdentifier(serverPort4)).size() == 2);
+            .getReplicasOfStorageNode(clusterName, Utils.getHelixNodeIdentifier(serverPort4)).size() == 2);
     // After replica number back to 3, all of node could be removed.
     Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
     Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());

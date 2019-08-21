@@ -123,7 +123,7 @@ public abstract class TestRouterCache {
     CompressionStrategy compressionStrategy = isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP;
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
 
-    VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+    VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
         .getVeniceWriter(topic, keySerializer, valueSerializer);
 
 

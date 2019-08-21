@@ -80,7 +80,7 @@ public class StorageNodeReadTest {
   private VeniceKafkaSerializer keySerializer;
   private VeniceKafkaSerializer valueSerializer;
 
-  private VeniceWriter<Object, Object> veniceWriter;
+  private VeniceWriter<Object, Object, Object> veniceWriter;
   private AvroGenericStoreClient client;
 
   private final Base64.Encoder encoder = Base64.getUrlEncoder();
@@ -367,7 +367,9 @@ public class StorageNodeReadTest {
     return future.get();
   }
 
-  private void pushSyntheticData(String keyPrefix, String valuePrefix, int numOfRecords, VeniceClusterWrapper veniceCluster, VeniceWriter<Object, Object> veniceWriter, int pushVersion) throws Exception {
+  private void pushSyntheticData(String keyPrefix, String valuePrefix, int numOfRecords,
+      VeniceClusterWrapper veniceCluster, VeniceWriter<Object, Object, Object> veniceWriter, int pushVersion)
+      throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < numOfRecords; ++i) {

@@ -1,12 +1,9 @@
 package com.linkedin.venice.serializer;
 
 import java.io.IOException;
-import java.util.Collection;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.ResolvingDecoder;
-import org.apache.avro.specific.SpecificDatumReader;
 
 
 public class ComputableGenericDatumReader<T> extends GenericDatumReader<T> {

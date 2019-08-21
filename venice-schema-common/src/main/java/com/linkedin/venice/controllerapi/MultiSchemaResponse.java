@@ -3,6 +3,7 @@ package com.linkedin.venice.controllerapi;
 public class MultiSchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   public static class Schema {
     private int id;
+    private int derivedSchemaId = -1;
     private String schemaStr;
 
     public int getId() {
@@ -11,6 +12,14 @@ public class MultiSchemaResponse extends ControllerResponse { /* Uses Json Refle
 
     public void setId(int id) {
       this.id = id;
+    }
+
+    public int getDerivedSchemaId() {
+      return derivedSchemaId;
+    }
+
+    public void setDerivedSchemaId(int derivedSchemaId) {
+      this.derivedSchemaId = derivedSchemaId;
     }
 
     public String getSchemaStr() {

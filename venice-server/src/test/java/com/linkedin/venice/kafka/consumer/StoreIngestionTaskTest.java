@@ -232,7 +232,7 @@ public class StoreIngestionTaskTest {
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
     return new TestVeniceWriter(new VeniceProperties(new Properties()), topic, new DefaultSerializer(),
-        new DefaultSerializer(), new SimplePartitioner(), SystemTime.INSTANCE, producerSupplier);
+        new DefaultSerializer(), new DefaultSerializer(), new SimplePartitioner(), SystemTime.INSTANCE, producerSupplier);
   }
 
   private VeniceWriter getCorruptedVeniceWriter(byte[] valueToCorrupt) {
@@ -1304,8 +1304,9 @@ public class StoreIngestionTaskTest {
   private static class TestVeniceWriter<K,V> extends VeniceWriter{
 
     protected TestVeniceWriter(VeniceProperties props, String topicName, VeniceKafkaSerializer keySerializer,
-        VeniceKafkaSerializer valueSerializer, VenicePartitioner partitioner, Time time, Supplier supplier) {
-      super(props, topicName, keySerializer, valueSerializer, partitioner, time, supplier);
+        VeniceKafkaSerializer valueSerializer, VeniceKafkaSerializer updateSerializer, VenicePartitioner partitioner,
+        Time time, Supplier supplier) {
+      super(props, topicName, keySerializer, valueSerializer, updateSerializer, partitioner, time, supplier);
     }
   }
 

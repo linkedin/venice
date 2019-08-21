@@ -12,6 +12,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -59,9 +60,9 @@ public class VeniceSystemProducer implements SystemProducer {
   private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
-  private final VeniceWriter<byte[], byte[]> veniceWriter;
+  private final VeniceWriter<byte[], byte[], byte[]> veniceWriter;
 
-  private final ConcurrentMap<Schema, Integer> valueSchemaIds = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
 
   private final Schema keySchema;
 
@@ -120,11 +121,11 @@ public class VeniceSystemProducer implements SystemProducer {
     this.keySchema = Schema.parse(keySchemaResponse.getSchemaStr());
 
     MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
-        () -> this.controllerClient.getAllValueSchema(this.storeName)
+        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName)
     );
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
-      valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), valueSchema.getId());
+      valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
     }
   }
 
@@ -146,13 +147,13 @@ public class VeniceSystemProducer implements SystemProducer {
     throw new SamzaException("Failed to send request to Controller, error: " + errorMsg);
   }
 
-  protected VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
+  protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
     return getVeniceWriter(store, veniceWriterProperties);
   }
 
-  protected VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
+  protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
     return new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(store.getKafkaTopic(), time);
   }
 
@@ -211,16 +212,22 @@ public class VeniceSystemProducer implements SystemProducer {
       veniceWriter.delete(key, callback);
     } else {
       Schema valueObjectSchema = getSchemaFromObject(valueObject);
-      int valueSchemaId = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
+
+      Pair<Integer, Integer> valueSchemaIdPair = valueSchemaIds.computeIfAbsent(valueObjectSchema, valueSchema -> {
         SchemaResponse valueSchemaResponse = (SchemaResponse)controllerRequestWithRetry(
-            () -> controllerClient.getValueSchemaID(storeName, valueSchema.toString())
+            () -> controllerClient.getValueOrDerivedSchemaId(storeName, valueSchema.toString())
         );
         LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for schema: " + valueSchema);
-        return valueSchemaResponse.getId();
+        return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
-      byte[] value = serializeObject(topic, valueObject);
 
-      veniceWriter.put(key, value, valueSchemaId, callback);
+       byte[] value = serializeObject(topic, valueObject);
+
+      if (valueSchemaIdPair.getSecond() == -1) {
+        veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
+      } else {
+        veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
+      }
     }
     return completableFuture;
   }
@@ -266,7 +273,7 @@ public class VeniceSystemProducer implements SystemProducer {
     }
   }
 
-  protected byte[] serializeObject(String topic, Object input) {
+  private byte[] serializeObject(String topic, Object input) {
     if (input instanceof IndexedRecord) {
       VeniceAvroKafkaSerializer serializer = serializers.computeIfAbsent(
           ((IndexedRecord) input).getSchema().toString(), VeniceAvroKafkaSerializer::new);

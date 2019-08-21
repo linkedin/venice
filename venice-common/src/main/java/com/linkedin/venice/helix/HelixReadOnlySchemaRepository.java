@@ -260,6 +260,22 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
     }
   }
 
+  @Override
+  public DerivedSchemaEntry getDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
+    schemaLock.readLock().lock();
+    try {
+      fetchStoreSchemaIfNotInCache(storeName);
+      SchemaData schemaData = schemaMap.get(storeName);
+      if (null == schemaData) {
+        throw new VeniceNoStoreException(storeName);
+      }
+
+      return schemaData.getDerivedSchema(valueSchemaId, derivedSchemaId);
+    } finally {
+      schemaLock.readLock().unlock();
+    }
+  }
+
   /**
    * This function is used to retrieve all the value schemas for the given store.
    *
@@ -284,6 +300,27 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
         throw new VeniceNoStoreException(storeName);
       }
       return schemaData.getValueSchemas();
+    } finally {
+      schemaLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public Collection<DerivedSchemaEntry> getDerivedSchemas(String storeName) {
+    schemaLock.readLock().lock();
+    try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
+      SchemaData schemaData = schemaMap.get(storeName);
+      if (null == schemaData) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      return schemaData.getDerivedSchemas();
     } finally {
       schemaLock.readLock().unlock();
     }

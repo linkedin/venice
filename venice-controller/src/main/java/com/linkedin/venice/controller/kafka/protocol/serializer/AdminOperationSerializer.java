@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.protocol.serializer;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
 import org.apache.avro.io.Decoder;
@@ -18,7 +19,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 29;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = AvroProtocolDefinition.ADMIN_OPERATION.getCurrentProtocolVersion();
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */

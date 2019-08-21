@@ -20,6 +20,7 @@ public class ControllerApiConstants {
   public static final String INSTANCE_VIEW = "instance_view";
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
+  public static final String DERIVED_SCHEMA = "derived_schema";
   public static final String SCHEMA_ID = "schema_id";
   public static final String TOPIC = "topic"; // TODO remove this, everyone should use store and version instead
   public static final String OFFSET = "offset";

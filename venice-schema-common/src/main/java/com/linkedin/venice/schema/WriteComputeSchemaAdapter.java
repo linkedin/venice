@@ -1,5 +1,6 @@
-package com.linkedin.venice.schema.avro;
+package com.linkedin.venice.schema;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -15,7 +16,7 @@ import org.codehaus.jackson.node.ObjectNode;
 
 import static org.apache.avro.Schema.Field;
 import static org.apache.avro.Schema.Type.*;
-import static com.linkedin.venice.schema.avro.WriteComputeSchemaAdapter.WriteComputeOperation.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.WriteComputeOperation.*;
 
 /**
  * A util class that parses arbitrary Avro schema to its' write compute schema.
@@ -49,8 +50,8 @@ public class WriteComputeSchemaAdapter {
      * 2. setDiff: remove elements from the original array, as if it was a sorted set.
      */
     LIST_OPS("ListOps", new Function[] {
-        schema -> new Field("setUnion", (Schema) schema, null, ARRAY_NODE),
-        schema -> new Field("setDiff", (Schema) schema, null, ARRAY_NODE)
+        schema -> new Field(SET_UNION, (Schema) schema, null, ARRAY_NODE),
+        schema -> new Field(SET_DIFF, (Schema) schema, null, ARRAY_NODE)
     }),
 
     /**
@@ -60,8 +61,8 @@ public class WriteComputeSchemaAdapter {
      * 2. mapDiff: remove entries from the original array.
      */
     MAP_OPS("MapOps", new Function[] {
-        schema -> new Field("mapUnion", (Schema) schema, null, OBJECT_NODE),
-        schema -> new Field("mapDiff", Schema.createArray(Schema.create(Schema.Type.STRING)), null, ARRAY_NODE)
+        schema -> new Field(MAP_UNION, (Schema) schema, null, OBJECT_NODE),
+        schema -> new Field(MAP_DIFF, Schema.createArray(Schema.create(Schema.Type.STRING)), null, ARRAY_NODE)
     });
 
     //a name that meets class naming convention
@@ -97,6 +98,14 @@ public class WriteComputeSchemaAdapter {
 
   private static final ArrayNode ARRAY_NODE = JsonNodeFactory.instance.arrayNode();
   private static final ObjectNode OBJECT_NODE = JsonNodeFactory.instance.objectNode();
+
+  //List operations
+  public static final String SET_UNION = "setUnion";
+  public static final String SET_DIFF = "setDiff";
+
+  //Map operations
+  public static final String MAP_UNION = "mapUnion";
+  public static final String MAP_DIFF = "mapDiff";
 
   private WriteComputeSchemaAdapter() {}
 
@@ -137,7 +146,7 @@ public class WriteComputeSchemaAdapter {
       case MAP:
         return adapter.parseMap(originSchema, derivedSchemaName, namespace);
       case UNION:
-        return adapter.parseUnion(originSchema, namespace);
+        return adapter.parseUnion(originSchema);
       default:
         return originSchema;
     }
@@ -217,6 +226,10 @@ public class WriteComputeSchemaAdapter {
         recordSchema.isError());
     List<Field> fieldList = new ArrayList<>();
     for (Field field : recordSchema.getFields()) {
+      if (field.defaultValue() == null) {
+        throw new VeniceException(String.format("Cannot generate derived schema because field: \"%s\" "
+                + "does not have a default value.", field.name()));
+      }
       String fieldName = null;
       if (field.schema().getType() != RECORD) {
         fieldName = field.name();
@@ -312,9 +325,17 @@ public class WriteComputeSchemaAdapter {
         mapSchema));
   }
 
-  private Schema parseUnion(Schema unionSchema, String namespace) {
+  private Schema parseUnion(Schema unionSchema) {
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
-        .map(type -> parse(type, null, namespace))
+        .map(schema ->{
+          Schema.Type type = schema.getType();
+          if (type == RECORD || type == ARRAY || type == MAP) {
+            throw new VeniceException("recursive parsing inside union is not supported yet. Schema: "
+                + schema.toString(true));
+          }
+
+          return schema;
+        })
         .collect(Collectors.toList()));
   }
 

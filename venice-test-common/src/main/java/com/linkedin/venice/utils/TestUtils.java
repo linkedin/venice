@@ -1,7 +1,6 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.helix.HelixInstanceConverter;
@@ -16,15 +15,14 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
@@ -197,8 +195,9 @@ public class TestUtils {
       super(properties);
     }
 
-    public <K, V> VeniceWriter<K, V> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
-      return getVeniceWriter(topic, keySer, valSer, Optional.empty(), SystemTime.INSTANCE);
+
+    public <K, V> VeniceWriter<K, V, byte[]> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
+      return getVeniceWriter(topic, keySer, valSer, new DefaultSerializer(), Optional.empty(), SystemTime.INSTANCE);
     }
   }
 

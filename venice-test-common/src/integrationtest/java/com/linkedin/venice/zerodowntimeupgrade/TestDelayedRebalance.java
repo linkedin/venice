@@ -4,7 +4,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -214,7 +213,7 @@ public class TestDelayedRebalance {
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
 
-    VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
+    VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put("test", "test", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());

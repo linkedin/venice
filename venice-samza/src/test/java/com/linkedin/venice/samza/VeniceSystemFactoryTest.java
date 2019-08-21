@@ -9,8 +9,10 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -31,13 +33,31 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
 import static org.testng.Assert.*;
 
 
 public class VeniceSystemFactoryTest {
 
-  //for a record like: {'string': 'somestring', 'number': 3.14}
-  private static final String VALUE_SCHEMA = "{\"fields\":[{\"type\":[\"double\",\"null\"],\"name\":\"number\"},{\"type\":[\"string\",\"null\"],\"name\":\"string\"}],\"type\":\"record\",\"name\":\"testRecord\"}";
+  private static final String VALUE_SCHEMA = "{\n" +
+      "  \"type\" : \"record\",\n" +
+      "  \"name\" : \"testRecord\",\n" +
+      "  \"fields\" : [ {\n" +
+      "    \"name\" : \"number\",\n" +
+      "    \"type\" : [ \"double\", \"null\" ],\n" +
+      "    \"default\" : 100\n" + "  }, {\n" +
+      "    \"name\" : \"string\",\n" +
+      "    \"type\" : [ \"string\", \"null\" ],\n" +
+      "    \"default\" : 100\n" + "  }, {\n" +
+      "    \"name\" : \"intArray\",\n" +
+      "    \"type\" : {\n" +
+      "      \"type\" : \"array\",\n" +
+      "      \"items\" : \"int\"\n" +
+      "    },\n" +
+      "    \"default\" :  [ ]\n" +
+      "  } ]\n" +
+      "}";
+
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VENICE_SYSTEM_NAME = "venice"; //This is the Samza system name for use by the Samza API.
   private VeniceClusterWrapper venice;
@@ -62,10 +82,16 @@ public class VeniceSystemFactoryTest {
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
    */
   @Test
-  public void testGetProducer() throws Exception {
+  public void testGetProducer() {
     String storeName = TestUtils.getUniqueString("store");
 
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+
+    Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(VALUE_SCHEMA);
+
+    //generate write compute schema
+    client.addDerivedSchema(storeName, 1, writeComputeSchema.toString());
+
     // Enable hybrid
     client.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
 
@@ -77,9 +103,13 @@ public class VeniceSystemFactoryTest {
     SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.STREAM, storeName);
 
     //Create an AVRO record
+    Schema valueRecordSchema = Schema.parse(VALUE_SCHEMA);
+    Schema intArraySchema = valueRecordSchema.getField("intArray").schema();
+
     GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
     record.put("string", "somestring");
     record.put("number", 3.14);
+    record.put("intArray", new GenericData.Array<>(intArraySchema, Collections.singletonList(1)));
     OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
         new SystemStream(VENICE_SYSTEM_NAME, storeName),
         "keystring",
@@ -109,6 +139,43 @@ public class VeniceSystemFactoryTest {
       Object numberField = recordFromVenice.get("number");
       assertNotNull(numberField, "'number' field should not be null");
       assertEquals(numberField, 3.14);
+
+      Object intArrayField = recordFromVenice.get("intArray");
+      assertEquals(intArrayField, new GenericData.Array<>(intArraySchema, Collections.singletonList(1)));
+    });
+
+    //update the record
+    Schema noOpSchema = writeComputeSchema.getField("number").schema().getTypes().get(0);
+    GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
+
+    GenericData.Record collectionUpdateRecord =
+        new GenericData.Record(writeComputeSchema.getField("intArray").schema().getTypes().get(1));
+    collectionUpdateRecord.put(SET_UNION, Collections.singletonList(2));
+    collectionUpdateRecord.put(SET_DIFF, Collections.singletonList(1));
+
+    GenericRecord partialUpdateRecord = new GenericData.Record(writeComputeSchema);
+    partialUpdateRecord.put("number", noOpRecord);
+    partialUpdateRecord.put("string", "updatedString");
+    partialUpdateRecord.put("intArray", collectionUpdateRecord);
+    OutgoingMessageEnvelope partialUpdateEnvelope = new OutgoingMessageEnvelope(
+        new SystemStream(VENICE_SYSTEM_NAME, storeName),
+        "keystring",
+        partialUpdateRecord);
+
+    veniceProducer.send(storeName, partialUpdateEnvelope);
+
+    //verify the update
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      GenericRecord updatedRecord;
+      try {
+        updatedRecord = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+
+      assertEquals(updatedRecord.get("number"), 3.14);
+      assertEquals(updatedRecord.get("string").toString(), "updatedString");
+      assertEquals(updatedRecord.get("intArray"), new GenericData.Array<>(intArraySchema, Collections.singletonList(2)));
     });
 
     //delete the record

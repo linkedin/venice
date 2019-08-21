@@ -232,6 +232,8 @@ public class AdminTool {
         case ADD_SCHEMA:
           applyValueSchemaToStore(cmd);
           break;
+        case ADD_DERIVED_SCHEMA:
+          applyDerivedSchemaToStore(cmd);
         case LIST_STORAGE_NODES:
           printStorageNodeList();
           break;
@@ -532,6 +534,21 @@ public class AdminTool {
     String valueSchema = readFile(valueSchemaFile);
     verifyValidSchema(valueSchema);
     SchemaResponse valueResponse = controllerClient.addValueSchema(store, valueSchema);
+    if (valueResponse.isError()) {
+      throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
+    }
+    printObject(valueResponse);
+  }
+
+  private static void applyDerivedSchemaToStore(CommandLine cmd) throws IOException {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_DERIVED_SCHEMA);
+    String derivedSchemaFile = getRequiredArgument(cmd, Arg.DERIVED_SCHEMA, Command.ADD_DERIVED_SCHEMA);
+    int valueSchemaId = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_DERIVED_SCHEMA),
+        "value schema id");
+
+    String derivedSchemaStr = readFile(derivedSchemaFile);
+    verifyValidSchema(derivedSchemaStr);
+    SchemaResponse valueResponse = controllerClient.addDerivedSchema(store, valueSchemaId, derivedSchemaStr);
     if (valueResponse.isError()) {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }

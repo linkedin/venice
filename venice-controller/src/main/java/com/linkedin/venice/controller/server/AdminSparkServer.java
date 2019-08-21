@@ -134,9 +134,12 @@ public class AdminSparkServer extends AbstractVeniceService {
     // Operations for key schema/value schema
     httpService.get(GET_KEY_SCHEMA.getPath(), SchemaRoutes.getKeySchema(admin));
     httpService.post(ADD_VALUE_SCHEMA.getPath(), SchemaRoutes.addValueSchema(admin));
+    httpService.post(ADD_DERIVED_SCHEMA.getPath(), SchemaRoutes.addDerivedSchema(admin));
     httpService.get(GET_VALUE_SCHEMA.getPath(), SchemaRoutes.getValueSchema(admin));
     httpService.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
+    httpService.post(GET_VALUE_OR_DERIVED_SCHEMA_ID.getPath(), SchemaRoutes.getDerivedSchemaID(admin));
     httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
+    httpService.get(GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath(), SchemaRoutes.getAllValueAndDerivedSchema(admin));
 
     httpService.post(SET_OWNER.getPath(), StoresRoutes.setOwner(admin));
     httpService.post(SET_PARTITION_COUNT.getPath(), StoresRoutes.setPartitionCount(admin));
@@ -173,7 +176,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   }
 
   @Override
-  public void stopInner() throws Exception {
+  public void stopInner() {
     httpService.stop();
   }
 
