@@ -27,9 +27,6 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.serialization.KeyWithChunkingSuffixSerializer;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.serializer.ComputableSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -40,8 +37,8 @@ import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.storage.chunking.ChunkingUtils;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
@@ -49,14 +46,10 @@ import com.linkedin.venice.utils.ComputeUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.queues.LabeledRunnable;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.CompositeByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -73,7 +66,6 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
-import org.apache.commons.io.filefilter.IOFileFilter;
 import org.apache.log4j.Logger;
 
 
@@ -92,8 +84,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final StoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepo;
   private final MetadataRetriever metadataRetriever;
-  private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
-  private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(false);
   private final Map<Utf8, Schema> computeResultSchemaCache;
   private final boolean fastAvroEnabled;
 
@@ -211,7 +201,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
 
     long queryStartTimeInNS = System.nanoTime();
-    ValueRecord valueRecord = getValueRecord(store, partition, key, isChunked, response);
+    ValueRecord valueRecord = ChunkingUtils.getValueRecord(store, partition, key, isChunked, response);
     response.setValueRecord(valueRecord);
     response.setOffset(offset);
     response.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
@@ -230,15 +220,27 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     for (MultiGetRouterRequestKeyV1 key : keys) {
       MultiGetResponseRecordV1 record =
-          getMultiGetResponseRecordV1(store, key.partitionId, key.keyBytes, key.keyIndex, isChunked,
-              request.isStreamingRequest(), responseWrapper);
+          ChunkingUtils.getMultiGetResponseRecordV1(store, key.partitionId, key.keyBytes, isChunked, responseWrapper);
+      responseWrapper.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
+      if (null == record) {
+        if (request.isStreamingRequest()) {
+          // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
+          // non-existing keys in the response if the response is partial.
+          record = new MultiGetResponseRecordV1();
+          // Negative key index to indicate the non-existing keys
+          record.keyIndex = Math.negateExact(key.keyIndex);
+          record.schemaId = StreamingConstants.NON_EXISTING_KEY_SCHEMA_ID;
+          record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
+        }
+      } else {
+        record.keyIndex = key.keyIndex;
+      }
+
       if (null != record) {
         // TODO: streaming support in storage node
         responseWrapper.addRecord(record);
       }
     }
-
-    responseWrapper.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
 
     // Offset data
     Set<Integer> partitionIdSet = new HashSet<>();
@@ -357,29 +359,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       boolean isStreaming,
       ComputeResponseWrapper response,
       Map<String, Object> globalContext) {
-    // get the raw bytes of the value from the key first
-    ByteBuffer keyBuffer;
-    if (isChunked) {
-      keyBuffer = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key));
-    } else {
-      keyBuffer = key;
-    }
-
     /**
      * Reuse MultiGetResponseRecordV1 while getting data from storage engine; MultiGetResponseRecordV1 contains
      * useful information like schemaId of this record.
      */
     long databaseLookupStartTimeInNS = System.nanoTime();
-    MultiGetResponseRecordV1 record = getFromStorage(
-        store,
-        partition,
-        keyBuffer,
-        response,
-        fullBytesToMultiGetResponseRecordV1,
-        constructNioByteBuffer,
-        addChunkIntoNioByteBuffer,
-        getSizeOfNioByteBuffer,
-        containerToMultiGetResponseRecord);
+    MultiGetResponseRecordV1 record =
+        ChunkingUtils.getMultiGetResponseRecordV1(store, partition, key, isChunked, response);
     response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
     if (null == record) {
       if (isStreaming) {
@@ -467,238 +453,5 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     response.addReadComputeSerializationLatency(LatencyUtils.getLatencyInMS(serializeStartTimeInNS));
 
     return responseRecord;
-  }
-
-  /**
-   * Handles the retrieval of a {@link MultiGetResponseRecordV1}, handling everything specific to this
-   * code path, including chunking the key and dealing with {@link ByteBuffer}.
-   *
-   * This is used by the batch get code path.
-   */
-  private MultiGetResponseRecordV1 getMultiGetResponseRecordV1(
-      AbstractStorageEngine store,
-      int partition,
-      ByteBuffer key,
-      final int keyIndex,
-      boolean isChunked,
-      boolean isStreaming,
-      MultiGetResponseWrapper response) {
-
-    if (isChunked) {
-      key = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key));
-    }
-    MultiGetResponseRecordV1 record = getFromStorage(
-        store,
-        partition,
-        key,
-        response,
-        fullBytesToMultiGetResponseRecordV1,
-        constructNioByteBuffer,
-        addChunkIntoNioByteBuffer,
-        getSizeOfNioByteBuffer,
-        containerToMultiGetResponseRecord);
-    if (null == record) {
-      if (isStreaming) {
-        // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
-        // non-existing keys in the response if the response is partial.
-        record = new MultiGetResponseRecordV1();
-        // Negative key index to indicate the non-existing keys
-        record.keyIndex = Math.negateExact(keyIndex);
-        record.schemaId = StreamingConstants.NON_EXISTING_KEY_SCHEMA_ID;
-        record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
-      }
-    } else {
-      record.keyIndex = keyIndex;
-    }
-
-    return record;
-  }
-
-  private static final FullBytesToValue fullBytesToMultiGetResponseRecordV1 = (schemaId, fullBytes) -> {
-    MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
-    /** N.B.: Does not need any repositioning, as opposed to {@link containerToMultiGetResponseRecord} */
-    record.value = ValueRecord.parseDataAsNIOByteBuffer(fullBytes);
-    record.schemaId = schemaId;
-    return record;
-  };
-  private static final ConstructAssembledValueContainer constructNioByteBuffer = chunkedValueManifest -> ByteBuffer.allocate(chunkedValueManifest.size);
-  private static final AddChunkIntoContainer<ByteBuffer> addChunkIntoNioByteBuffer = (byteBuffer, chunkIndex, valueChunk) ->
-      byteBuffer.put(valueChunk, ValueRecord.SCHEMA_HEADER_LENGTH, valueChunk.length - ValueRecord.SCHEMA_HEADER_LENGTH);
-  private static final GetSizeOfContainer<ByteBuffer> getSizeOfNioByteBuffer = byteBuffer -> byteBuffer.position();
-  private static final ContainerToValue<ByteBuffer, MultiGetResponseRecordV1> containerToMultiGetResponseRecord = (schemaId, byteBuffer) -> {
-    MultiGetResponseRecordV1 record = new MultiGetResponseRecordV1();
-    /**
-     * For re-assembled large values, it is necessary to reposition the {@link ByteBuffer} back to the
-     * beginning of its content, otherwise the Avro encoder will skip this content.
-     *
-     * Note that this only occurs for a ByteBuffer we've been writing into gradually (i.e.: during chunk
-     * re-assembly) but does not occur for a ByteBuffer that has been created by wrapping a single byte
-     * array (i.e.: as is the case for small values, in {@link fullBytesToMultiGetResponseRecordV1}).
-     * Doing this re-positioning for small values would cause another type of problem, because for these
-     * (wrapping) ByteBuffer instances, the position needs to remain set to the starting offset (within
-     * the backing array) which was originally specified at construction time...
-     */
-    byteBuffer.position(0);
-    record.value = byteBuffer;
-    record.schemaId = schemaId;
-    return record;
-  };
-
-  /**
-   * Handles the retrieval of a {@link ValueRecord}, handling everything specific to this
-   * code path, including chunking the key and dealing with {@link ByteBuf} or {@link CompositeByteBuf}.
-   *
-   * This is used by the single get code path.
-   */
-  private ValueRecord getValueRecord(AbstractStorageEngine store, int partition, byte[] key, boolean isChunked, StorageResponseObject response) {
-    ByteBuffer keyBuffer = null;
-    if (isChunked) {
-      keyBuffer = ByteBuffer.wrap(keyWithChunkingSuffixSerializer.serializeNonChunkedKey(key));
-    } else {
-      keyBuffer = ByteBuffer.wrap(key);
-    }
-    return getFromStorage(
-        store,
-        partition,
-        keyBuffer,
-        response,
-        fullBytesToValueRecord,
-        constructCompositeByteBuf,
-        addChunkIntoCompositeByteBuf,
-        getSizeOfCompositeByteBuf,
-        containerToValueRecord);
-  }
-  private static final FullBytesToValue fullBytesToValueRecord = (schemaId, fullBytes) -> ValueRecord.parseAndCreate(fullBytes);
-  private static final ConstructAssembledValueContainer constructCompositeByteBuf = chunkedValueManifest ->
-      Unpooled.compositeBuffer(chunkedValueManifest.keysWithChunkIdSuffix.size());
-  private static final AddChunkIntoContainer<CompositeByteBuf> addChunkIntoCompositeByteBuf = (o, chunkIndex, valueChunk) ->
-      o.addComponent(true, chunkIndex, ValueRecord.parseDataAsByteBuf(valueChunk));
-  private static final GetSizeOfContainer<CompositeByteBuf> getSizeOfCompositeByteBuf = byteBuf -> byteBuf.readableBytes();
-  private static final ContainerToValue<CompositeByteBuf, ValueRecord> containerToValueRecord = (schemaId, byteBuf) -> ValueRecord.create(schemaId, byteBuf);
-
-  // The code below is general-purpose storage engine handling and chunking re-assembly. The specifics
-  // of single gets vs batch gets are abstracted away by a handful of functional interfaces.
-
-  /**
-   * Used to wrap a small {@param fullBytes} value fetched from the storage engine into the right type
-   * of {@param VALUE} class needed by the query code.
-   */
-  private interface FullBytesToValue<VALUE> {
-    VALUE construct(int schemaId, byte[] fullBytes);
-  }
-
-  /**
-   * Used to construct the right kind of {@param ASSEMBLED_VALUE_CONTAINER} container (according to
-   * the query code) to hold a large value which needs to be incrementally re-assembled from many
-   * smaller chunks.
-   */
-  private interface ConstructAssembledValueContainer<ASSEMBLED_VALUE_CONTAINER> {
-    ASSEMBLED_VALUE_CONTAINER construct(ChunkedValueManifest chunkedValueManifest);
-  }
-
-  /**
-   * Used to incrementally add a {@param valueChunk} into the {@param ASSEMBLED_VALUE_CONTAINER}
-   * container.
-   */
-  private interface AddChunkIntoContainer<ASSEMBLED_VALUE_CONTAINER> {
-    void add(ASSEMBLED_VALUE_CONTAINER container, int chunkIndex, byte[] valueChunk);
-  }
-
-  /**
-   * Used to get the size in bytes of a fully assembled {@param ASSEMBLED_VALUE_CONTAINER}, in
-   * order to do a sanity check before returning it to the query code.
-   */
-  private interface GetSizeOfContainer<ASSEMBLED_VALUE_CONTAINER> {
-    int sizeOf(ASSEMBLED_VALUE_CONTAINER container);
-  }
-
-  /**
-   * Used to wrap a large value re-assembled with the use of a {@param ASSEMBLED_VALUE_CONTAINER}
-   * into the right type of {@param VALUE} class needed by the query code.
-   */
-  private interface ContainerToValue<ASSEMBLED_VALUE_CONTAINER, VALUE> {
-    VALUE construct(int schemaId, ASSEMBLED_VALUE_CONTAINER container);
-  }
-
-  /**
-   * Fetches the value associated with the given key, and potentially re-assembles it, if it is
-   * a chunked value. This function should not be called directly, from the query code, as it expects
-   * the key to be properly formatted already. Use of one these simpler functions instead:
-   *
-   * @see #getValueRecord(AbstractStorageEngine, int, byte[], boolean, StorageResponseObject)
-   * @see #getMultiGetResponseRecordV1(AbstractStorageEngine, int, ByteBuffer, int, boolean, boolean, MultiGetResponseWrapper)
-   *
-   * This code makes use of several functional interfaces in order to abstract away the different needs
-   * of the single get and batch get query paths.
-   */
-  private <VALUE, ASSEMBLED_VALUE_CONTAINER> VALUE getFromStorage(
-      AbstractStorageEngine store,
-      int partition,
-      ByteBuffer keyBuffer,
-      ReadResponse response,
-      FullBytesToValue<VALUE> fullBytesToValueFunction,
-      ConstructAssembledValueContainer<ASSEMBLED_VALUE_CONTAINER> constructAssembledValueContainer,
-      AddChunkIntoContainer addChunkIntoContainerFunction,
-      GetSizeOfContainer getSizeFromContainerFunction,
-      ContainerToValue<ASSEMBLED_VALUE_CONTAINER, VALUE> containerToValueFunction) {
-
-    byte[] value = store.get(partition, keyBuffer);
-    if (null == value) {
-      return null;
-    }
-    int schemaId = ValueRecord.parseSchemaId(value);
-
-    if (schemaId > 0) {
-      // User-defined schema, thus not a chunked value. Early termination.
-      return fullBytesToValueFunction.construct(schemaId, value);
-    } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
-      throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
-    }
-
-    // End of initial sanity checks. We have chunked value, so we need to fetch all chunks
-
-    ChunkedValueManifest chunkedValueManifest = chunkedValueManifestSerializer.deserialize(value, schemaId);
-    ASSEMBLED_VALUE_CONTAINER assembledValueContainer = constructAssembledValueContainer.construct(chunkedValueManifest);
-
-    for (int chunkIndex = 0; chunkIndex < chunkedValueManifest.keysWithChunkIdSuffix.size(); chunkIndex++) {
-      // N.B.: This is done sequentially. Originally, each chunk was fetched concurrently in the same executor
-      // as the main queries, but this might cause deadlocks, so we are now doing it sequentially. If we want to
-      // optimize large value retrieval in the future, it's unclear whether the concurrent retrieval approach
-      // is optimal (as opposed to streaming the response out incrementally, for example). Since this is a
-      // premature optimization, we are not addressing it right now.
-      byte[] valueChunk = store.get(partition, chunkedValueManifest.keysWithChunkIdSuffix.get(chunkIndex).array());
-
-      if (null == valueChunk) {
-        throw new VeniceException(
-            "Chunk not found in " + getExceptionMessageDetails(store, partition, chunkIndex));
-      } else if (ValueRecord.parseSchemaId(valueChunk) != AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion()) {
-        throw new VeniceException(
-            "Did not get the chunk schema ID while attempting to retrieve a chunk! " + "Instead, got schema ID: " + ValueRecord.parseSchemaId(valueChunk) + " from "
-                + getExceptionMessageDetails(store, partition, chunkIndex));
-      }
-
-      addChunkIntoContainerFunction.add(assembledValueContainer, chunkIndex, valueChunk);
-    }
-
-    // Sanity check based on size...
-    int actualSize = getSizeFromContainerFunction.sizeOf(assembledValueContainer);
-    if (actualSize != chunkedValueManifest.size) {
-      throw new VeniceException(
-          "The fully assembled large value does not have the expected size! " + "actualSize: " + actualSize + ", chunkedValueManifest.size: " + chunkedValueManifest.size
-              + ", " + getExceptionMessageDetails(store, partition, null));
-    }
-
-    response.incrementMultiChunkLargeValueCount();
-
-    return containerToValueFunction.construct(chunkedValueManifest.schemaId, assembledValueContainer);
-  }
-
-  private String getExceptionMessageDetails(AbstractStorageEngine store, int partition, Integer chunkIndex) {
-    String message = "store: " + store.getName() + ", partition: " + partition;
-    if (chunkIndex != null) {
-      message += ", chunk index: " + chunkIndex;
-    }
-    message += ".";
-    return message;
   }
 }

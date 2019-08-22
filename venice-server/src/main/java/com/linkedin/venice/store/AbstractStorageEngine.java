@@ -227,10 +227,10 @@ public abstract class AbstractStorageEngine implements Store {
     adjustStoragePartition(storagePartitionConfig);
   }
 
-  private void validatePartitionForKey(Integer logicalPartitionId, byte[] key, String operationType) {
+  protected void validatePartitionForKey(Integer logicalPartitionId, Object key, String operationType) {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = operationType + " request failed for Key: " + ByteUtils.toLogString(key) + " . Invalid partition id: "
+      String errorMessage = operationType + " request failed. Invalid partition id: "
           + logicalPartitionId + " Store " + getName();
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
@@ -263,12 +263,7 @@ public abstract class AbstractStorageEngine implements Store {
 
   @Override
   public byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException {
-    Utils.notNull(keyBuffer, "Key cannot be null.");
-    if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = "Invalid partition id: " + logicalPartitionId + " Store " + getName();
-      logger.error(errorMessage);
-      throw new PersistenceFailureException(errorMessage);
-    }
+    validatePartitionForKey(logicalPartitionId, keyBuffer, "Get");
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
     return partition.get(keyBuffer);
   }
