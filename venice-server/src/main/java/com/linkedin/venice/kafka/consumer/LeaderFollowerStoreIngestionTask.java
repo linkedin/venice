@@ -4,11 +4,14 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -19,7 +22,9 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -39,6 +44,7 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.kafka.consumer.LeaderFollowerStateType.*;
+import static com.linkedin.venice.store.record.ValueRecord.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
@@ -479,17 +485,90 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
        */
       KafkaMessageEnvelope kafkaValue = consumerRecord.value();
       offsetRecord.setOffset(consumerRecord.offset());
+
       // also update the leader topic offset using the upstream offset in ProducerMetadata
       if (kafkaValue.producerMetadata.upstreamOffset >= 0) {
-        if (kafkaValue.producerMetadata.upstreamOffset < offsetRecord.getLeaderOffset()) {
+        long newUpstreamOffset = kafkaValue.producerMetadata.upstreamOffset;
+        long previousUpstreamOffset = offsetRecord.getLeaderOffset();
+        /**
+         * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
+         * issue (multiple leaders producing to the same partition at the same time)
+         */
+        if (newUpstreamOffset < previousUpstreamOffset
+            && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID())) {
           /**
-           * Don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
+           * Check whether the data inside rewind message is the same the data inside storage engine; if so,
+           * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
+           *
+           * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
+           * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
            */
-          logger.error(consumerTaskId + " received message with upstreamOffset: " + kafkaValue.producerMetadata.upstreamOffset
-              + "; but recorded upstreamOffset is: " + offsetRecord.getLeaderOffset() + "; multiple leaders are producing."
-              + " OffsetRecord:\n" + offsetRecord.toDetailedString());
-          versionedDIVStats.recordLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+          String logMsg = String.format(consumerTaskId + " received message with upstreamOffset: %ld;"
+              + " but recorded upstreamOffset is: %ld. New GUID: %s; previous producer GUID: %s. "
+              + "Multiple leaders are producing.", newUpstreamOffset, previousUpstreamOffset,
+              GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID), GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
+
+          boolean lossy = true;
+          try {
+            KafkaKey key = consumerRecord.key();
+            KafkaMessageEnvelope envelope = consumerRecord.value();
+            AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+            switch (MessageType.valueOf(envelope)) {
+              case PUT:
+                // Issue an read to get the current value of the key
+                byte[] actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
+                if (actualValue != null) {
+                  int actualSchemaId = ByteUtils.readInt(actualValue, 0);
+                  Put put = (Put) envelope.payloadUnion;
+                  if (actualSchemaId == put.schemaId) {
+                    // continue if schema Id is the same
+                    if (ByteUtils.equals(put.putValue.array(), put.putValue.position(), actualValue, SCHEMA_HEADER_LENGTH)) {
+                      lossy = false;
+                      logMsg += "\nBut this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
+                    }
+                  }
+                }
+                break;
+              case DELETE:
+                /**
+                 * Lossy if the key/value pair is added back to the storage engine after the first DELETE message.
+                 */
+                actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
+                if (actualValue == null) {
+                  lossy = false;
+                  logMsg += "\nBut this rewound DELETE is not lossy because the data in the rewind message is deleted already";
+                }
+                break;
+              default:
+                // Consider lossy for both control message and PartialUpdate
+                break;
+            }
+          } catch (Exception e) {
+            logger.warn(consumerTaskId + " failed comparing the rewind message with the actual value in Venice", e);
+          }
+
+          if (lossy) {
+            if (!partitionConsumptionState.isEndOfPushReceived()) {
+              logMsg += "\nFailing the job because lossy rewind happens during Grandfathering job";
+              logger.error(logMsg);
+              versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+              VeniceException e = new VeniceException(logMsg);
+              notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
+              throw e;
+            } else {
+              logMsg += "\nDon't fail the job during streaming ingestion";
+              logger.error(logMsg);
+              versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+            }
+          } else {
+            logger.info(logMsg);
+            versionedDIVStats.recordBenignLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+          }
         }
+        /**
+         * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
+         * to the true leader when the old leader doesn't stop producing.
+         */
         offsetRecord.setLeaderTopicOffset(kafkaValue.producerMetadata.upstreamOffset);
       }
     }

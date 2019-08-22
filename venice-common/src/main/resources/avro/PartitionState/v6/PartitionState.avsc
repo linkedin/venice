@@ -63,6 +63,19 @@
       "doc": "The last Kafka offset consumed successfully in this partition from the leader topic",
       "default": -1
     }, {
+      "name": "leaderGUID",
+      "type": [
+        "null",
+        {
+          "namespace": "com.linkedin.venice.kafka.protocol",
+          "name": "GUID",
+          "type": "fixed",
+          "size": 16
+        }
+      ],
+      "doc": "The producer GUID of the Kafka producer inside Leader replica",
+      "default": null
+    }, {
       "name": "producerStates",
       "doc": "A map of producer GUID -> producer state.",
       "type": {
