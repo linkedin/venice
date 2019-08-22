@@ -35,11 +35,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -61,10 +61,12 @@ import static com.linkedin.venice.router.httpclient.StorageNodeClientType.*;
 
 
 public class TestStreaming {
-  private static final Logger LOGGER = Logger.getLogger(TestRead.class);
+  private static final Logger LOGGER = Logger.getLogger(TestStreaming.class);
 
   private static final int MAX_KEY_LIMIT = 1000;
-  private static final String NON_EXISTING_KEY = "unknown_key";
+  private static final String NON_EXISTING_KEY1 = "a_unknown_key";
+  private static final String NON_EXISTING_KEY2 = "z_unknown_key";
+  private static final int NON_EXISTING_KEY_NUM = 2;
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
   private int valueSchemaId;
@@ -199,14 +201,18 @@ public class TestStreaming {
       // Run multiple rounds
       int rounds = 100;
       int cur = 0;
-      Set<String> keySet = new HashSet<>();
-      for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
+      Set<String> keySet = new TreeSet<>();
+      /**
+       * {@link NON_EXISTING_KEY1}: "a_unknown_key" will be with key index: 0 internally, and we want to verify
+       * whether the code could handle non-existing key with key index: 0
+       */
+      keySet.add(NON_EXISTING_KEY1);
+      for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
         keySet.add(keyPrefix + i);
       }
-      keySet.add(NON_EXISTING_KEY);
+      keySet.add(NON_EXISTING_KEY2);
 
       while (++cur <= rounds) {
-
         final Map<String, Object> finalMultiGetResultMap = new VeniceConcurrentHashMap<>();
         final AtomicInteger totalMultiGetResultCnt = new AtomicInteger(0);
         // Streaming batch-get
@@ -226,16 +232,16 @@ public class TestStreaming {
 
           @Override
           public void onCompletion(Optional<Exception> exception) {
-            LOGGER.info("MultiGet onCompletion invoked with Exception: " + exception);
             latch.countDown();
             if (exception.isPresent()) {
+              LOGGER.info("MultiGet onCompletion invoked with Venice Exception",  exception.get());
               Assert.fail("Exception: " + exception.get() + " is not expected");
             }
           }
         });
         latch.await();
         Assert.assertEquals(totalMultiGetResultCnt.get(), MAX_KEY_LIMIT);
-        Assert.assertEquals(finalMultiGetResultMap.size(), MAX_KEY_LIMIT - 1);
+        Assert.assertEquals(finalMultiGetResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
         // Verify the result
         verifyMultiGetResult(finalMultiGetResultMap);
 
@@ -243,7 +249,7 @@ public class TestStreaming {
         CompletableFuture<Map<String, Object>> resultFuture = trackingStoreClient.streamingBatchGet(keySet);
         Map<String, Object> multiGetResultMap = resultFuture.get();
         // Regular batch-get API won't return non-existing keys
-        Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - 1);
+        Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
         verifyMultiGetResult(multiGetResultMap);
         // Test compute streaming
         AtomicInteger computeResultCnt = new AtomicInteger(0);
@@ -262,21 +268,21 @@ public class TestStreaming {
 
           @Override
           public void onCompletion(Optional<Exception> exception) {
-            LOGGER.info("Compute onCompletion invoked with Venice Exception: " + exception);
             computeLatch.countDown();
             if (exception.isPresent()) {
+              LOGGER.info("Compute onCompletion invoked with Venice Exception",  exception.get());
               Assert.fail("Exception: " + exception.get() + " is not expected");
             }
           }
         });
         computeLatch.await();
         Assert.assertEquals(computeResultCnt.get(), MAX_KEY_LIMIT);
-        Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - 1); // Without non-existing key
+        Assert.assertEquals(finalComputeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM); // Without non-existing key
         verifyComputeResult(finalComputeResultMap);
         // Test compute with streaming implementation
         CompletableFuture<VeniceResponseMap<String, GenericRecord>> computeFuture = computeRequestBuilder.streamingExecute(keySet);
         Map<String, GenericRecord> computeResultMap = computeFuture.get();
-        Assert.assertEquals(multiGetResultMap.size(), MAX_KEY_LIMIT - 1);
+        Assert.assertEquals(computeResultMap.size(), MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM);
         verifyComputeResult(computeResultMap);
       }
       // Verify some client-side metrics, and we could add verification for more metrics if necessary
@@ -318,7 +324,7 @@ public class TestStreaming {
   }
 
   private void verifyMultiGetResult(Map<String, Object> resultMap) {
-    for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
+    for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
       String key = keyPrefix + i;
       Object value = resultMap.get(key);
       Assert.assertTrue(value instanceof GenericRecord);
@@ -329,7 +335,7 @@ public class TestStreaming {
   }
 
   private void verifyComputeResult(Map<String, GenericRecord> resultMap) {
-    for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
+    for (int i = 0; i < MAX_KEY_LIMIT - NON_EXISTING_KEY_NUM; ++i) {
       String key = keyPrefix + i;
       GenericRecord record = resultMap.get(key);
       Assert.assertEquals(record.get("int_field"), i);

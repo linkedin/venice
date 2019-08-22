@@ -677,7 +677,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   private interface DeserializerFunc<ENVELOPE, V> {
-    public V deserialize(ENVELOPE envelope, CompressionStrategy compressionStrategy);
+    V deserialize(ENVELOPE envelope, CompressionStrategy compressionStrategy);
   }
 
   /**
@@ -802,7 +802,19 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             // Key doesn't exist
             value = null;
           } else {
+            /**
+             * The above condition could NOT capture the non-existing key with index: 0,
+             * so {@link DeserializerFunc#deserialize(Object, CompressionStrategy)} needs to handle it by checking
+             * whether the value is an empty byte array or not, and essentially the deserialization function should
+             * return null in this situation.
+             */
             value = recordDeserializerFunc.deserialize(record, compressionStrategy);
+            /**
+             * If key index is not 0, it is unexpected to receive non-null value.
+             */
+            if (value == null && keyIdx != 0) {
+              throw new VeniceClientException("Expected to receive non-null value for key: " + keyList.get(keyIdx));
+            }
           }
           trackingStreamingCallback.ifPresent( t -> t.onRecordDeserialized());
           resultMap.put(key, value);
@@ -895,6 +907,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               return new MultiGetResponseRecordV1ChunkedDeserializer();
             },
             (envelope, compressionStrategy) -> {
+              if (!envelope.value.hasRemaining()) {
+                // Safeguard to handle empty value, which indicates non-existing key.
+                return null;
+              }
               RecordDeserializer<V> recordDeserializer = deserializerCache.computeIfAbsent(envelope.schemaId, id -> getDataRecordDeserializer(id));
               ByteBuffer decompressedValue = decompressRecord(compressionStrategy, envelope.value);
               return recordDeserializer.deserialize(decompressedValue);
@@ -931,7 +947,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
               return new ComputeResponseRecordV1ChunkedDeserializer();
             },
             // Compute doesn't support compression
-            (envelope, compressionStrategy) -> computeResultRecordDeserializer.deserialize(envelope.value),
+            (envelope, compressionStrategy) ->  {
+              if (!envelope.value.hasRemaining()) {
+                // Safeguard to handle empty value, which indicates non-existing key.
+                return null;
+              }
+              return computeResultRecordDeserializer.deserialize(envelope.value);
+            },
             envelope -> envelope.keyIndex,
             envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)
         )
