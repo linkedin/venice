@@ -172,12 +172,20 @@ public class OffsetRecord {
     this.partitionState.leaderOffset = leaderOffset;
   }
 
+  public void setLeaderGUID(GUID guid) {
+    this.partitionState.leaderGUID = guid;
+  }
+
   public String getLeaderTopic() {
     return (partitionState.leaderTopic != null) ? partitionState.leaderTopic.toString() : null;
   }
 
   public long getLeaderOffset() {
     return this.partitionState.leaderOffset;
+  }
+
+  public GUID getLeaderGUID() {
+    return this.partitionState.leaderGUID;
   }
 
   /**

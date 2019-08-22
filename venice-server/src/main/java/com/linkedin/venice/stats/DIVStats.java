@@ -36,7 +36,8 @@ public class DIVStats {
   private Min producerConsumerLatencyMinMs = new Min();
   private Max producerConsumerLatencyMaxMs = new Max();
 
-  private long leaderOffsetRewindCount = 0;
+  private long benignLeaderOffsetRewindCount = 0;
+  private long potentiallyLossyLeaderOffsetRewindCount = 0;
   private long leaderProducerFailureCount = 0;
 
   public DIVStats() {
@@ -168,12 +169,20 @@ public class DIVStats {
     producerConsumerLatencySensor.record(value);
   }
 
-  public void recordLeaderOffsetRewind() {
-    leaderOffsetRewindCount += 1;
+  public void recordBenignLeaderOffsetRewind() {
+    benignLeaderOffsetRewindCount += 1;
   }
 
-  public long getLeaderOffsetRewindCount() {
-    return leaderOffsetRewindCount;
+  public long getBenignLeaderOffsetRewindCount() {
+    return benignLeaderOffsetRewindCount;
+  }
+
+  public void recordPotentiallyLossyLeaderOffsetRewind() {
+    potentiallyLossyLeaderOffsetRewindCount += 1;
+  }
+
+  public long getPotentiallyLossyLeaderOffsetRewindCount() {
+    return potentiallyLossyLeaderOffsetRewindCount;
   }
 
   public void recordLeaderProducerFailure() {
