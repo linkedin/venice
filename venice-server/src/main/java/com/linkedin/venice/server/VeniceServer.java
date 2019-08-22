@@ -101,10 +101,15 @@ public class VeniceServer {
           "Can not create a venice server because this server has not been added into white list.");
     }
 
-    if (!veniceConfigLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
-      if (!directoryExists(veniceConfigLoader.getVeniceServerConfig().getDataBasePath())) {
-        throw new VeniceException("Data directory: " + veniceConfigLoader.getVeniceServerConfig().getDataBasePath()
-            + " does not exist and " + ConfigKeys.AUTOCREATE_DATA_PATH + " is set to false.  Cannot create server.");
+    String databasePath = veniceConfigLoader.getVeniceServerConfig().getDataBasePath();
+    if (!directoryExists(databasePath)) {
+      if (!veniceConfigLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
+        throw new VeniceException(
+            "Data directory: " + databasePath + " does not exist and " + ConfigKeys.AUTOCREATE_DATA_PATH + " is set to false.  Cannot create server.");
+      } else {
+        File databaseDir = new File(databasePath);
+        logger.info("Creating database directory " + databaseDir.getAbsolutePath() + ".");
+        databaseDir.mkdirs();
       }
     }
 
