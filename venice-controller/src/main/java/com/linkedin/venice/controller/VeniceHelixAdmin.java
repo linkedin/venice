@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
+import com.linkedin.venice.controller.stats.VeniceHelixAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -177,6 +178,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final StoreGraveyard storeGraveyard;
     private final Map<String, String> participantMessageStoreRTTMap;
     private final Map<String, VeniceWriter> participantMessageWriterMap;
+    private final VeniceHelixAdminStats veniceHelixAdminStats;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -250,6 +252,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             LeaderStorageNodeReplicator.class.getName(), topicManager, commonConfig.getProps(), veniceWriterFactory);
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
+        this.veniceHelixAdminStats = new VeniceHelixAdminStats(metricsRepository, "venice_helix_admin");
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -1231,6 +1234,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (version.getStatus() == ERROR) {
                 throw new VeniceException("cannot have incremental push because current version is in error status. "
                     + "Version: " + version.getNumber() + " Store:" + storeName);
+            }
+            String versionTopic = Version.composeKafkaTopic(storeName, version.getNumber());
+            if (!topicManager.containsTopic(versionTopic) || isTopicTruncated(versionTopic)) {
+                veniceHelixAdminStats.recordUnexpectedTopicAbsenceCount();
+                throw new VeniceException("Incremental push cannot be started for store: " + storeName + " in cluster: "
+                    + clusterName + " because the version topic: " + versionTopic
+                    + " is either absent or being truncated");
             }
             return version;
         } finally {
