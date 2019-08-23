@@ -186,9 +186,14 @@ public class TestUtils {
     return cluster + ":" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
   }
 
-  public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafakBootstrapServer){
-    Properties properties =new Properties();
-    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafakBootstrapServer);
+  public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafkaBootstrapServer){
+    return getVeniceTestWriterFactory(kafkaBootstrapServer, false);
+  }
+
+    public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafkaBootstrapServer, boolean enableChunking) {
+    Properties properties = new Properties();
+    properties.put(VeniceWriter.ENABLE_CHUNKING, enableChunking);
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
     return new VeniceTestWriterFactory(properties);
   }
 

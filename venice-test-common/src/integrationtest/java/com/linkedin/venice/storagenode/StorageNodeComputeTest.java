@@ -18,6 +18,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -25,6 +26,7 @@ import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
@@ -126,12 +128,14 @@ public class StorageNodeComputeTest {
       for (BatchDeserializerType batchDeserializerType : batchDeserializerTypes) {
         for (AvroGenericDeserializer.IterableImpl iterableImpl : iterableImplementations) {
           for (boolean fastAvro : yesAndNo) {
-            returnList.add(new Object[]{compressionStrategy, batchDeserializerType, iterableImpl, fastAvro});
+            for (boolean valueLargerThan1MB : yesAndNo) {
+              returnList.add(new Object[]{compressionStrategy, batchDeserializerType, iterableImpl, fastAvro, valueLargerThan1MB});
+            }
           }
         }
       }
     }
-    Object[][] valuesToReturn= new Object[returnList.size()][4];
+    Object[][] valuesToReturn= new Object[returnList.size()][5];
     return returnList.toArray(valuesToReturn);
   }
 
@@ -140,27 +144,31 @@ public class StorageNodeComputeTest {
       CompressionStrategy compressionStrategy,
       BatchDeserializerType batchDeserializerType,
       AvroGenericDeserializer.IterableImpl iterableImpl,
-      boolean fastAvro) throws Exception {
+      boolean fastAvro,
+      boolean valueLargerThan1MB) throws Exception {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     params.setCompressionStrategy(compressionStrategy);
     params.setReadComputationEnabled(true);
+    params.setChunkingEnabled(valueLargerThan1MB);
     veniceCluster.updateStore(storeName, params);
 
     VersionCreationResponse newVersion = veniceCluster.getNewVersion(storeName, 1024);
     final int pushVersion = newVersion.getVersion();
+    String topic = newVersion.getKafkaTopic();
 
-    try (VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(newVersion.getKafkaTopic(), keySerializer, new DefaultSerializer());
-        AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
-            .setVeniceURL(routerAddr)
-            .setBatchDeserializerType(batchDeserializerType)
-            .setMultiGetEnvelopeIterableImpl(iterableImpl)
-            .setUseFastAvro(fastAvro))) {
+    VeniceWriterFactory vwFactory = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress(), valueLargerThan1MB);
+    try (VeniceWriter<Object, byte[]> veniceWriter = vwFactory.getVeniceWriter(topic, keySerializer, new DefaultSerializer());
+        AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
+            ClientConfig.defaultGenericClientConfig(storeName)
+                .setVeniceURL(routerAddr)
+                .setBatchDeserializerType(batchDeserializerType)
+                .setMultiGetEnvelopeIterableImpl(iterableImpl)
+                .setUseFastAvro(fastAvro))) {
 
       String keyPrefix = "key_";
       String valuePrefix = "value_";
-      pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, 100, veniceCluster,
-          veniceWriter, pushVersion, compressionStrategy);
+      pushSyntheticDataForCompute(topic, keyPrefix, valuePrefix, 100, veniceCluster,
+          veniceWriter, pushVersion, compressionStrategy, valueLargerThan1MB);
 
       // Run multiple rounds
       int rounds = 100;
@@ -234,15 +242,16 @@ public class StorageNodeComputeTest {
 
       String keyPrefix = "key_";
       String valuePrefix = "value_";
-      pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, 100, veniceCluster,
-          veniceWriter, pushVersion, CompressionStrategy.NO_OP);
+      int numberOfRecords = 10;
+      pushSyntheticDataForCompute(newVersion.getKafkaTopic(), keyPrefix, valuePrefix, numberOfRecords, veniceCluster,
+          veniceWriter, pushVersion, CompressionStrategy.NO_OP, false);
 
       // Run multiple rounds
       int rounds = 100;
       int cur = 0;
       while (cur++ < rounds) {
         Set<String> keySet = new HashSet<>();
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < numberOfRecords; ++i) {
           keySet.add(keyPrefix + i);
         }
         keySet.add("unknown_key");
@@ -258,7 +267,7 @@ public class StorageNodeComputeTest {
              * Added 2s timeout as a safety net as ideally each request should take sub-second.
              */
             .get(2, TimeUnit.SECONDS);
-        Assert.assertEquals(computeResult.size(), 10);
+        Assert.assertEquals(computeResult.size(), numberOfRecords);
 
         LOGGER.info("Current round: " + cur + "/" + rounds
             + "\n - max part_count: "
@@ -290,14 +299,22 @@ public class StorageNodeComputeTest {
 
   private void pushSyntheticDataForCompute(String topic, String keyPrefix, String valuePrefix, int numOfRecords,
                                            VeniceClusterWrapper veniceCluster, VeniceWriter<Object, byte[]> veniceWriter,
-                                           int pushVersion, CompressionStrategy compressionStrategy) throws Exception {
-    veniceWriter.broadcastStartOfPush(false, false, compressionStrategy, new HashMap<>());
+                                           int pushVersion, CompressionStrategy compressionStrategy, boolean valueLargerThan1MB) throws Exception {
+    veniceWriter.broadcastStartOfPush(false, valueLargerThan1MB, compressionStrategy, new HashMap<>());
     Schema valueSchema = Schema.parse(valueSchemaForCompute);
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < numOfRecords; ++i) {
       GenericRecord value = new GenericData.Record(valueSchema);
       value.put("id", valuePrefix + i);
-      value.put("name", valuePrefix + i + "_name");
+
+      String name = valuePrefix + i + "_name";
+      if (valueLargerThan1MB) {
+        char[] chars = new char[1024 * 1024 + 1];
+        Arrays.fill(chars, Integer.toString(i).charAt(0));
+        name = new String(chars);
+      }
+      value.put("name", name);
+
       List<Float> features = new ArrayList<>();
       features.add(Float.valueOf((float)(i + 1)));
       features.add(Float.valueOf((float)((i + 1) * 10)));
@@ -311,13 +328,21 @@ public class StorageNodeComputeTest {
 
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
-       // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
-       if (currentVersion == pushVersion) {
-         veniceCluster.refreshAllRouterMetaData();
-       }
-       return currentVersion == pushVersion;
-    });
+    try (ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), controllerUrl)) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        String status = controllerClient.queryJobStatus(topic).getStatus();
+        if (status.equals(ExecutionStatus.ERROR.name())) {
+          // Not recoverable (at least not without re-pushing), so not worth spinning our wheels until the timeout.
+          throw new VeniceException("Push failed.");
+        }
+
+        int currentVersion = controllerClient.getStore(storeName).getStore().getCurrentVersion();
+        // Refresh router metadata once new version is pushed, so that the router sees the latest store version.
+        if (currentVersion == pushVersion) {
+          veniceCluster.refreshAllRouterMetaData();
+        }
+        Assert.assertEquals(currentVersion, pushVersion, "New version not online yet.");
+      });
+    }
   }
 }
