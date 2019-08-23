@@ -63,7 +63,11 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         isStreamingResponse = obj.isStreamingResponse();
       } else if (msg instanceof HttpShortcutResponse) {
         responseStatus = ((HttpShortcutResponse) msg).getStatus();
-        body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
+        String message = ((HttpShortcutResponse) msg).getMessage();
+        if (null == message) {
+          message = "";
+        }
+        body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         contentType = HttpConstants.TEXT_PLAIN;
       } else if (msg instanceof DefaultFullHttpResponse){
         ctx.writeAndFlush(msg);

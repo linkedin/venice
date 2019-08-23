@@ -37,12 +37,16 @@ import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.storage.chunking.BatchGetChunkingAdapter;
+import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
+import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.storage.chunking.ChunkingUtils;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ComputeUtils;
+import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.queues.LabeledRunnable;
@@ -77,6 +81,16 @@ import org.apache.log4j.Logger;
 @ChannelHandler.Sharable
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private static final Logger logger = Logger.getLogger(StorageExecutionHandler.class);
+
+  /**
+   * When constructing a {@link BinaryDecoder}, we pass in this 16 bytes array because if we pass anything
+   * less than that, it would end up getting discarded by the ByteArrayByteSource's constructor, a new byte
+   * array created, and the content of the one passed in would be copied into the newly constructed one.
+   * Therefore, it seems more efficient, in terms of GC, to statically allocate a 16 bytes array and keep
+   * re-using it to construct decoders. Since we always end up re-configuring the decoder and not actually
+   * using its initial value, it shouldn't cause any issue to share it.
+   */
+  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
 
   private final DiskHealthCheckService diskHealthCheckService;
   private final ExecutorService executor;
@@ -157,7 +171,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(response);
         } catch (Exception e) {
-          context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+          String exceptionMessage = ExceptionUtils.stackTraceToString(e);
+          context.writeAndFlush(new HttpShortcutResponse(exceptionMessage, HttpResponseStatus.INTERNAL_SERVER_ERROR));
         }
       }));
 
@@ -200,11 +215,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     StorageResponseObject response = new StorageResponseObject();
     response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
 
-    long queryStartTimeInNS = System.nanoTime();
-    ValueRecord valueRecord = ChunkingUtils.getValueRecord(store, partition, key, isChunked, response);
+    ValueRecord valueRecord = SingleGetChunkingAdapter.get(store, partition, key, isChunked, response);
     response.setValueRecord(valueRecord);
     response.setOffset(offset);
-    response.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
     return response;
   }
 
@@ -213,15 +226,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
 
-    long queryStartTimeInNS = System.nanoTime();
-
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     for (MultiGetRouterRequestKeyV1 key : keys) {
       MultiGetResponseRecordV1 record =
-          ChunkingUtils.getMultiGetResponseRecordV1(store, key.partitionId, key.keyBytes, isChunked, responseWrapper);
-      responseWrapper.setDatabaseLookupLatency(LatencyUtils.getLatencyInMS(queryStartTimeInNS));
+          BatchGetChunkingAdapter.get(store, key.partitionId, key.keyBytes, isChunked, responseWrapper);
       if (null == record) {
         if (request.isStreamingRequest()) {
           // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
@@ -291,6 +301,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     } else {
       resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
     }
+
+    BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(BINARY_DECODER_PARAM, null);
     Map<String, Object> globalContext = new HashMap<>();
     for (ComputeRouterRequestKeyV1 key : keys) {
       clearFieldsInReusedRecord(resultRecord, computeResultSchema);
@@ -307,6 +319,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
                                                      resultSerializer,
                                                      valueRecord,
                                                      resultRecord,
+                                                     binaryDecoder,
                                                      isChunked,
                                                      request.isStreamingRequest(),
                                                      responseWrapper,
@@ -355,19 +368,15 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       RecordSerializer<GenericRecord> resultSerializer,
       GenericRecord valueRecord,
       GenericRecord resultRecord,
+      BinaryDecoder binaryDecoder,
       boolean isChunked,
       boolean isStreaming,
       ComputeResponseWrapper response,
       Map<String, Object> globalContext) {
-    /**
-     * Reuse MultiGetResponseRecordV1 while getting data from storage engine; MultiGetResponseRecordV1 contains
-     * useful information like schemaId of this record.
-     */
-    long databaseLookupStartTimeInNS = System.nanoTime();
-    MultiGetResponseRecordV1 record =
-        ChunkingUtils.getMultiGetResponseRecordV1(store, partition, key, isChunked, response);
-    response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
-    if (null == record) {
+
+    valueRecord = ComputeChunkingAdapter.get(store, partition, key, isChunked, valueRecord, binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
+
+    if (null == valueRecord) {
       if (isStreaming) {
         // For streaming, we need to send back non-existing keys
         ComputeResponseRecordV1 computeResponseRecord = new ComputeResponseRecordV1();
@@ -378,48 +387,6 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       }
       return null;
     }
-
-    // deserialize raw byte value to GenericRecord
-    long deserializeStartTimeInNS = System.nanoTime();
-    RecordDeserializer<GenericRecord> deserializer;
-    Schema writerSchema = this.schemaRepo.getValueSchema(storeName, record.schemaId).getSchema();
-    if (fastAvroEnabled) {
-      deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, latestValueSchema);
-    } else {
-      deserializer = ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(
-          writerSchema,       // writer schema
-          latestValueSchema   // reader schema
-      );
-    }
-
-    ByteBuffer decompressedData;
-    if (compressionStrategy != CompressionStrategy.NO_OP) {
-      // decompress the data first
-      try {
-        decompressedData = CompressorFactory.getCompressor(compressionStrategy)
-            .decompress(
-                record.value.array(),    // data
-                record.value.position(), // offset
-                record.value.remaining() // length
-            );
-
-      } catch (IOException e) {
-        throw new VeniceException("failed to decompress data. Store: " + storeName, e);
-      }
-    } else {
-      decompressedData = record.value;
-    }
-    BinaryDecoder decoder = DecoderFactory.defaultFactory()
-                            .binaryDecoder(
-                                decompressedData.array(),       // data
-                                decompressedData.position(),    // offset
-                                decompressedData.remaining(),   // length
-                                null                      // reused binary decoder
-                            );
-
-    // reuse the same Generic Record instance for all keys
-    valueRecord = deserializer.deserialize(valueRecord, decoder);
-    response.addReadComputeDeserializationLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
 
     long computeStartTimeInNS = System.nanoTime();
     Map<String, String> computationErrorMap = new HashMap<>();

@@ -71,7 +71,6 @@ public class ValueRecord {
   }
 
   public static ByteBuffer parseDataAsNIOByteBuffer(byte[] combinedData) {
-    // Unpooled.wrappedBuffer will return an SlicedByteBuf backed by the original byte array
     return ByteBuffer.wrap(combinedData, SCHEMA_HEADER_LENGTH, combinedData.length - SCHEMA_HEADER_LENGTH);
   }
 

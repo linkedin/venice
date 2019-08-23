@@ -3,6 +3,7 @@ package com.linkedin.venice.compression;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
@@ -33,9 +34,14 @@ public class GzipCompressor extends VeniceCompressor {
 
   @Override
   public ByteBuffer decompress(byte[] data, int offset, int length) throws IOException {
-    GZIPInputStream gis = new GZIPInputStream(new ByteArrayInputStream(data, offset, length));
+    InputStream gis = decompress(new ByteArrayInputStream(data, offset, length));
     ByteBuffer decompressed = ByteBuffer.wrap(IOUtils.toByteArray(gis));
     gis.close();
     return decompressed;
+  }
+
+  @Override
+  public InputStream decompress(InputStream inputStream) throws IOException {
+    return new GZIPInputStream(inputStream);
   }
 }
