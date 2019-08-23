@@ -120,7 +120,15 @@ public class D2TransportClient extends TransportClient {
       requestBuilder.setMethod(RestMethod.POST);
       StreamRequest streamRequest = requestBuilder.build(EntityStreams.newEntityStream(new ByteStringWriter(ByteString.unsafeWrap(requestBody))));
 
-      RequestContext requestContext = getRequestContextForPost();
+      /**
+       * Right now, D2/R2 streaming lib is not supporting backup request properly since backup request will try to attach
+       * another {@link Reader} to the original request, which will trigger this exception:
+       * "java.lang.IllegalStateException: EntityStream had already been initialized and can no longer accept Observers or Reader"
+       *
+       * Venice client will disable backup request feature until this bug is fixed.
+       * Essentially don't specify {@link R2Constants#R2_OPERATION} property in the request, which is being used by D2 backup request feature.
+       */
+      RequestContext requestContext = new RequestContext();
       requestContext.putLocalAttr(com.linkedin.r2.filter.R2Constants.IS_FULL_REQUEST, true);
 
       d2Client.streamRequest(streamRequest, requestContext, new Callback<StreamResponse>() {
