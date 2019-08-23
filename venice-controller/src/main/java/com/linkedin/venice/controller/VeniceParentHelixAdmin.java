@@ -104,8 +104,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 5;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
-  private static final int PUSH_JOB_STATUS_STORE_PARTITION_NUM = 3;
-  private static final int PARTICIPANT_MESSAGE_STORE_PARTITION_NUM = 3;
   private static final String PUSH_JOB_STATUS_STORE_DESCRIPTOR = "push job status store";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store";
   private static final int VERSION_ID_UNSET = -1;
@@ -233,14 +231,15 @@ public class VeniceParentHelixAdmin implements Admin {
         asyncSetupForInternalRTStore(multiClusterConfigs.getPushJobStatusStoreClusterName(),
             multiClusterConfigs.getPushJobStatusStoreName(), PUSH_JOB_STATUS_STORE_DESCRIPTOR,
             PushJobStatusRecordKey.SCHEMA$.toString(), PushJobStatusRecordValue.SCHEMA$.toString(),
-            PUSH_JOB_STATUS_STORE_PARTITION_NUM);
+            multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
       }
     }
 
     if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
       asyncSetupForInternalRTStore(clusterName, ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName),
           PARTICIPANT_MESSAGE_STORE_DESCRIPTOR, ParticipantMessageKey.SCHEMA$.toString(),
-          ParticipantMessageValue.SCHEMA$.toString(), PARTICIPANT_MESSAGE_STORE_PARTITION_NUM);
+          ParticipantMessageValue.SCHEMA$.toString(),
+          multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
     }
   }
 
@@ -308,7 +307,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (!store.isHybrid()) {
         updateStoreQueryParams = new UpdateStoreQueryParams();
         updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
-        updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
+        updateStoreQueryParams.setHybridRewindSeconds(TimeUnit.DAYS.toSeconds(7));
         updateStore(clusterName, storeName, updateStoreQueryParams);
         store = getStore(clusterName, storeName);
         if (!store.isHybrid()) {
@@ -319,7 +318,7 @@ public class VeniceParentHelixAdmin implements Admin {
         int replicationFactor = getReplicationFactor(clusterName, storeName);
         Version version =
             incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-                partitionCount, replicationFactor, true);
+                store.getPartitionCount(), replicationFactor, true);
         writeEndOfPush(clusterName, storeName, version.getNumber(), true);
         store = getStore(clusterName, storeName);
         if (store.getVersions().isEmpty()) {
