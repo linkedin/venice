@@ -136,7 +136,7 @@ public class TopicManager implements Closeable {
    * @see {@link #createTopic(String, int, int, boolean, boolean, Optional)}
    */
   public void createTopic(String topicName, int numPartitions, int replication, boolean eternal) {
-    createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty());
+    createTopic(topicName, numPartitions, replication, eternal, false, Optional.empty(), false);
   }
 
   public void createTopic(String topicName, int numPartitions, int replication, boolean eternal, boolean logCompaction,
