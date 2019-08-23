@@ -268,18 +268,25 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
 
   @Override
   public Iterator<KafkaConsumerRecord> consume(KafkaPartition partition, long nextOffset, long maxOffset) {
+    String topic = partition.getTopicName();
+    int partitionId = partition.getId();
+    logger.info("Starting consuming for topic: " + topic + "; partition: " + partitionId + "; startOffset: " + nextOffset + "; maxOffset: " + maxOffset);
     if (nextOffset >= maxOffset) {
       return null;
     }
 
-    this.veniceKafkaConsumer.assign(Arrays.asList(new TopicPartition(partition.getTopicName(), partition.getId())));
-    this.veniceKafkaConsumer.seek(new TopicPartition(partition.getTopicName(), partition.getId()), nextOffset);
+    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
+    this.veniceKafkaConsumer.assign(Arrays.asList(topicPartition));
+    this.veniceKafkaConsumer.seek(topicPartition, nextOffset);
 
     try {
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = veniceKafkaConsumer.poll(kafkaConsumerPollingTimeoutMs);
+      logger.info("Successfully polled " + consumerRecords.count() + " records from Kafka");
 
       // remove all control message; get key/value byte array from records
       List<KafkaConsumerRecord> newRecords = new LinkedList<KafkaConsumerRecord>();
+      int putCount = 0;
+      int deleteCount = 0;
       Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iterator = consumerRecords.iterator();
       while (iterator.hasNext()) {
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iterator.next();
@@ -289,6 +296,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
           KafkaMessageEnvelope value = record.value();
           switch (MessageType.valueOf(value)) {
             case PUT:
+              putCount++;
               Put put = (Put) value.payloadUnion;
               // extract the raw value data
               byte[] valueBytes = put.putValue.array();
@@ -306,6 +314,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
               );
               break;
             case DELETE:
+              deleteCount++;
               newRecords.add(
                   new VeniceKafkaRecord(
                       new ConsumerRecord<byte[], byte[]>(
@@ -320,13 +329,13 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
               );
               break;
             default:
-              throw new VeniceException("no such type of message!");
+              throw new VeniceException("No such type of message: " + MessageType.valueOf(value));
           }
-
 
         }
       }
 
+      logger.info("Return " + newRecords.size() + " records after decoding; put: " + putCount + " records; delete: " + deleteCount + " records");
       return newRecords.iterator();
 
     } catch (Throwable t) {
