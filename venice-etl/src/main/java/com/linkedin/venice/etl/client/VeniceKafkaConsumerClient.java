@@ -270,7 +270,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   public Iterator<KafkaConsumerRecord> consume(KafkaPartition partition, long nextOffset, long maxOffset) {
     String topic = partition.getTopicName();
     int partitionId = partition.getId();
-    logger.info("Starting consuming for topic: " + topic + "; partition: " + partitionId + "; startOffset: " + nextOffset + "; maxOffset: " + maxOffset);
+    logger.info("Start consuming for topic: " + topic + "; partition: " + partitionId + "; startOffset: " + nextOffset + "; maxOffset: " + maxOffset);
     if (nextOffset >= maxOffset) {
       return null;
     }
@@ -279,19 +279,26 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     this.veniceKafkaConsumer.assign(Arrays.asList(topicPartition));
     this.veniceKafkaConsumer.seek(topicPartition, nextOffset);
 
-    try {
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = veniceKafkaConsumer.poll(kafkaConsumerPollingTimeoutMs);
-      logger.info("Successfully polled " + consumerRecords.count() + " records from Kafka");
+    // put filtered results into a new list
+    List<KafkaConsumerRecord> newRecords = new LinkedList<KafkaConsumerRecord>();
+    int putCount = 0;
+    int deleteCount = 0;
+    int controlMessageCount = 0;
+    boolean receivedMessageFromKafka = true;
 
-      // remove all control message; get key/value byte array from records
-      List<KafkaConsumerRecord> newRecords = new LinkedList<KafkaConsumerRecord>();
-      int putCount = 0;
-      int deleteCount = 0;
-      Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iterator = consumerRecords.iterator();
-      while (iterator.hasNext()) {
-        ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iterator.next();
-        KafkaKey key = record.key();
-        if (!key.isControlMessage()) {
+    try {
+      do {
+        ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = veniceKafkaConsumer.poll(kafkaConsumerPollingTimeoutMs);
+        logger.info("Successfully polled " + consumerRecords.count() + " records from Kafka");
+        if (0 == consumerRecords.count()) {
+          receivedMessageFromKafka = false;
+        }
+
+        // remove all control message; get key/value byte array from records
+        Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iterator = consumerRecords.iterator();
+        while (iterator.hasNext()) {
+          ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iterator.next();
+          KafkaKey key = record.key();
           // control message should be skip
           KafkaMessageEnvelope value = record.value();
           switch (MessageType.valueOf(value)) {
@@ -328,16 +335,14 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
                   )
               );
               break;
+            case CONTROL_MESSAGE:
+              controlMessageCount++;
+              break;
             default:
               throw new VeniceException("No such type of message: " + MessageType.valueOf(value));
           }
-
         }
-      }
-
-      logger.info("Return " + newRecords.size() + " records after decoding; put: " + putCount + " records; delete: " + deleteCount + " records");
-      return newRecords.iterator();
-
+      } while (newRecords.size() == 0 && receivedMessageFromKafka);
     } catch (Throwable t) {
       logger.error("Exception on polling records", t);
 
@@ -347,6 +352,10 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
           new ConsumerRecord<byte[], byte[]>(partition.getTopicName(), partition.getId(), nextOffset,
               null, null),0)).iterator();
     }
+
+    logger.info("Return " + newRecords.size() + " records after decoding; put: " + putCount + " records; "
+        + "delete: " + deleteCount + " records; control message: " + controlMessageCount + " records");
+    return newRecords.iterator();
   }
 
   @Override
