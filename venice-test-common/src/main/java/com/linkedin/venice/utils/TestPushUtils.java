@@ -533,6 +533,23 @@ public class TestPushUtils {
     producer.send(storeName, envelope);
   }
 
+  /**
+   * Identical to {@link #sendStreamingRecord(SystemProducer, String, int)} except that the value's length is equal
+   * to {@param valueSizeInBytes}. The value is composed exclusively of the first digit of the {@param recordId}.
+   *
+   * @see #sendStreamingRecord(SystemProducer, String, int)
+   */
+  public static void sendCustomSizeStreamingRecord(SystemProducer producer, String storeName, int recordId, int valueSizeInBytes){
+    char[] chars = new char[valueSizeInBytes];
+    Arrays.fill(chars, Integer.toString(recordId).charAt(0));
+
+    OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
+        new SystemStream("venice", storeName),
+        Integer.toString(recordId),
+        new String(chars));
+    producer.send(storeName, envelope);
+  }
+
   public static String loadFileAsString(String fileName) throws IOException {
     return IOUtils.toString(Thread.currentThread().getContextClassLoader().getResourceAsStream(fileName), "utf-8");
   }

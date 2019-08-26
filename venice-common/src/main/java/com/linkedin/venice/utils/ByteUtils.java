@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.nio.ByteBuffer;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 
@@ -197,5 +198,19 @@ public class ByteUtils {
       }
     }
     return true;
+  }
+
+  public static boolean canUseBackedArray(ByteBuffer byteBuffer) {
+    return byteBuffer.array().length == byteBuffer.remaining();
+  }
+
+  public static byte[] extractByteArray(ByteBuffer byteBuffer) {
+    if (ByteUtils.canUseBackedArray(byteBuffer)) {
+      // We could safely use the backed array.
+      return byteBuffer.array();
+    }
+    byte[] value = new byte[byteBuffer.remaining()];
+    System.arraycopy(byteBuffer.array(), byteBuffer.position(), value, 0, byteBuffer.remaining());
+    return value;
   }
 }

@@ -100,7 +100,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   protected void writeToDatabaseAndProduce(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
       WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
     // Execute the write function immediately
-    writeFunction.apply();
+    writeFunction.apply(consumerRecord.key().getKey());
   }
 
   /**

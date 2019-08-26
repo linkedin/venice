@@ -204,7 +204,7 @@ public class TestUtils {
     }
 
     public <K, V> VeniceWriter<K, V> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
-      return getVeniceWriter(topic, keySer, valSer, SystemTime.INSTANCE);
+      return getVeniceWriter(topic, keySer, valSer, false, SystemTime.INSTANCE);
     }
   }
 

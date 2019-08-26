@@ -3126,6 +3126,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public boolean isMasterControllerOfControllerCluster() {
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
+        if (null == leader || null == leader.getId()) {
+            logger.warn("Cannot determine the result of isMasterControllerOfControllerCluster(). "
+                + "leader: " + leader
+                + (null == leader ? "" : ", leader.getId(): " + leader.getId()));
+            // Will result in a NPE... TODO: Investigate proper fix.
+        }
         return leader.getId().equals(this.controllerName);
     }
 

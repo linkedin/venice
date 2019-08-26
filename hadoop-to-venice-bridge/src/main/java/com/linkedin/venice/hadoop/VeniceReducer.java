@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -159,7 +160,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       }
       writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
       VeniceWriterFactory factory = new VeniceWriterFactory(writerProps);
-      veniceWriter = factory.getBasicVeniceWriter(props.getString(TOPIC_PROP));
+      boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
+      veniceWriter = factory.getBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled);
     }
     if (null == previousReporter || !previousReporter.equals(reporter)) {
       callback = new KafkaMessageCallback(reporter);

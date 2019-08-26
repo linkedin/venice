@@ -19,6 +19,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -304,6 +305,10 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
 
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+    }
+
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
@@ -514,6 +519,12 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     int chunkStartByteIndex;
     int chunkEndByteIndex;
     KeyProvider keyProvider, firstKeyProvider, subsequentKeyProvider;
+    boolean chunkAwareCallback = callback instanceof ChunkAwareCallback;
+    ByteBuffer[] chunks = null;
+    if (chunkAwareCallback) {
+      // We only carry this state if it's going to be used, else we don't even instantiate this
+      chunks = new ByteBuffer[numberOfChunks];
+    }
 
     /**
      * This {@link ChunkedKeySuffix} instance gets mutated along the way, first in the loop, where its
@@ -539,9 +550,22 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     for (int chunkIndex = 0; chunkIndex < numberOfChunks; chunkIndex++) {
       chunkStartByteIndex = chunkIndex * sizeAvailablePerMessage;
       chunkEndByteIndex = Math.min((chunkIndex + 1) * sizeAvailablePerMessage, serializedValue.length);
-      byte[] valueChunk = Arrays.copyOfRange(serializedValue, chunkStartByteIndex, chunkEndByteIndex);
+
+      /**
+       * We leave 4 bytes of headroom at the beginning of the ByteBuffer so that the Venice Storage Node
+       * can use this room to write the value header, without allocating a new byte array nor copying.
+       */
+      byte[] value = new byte[chunkEndByteIndex - chunkStartByteIndex + ByteUtils.SIZE_OF_INT];
+      System.arraycopy(serializedValue, chunkStartByteIndex, value, ByteUtils.SIZE_OF_INT, chunkEndByteIndex - chunkStartByteIndex);
+      ByteBuffer chunk = ByteBuffer.wrap(value);
+      chunk.position(ByteUtils.SIZE_OF_INT);
+
+      if (chunks != null) {
+        chunks[chunkIndex] = chunk;
+      }
+
       Put putPayload = new Put();
-      putPayload.putValue = ByteBuffer.wrap(valueChunk);
+      putPayload.putValue = chunk;
       putPayload.schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
 
       chunkedKeySuffix.chunkId.chunkIndex = chunkIndex;
@@ -568,8 +592,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
 
     // Now that we've sent all the chunks, we can take care of the final value, the manifest.
-    KeyProvider manifestKeyProvider = producerMetadata ->
-        new KafkaKey(MessageType.PUT, keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey));
+    byte[] topLevelKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
+    KeyProvider manifestKeyProvider = producerMetadata -> new KafkaKey(MessageType.PUT, topLevelKey);
 
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(chunkedValueManifestSerializer.serialize(topicName, chunkedValueManifest));
@@ -579,6 +603,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       // This is a very desperate edge case...
       throw new VeniceException("This message cannot be chunked, because even its manifest is too big to go through. "
           + "Please reconsider your life choices. " + getSizeReport(serializedKey, serializedValue));
+    }
+
+    if (chunkAwareCallback) {
+      /** We leave a handle to the key, chunks and manifest so that the {@link ChunkAwareCallback} can act on them */
+      ((ChunkAwareCallback) callback).setChunkingInfo(topLevelKey, chunks, chunkedValueManifest);
     }
 
     // We only return the last future (the one for the manifest) and assume that once this one is finished,

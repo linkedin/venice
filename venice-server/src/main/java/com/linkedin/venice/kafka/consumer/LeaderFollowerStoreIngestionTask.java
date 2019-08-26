@@ -18,17 +18,22 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -42,7 +47,6 @@ import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.kafka.consumer.LeaderFollowerStateType.*;
 import static com.linkedin.venice.store.record.ValueRecord.*;
 import static com.linkedin.venice.writer.VeniceWriter.*;
@@ -81,7 +85,8 @@ import static com.linkedin.venice.writer.VeniceWriter.*;
  *           follower can subscribe back to VT using the recently updated VT offset.
  */
 public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
-  private final static Logger logger = Logger.getLogger(LeaderFollowerStoreIngestionTask.class);
+  private static final Logger logger = Logger.getLogger(LeaderFollowerStoreIngestionTask.class);
+  private static final ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
 
   /**
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
@@ -363,7 +368,15 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
           topic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
-      veniceWriter.sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
+
+      /**
+       * N.B.: This is expected to be the first time time we call {@link #getVeniceWriter()}, which is important
+       *       because that function relies on the Start of Push's flags having been set in the
+       *       {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}. The flag setting happens in
+       *       {@link StoreIngestionTask#processStartOfPush(ControlMessage, int, long, PartitionConsumptionState)},
+       *       which is called at the start of the current function.
+       */
+      getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
     }
   }
 
@@ -375,7 +388,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
       LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
           topic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
-      veniceWriter.sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
+      getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
     }
   }
 
@@ -459,7 +472,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Put default upstream offset for TS message so that followers won't update the leader offset after seeing
          * the TS message.
          */
-        veniceWriter.sendControlMessage(controlMessage, partition, new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET);
+        getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET);
       }
 
       logger.info(consumerTaskId + " leader successfully switch feed topic from " + leaderTopic + " to "
@@ -587,7 +600,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       partitionConsumptionState.setLastLeaderProduceFuture(produceFunction.apply(callback, sourceTopicOffset));
     } else {
       // If (i) it's a follower or (ii) leader is consuming from VT, execute the write function immediately
-      writeFunction.apply();
+      writeFunction.apply(consumerRecord.key().getKey());
     }
   }
 
@@ -683,7 +696,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     return super.shouldProcessRecord(record);
   }
 
-  private static class LeaderProducerMessageCallback implements Callback {
+  private class LeaderProducerMessageCallback implements ChunkAwareCallback {
     private final PartitionConsumptionState partitionConsumptionState;
     private final String feedTopic;
     private final String versionTopic;
@@ -693,6 +706,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     private final Optional<WriteToStorageEngine> writeFunction;
     private final AggVersionedDIVStats versionedDIVStats;
     private final Logger logger;
+
+    /**
+     * The three mutable fields below are determined by the {@link com.linkedin.venice.writer.VeniceWriter},
+     * which populates them via {@link ChunkAwareCallback#setChunkingInfo(byte[], ByteBuffer[], ChunkedValueManifest)}.
+     *
+     * They should always be set for any message that ought to be persisted to the storage engine, i.e.: any callback
+     * where the {@link #writeFunction} is present.
+     */
+    private byte[] key = null;
+    private ChunkedValueManifest chunkedValueManifest = null;
+    private ByteBuffer[] chunks = null;
+
     public LeaderProducerMessageCallback(PartitionConsumptionState consumptionState, String feedTopic, String versionTopic,
         int partition, long consumedOffset, ReadyToServeCheck readyToServeCheck, Optional<WriteToStorageEngine> writeFunction,
         AggVersionedDIVStats versionedDIVStats, Logger logger) {
@@ -719,7 +744,50 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Leader would update the storage engine only after successfully producing the message.
          */
         if (writeFunction.isPresent()) {
-          writeFunction.get().apply();
+          // Sanity check
+          if (null == key) {
+            throw new IllegalStateException("key not initialized.");
+          }
+          if (null == chunkedValueManifest) {
+            // We apply the write function as is only if it is a small value
+            writeFunction.get().apply(key);
+          } else {
+            /**
+             * For large values which have been chunked, we instead write the chunks
+             *
+             * N.B.: Some of the write path implementation details of chunking are spread between here and
+             * {@link com.linkedin.venice.writer.VeniceWriter#putLargeValue(byte[], byte[], int, Callback, int, long)},
+             * which is not ideal from a maintenance standpoint.
+             *
+             * TODO: Coalesce write path chunking logic to a single class, following the pattern of {@link ChunkingAdapter}.
+             */
+
+            // Sanity checks
+            if (null == chunks) {
+              throw new IllegalStateException("chunking info not initialized.");
+            } else if (chunkedValueManifest.keysWithChunkIdSuffix.size() != chunks.length) {
+              throw new IllegalStateException("chunkedValueManifest.keysWithChunkIdSuffix is not in sync with chunks.");
+            }
+
+            // Write all chunks to the storage engine
+            int schemaId = AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion();
+            for (int i = 0; i < chunkedValueManifest.keysWithChunkIdSuffix.size(); i++) {
+              ByteBuffer chunkKey = chunkedValueManifest.keysWithChunkIdSuffix.get(i);
+              ByteBuffer chunkValue = chunks[i];
+              putInStorageEngine(versionTopic, partition, ByteUtils.extractByteArray(chunkKey), chunkValue, schemaId);
+            }
+
+            // Write the manifest inside the top-level key
+            schemaId = AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion();
+            ByteBuffer manifest = ByteBuffer.wrap(CHUNKED_VALUE_MANIFEST_SERIALIZER.serialize(versionTopic, chunkedValueManifest));
+            /**
+             * The byte[] coming out of the {@link CHUNKED_VALUE_MANIFEST_SERIALIZER} is padded in front, so
+             * that the put to the storage engine can avoid a copy, but we need to set the position to skip
+             * the padding in order for this trick to work.
+             */
+            manifest.position(SCHEMA_HEADER_LENGTH);
+            putInStorageEngine(versionTopic, partition, key, manifest, schemaId);
+          }
         }
 
         // leader should keep track of the latest offset of the version topic
@@ -741,6 +809,13 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         readyToServeChecker.apply(partitionConsumptionState);
       }
+    }
+
+    @Override
+    public void setChunkingInfo(byte[] key, ByteBuffer[] chunks, ChunkedValueManifest chunkedValueManifest) {
+      this.key = key;
+      this.chunkedValueManifest = chunkedValueManifest;
+      this.chunks = chunks;
     }
   }
 }

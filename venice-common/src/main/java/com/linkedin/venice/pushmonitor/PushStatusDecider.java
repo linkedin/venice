@@ -44,7 +44,7 @@ public abstract class PushStatusDecider {
     boolean isAllPartitionCompleted = true;
     // If there are not enough partitions assigned, push could not be completed.
     // Continue to decide whether push is failed or not.
-    if (!partitionAssignment.hasEnoughAssignedPartitions()) {
+    if (partitionAssignment.isMissingAssignedPartitions()) {
       logger.warn("There no not enough partitions assigned to resource: " + pushStatus.getKafkaTopic());
       isAllPartitionCompleted = false;
     }
@@ -90,15 +90,23 @@ public abstract class PushStatusDecider {
    */
   public Pair<ExecutionStatus, Optional<String>> checkPushStatusAndDetailsByPartitionsStatus(OfflinePushStatus pushStatus,
       PartitionAssignment partitionAssignment) {
-    if (partitionAssignment == null) {
+    // Sanity check
+    if (partitionAssignment == null || partitionAssignment.isMissingAssignedPartitions()) {
+      logger.warn("partitionAssignment not ready: " + partitionAssignment);
       return new Pair<>(NOT_CREATED, Optional.empty());
     }
 
     boolean isAllPartitionCompleted = true;
 
     for (PartitionStatus partitionStatus : pushStatus.getPartitionStatuses()) {
+      int partitionId = partitionStatus.getPartitionId();
+      Partition partition = partitionAssignment.getPartition(partitionId);
+      if (null == partition) {
+        // Defensive coding. Should never happen if the sanity check above works.
+        throw new IllegalStateException("partition " + partitionId + " is null.");
+      }
       ExecutionStatus executionStatus = getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(),
-          partitionAssignment.getPartition(partitionStatus.getPartitionId()).getInstanceToStateMap());
+          partition.getInstanceToStateMap());
 
       if (executionStatus == ERROR) {
         return new Pair<>(executionStatus, Optional.of("too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
@@ -129,7 +137,7 @@ public abstract class PushStatusDecider {
     }
     PartitionAssignment partitionAssignment =
         resourceAssignment.getPartitionAssignment(kafkaTopic);
-    if (!partitionAssignment.hasEnoughAssignedPartitions()) {
+    if (partitionAssignment.isMissingAssignedPartitions()) {
       String reason = "not enough partitions in EXTERNALVIEW";
       logger.info("There are " + reason + " assigned to resource: " + kafkaTopic);
       return Optional.of(reason);
