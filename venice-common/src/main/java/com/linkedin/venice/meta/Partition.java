@@ -109,4 +109,8 @@ public class Partition {
   public int getId() {
     return id;
   }
+
+  public String toString() {
+    return this.getClass().getSimpleName() + " {id: " + id + ", stateToInstancesMap: " + stateToInstancesMap + "}";
+  }
 }

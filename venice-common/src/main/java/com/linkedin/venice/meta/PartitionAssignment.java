@@ -60,11 +60,19 @@ public class PartitionAssignment {
     return idToPartitionMap.size();
   }
 
-  public boolean hasEnoughAssignedPartitions() {
-    return getAssignedNumberOfPartitions() >= expectedNumberOfPartitions;
+  public boolean isMissingAssignedPartitions() {
+    return getAssignedNumberOfPartitions() < expectedNumberOfPartitions;
   }
 
   public String getTopic() {
     return topic;
+  }
+
+  public String toString() {
+    return this.getClass().getSimpleName() + " {"
+        + "\n\ttopic: " + topic + ", "
+        + "\n\texpectedNumberOfPartitions: " + expectedNumberOfPartitions + ", "
+        + "\n\tidToPartitionMap: " + idToPartitionMap.toString()
+        + "\n}";
   }
 }

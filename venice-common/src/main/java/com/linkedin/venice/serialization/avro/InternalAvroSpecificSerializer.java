@@ -116,7 +116,8 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       this.PAYLOAD_OFFSET = PROTOCOL_VERSION_OFFSET + PROTOCOL_VERSION_LENGTH;
     } else {
       if (protocolDef.magicByte.isPresent() || protocolDef.protocolVersionStoredInHeader) {
-        throw new VeniceMessageException("The payload offset override is not intended to be used for protocols which have explicitly defined magic bytes or which protocol versions stored in their header.");
+        throw new VeniceMessageException("The payload offset override is not intended to be used for protocols "
+            + "which have explicitly defined magic bytes or which have protocol versions stored in their header.");
       }
       this.PAYLOAD_OFFSET = payloadOffsetOverride;
     }
@@ -175,6 +176,12 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       }
       if (PROTOCOL_VERSION_LENGTH == 1) {
         byteArrayOutputStream.write(currentProtocolVersion);
+      }
+      if (byteArrayOutputStream.size() < PAYLOAD_OFFSET) {
+        // In some code paths, we override the payload offset so that we can have some padding at the beginning.
+        for (int i = 0; i < PAYLOAD_OFFSET - byteArrayOutputStream.size(); i++) {
+          byteArrayOutputStream.write(0);
+        }
       }
       writer.write(object, encoder);
       encoder.flush();

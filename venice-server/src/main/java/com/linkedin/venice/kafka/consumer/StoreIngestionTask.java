@@ -77,6 +77,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
+import static com.linkedin.venice.store.record.ValueRecord.*;
 import static java.util.concurrent.TimeUnit.*;
 
 
@@ -165,8 +166,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadyToServeCheck defaultReadyToServeChecker;
 
   // Non-final
+  /** Should never be accessed directly. Always use {@link #getVeniceWriter()} instead, so that lazy init can occur. */
+  private VeniceWriter<byte[], byte[]> veniceWriter;
   protected KafkaConsumerWrapper consumer;
-  protected VeniceWriter<byte[], byte[]> veniceWriter;
   protected Set<Integer> schemaIdSet;
   protected int idleCounter = 0;
 
@@ -513,7 +515,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     logger.info("Running " + consumerTaskId);
     try {
       this.consumer = factory.getConsumer(kafkaProps);
-      this.veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topic);
       /**
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
        * acquired by some other synchronized function, such as {@link #kill()}.
@@ -1297,6 +1298,61 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       WriteToStorageEngine writeFunction, ProduceToTopic produceFunction);
 
   /**
+   * Write to the storage engine with the optimization that we leverage the padding in front of the {@param putValue}
+   * in order to insert the {@param schemaId} there. This avoids a byte array copy, which can be beneficial in terms
+   * of GC.
+   */
+  protected void putInStorageEngine(String topic, int partition, byte[] keyBytes, ByteBuffer putValue, int schemaId) {
+    /**
+     * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
+     * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
+     */
+    if (putValue.position() < SCHEMA_HEADER_LENGTH) {
+      throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + SCHEMA_HEADER_LENGTH);
+    }
+
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+
+    // Back up the original 4 bytes
+    putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
+    int backupBytes = putValue.getInt();
+    putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
+    ByteUtils.writeInt(putValue.array(), schemaId, putValue.position());
+
+    long putStartTimeNs = System.nanoTime();
+    storageEngine.put(partition, keyBytes, putValue);
+    if (logger.isTraceEnabled()) {
+      logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
+          (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
+    }
+
+    /** We still want to recover the original position to make this function idempotent. */
+    putValue.putInt(backupBytes);
+  }
+
+  /**
+   * N.B.: Although this is a one-time initialization routine, there should be no need to guard it by
+   *       synchronization, since the {@link StoreIngestionTask} is supposed to process messages in a
+   *       sequential, and therefore inherently thread-safe, fashion. If that assumption changes, then
+   *       let's make this synchronized.
+   *
+   * @return the instance of {@link VeniceWriter}, lazily initialized if necessary.
+   */
+  protected VeniceWriter getVeniceWriter() {
+    if (null == veniceWriter) {
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
+      if (storeVersionState.isPresent()) {
+        veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topic, storeVersionState.get().chunked);
+      } else {
+        throw new IllegalStateException(
+            "Should not attempt to call getVeniceWriter() prior to having received the Start of Push, "
+                + "specifying whether the store-version is chunked.");
+      }
+    }
+    return veniceWriter;
+  }
+
+  /**
    * @return the size of the data which was written to persistent storage.
    */
   private int processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
@@ -1315,46 +1371,35 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         checkValueSchemaAvail(put.schemaId);
         ByteBuffer putValue = put.putValue;
         int valueLen = putValue.remaining();
-        /**
-         * Since {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer} reuses the original byte
-         * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
-         */
-        if (putValue.position() < ByteUtils.SIZE_OF_INT) {
-          throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + ByteUtils.SIZE_OF_INT);
-        }
 
         // Write to storage engine; potentially produce the PUT message to version topic
         writeToDatabaseAndProduce(consumerRecord,
-            () -> {
-              long putStartTimeNs = System.nanoTime();
-              // Back up the original 4 bytes
-              putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
-              int backupBytes = putValue.getInt();
-              putValue.position(putValue.position() - ByteUtils.SIZE_OF_INT);
-              ByteUtils.writeInt(putValue.array(), put.schemaId, putValue.position());
-              storageEngine.put(partition, keyBytes, putValue);
+            key -> putInStorageEngine(topic, partition, key, putValue, put.schemaId),
+            (callback, sourceTopicOffset) -> {
               /**
-               * We still want to recover the original position to make this function idempotent.
+               * Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
+               * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
+               * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
+               * Since this is in a closure, it is not guaranteed to be invoked.
+               *
+               * The {@link OnlineOfflineStoreIngestionTask}, which ignores this closure, will not pay this price.
+               *
+               * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
+               *
+               * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
                */
-              putValue.putInt(backupBytes);
-
-              if (logger.isTraceEnabled()) {
-                logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
-                    (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
-              }
-            },
-            (callback, sourceTopicOffset) ->
-                veniceWriter.put(keyBytes, put.putValue.array(), put.schemaId, callback, sourceTopicOffset)
-            );
+              byte[] bytesArrayValue = ByteUtils.extractByteArray(putValue);
+              return getVeniceWriter().put(keyBytes, bytesArrayValue, put.schemaId, callback, sourceTopicOffset);
+            });
 
         return valueLen;
 
       case DELETE:
         // Write to storage engine; potentially produce the DELETE message to version topic
         writeToDatabaseAndProduce(consumerRecord,
-            () -> {
+            key -> {
               long deleteStartTimeNs = System.nanoTime();
-              storageEngine.delete(partition, keyBytes);
+              storageEngine.delete(partition, key);
 
               if (logger.isTraceEnabled()) {
                 logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " in " +
@@ -1362,7 +1407,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               }
             },
             (callback, sourceTopicOffset) ->
-                veniceWriter.delete(keyBytes, callback, sourceTopicOffset)
+                getVeniceWriter().delete(keyBytes, callback, sourceTopicOffset)
         );
 
         return 0;
@@ -1523,7 +1568,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @FunctionalInterface
   interface WriteToStorageEngine {
-    void apply();
+    void apply(byte[] key);
   }
 
   /**

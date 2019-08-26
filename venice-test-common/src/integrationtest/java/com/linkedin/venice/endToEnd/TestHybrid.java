@@ -8,7 +8,10 @@ import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
+import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -35,11 +38,13 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
@@ -58,6 +63,7 @@ import static org.testng.Assert.*;
 
 public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
+  private static final int STREAMING_RECORD_SIZE = 1024;
 
   @DataProvider(name = "isLeaderFollowerModelEnabled")
   public static Object[][] isLeaderFollowerModelEnabled() {
@@ -113,14 +119,19 @@ public class TestHybrid {
     venice.close();
   }
 
-  @Test(dataProvider = "isLeaderFollowerModelEnabled")
-  public void testHybridEndToEndWithMultiDivStream(boolean isLeaderFollowerModelEnabled) throws Exception {
-    testHybridEndToEnd(true, isLeaderFollowerModelEnabled);
-  }
-
-  @Test(dataProvider = "isLeaderFollowerModelEnabled")
-  public void testHybridEndToEnd(boolean isLeaderFollowerModelEnabled) throws Exception {
-    testHybridEndToEnd(false, isLeaderFollowerModelEnabled);
+  /**
+   * N.B.: Non-L/F does not support chunking, so this permutation is skipped.
+   */
+  @DataProvider(name = "testPermutations")
+  public static Object[][] testPermutations() {
+    return new Object[][]{
+        {false, false, false},
+        {false, true, false},
+        {false, true, true},
+        {true, false, false},
+        {true, true, false},
+        {true, true, true}
+    };
   }
 
   /**
@@ -128,25 +139,35 @@ public class TestHybrid {
    *
    * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
    *       which would allow the test to run faster and more deterministically.
-   *
-   * This is a slow test, so it is given priority -10 so that it starts first.
 
    * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.
    *                       if true, two independent DIV Segments will be placed before and after the start of buffer replay.
    *
    *                       If this test succeeds with {@param multiDivStream} set to true, but fails with it set to false,
    *                       then there is a regression in the DIV partial segment tolerance after EOP.
-   * @param isLeaderFollowerModelEnabled Whether enable Leader/Follower state transition model
+   * @param isLeaderFollowerModelEnabled Whether to enable Leader/Follower state transition model.
+   * @param chunkingEnabled Whether chunking should be enabled (only supported in {@param isLeaderFollowerModelEnabled} is true).
    */
-  public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled) throws Exception {
+  @Test(dataProvider = "testPermutations")
+  public void testHybridEndToEnd(boolean multiDivStream, boolean isLeaderFollowerModelEnabled, boolean chunkingEnabled) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     Properties extraProperties = new Properties();
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
-        1, 1000000, false, false, extraProperties);
+    if (isLeaderFollowerModelEnabled) {
+      extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    }
+    if (chunkingEnabled) {
+      // We exercise chunking by setting the servers' max size arbitrarily low. For now, since the RT topic
+      // does not support chunking, and write compute is not merged yet, there is no other way to make the
+      // store-version data bigger than the RT data and thus have chunked values produced.
+      int maxMessageSizeInServer = STREAMING_RECORD_SIZE / 2;
+      extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, Integer.toString(maxMessageSizeInServer));
+    }
+    // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,
+        2, 1000000, false, false, extraProperties);
     logger.info("Finished creating VeniceClusterWrapper");
 
-    long streamingRewindSeconds = 25L;
+    long streamingRewindSeconds = 10L;
     long streamingMessageLag = 2L;
 
     String storeName = TestUtils.getUniqueString("hybrid-store");
@@ -157,11 +178,14 @@ public class TestHybrid {
 
     ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
 
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+    ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
         .setHybridRewindSeconds(streamingRewindSeconds)
         .setHybridOffsetLagThreshold(streamingMessageLag)
         .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
+        .setChunkingEnabled(chunkingEnabled)
     );
+
+    Assert.assertFalse(response.isError());
 
     TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
@@ -176,11 +200,13 @@ public class TestHybrid {
     //Verify some records (note, records 1-100 have been pushed)
     AvroGenericStoreClient client =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       try {
-        for (int i = 1; i < 10; i++) {
+        for (int i = 1; i < 100; i++) {
           String key = Integer.toString(i);
-          assertEquals(client.get(key).get().toString(), "test_name_" + key);
+          Object value = client.get(key).get();
+          assertNotNull(value, "Key " + i + " should not be missing!");
+          assertEquals(value.toString(), "test_name_" + key);
         }
       } catch (Exception e) {
         throw new VeniceException(e);
@@ -190,7 +216,10 @@ public class TestHybrid {
     //write streaming records
     SystemProducer veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
     for (int i=1; i<=10; i++) {
-      sendStreamingRecord(veniceProducer, storeName, i);
+      // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
+      // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
+      // max chunk size is not altered, and thus this will be under threshold.
+      sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
     }
     if (multiDivStream) {
       veniceProducer.stop(); //close out the DIV segment
@@ -198,7 +227,7 @@ public class TestHybrid {
 
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
-        assertEquals(client.get("2").get().toString(),"stream_2");
+        checkLargeRecord(client, 2);
       } catch (Exception e) {
         throw new VeniceException(e);
       }
@@ -210,9 +239,10 @@ public class TestHybrid {
     Assert.assertTrue(topicManager.isTopicCompactionEnabled(topicForStoreVersion2), "topic: " + topicForStoreVersion2 + " should have compaction enabled");
 
     // Verify streaming record in second version
-    assertEquals(client.get("2").get().toString(),"stream_2");
+    checkLargeRecord(client, 2);
     assertEquals(client.get("19").get().toString(), "test_name_19");
 
+    // TODO: Would be great to eliminate this wait time...
     logger.info("***** Sleeping to get outside of rewind time: " + streamingRewindSeconds + " seconds");
     Utils.sleep(TimeUnit.MILLISECONDS.convert(streamingRewindSeconds, TimeUnit.SECONDS));
 
@@ -221,11 +251,11 @@ public class TestHybrid {
       veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM); // new producer, new DIV segment.
     }
     for (int i=10; i<=20; i++) {
-      sendStreamingRecord(veniceProducer, storeName, i);
+      sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
     }
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       try {
-        assertEquals(client.get("19").get().toString(),"stream_19");
+        checkLargeRecord(client, 19);
       } catch (Exception e) {
         throw new VeniceException(e);
       }
@@ -240,7 +270,7 @@ public class TestHybrid {
     // Verify new streaming record in third version
     TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, () -> {
       try {
-        assertEquals(client.get("19").get().toString(),"stream_19");
+        checkLargeRecord(client, 19);
       } catch (Exception e) {
         throw new VeniceException(e);
       }
@@ -281,6 +311,10 @@ public class TestHybrid {
       }
     }
 
+    controllerClient.listInstancesStatuses().getInstancesStatusMap().keySet().stream()
+        .forEach(s -> logger.info("Replicas for " + s + ": "
+            + Arrays.toString(controllerClient.listStorageNodeReplicas(s).getReplicas())));
+
     /**
      * Disable the restart server test for L/F model for now until the fix in rb1753313 is merged;
      * "controllerClient.listStoresStatuses()" would eventually calling
@@ -288,35 +322,52 @@ public class TestHybrid {
      * which uses {@link Partition#getReadyToServeInstances()} to find the online replicas for the store; however, for
      * L/F model, the "stateToInstancesMap" inside Partition only contains state like "STANDBY" and "LEADER"; we should
      * use PushMonitor inside StoreStatusDecider to get the ready to serve instances.
+     *
+     * TODO: Once rb1753313 is merged, let's tweak the code below so that we re-query the data after the first server is killed
      */
     if (!isLeaderFollowerModelEnabled) {
       // TODO will move this test case to a single fail-over integration test.
       //Stop one server
       int port = venice.getVeniceServers().get(0).getPort();
       venice.stopVeniceServer(port);
-      TestUtils.waitForNonDeterministicCompletion(15, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+        // Make sure Helix knows the instance is shutdown
+        Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
+        Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.UNDER_REPLICATED.toString()),
+            "Should be UNDER_REPLICATED");
+
         Map<String, String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
-        // Make sure Helix know the instance is completed shutdown
-        if (instanceStatus.values().iterator().next().equals(InstanceStatus.DISCONNECTED.toString())) {
-          return true;
-        }
-        return false;
+        Assert.assertTrue(instanceStatus.entrySet().stream()
+                .filter(entry -> entry.getKey().contains(Integer.toString(port)))
+                .map(entry -> entry.getValue())
+                .allMatch(s -> s.equals(InstanceStatus.DISCONNECTED.toString())),
+            "Storage Node on port " + port + " should be DISCONNECTED");
       });
 
       //Restart one server
       venice.restartVeniceServer(port);
-      TestUtils.waitForNonDeterministicCompletion(15, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicAssertion(15, TimeUnit.SECONDS, true, () -> {
+      // Make sure Helix knows the instance has recovered
         Map<String, String> storeStatus = controllerClient.listStoresStatuses().getStoreStatusMap();
-        // Make sure Helix know the instance is completed shutdown
-        if (storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString())) {
-          return true;
-        }
-        return false;
+        Assert.assertTrue(storeStatus.get(storeName).equals(StoreStatus.FULLLY_REPLICATED.toString()),
+            "Should be FULLLY_REPLICATED");
       });
     }
     veniceProducer.stop();
     IOUtils.closeQuietly(topicManager);
     venice.close();
+  }
+
+  private void checkLargeRecord(AvroGenericStoreClient client, int index)
+      throws ExecutionException, InterruptedException {
+    String key = Integer.toString(index);
+    String value = client.get(key).get().toString();
+    assertEquals(value.length(), STREAMING_RECORD_SIZE);
+
+    String expectedChar = Integer.toString(index).substring(0, 1);
+    for (int j = 0; j < value.length(); j++) {
+      assertEquals(value.substring(j, j + 1), expectedChar);
+    }
   }
 
   @Test(dataProvider = "isLeaderFollowerModelEnabled")

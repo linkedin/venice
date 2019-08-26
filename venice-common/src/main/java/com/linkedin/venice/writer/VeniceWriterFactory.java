@@ -36,31 +36,36 @@ public class VeniceWriterFactory {
    * Create a basic venice writer with default serializer.
    */
   public VeniceWriter<byte[], byte[]> getBasicVeniceWriter(String topicName, Time time) {
-    return getVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), time);
+    return getVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), false, time);
   }
 
   public VeniceWriter<byte[], byte[]> getBasicVeniceWriter(String topicName) {
     return getBasicVeniceWriter(topicName, SystemTime.INSTANCE);
   }
 
+  public VeniceWriter<byte[], byte[]> getBasicVeniceWriter(String topicName, boolean chunkingEnabled) {
+    return getVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), chunkingEnabled, SystemTime.INSTANCE);
+  }
+
   public <K, V> VeniceWriter<K, V> getVeniceWriter(String topicName, VeniceKafkaSerializer<K> keySerializer,
       VeniceKafkaSerializer<V> valueSerializer) {
-    return getVeniceWriter(topicName, keySerializer, valueSerializer, SystemTime.INSTANCE);
+    return getVeniceWriter(topicName, keySerializer, valueSerializer, false, SystemTime.INSTANCE);
   }
 
   /**
    * Create a venice writer which is used to communicated with the topic contains real data.
    */
   protected <K, V> VeniceWriter<K, V> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer, Time time) {
+      VeniceKafkaSerializer<V> valueSerializer, boolean chunkingEnabled, Time time) {
     Properties writerProperties = new Properties();
     writerProperties.putAll(this.properties);
     writerProperties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    writerProperties.put(VeniceWriter.ENABLE_CHUNKING, chunkingEnabled);
     return new VeniceWriter<>(new VeniceProperties(writerProperties), topic, keySerializer, valueSerializer, time);
   }
 
   public VeniceWriter<KafkaKey, byte[]> getVeniceWriter(String topic) {
-    return getVeniceWriter(topic, new KafkaKeySerializer(), new DefaultSerializer(), SystemTime.INSTANCE);
+    return getVeniceWriter(topic, new KafkaKeySerializer(), new DefaultSerializer(), false, SystemTime.INSTANCE);
   }
 
   private void checkProperty(String key) {
