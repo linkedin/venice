@@ -187,16 +187,10 @@ public class TestUtils {
   }
 
   public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafkaBootstrapServer){
-    return getVeniceTestWriterFactory(kafkaBootstrapServer, false);
-  }
-
-    public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafkaBootstrapServer, boolean enableChunking) {
     Properties properties = new Properties();
-    properties.put(VeniceWriter.ENABLE_CHUNKING, enableChunking);
     properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServer);
     return new VeniceTestWriterFactory(properties);
   }
-
 
   public static class VeniceTestWriterFactory extends VeniceWriterFactory {
     public VeniceTestWriterFactory(Properties properties) {
@@ -204,7 +198,7 @@ public class TestUtils {
     }
 
     public <K, V> VeniceWriter<K, V> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
-      return getVeniceWriter(topic, keySer, valSer, false, SystemTime.INSTANCE);
+      return getVeniceWriter(topic, keySer, valSer, Optional.empty(), SystemTime.INSTANCE);
     }
   }
 

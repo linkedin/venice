@@ -156,8 +156,10 @@ public class StorageNodeComputeTest {
     final int pushVersion = newVersion.getVersion();
     String topic = newVersion.getKafkaTopic();
 
-    VeniceWriterFactory vwFactory = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress(), valueLargerThan1MB);
-    try (VeniceWriter<Object, byte[]> veniceWriter = vwFactory.getVeniceWriter(topic, keySerializer, new DefaultSerializer());
+    VeniceWriterFactory vwFactory =
+        TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress());
+    try (VeniceWriter<Object, byte[]> veniceWriter =
+        vwFactory.getVeniceWriter(topic, keySerializer, new DefaultSerializer(), valueLargerThan1MB);
         AvroGenericStoreClient<String, Object> storeClient = ClientFactory.getAndStartGenericAvroClient(
             ClientConfig.defaultGenericClientConfig(storeName)
                 .setVeniceURL(routerAddr)
