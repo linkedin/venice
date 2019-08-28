@@ -48,16 +48,14 @@ import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
-
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.stats.SecurityStats;
-
+import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.throttle.NoopRouterThrottler;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
@@ -367,8 +365,9 @@ public class RouterServer extends AbstractVeniceService {
      * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
      */
     OnlineInstanceFinder onlineInstanceFinder =
-        new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, new PartitionStatusOnlineInstanceFinder(
-        new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter), routingDataRepository));
+        new OnlineInstanceFinderDelegator(metadataRepository,
+            routingDataRepository,
+            new PartitionStatusOnlineInstanceFinder(metadataRepository, new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter), routingDataRepository));
 
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,

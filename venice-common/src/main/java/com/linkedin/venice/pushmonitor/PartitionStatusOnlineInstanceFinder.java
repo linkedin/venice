@@ -5,7 +5,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,6 +16,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.IZkChildListener;
@@ -32,12 +36,15 @@ public class PartitionStatusOnlineInstanceFinder
   private static final Logger logger = Logger.getLogger(PartitionStatusOnlineInstanceFinder.class);
   private final OfflinePushAccessor offlinePushAccessor;
   private final RoutingDataRepository routingDataRepository;
+  private final ReadOnlyStoreRepository metadataRepo;
 
   // TODO: We should use a Map of PartitionStatus that is similar to idToPartitionMap in PartitionAssignment instead of
   //  a List so we can still get partial results even when some partitions are missing.
   private final Map<String, List<PartitionStatus>> topicToPartitionMap;
 
-  public PartitionStatusOnlineInstanceFinder(OfflinePushAccessor offlinePushAccessor, RoutingDataRepository routingDataRepository) {
+  public PartitionStatusOnlineInstanceFinder(ReadOnlyStoreRepository metadataRepo,
+      OfflinePushAccessor offlinePushAccessor, RoutingDataRepository routingDataRepository) {
+    this.metadataRepo = metadataRepo;
     this.offlinePushAccessor = offlinePushAccessor;
     this.routingDataRepository = routingDataRepository;
     this.topicToPartitionMap = new HashMap<>();
@@ -130,11 +137,26 @@ public class PartitionStatusOnlineInstanceFinder
     clear();
     offlinePushStatusList.forEach(pushStatus -> {
       /*copy to a new list since the former is unmodifiable*/
-      topicToPartitionMap.put(pushStatus.getKafkaTopic(), new ArrayList<>(pushStatus.getPartitionStatuses()));
-      offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
+      String topic = pushStatus.getKafkaTopic();
+      topicToPartitionMap.put(topic, new ArrayList<>(pushStatus.getPartitionStatuses()));
+      if (isLFModelEnabledForStoreVersion(topic)) {
+        offlinePushAccessor.subscribePartitionStatusChange(pushStatus, this);
+      }
     });
 
     offlinePushAccessor.subscribePushStatusCreationChange(this);
+  }
+
+  private boolean isLFModelEnabledForStoreVersion(String kafkaTopic) {
+    Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
+    if (store == null) {
+      return false;
+    }
+
+    Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+    return version
+        .map(Version::isLeaderFollowerModelEnabled)
+        .orElse(false);
   }
 
   @Override
@@ -160,14 +182,18 @@ public class PartitionStatusOnlineInstanceFinder
       OfflinePushStatus status = getPushStatusFromZk(pushStatusName);
       if (status != null) {
         topicToPartitionMap.put(pushStatusName, new ArrayList<>(status.getPartitionStatuses()));
-        offlinePushAccessor.subscribePartitionStatusChange(status, this);
+        if (isLFModelEnabledForStoreVersion(pushStatusName)) {
+          offlinePushAccessor.subscribePartitionStatusChange(status, this);
+        }
       }
     });
 
     deletedPushStatusList.forEach(pushStatusName -> {
       List<PartitionStatus> statusList = topicToPartitionMap.get(pushStatusName);
       topicToPartitionMap.remove(pushStatusName);
-      offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatusName, statusList.size(), this);
+      if (isLFModelEnabledForStoreVersion(pushStatusName)) {
+        offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatusName, statusList.size(), this);
+      }
     });
   }
 
