@@ -199,7 +199,7 @@ public class TestStreaming {
       StatTrackingStoreClient trackingStoreClient = (StatTrackingStoreClient)d2StoreClient;
 
       // Run multiple rounds
-      int rounds = 100;
+      int rounds = 10;
       int cur = 0;
       Set<String> keySet = new TreeSet<>();
       /**
@@ -319,7 +319,8 @@ public class TestStreaming {
         }
       }
     } finally {
-      veniceRouterWrapperWithHttpAsyncClient.close();
+      IOUtils.closeQuietly(veniceRouterWrapperWithHttpAsyncClient);
+      IOUtils.closeQuietly(veniceRouterWrapperWithNettyClient);
     }
   }
 
