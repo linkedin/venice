@@ -164,7 +164,11 @@ public class PartitionStatusOnlineInstanceFinder
       }
     });
 
-    deletedPushStatusList.forEach(pushStatusName -> topicToPartitionMap.remove(pushStatusName));
+    deletedPushStatusList.forEach(pushStatusName -> {
+      List<PartitionStatus> statusList = topicToPartitionMap.get(pushStatusName);
+      topicToPartitionMap.remove(pushStatusName);
+      offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatusName, statusList.size(), this);
+    });
   }
 
   private OfflinePushStatus getPushStatusFromZk(String kafkaTopic) {
