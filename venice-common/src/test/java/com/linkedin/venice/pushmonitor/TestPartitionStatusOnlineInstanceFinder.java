@@ -4,13 +4,13 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.routerapi.ReplicaState;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.mockito.Mockito;
@@ -21,8 +21,9 @@ import org.testng.annotations.Test;
 public class TestPartitionStatusOnlineInstanceFinder {
   private OfflinePushAccessor offlinePushAccessor = Mockito.mock(OfflinePushAccessor.class);
   private RoutingDataRepository routingDataRepo = Mockito.mock(RoutingDataRepository.class);
+  private ReadOnlyStoreRepository metaDataRepo = Mockito.mock(ReadOnlyStoreRepository.class);
 
-  private String testTopic = "testTopic";
+  private String testTopic = "testTopic_v1";
   private int testPartition = 0;
 
   @Test
@@ -78,7 +79,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
 
   private PartitionStatusOnlineInstanceFinder initFinder() {
     PartitionStatusOnlineInstanceFinder finder =
-        new PartitionStatusOnlineInstanceFinder(offlinePushAccessor, routingDataRepo);
+        new PartitionStatusOnlineInstanceFinder(metaDataRepo, offlinePushAccessor, routingDataRepo);
     Mockito.doReturn(getMockInstances()).when(routingDataRepo).getAllInstances(testTopic, 0);
     Mockito.doReturn(new PartitionAssignment(testTopic, 1)).when(routingDataRepo).getPartitionAssignments(testTopic);
     Mockito.doReturn(getMockPushStatus()).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
