@@ -221,10 +221,14 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   @Override
   public void unsubscribePartitionsStatusChange(OfflinePushStatus pushStatus, PartitionStatusListener listener) {
-    listenerManager.unsubscribe(pushStatus.getKafkaTopic(), listener);
-    for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartition(); partitionId++) {
-      partitionStatusAccessor.unsubscribeDataChanges(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId),
-          partitionStatusZkListener);
+    unsubscribePartitionsStatusChange(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition(), listener);
+  }
+
+  @Override
+  public void unsubscribePartitionsStatusChange(String topicName, int partitionCount, PartitionStatusListener listener) {
+    listenerManager.unsubscribe(topicName, listener);
+    for (int partitionId = 0; partitionId < partitionCount; partitionId++) {
+      partitionStatusAccessor.unsubscribeDataChanges(getPartitionStatusPath(topicName, partitionId), partitionStatusZkListener);
     }
   }
 
