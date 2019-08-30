@@ -281,6 +281,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<V> get(final K key, final Optional<ClientStats> stats, final long preRequestTimeInNS) throws VeniceClientException {
     byte[] serializedKey = getKeySerializer().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Request path: " + requestPath);
+    }
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
 
     requestSubmissionWithStatsHandling(stats, preRequestTimeInNS, true,
