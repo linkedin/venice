@@ -56,7 +56,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.helix.PropertyKey;
@@ -1560,7 +1559,6 @@ public class TestVeniceHelixAdmin {
   @Test
   public void leakyTopicTruncation() {
     TopicManager topicManager = veniceAdmin.getTopicManager();
-
     // 5 stores, 10 topics and 2 active versions each.
     final int NUMBER_OF_VERSIONS = 10;
     final int NUMBER_OF_STORES = 5;
@@ -1604,7 +1602,7 @@ public class TestVeniceHelixAdmin {
     }
 
     Store storeToCleanUp = stores.get(0);
-    veniceAdmin.truncateOldKafkaTopics(storeToCleanUp, false);
+    veniceAdmin.truncateOldTopics(clusterName, storeToCleanUp, false);
 
     // verify that the storeToCleanUp has its topics cleaned up, and the others don't
     // verify all the topics of 'storeToCleanup' without corresponding active versions have been cleaned up

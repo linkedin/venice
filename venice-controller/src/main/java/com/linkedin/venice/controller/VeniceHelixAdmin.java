@@ -511,7 +511,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 truncateKafkaTopic(Version.composeRealTimeTopic(storeName));
             }
             if (store != null) {
-                truncateOldKafkaTopics(store, true);
+                truncateOldTopics(clusterName, store, true);
             } else {
                 // Defensive coding: This should never happen, unless someone adds a catch block to the above try/finally clause...
                 logger.error("Unexpected null store instance...!");
@@ -1406,7 +1406,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
 
-            truncateOldKafkaTopics(store, false);
+            truncateOldTopics(clusterName, store, false);
         } finally {
             resources.unlockForMetadataOperation();
         }
@@ -1520,7 +1520,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * @param forStoreDeletion
      *
      */
-    void truncateOldKafkaTopics(Store store, boolean forStoreDeletion) {
+    void truncateOldTopics(String clusterName, Store store, boolean forStoreDeletion) {
         if (store.isMigrating())  {
             logger.info("This store " + store.getName() + " is being migrated. Skip topic deletion.");
             return;
@@ -1578,7 +1578,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (truncateKafkaTopic(t)) {
                     ++numberOfNewTopicsMarkedForDelete;
                 }
+                deleteHelixResource(clusterName, t);
             }
+            logger.info(String.format("Deleted %d old HelixResources for store '%s'.", numberOfNewTopicsMarkedForDelete, store.getName()));
             logger.info(String.format(
                 "Finished truncating old topics for store '%s'. Retention time for %d topics out of %d have been updated.",
                 store.getName(), numberOfNewTopicsMarkedForDelete, oldTopicsToTruncate.size()));
