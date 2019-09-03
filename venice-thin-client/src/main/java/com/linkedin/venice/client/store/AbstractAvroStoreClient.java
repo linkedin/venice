@@ -85,12 +85,12 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
      */
     GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
-    GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION,
+    GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY,
         Integer.toString(CompressionStrategy.GZIP.getValue()));
 
     MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
-    MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION,
+    MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_SUPPORTED_COMPRESSION_STRATEGY,
         Integer.toString(CompressionStrategy.GZIP.getValue()));
 
     COMPUTE_HEADER_MAP_V2.put(HttpConstants.VENICE_API_VERSION,
