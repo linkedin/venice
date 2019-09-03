@@ -170,7 +170,7 @@ public class VeniceRouterConfig {
     nettyClientChannelPoolHealthCheckIntervalMs =
         props.getLong(ROUTER_NETTY_CLIENT_CHANNEL_POOL_HEALTH_CHECK_INTERVAL_MS, TimeUnit.MILLISECONDS.convert(5, TimeUnit.MINUTES));
     nettyClientMaxAggregatedObjectLength = props.getInt(ROUTER_NETTY_CLIENT_MAX_AGGREGATED_OBJECT_LENGTH, 1024 * 1024 * 20); // 20MB by default; change it according to the max response size
-    decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, false);
+    decompressOnClient = props.getBoolean(ROUTER_CLIENT_DECOMPRESSION_ENABLED, true);
     streamingEnabled = props.getBoolean(ROUTER_STREAMING_ENABLED, false);
     computeFastAvroEnabled = props.getBoolean(ROUTER_COMPUTE_FAST_AVRO_ENABLED, false);
 
