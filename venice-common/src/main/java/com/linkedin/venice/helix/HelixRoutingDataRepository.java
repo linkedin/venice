@@ -295,7 +295,7 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
                 List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
                 refreshResourceToIdealPartitionCountMap(idealStates);
                 resourceToPartitionCountMapSnapshot = resourceToIdealPartitionCountMap;
-                logger.info("Ideal state of cluster: " + manager.getClusterName() + " is updated to date from zk");
+                logger.info("Ideal state of cluster: " + manager.getClusterName() + " is updated from zk");
             } catch (HelixMetaDataAccessException e) {
                 logger.error("Failed to update the ideal state of cluster: " + manager.getClusterName()
                     + " because we could not access to zk.", e);
@@ -306,8 +306,8 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
         for (ExternalView externalView : externalViewCollection) {
             String resourceName = externalView.getResourceName();
             if (!resourceToPartitionCountMapSnapshot.containsKey(resourceName)) {
-                logger.warn("Count not find resource: " + resourceName + "in ideal state. Ideal state is up to date,"
-                    + " so the resource has been deleted from ideal state. Ignore its external view update.");
+                logger.warn("Could not find resource: " + resourceName + " in ideal state. Ideal state is up to date,"
+                    + " so the resource has been deleted from ideal state or could not read from zk. Ignore its external view update.");
                 continue;
             }
             PartitionAssignment partitionAssignment =
