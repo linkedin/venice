@@ -241,7 +241,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    */
   protected void init() {
     // Discover the proper d2 service name for this store.
-    if(transportClient instanceof  D2TransportClient) {
+    if (transportClient instanceof D2TransportClient) {
       // Use the new d2 transport client which will talk to the cluster own the given store.
       // Do not need to close the original one, because if we use global d2 client, close will do nothing. If we use
       // private d2, we could not close it as we share this d2 client in the new transport client.
