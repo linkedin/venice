@@ -462,7 +462,6 @@ public class TopicManager implements Closeable {
   public synchronized boolean containsTopic(String topic, Integer expectedPartitionCount) {
     boolean zkMetadataCreatedForTopic = AdminUtils.topicExists(getZkUtils(), topic);
     if (!zkMetadataCreatedForTopic) {
-      logger.info("AdminUtils.topicExists() returned false because the ZK path doesn't exist yet for topic: " + topic);
       return false;
     }
 

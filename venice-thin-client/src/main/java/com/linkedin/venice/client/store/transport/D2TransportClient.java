@@ -53,7 +53,7 @@ public class D2TransportClient extends TransportClient {
    * @param d2ServiceName
    * @param d2Client
    */
-  public D2TransportClient(String d2ServiceName, D2Client d2Client){
+  public D2TransportClient(String d2ServiceName, D2Client d2Client) {
     this.d2ServiceName = d2ServiceName;
     this.d2Client = d2Client;
     this.privateD2Client = false;
@@ -66,12 +66,10 @@ public class D2TransportClient extends TransportClient {
    * @param zkBasePath
    * @param zkTimeout
    */
-  public D2TransportClient(String zkConnection,
-                               String d2ServiceName,
-                               String zkBasePath,
-                               int zkTimeout) {
+  public D2TransportClient(String zkConnection, String d2ServiceName, String zkBasePath, int zkTimeout) {
     this.d2ServiceName = d2ServiceName;
-    D2ClientBuilder builder = new D2ClientBuilder().setZkHosts(zkConnection)
+    D2ClientBuilder builder = new D2ClientBuilder()
+        .setZkHosts(zkConnection)
         .setZkSessionTimeout(zkTimeout, TimeUnit.MILLISECONDS)
         .setZkStartupTimeout(zkTimeout, TimeUnit.MILLISECONDS)
         .setLbWaitTimeout(zkTimeout, TimeUnit.MILLISECONDS)
@@ -80,6 +78,10 @@ public class D2TransportClient extends TransportClient {
     this.privateD2Client = true;
 
     D2ClientUtils.startClient(d2Client);
+  }
+
+  public void setServiceName(String serviceName) {
+    this.d2ServiceName = serviceName;
   }
 
   @Override
@@ -244,7 +246,7 @@ public class D2TransportClient extends TransportClient {
         RestResponse result = ((RestException) e).getResponse();
         onSuccess(result);
       } else {
-        logger.error(e);
+        logger.error("", e);
         getValueFuture().completeExceptionally(new VeniceClientException(e));
       }
     }

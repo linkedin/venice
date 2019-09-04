@@ -24,7 +24,8 @@ public class D2ServiceDiscovery {
 
   public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
     String d2ServiceNameForStore = discoverD2Service(client, storeName);
-    return new D2TransportClient(d2ServiceNameForStore, client.getD2Client());
+    client.setServiceName(d2ServiceNameForStore);
+    return client;
   }
 
   protected String discoverD2Service(D2TransportClient client, String storeName) {
