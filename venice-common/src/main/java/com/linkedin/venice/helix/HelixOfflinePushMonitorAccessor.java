@@ -273,6 +273,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       if (result.isEmpty()) {
         // Partition status list is empty means that partition status node hasn't been fully created yet.
         // In this case, create placeholder statuses based on the partition count from OfflinePushStatus.
+        result = new ArrayList<>(partitionCount);
         for (int i = 0; i < partitionCount; ++i) {
           result.add(new PartitionStatus(i));
         }
