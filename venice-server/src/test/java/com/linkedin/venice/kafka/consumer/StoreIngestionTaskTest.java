@@ -1128,13 +1128,15 @@ public class StoreIngestionTaskTest {
   public void testOffsetPersistent(boolean isLeaderFollowerModelEnabled)
       throws Exception {
     // Do not persist every message.
-    databaseSyncBytesIntervalForTransactionalMode = 1000;
     List<Long> offsets = new ArrayList<>();
-    offsets.add(5l);
+    for (int i = 0; i < PARTITION_COUNT; i++) {
+      offsets.add(5l);
+    }
+    databaseSyncBytesIntervalForTransactionalMode = 1000;
     try {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.broadcastEndOfPush(new HashMap<>());
-      veniceWriter.broadcastStartOfBufferReplay(offsets, "t", topic, new HashMap<>());
+      veniceWriter.broadcastStartOfBufferReplay(offsets,"t", topic, new HashMap<>());
       /**
        * Persist for every control message:
        * START_OF_SEGMENT, START_OF_PUSH, END_OF_PUSH, END_OF_SEGMENT, START_OF_SEGMENT, START_OF_BUFFER_REPLAY
@@ -1222,11 +1224,11 @@ public class StoreIngestionTaskTest {
                 System.currentTimeMillis() - TimeUnit.SECONDS.toMillis(10),
                 new HashMap<>());
           } else {
-            veniceWriter.broadcastStartOfBufferReplay(
-                Arrays.asList(10L, 9L, 8L, 7L, 6L, 5L, 4L, 3L, 2L, 1L),
-                "source K cluster",
-                "source K topic",
-                new HashMap<>());
+            List<Long> offsets = new ArrayList<>();
+            for (int i = 0; i < PARTITION_COUNT; i++) {
+              offsets.add(5l);
+            }
+            veniceWriter.broadcastStartOfBufferReplay(offsets, "source K cluster", "source K topic", new HashMap<>());
           }
 
           for (int i = 0; i < MESSAGES_AFTER_EOP; i++) {
