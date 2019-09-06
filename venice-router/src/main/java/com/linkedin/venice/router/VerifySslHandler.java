@@ -65,11 +65,13 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
 
     if (((SslHandshakeCompletionEvent) event).isSuccess()) {
+      logger.info("Successfully set up connection from: " + ctx.channel().remoteAddress());
       stats.recordSslSuccess();
       ctx.fireUserEventTriggered(event);
       return;
     }
 
+    logger.info("Could not set up connection from: " + ctx.channel().remoteAddress());
     logger.debug(event);
     stats.recordSslError();
     NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
