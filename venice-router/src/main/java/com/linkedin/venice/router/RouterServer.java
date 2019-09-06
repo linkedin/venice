@@ -450,7 +450,8 @@ public class RouterServer extends AbstractVeniceService {
         .enableRetryRequestAlwaysUseADifferentHost(true)
         .build();
 
-    SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security");
+    SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security",
+        () -> secureRouter != null ? secureRouter.getConnectedCount() : 0);
     VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
     HealthCheckStats healthCheckStats = new HealthCheckStats(this.metricsRepository, "healthcheck_stats");
     router = Router.builder(scatterGather)
