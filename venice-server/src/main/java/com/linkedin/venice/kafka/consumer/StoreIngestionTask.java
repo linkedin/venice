@@ -1431,8 +1431,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             null, null, storageMetadataService.getStoreVersionCompressionStrategy(topic),
             serverConfig.isComputeFastAvroEnabled(), schemaRepo, storeNameWithoutVersionInfo);
 
-        byte[] updatedValueBytes = ingestionTaskWriteComputeAdapter.getUpdatedValueBytes((GenericRecord) originalValue,
-            update.updateValue, valueSchemaId, derivedSchemaId, partition);
+        byte[] updatedValueBytes = ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue,
+            update.updateValue, valueSchemaId, derivedSchemaId);
 
         ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + updatedValueBytes.length)
             .putInt(valueSchemaId).put(updatedValueBytes);

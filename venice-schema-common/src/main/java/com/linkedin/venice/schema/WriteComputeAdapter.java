@@ -34,24 +34,24 @@ public class WriteComputeAdapter {
   /**
    * Generate a new write compute adapter that can be used given a pair of original schema and its write-compute
    * schema.
-   * @param originalSchema the schema that the current value is associated with
+   * @param originalSchema the original schema that write compute schema is derived from
    * @param writeComputeSchema the write compute schema that is auto-generated and paired with original Schema.
    *                           See {@link WriteComputeSchemaAdapter} for more details that how it's generated.
    */
   public static WriteComputeAdapter getWriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
+    WriteComputeSchemaValidator.validate(originalSchema, writeComputeSchema);
+
     return new WriteComputeAdapter(originalSchema, writeComputeSchema);
   }
 
-  private WriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
+  WriteComputeAdapter(Schema originalSchema, Schema writeComputeSchema) {
     this.originalSchema = originalSchema;
     this.writeComputeSchema = writeComputeSchema;
-
-    WriteComputeSchemaValidator.validate(originalSchema, writeComputeSchema);
   }
 
   /**
    * Apply write compute updates recursively.
-   * @param originalSchema the schema that the current value is associated with
+   * @param originalSchema the original schema that write compute schema is derived from
    * @param originalValue current value before write compute updates are applied. Notice that this is nullable.
    *                      A key can be nonexistent in the DB or a field is designed to be nullable. In this
    *                      case, Venice will create an empty record/field and apply the updates
