@@ -49,7 +49,7 @@ public class testWriteComputeAdapter {
     Schema arraySchema = Schema.createArray(Schema.create(INT));
     Schema arrayWriteComputeSchema = WriteComputeSchemaAdapter.parse(arraySchema);
 
-    WriteComputeAdapter arrayAdapter = WriteComputeAdapter.getWriteComputeAdapter(arraySchema, arrayWriteComputeSchema);
+    WriteComputeAdapter arrayAdapter = new WriteComputeAdapter(arraySchema, arrayWriteComputeSchema);
 
     GenericData.Record collectionUpdateRecord = new GenericData.Record(arrayWriteComputeSchema.getTypes().get(0));
     collectionUpdateRecord.put(SET_UNION, Arrays.asList(1, 2));
@@ -81,7 +81,7 @@ public class testWriteComputeAdapter {
     Schema mapSchema = Schema.createMap(Schema.create(INT));
     Schema mapWriteComputeSchema = WriteComputeSchemaAdapter.parse(mapSchema);
 
-    WriteComputeAdapter mapAdapter = WriteComputeAdapter.getWriteComputeAdapter(mapSchema, mapWriteComputeSchema);
+    WriteComputeAdapter mapAdapter = new WriteComputeAdapter(mapSchema, mapWriteComputeSchema);
 
     GenericData.Record mapUpdateRecord = new GenericData.Record(mapWriteComputeSchema.getTypes().get(0));
     Map map = new HashMap();

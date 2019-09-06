@@ -24,21 +24,39 @@ public class IngestionTaskWriteComputeAdapter {
       new VeniceConcurrentHashMap<>();
   private VeniceConcurrentHashMap<Pair<Integer, Integer>, AvroGenericDeserializer<GenericRecord>> idToDerivedSchemaDeserializerMap =
       new VeniceConcurrentHashMap<>();
-  private VeniceConcurrentHashMap<Integer, AvroSerializer> valueSchemaSerializerMap = new VeniceConcurrentHashMap<>();
+  private VeniceConcurrentHashMap<Schema, AvroSerializer> valueSchemaSerializerMap = new VeniceConcurrentHashMap<>();
 
   public IngestionTaskWriteComputeAdapter(String storeName, ReadOnlySchemaRepository schemaRepo) {
     this.storeName = storeName;
     this.schemaRepo = schemaRepo;
   }
 
-  public byte[] getUpdatedValueBytes(GenericRecord originalValue, ByteBuffer writeComputeBytes, int valueSchemaId, int derivedSchemaId,
-      int partitionId) {
+  /**
+   * Apply write-compute operation on top of original value. A few of different schemas are used here
+   * and should be handled carefully.
+   *
+   * @param originalValue original value read from DB. It's can be null if the value is not existent. original
+   *                      value is read via {@link com.linkedin.venice.storage.chunking.ComputeChunkingAdapter#get}
+   *                      and deserialized by the latest value schema. In some cases, this can be different
+   *                      from "valueSchemaId"/"derivedSchemaId".
+   * @param writeComputeBytes serialized write-compute operation.
+   * @param valueSchemaId value schema id that this write-compute operation is associated with.
+   *                      It's read from Kafka record.
+   * @param derivedSchemaId derived schema id that this write-compute operation is associated with.
+   *                        It's read from Kafka record
+   */
+  public byte[] getUpdatedValueBytes(GenericRecord originalValue, ByteBuffer writeComputeBytes, int valueSchemaId,
+      int derivedSchemaId) {
+    //extract schema and use it to serialize the updated record back to disk. We want to make
+    //serialization schema consistent
+    Schema originalValueSchema = originalValue.getSchema();
+
     GenericRecord writeComputeRecord = getWriteComputeUpdateDeserializer(valueSchemaId, derivedSchemaId)
         .deserialize(writeComputeBytes);
     GenericRecord updatedValue = getWriteComputeAdapter(valueSchemaId, derivedSchemaId)
         .updateRecord(originalValue, writeComputeRecord);
 
-    return getValueSerializer(valueSchemaId).serialize(updatedValue);
+    return getValueSerializer(originalValueSchema).serialize(updatedValue);
   }
 
   private WriteComputeAdapter getWriteComputeAdapter(int valueSchemaId, int derivedSchemaId) {
@@ -55,9 +73,9 @@ public class IngestionTaskWriteComputeAdapter {
         });
   }
 
-  private AvroSerializer getValueSerializer(int valueSchemaId) {
-    return valueSchemaSerializerMap.computeIfAbsent(valueSchemaId,
-        id -> new AvroSerializer(getValueSchema(valueSchemaId)));
+  private AvroSerializer getValueSerializer(Schema schema) {
+    return valueSchemaSerializerMap.computeIfAbsent(schema,
+        id -> new AvroSerializer(schema));
   }
 
   private Schema getValueSchema(int valueSchemaId) {

@@ -1,6 +1,5 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.venice.utils.TestPushUtils;
 import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -10,7 +9,17 @@ import static org.apache.avro.Schema.Type.*;
 
 
 public class TestWriteComputeSchemaAdapter {
-  private String recordSchemaStr = TestPushUtils.USER_SCHEMA_STRING;
+  private String recordSchemaStr = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"id\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"id\"},  " +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": -1 }" +
+      "  ] " +
+      " } ";
+
   private String recordOfArraySchemaStr = "{\n"
       +"  \"type\" : \"record\",\n"
       +"  \"name\" : \"testRecord\",\n"
