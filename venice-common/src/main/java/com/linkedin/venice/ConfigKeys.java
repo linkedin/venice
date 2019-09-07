@@ -51,17 +51,6 @@ public class ConfigKeys {
   public static final String KAFKA_FETCH_QUOTA_TIME_WINDOW_MS = "kafka.fetch.quota.time.window.ms";
   // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
-  // ssl config
-  public static final String SSL_KEYSTORE_LOCATION = "ssl.keystore.location";
-  public static final String SSL_KEYSTORE_PASSWORD = "ssl.keystore.password";
-  public static final String SSL_KEYSTORE_TYPE = "ssl.keystore.type";
-  public static final String SSL_KEY_PASSWORD = "ssl.key.password";
-  public static final String SSL_TRUSTSTORE_LOCATION = "ssl.truststore.location";
-  public static final String SSL_TRUSTSTORE_PASSWORD = "ssl.truststore.password";
-  public static final String SSL_TRUSTSTORE_TYPE = "ssl.truststore.type";
-  public static final String SSL_KEYMANAGER_ALGORITHM = "ssl.keymanager.algorithm";
-  public static final String SSL_TRUSTMANAGER_ALGORITHM = "ssl.trustmanager.algorithm";
-  public static final String SSL_SECURE_RANDOM_IMPLEMENTATION = "ssl.secure.random.implementation";
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
@@ -804,4 +793,9 @@ public class ConfigKeys {
    * more than one replica is producing to the version topic.
    */
   public static final String SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS = "server.promotion.to.leader.replica.delay.seconds";
+
+  /**
+   * This config defines whether SSL is enabled in controller.
+   */
+  public static final String CONTROLLER_SSL_ENABLED = "controller.ssl.enabled";
 }

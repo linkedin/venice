@@ -32,14 +32,14 @@ import org.apache.http.client.utils.URLEncodedUtils;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public class ControllerClient implements Closeable {
+  private final static Logger logger = Logger.getLogger(ControllerClient.class);
+
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
-  private String clusterName;
-  private String localHostName;
+  private final String clusterName;
+  private final String localHostName;
   private String masterControllerUrl;
   private List<String> controllerDiscoveryUrls;
-
-  private final static Logger logger = Logger.getLogger(ControllerClient.class);
 
   /**
    * @param discoveryUrls comma-delimited urls to find master controller.

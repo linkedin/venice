@@ -17,4 +17,10 @@ public class VeniceConstants {
    * Compute request version 2.
    */
   public static int COMPUTE_REQUEST_VERSION_V2 = 2;
+
+  /**
+   * The default SSL factory class name; this class is mostly used in test cases; products that uses Venice lib
+   * should override the SSL factory class.
+   */
+  public static String DEFAULT_SSL_FACTORY_CLASS_NAME = "com.linkedin.venice.security.DefaultSSLFactory";
 }

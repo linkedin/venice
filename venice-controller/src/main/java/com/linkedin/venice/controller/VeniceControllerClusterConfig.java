@@ -19,7 +19,9 @@ import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
 
 
@@ -51,6 +53,7 @@ public class VeniceControllerClusterConfig {
   private String kafkaSecurityProtocol;
   // SSL related config
   Optional<SSLConfig> sslConfig;
+  private String sslFactoryClassName;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
   private boolean enableOfflinePushSSLWhitelist;
@@ -170,6 +173,7 @@ public class VeniceControllerClusterConfig {
     } else {
       sslConfig = Optional.empty();
     }
+    sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
@@ -282,6 +286,10 @@ public class VeniceControllerClusterConfig {
 
   public Optional<SSLConfig> getSslConfig() {
     return sslConfig;
+  }
+
+  public String getSslFactoryClassName() {
+    return sslFactoryClassName;
   }
 
   public int getRefreshAttemptsForZkReconnect() {

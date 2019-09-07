@@ -93,11 +93,18 @@ public class ServiceFactory {
   }
 
   /**
-   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
+   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService} with all default settings
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+    return getVeniceController(clusterName, kafkaBrokerWrapper, false);
+  }
+
+  /**
+   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
+   */
+  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToKafka) {
     return getVeniceController(clusterName, kafkaBrokerWrapper, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
-        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, null, false);
+        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, null, sslToKafka);
   }
 
   /**

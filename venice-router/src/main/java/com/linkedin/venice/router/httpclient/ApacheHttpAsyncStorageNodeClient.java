@@ -2,7 +2,6 @@ package com.linkedin.venice.router.httpclient;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -16,7 +15,6 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;

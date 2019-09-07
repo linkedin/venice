@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.ssl;
 
+import com.linkedin.venice.CommonConfigKeys;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import java.io.File;
@@ -71,8 +72,8 @@ public class TestTempFileSSLConfigurator {
     TempFileSSLConfigurator configurator =
         (TempFileSSLConfigurator) SSLConfigurator.getSSLConfigurator(TempFileSSLConfigurator.class.getName());
     properties = configurator.setupSSLConfig(properties, UserGroupInformation.getCurrentUser().getCredentials());
-    String[] paths = new String[]{properties.getProperty(ConfigKeys.SSL_KEYSTORE_LOCATION), properties.getProperty(
-        ConfigKeys.SSL_TRUSTSTORE_LOCATION)};
+    String[] paths = new String[]{properties.getProperty(CommonConfigKeys.SSL_KEYSTORE_LOCATION), properties.getProperty(
+        CommonConfigKeys.SSL_TRUSTSTORE_LOCATION)};
     for (String path : paths) {
       File file = new File(path);
       try (FileInputStream fis = new FileInputStream(file)) {
@@ -81,7 +82,7 @@ public class TestTempFileSSLConfigurator {
         Assert.assertTrue(Arrays.equals(testCert, result));
       }
     }
-    Assert.assertEquals(testPwd, properties.get(ConfigKeys.SSL_KEY_PASSWORD));
-    Assert.assertEquals(testPwd, properties.get(ConfigKeys.SSL_KEYSTORE_PASSWORD));
+    Assert.assertEquals(testPwd, properties.get(CommonConfigKeys.SSL_KEY_PASSWORD));
+    Assert.assertEquals(testPwd, properties.get(CommonConfigKeys.SSL_KEYSTORE_PASSWORD));
   }
 }

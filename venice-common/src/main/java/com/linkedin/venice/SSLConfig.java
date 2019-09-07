@@ -5,7 +5,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import org.apache.kafka.common.config.SslConfigs;
 
-import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.CommonConfigKeys.*;
 
 
 public class SSLConfig {
@@ -34,6 +34,9 @@ public class SSLConfig {
     sslSecureRandomImplementation = veniceProperties.getString(SSL_SECURE_RANDOM_IMPLEMENTATION);
   }
 
+  /**
+   * @return An instance of {@link Properties} for Kafka clients.
+   */
   public Properties getKafkaSSLConfig() {
     Properties kafkaSSLConfig = new Properties();
     kafkaSSLConfig.setProperty(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, sslKeyStoreLocation);
@@ -50,6 +53,22 @@ public class SSLConfig {
     return kafkaSSLConfig;
   }
 
+  /**
+   *
+   * @return An instance of {@link Properties} from SSL config.
+   */
+  public Properties getSslProperties() {
+    Properties sslProperties = new Properties();
+    sslProperties.setProperty(SSL_ENABLED, "true");
+    sslProperties.setProperty(SSL_KEYSTORE_TYPE, sslKeyStoreType);
+    sslProperties.setProperty(SSL_KEYSTORE_LOCATION, sslKeyStoreLocation);
+    sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, sslKeyStorePassword);
+    sslProperties.setProperty(SSL_TRUSTSTORE_TYPE, sslTrustStoreType);
+    sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, sslTrustStoreLocation);
+    sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, sslTrustStorePassword);
+    return sslProperties;
+  }
+
   public SSLEngineComponentFactoryImpl.Config getSslEngineComponentConfig(){
     SSLEngineComponentFactoryImpl.Config config = new SSLEngineComponentFactoryImpl.Config();
     config.setSslEnabled(true);
@@ -60,5 +79,21 @@ public class SSLConfig {
     config.setTrustStoreFilePath(sslTrustStoreLocation);
 
     return config;
+  }
+
+  public String getSslKeyStoreLocation() {
+    return sslKeyStoreLocation;
+  }
+
+  public String getSslKeyStorePassword() {
+    return sslKeyStorePassword;
+  }
+
+  public String getSslTrustStoreLocation() {
+    return sslTrustStoreLocation;
+  }
+
+  public String getSslTrustStorePassword() {
+    return sslTrustStorePassword;
   }
 }
