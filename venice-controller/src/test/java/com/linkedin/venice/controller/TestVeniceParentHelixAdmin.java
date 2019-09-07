@@ -49,9 +49,11 @@ import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -76,6 +78,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
@@ -950,25 +953,39 @@ public class TestVeniceParentHelixAdmin {
     }
   }
 
-  @Test
-  public void testEnd2End() throws IOException {
+  @DataProvider(name = "isControllerSslEnabled")
+  public static Object[][] controllerSslEnabled() {
+    return new Object[][]{{false}, {true}};
+  }
+
+  @Test(dataProvider = "isControllerSslEnabled")
+  public void testEnd2End(boolean isControllerSslEnabled) throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     VeniceControllerWrapper childControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            new VeniceControllerWrapper[]{childControllerWrapper}, false);
-    String controllerUrl = controllerWrapper.getControllerUrl();
-    String childControllerUrl = childControllerWrapper.getControllerUrl();
+            new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled);
+
+    String controllerUrl = isControllerSslEnabled
+                           ? controllerWrapper.getSecureControllerUrl()
+                           : controllerWrapper.getControllerUrl();
+    String childControllerUrl = isControllerSslEnabled
+                                ? childControllerWrapper.getSecureControllerUrl()
+                                : childControllerWrapper.getControllerUrl();
+    Optional<SSLFactory> sslFactory = isControllerSslEnabled
+                                                     ? Optional.of(SslUtils.getVeniceLocalSslFactory())
+                                                     : Optional.empty();
+
     // Adding store
     String storeName = "test_store";
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String valueSchemaStr = "\"string\"";
 
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
-    ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl);
+    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
+    ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory);
     controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     StoreResponse response = controllerClient.getStore(storeName);
     Assert.assertFalse(response.isError());

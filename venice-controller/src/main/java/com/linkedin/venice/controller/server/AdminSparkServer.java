@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
@@ -9,10 +10,20 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.util.Base64;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import javax.net.ssl.SSLSession;
+import javax.servlet.http.HttpServletRequest;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -34,6 +45,8 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private final int port;
   private final Admin admin;
+  private final boolean sslEnabled;
+  private final Optional<SSLConfig> sslConfig;
   protected static final ObjectMapper mapper = new ObjectMapper();
   final private Map<String, SparkServerStats> statsMap;
   final private SparkServerStats nonclusterSpecificStats;
@@ -45,16 +58,19 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Service httpService;
 
 
-  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters) {
+  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, Optional<SSLConfig> sslConfig) {
     this.port = port;
+    this.sslEnabled = sslConfig.isPresent();
+    this.sslConfig = sslConfig;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
     statsMap = new HashMap<>();
+    String statsPrefix = sslEnabled ? "secure_" : "";
     for(String cluster : clusters){
-      statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + ".controller_spark_server"));
+      statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + "." + statsPrefix + "controller_spark_server"));
     }
-    nonclusterSpecificStats = new SparkServerStats(metricsRepository, ".controller_spark_server");
+    nonclusterSpecificStats = new SparkServerStats(metricsRepository, "." + statsPrefix + "controller_spark_server");
     httpService = Service.ignite();
   }
 
@@ -62,7 +78,17 @@ public class AdminSparkServer extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     httpService.port(port);
 
+    if (sslEnabled) {
+      SSLConfig config = sslConfig.get();
+      httpService.secure(config.getSslKeyStoreLocation(),
+                         config.getSslKeyStorePassword(),
+                         config.getSslTrustStoreLocation(),
+                         config.getSslTrustStorePassword(),
+                         config.isSslNeedsClientCert());
+    }
+
     httpService.before((request, response) -> {
+      // TODO: Implement ACL filter here
       AuditInfo audit = new AuditInfo(request);
       logger.info(audit.toString());
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));

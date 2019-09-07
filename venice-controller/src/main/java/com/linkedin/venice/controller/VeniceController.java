@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
@@ -16,6 +17,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
@@ -29,9 +31,11 @@ public class VeniceController {
   //services
   VeniceControllerService controllerService;
   AdminSparkServer adminServer;
+  AdminSparkServer secureAdminServer;
   TopicMonitor topicMonitor;
   TopicCleanupService topicCleanupService;
 
+  private final boolean sslEnabled;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
   private final List<D2Server> d2ServerList;
@@ -56,17 +60,30 @@ public class VeniceController {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
+    Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
+    this.sslEnabled = sslConfig.isPresent() && sslConfig.get().isControllerSSLEnabled();
     createServices();
   }
 
 
   public void createServices(){
-    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository);
+    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled, multiClusterConfigs.getSslConfig());
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
         metricsRepository,
-        multiClusterConfigs.getClusters());
+        multiClusterConfigs.getClusters(),
+        Optional.empty());
+    if (sslEnabled) {
+      /**
+       * SSL enabled AdminSparkServer uses a different port number than the regular service.
+       */
+      secureAdminServer = new AdminSparkServer(
+          multiClusterConfigs.getAdminSecurePort(),
+          controllerService.getVeniceHelixAdmin(),
+          metricsRepository, multiClusterConfigs.getClusters(),
+          multiClusterConfigs.getSslConfig());
+    }
     // TODO: disable TopicMonitor in Corp cluster for now.
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
     if (!multiClusterConfigs.isParent())
@@ -93,6 +110,9 @@ public class VeniceController {
             .getClusters().toString() + " with ZKAddress: " + multiClusterConfigs.getZkAddress());
     controllerService.start();
     adminServer.start();
+    if (sslEnabled) {
+      secureAdminServer.start();
+    }
     if (null != topicMonitor) {
       topicMonitor.start();
     }
@@ -116,6 +136,7 @@ public class VeniceController {
     AbstractVeniceService.stopIfNotNull(topicCleanupService);
     AbstractVeniceService.stopIfNotNull(topicMonitor);
     AbstractVeniceService.stopIfNotNull(adminServer);
+    AbstractVeniceService.stopIfNotNull(secureAdminServer);
     AbstractVeniceService.stopIfNotNull(controllerService);
   }
 

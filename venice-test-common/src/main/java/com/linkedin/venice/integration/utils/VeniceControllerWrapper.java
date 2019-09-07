@@ -33,14 +33,16 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   private final List<VeniceProperties> configs;
   private VeniceController service;
   private final int port;
+  private final int securePort;
   private final List<D2Server> d2ServerList;
   private final String zkAddress;
 
-  VeniceControllerWrapper(String serviceName, File dataDirectory, VeniceController service, int port,
+  VeniceControllerWrapper(String serviceName, File dataDirectory, VeniceController service, int port, int securePort,
       List<VeniceProperties> configs, List<D2Server> d2ServerList, String zkAddress) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
+    this.securePort = securePort;
     this.configs = configs;
     this.d2ServerList = d2ServerList;
     this.zkAddress = zkAddress;
@@ -53,6 +55,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
       int adminPort = IntegrationTestUtils.getFreePort();
+      int adminSecurePort = IntegrationTestUtils.getFreePort();
       for(String clusterName:clusterNames) {
         VeniceProperties clusterProps =
             IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBrokerWrapper, sslToKafka);
@@ -67,6 +70,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DEFAULT_REPLICA_FACTOR, replicaFactor)
             .put(DEFAULT_NUMBER_OF_PARTITION, 1)
             .put(ADMIN_PORT, adminPort)
+            .put(ADMIN_SECURE_PORT, adminSecurePort)
             /**
              * Running with just one partition may not fully exercise the distributed nature of the system,
              * but we do want to minimize the number as each partition results in files, connections, threads, etc.
@@ -134,7 +138,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         d2ServerList.add(createD2Server(zkAddress, adminPort));
       }
       VeniceController veniceController = new VeniceController(propertiesList, d2ServerList);
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, propertiesList, d2ServerList, zkAddress);
+      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, adminSecurePort, propertiesList, d2ServerList, zkAddress);
     };
   }
 
@@ -157,8 +161,19 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return port;
   }
 
+  public int getSecurePort() {
+    return securePort;
+  }
+
   public String getControllerUrl() {
     return "http://" + getHost() + ":" + getPort();
+  }
+
+  /**
+   * Secure controller url only allows SSL connection
+   */
+  public String getSecureControllerUrl() {
+    return "https://" + getHost() + ":" + getSecurePort();
   }
 
   @Override

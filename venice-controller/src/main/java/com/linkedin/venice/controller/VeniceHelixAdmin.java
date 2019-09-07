@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
@@ -68,6 +69,7 @@ import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
@@ -80,6 +82,7 @@ import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.PartitionCountUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -141,6 +144,8 @@ import static com.linkedin.venice.meta.VersionStatus.*;
  * Admin is shared by multiple cluster's controllers running in one physical Venice controller instance.
  */
 public class VeniceHelixAdmin implements Admin, StoreCleaner {
+    private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
+
     private final VeniceControllerMultiClusterConfig multiClusterConfigs;
     private final String controllerClusterName;
     private final int controllerClusterReplica;
@@ -159,7 +164,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
     private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = 5000;
     private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
-    private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
 
     private final HelixAdmin admin;
     private TopicManager topicManager;
@@ -184,6 +188,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final boolean isParticipantOnlyInControllerCluster;
     private final String controllerHAASSuperClusterName;
     private final String coloMasterClusterName;
+    private final Optional<SSLFactory> sslFactory;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -200,8 +205,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private VeniceWriter<PushJobStatusRecordKey, PushJobStatusRecordValue, byte[]> pushJobStatusWriter = null;
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
-    //TODO Use different configs for different clusters when creating helix admin.
+
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
+        this(multiClusterConfigs, metricsRepository, false, Optional.empty());
+    }
+
+    //TODO Use different configs for different clusters when creating helix admin.
+    public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository,
+            boolean sslEnabled, Optional<SSLConfig> sslConfig) {
         this.multiClusterConfigs = multiClusterConfigs;
         VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
@@ -214,6 +225,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
         this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
+
+        if (sslEnabled) {
+            try {
+                String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
+                Properties sslProperties = sslConfig.get().getSslProperties();
+                sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
+            } catch (Exception e) {
+                logger.error("Failed to create SSL engine", e);
+                throw new VeniceException(e);
+            }
+        } else {
+            sslFactory = Optional.empty();
+        }
 
         // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
         ZkClient zkClientForHelixAdmin = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
@@ -680,7 +704,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Get original store properties
         String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
-        ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
+        ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl, sslFactory);
         // Update migration src and dest cluster in storeConfig
         setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
 
@@ -907,7 +931,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         if (clusterName.equals(destinationCluster)) {
                             // Mirror new pushes back to the source cluster in case we abort migration after completion.
                             ControllerClient sourceClusterControllerClient =
-                                new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false));
+                                new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false), sslFactory);
                             VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
                                 pushJobId, versionNumber, numberOfPartitions);
                             if (response.isError()) {
@@ -918,7 +942,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                     } else if (clusterName.equals(sourceCluster)) {
                         ControllerClient destClusterControllerClient =
-                            new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false));
+                            new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false), sslFactory);
                         VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
                             pushJobId, versionNumber, numberOfPartitions);
                         if (response.isError()) {
@@ -3301,7 +3325,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             ControllerClient srcControllerClient =
                                 srcControllerClients.computeIfAbsent(srcClusterName,
                                     src_cluster_name -> new ControllerClient(src_cluster_name,
-                                        this.getMasterController(src_cluster_name).getUrl(false)));
+                                        this.getMasterController(src_cluster_name).getUrl(false), sslFactory));
 
                             List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName)
                                 .getStore()

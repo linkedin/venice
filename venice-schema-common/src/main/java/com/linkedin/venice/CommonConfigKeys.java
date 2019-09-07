@@ -16,6 +16,18 @@ public class CommonConfigKeys {
   public static final String SSL_KEYMANAGER_ALGORITHM = "ssl.keymanager.algorithm";
   public static final String SSL_TRUSTMANAGER_ALGORITHM = "ssl.trustmanager.algorithm";
   public static final String SSL_SECURE_RANDOM_IMPLEMENTATION = "ssl.secure.random.implementation";
+
+  /**
+   * This config mainly control the SSL behavior inside AdminSparkServer.
+   *
+   * With SSL_NEEDS_CLIENT_CERT set to false, the AdminSparkServer will not check the certificate sent by client, which
+   * should be the default behavior in venice OSS project because AdminSparkServer doesn't accept the self signed
+   * certificate created in test cases.
+   *
+   * In production, we need to override this config to true to check client certificate.
+   */
+  public static final String SSL_NEEDS_CLIENT_CERT = "ssl.needs.client.cert";
+
   /**
    * This config defines the class name of the SSL factory.
    *

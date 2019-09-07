@@ -25,6 +25,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final int adminPort;
+  private final int adminSecurePort;
   private final int controllerClusterReplica;
   private final String controllerClusterName;
   private final String controllerClusterZkAddresss;
@@ -63,6 +64,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
+    this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddresss = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
@@ -132,6 +134,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getAdminPort() {
     return adminPort;
+  }
+
+  public int getAdminSecurePort() {
+    return adminSecurePort;
   }
 
   public int getControllerClusterReplica() {
