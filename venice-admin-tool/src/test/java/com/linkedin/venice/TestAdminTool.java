@@ -19,4 +19,15 @@ public class TestAdminTool {
 
     Assert.assertFalse(output.get(output.size()-1).contains("topic"), "Printed multi-replica response should not contain a topic field");
   }
+
+  @Test(enabled = false) // disable until SSL config file becomes a mandatory config
+  public void testAdminToolRequiresSSLConfigFile() {
+    String[] args = {"--delete-store", "--url", "https://localhost:7036", "--cluster", "test-cluster", "--store", "testStore"};
+    try {
+      AdminTool.main(args);
+    } catch (Exception e) {
+      // AdminTool should enforce the rule that SSL config file must be included
+      Assert.assertTrue(e.getMessage().contains("SSL config file path must be specified"));
+    }
+  }
 }

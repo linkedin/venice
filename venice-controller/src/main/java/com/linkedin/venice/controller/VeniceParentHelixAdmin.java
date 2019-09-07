@@ -1,7 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
