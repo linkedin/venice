@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
+import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
@@ -23,14 +25,22 @@ import spark.Route;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
-public class JobRoutes {
+public class JobRoutes extends AbstractRoute {
   private static final Logger logger = Logger.getLogger(JobRoutes.class);
   private static final ObjectMapper objectMapper = new ObjectMapper();
 
-  public static Route jobStatus(Admin admin) {
+  public JobRoutes(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
+
+  public Route jobStatus(Admin admin) {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, JOB.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String store = request.queryParams(NAME);
@@ -47,7 +57,7 @@ public class JobRoutes {
     };
   }
 
-  protected static JobStatusQueryResponse populateJobStatus(String cluster, String store,
+  protected JobStatusQueryResponse populateJobStatus(String cluster, String store,
       int versionNumber, Admin admin, Optional<String> incrementalPushVersion) {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
@@ -84,10 +94,14 @@ public class JobRoutes {
     return responseObject;
   }
 
-  public static Route killOfflinePushJob(Admin admin) {
+  public Route killOfflinePushJob(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String topic = request.queryParams(TOPIC);
@@ -105,10 +119,14 @@ public class JobRoutes {
     };
   }
 
-  public static Route uploadPushJobStatus(Admin admin) {
+  public Route uploadPushJobStatus(Admin admin) {
     return (request, response) -> {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
@@ -135,10 +153,14 @@ public class JobRoutes {
     };
   }
 
-  public static Route sendPushJobDetails(Admin admin) {
+  public Route sendPushJobDetails(Admin admin) {
     return ((request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, SEND_PUSH_JOB_DETAILS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);

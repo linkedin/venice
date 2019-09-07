@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -30,11 +31,12 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ClusterLeaderInitializationRoutine controllerInitialization;
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
+  private final Optional<DynamicAccessController> accessController;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       StoreCleaner storeCleaner, VeniceControllerMultiClusterConfig clusterConfigs, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
@@ -43,6 +45,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.controllerInitialization = controllerInitialization;
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
+    this.accessController = accessController;
   }
 
   @Override
@@ -58,7 +61,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterConfig, storeCleaner,
-            metricsRepository, controllerInitialization, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
+            metricsRepository, controllerInitialization, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
+            accessController);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

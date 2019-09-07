@@ -14,6 +14,9 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class ControllerRoutes {
+  /**
+   * No ACL check; any user is allowed to check master controller.
+   */
   public static Route getMasterController(Admin admin) {
     return (request, response) -> {
       MasterControllerResponse responseObject = new MasterControllerResponse();

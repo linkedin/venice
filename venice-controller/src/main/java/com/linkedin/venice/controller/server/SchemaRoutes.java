@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
@@ -14,6 +16,7 @@ import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import spark.Route;
 
@@ -22,14 +25,20 @@ import java.util.Collection;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
-public class SchemaRoutes {
-  private SchemaRoutes() {}
+public class SchemaRoutes extends AbstractRoute {
+  public SchemaRoutes(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
 
   // Route to handle retrieving key schema request
-  public static Route getKeySchema(Admin admin) {
+  public Route getKeySchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -50,10 +59,11 @@ public class SchemaRoutes {
   }
 
   // Route to handle adding value schema request
-  public static Route addValueSchema(Admin admin) {
+  public Route addValueSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -75,10 +85,11 @@ public class SchemaRoutes {
     };
   }
 
-  public static Route addDerivedSchema(Admin admin) {
+  public Route addDerivedSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ADD_DERIVED_SCHEMA.getParams(), admin);
         String clusterName = request.queryParams(ControllerApiConstants.CLUSTER);
         String storeName = request.queryParams(ControllerApiConstants.NAME);
@@ -103,10 +114,14 @@ public class SchemaRoutes {
   }
 
   // Route to handle retrieving value schema by id
-  public static Route getValueSchema(Admin admin) {
+  public Route getValueSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -130,10 +145,14 @@ public class SchemaRoutes {
   }
 
   // Route to handle retrieving schema id by schema
-  public static Route getValueSchemaID(Admin admin) {
+  public Route getValueSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA_ID.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
         String store = request.queryParams(ControllerApiConstants.NAME);
@@ -160,10 +179,14 @@ public class SchemaRoutes {
     };
   }
 
-  public static Route getDerivedSchemaID(Admin admin) {
+  public Route getDerivedSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, GET_VALUE_OR_DERIVED_SCHEMA_ID.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
         String store = request.queryParams(ControllerApiConstants.NAME);
@@ -199,10 +222,14 @@ public class SchemaRoutes {
 
 
   // Route to handle retrieving all value schema for a given store
-  public static Route getAllValueSchema(Admin admin) {
+  public Route getAllValueSchema(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -231,10 +258,14 @@ public class SchemaRoutes {
     };
   }
 
-  public static Route getAllValueAndDerivedSchema(Admin admin) {
+  public Route getAllValueAndDerivedSchema(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
         String store = request.queryParams(ControllerApiConstants.NAME);

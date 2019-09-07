@@ -249,7 +249,7 @@ public class RouterServer extends AbstractVeniceService {
     this.routerStats = new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType) );
 
     this.d2ServerList = d2ServerList;
-    this.accessController= accessController;
+    this.accessController = accessController;
     this.sslFactory = sslFactory;
     verifySslOk();
   }

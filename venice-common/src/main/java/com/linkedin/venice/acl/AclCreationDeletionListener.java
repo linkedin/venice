@@ -1,11 +1,7 @@
-package com.linkedin.venice.router.acl;
+package com.linkedin.venice.acl;
 
-import com.linkedin.venice.acl.AclException;
-import com.linkedin.venice.acl.DynamicAccessController;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 
@@ -14,13 +10,10 @@ import org.apache.log4j.Logger;
  */
 public class AclCreationDeletionListener implements StoreDataChangedListener {
   private static final Logger logger = Logger.getLogger(AclCreationDeletionListener.class);
-  private final HelixReadOnlyStoreRepository metadataRepository;
   private final DynamicAccessController accessController;
 
-  public AclCreationDeletionListener(DynamicAccessController accessController,
-      HelixReadOnlyStoreRepository metadataRepository) {
+  public AclCreationDeletionListener(DynamicAccessController accessController) {
     this.accessController = accessController;
-    this.metadataRepository = metadataRepository;
   }
 
   @Override

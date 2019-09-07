@@ -15,6 +15,9 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class ClusterDiscovery {
 
+  /**
+   * No ACL check; any user is allowed to discover cluster
+   */
   public static Route discoverCluster(Admin admin) {
     return (request, response) -> {
       D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();

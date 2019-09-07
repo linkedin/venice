@@ -9,16 +9,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.util.Properties;
 import java.util.UUID;
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
-import static com.linkedin.venice.HttpConstants.*;
 
 
 public class SslUtils {

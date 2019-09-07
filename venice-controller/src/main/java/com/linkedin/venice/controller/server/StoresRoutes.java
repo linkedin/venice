@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
@@ -16,6 +17,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -35,10 +37,18 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
-public class StoresRoutes {
+public class StoresRoutes extends AbstractRoute {
   private static final Logger logger = Logger.getLogger(StoresRoutes.class);
 
-  public static Route getAllStores(Admin admin) {
+  public StoresRoutes(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
+
+  /**
+   * No ACL check; any user can try to list stores. If we get abused in future, we should only allow Venice admins
+   * to run this command.
+   */
+  public Route getAllStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
       @Override
       public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
@@ -65,7 +75,10 @@ public class StoresRoutes {
     };
   }
 
-  public static Route getAllStoresStatuses(Admin admin) {
+  /**
+   * No ACL check; any user can try to list store statuses.
+   */
+  public Route getAllStoresStatuses(Admin admin) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
       public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
@@ -78,11 +91,15 @@ public class StoresRoutes {
     };
   }
 
-  public static Route getStore(Admin admin) {
+  public Route getStore(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
 
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
@@ -98,10 +115,11 @@ public class StoresRoutes {
     };
   }
 
-  public static Route migrateStore(Admin admin) {
+  public Route migrateStore(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
         String srcClusterName = request.queryParams(CLUSTER_SRC);
         String destClusterName = request.queryParams(CLUSTER);
@@ -136,11 +154,12 @@ public class StoresRoutes {
     };
   }
 
-  public static Route abortMigration(Admin admin) {
+  public Route abortMigration(Admin admin) {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         try {
+          // TODO: Only allow whitelist users to run this command
           AdminSparkServer.validateParams(request, ABORT_MIGRATION.getParams(), admin);
           String srcClusterName = request.queryParams(CLUSTER);
           String destClusterName = request.queryParams(CLUSTER_DEST);
@@ -168,10 +187,11 @@ public class StoresRoutes {
     };
   }
 
-  public static Route deleteStore(Admin admin) {
+  public Route deleteStore(Admin admin) {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -194,11 +214,12 @@ public class StoresRoutes {
     };
   }
 
-  public static Route updateStore(Admin admin) {
+  public Route updateStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
 
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
         //TODO: we may want to have a specific response for store updating
         String clusterName = request.queryParams(CLUSTER);
@@ -231,11 +252,15 @@ public class StoresRoutes {
     };
   }
 
-  public static Route setOwner(Admin admin) {
+  public Route setOwner(Admin admin) {
     return new VeniceRouteHandler<OwnerResponse>(OwnerResponse.class) {
 
       @Override
       public void internalHandle(Request request, OwnerResponse veniceResponse) {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, SET_OWNER.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -249,7 +274,7 @@ public class StoresRoutes {
     };
   }
 
-  public static Route setPartitionCount(Admin admin) {
+  public Route setPartitionCount(Admin admin) {
     return new VeniceRouteHandler<PartitionResponse>(PartitionResponse.class) {
       @Override
       public void internalHandle(Request request, PartitionResponse veniceResponse) {
@@ -258,11 +283,12 @@ public class StoresRoutes {
     };
   }
 
-  public static Route setCurrentVersion(Admin admin) {
+  public Route setCurrentVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
 
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -279,11 +305,12 @@ public class StoresRoutes {
   /**
    * enable/disable store read/write ability
    */
-  public static Route enableStore(Admin admin) {
+  public Route enableStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
 
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -306,10 +333,11 @@ public class StoresRoutes {
     };
   }
 
-  public static Route deleteAllVersions(Admin admin) {
+  public Route deleteAllVersions(Admin admin) {
     return new VeniceRouteHandler<MultiVersionResponse>(MultiVersionResponse.class) {
       @Override
       public void internalHandle(Request request, MultiVersionResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -337,10 +365,11 @@ public class StoresRoutes {
     };
   }
 
-  public static Route deleteOldVersions(Admin admin) {
+  public Route deleteOldVersions(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -353,11 +382,15 @@ public class StoresRoutes {
     };
   }
 
-  public static Route getStorageEngineOverheadRatio(Admin admin) {
+  public Route getStorageEngineOverheadRatio(Admin admin) {
     return new VeniceRouteHandler<StorageEngineOverheadRatioResponse>(StorageEngineOverheadRatioResponse.class) {
 
       @Override
       public void internalHandle(Request request, StorageEngineOverheadRatioResponse veniceResponse) {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, STORAGE_ENGINE_OVERHEAD_RATIO.getParams(), admin);
 
         veniceResponse.setCluster(request.queryParams(CLUSTER));

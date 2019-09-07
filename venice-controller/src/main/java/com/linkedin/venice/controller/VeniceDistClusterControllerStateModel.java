@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -42,6 +43,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final StoreCleaner storeCleaner;
   private final MetricsRepository metricsRepository;
   private final ClusterLeaderInitializationRoutine controllerInitialization;
+  private final Optional<DynamicAccessController> accessController;
   private String clusterName;
 
   private final VeniceControllerClusterConfig clusterConfig;
@@ -52,7 +54,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       VeniceControllerClusterConfig clusterConfig, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
@@ -63,6 +65,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.controllerInitialization = controllerInitialization;
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
+    this.accessController = accessController;
   }
 
   /**
@@ -110,7 +113,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
         controller.connect();
         controller.startTimerTasks();
         resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
-            clusterConfig, storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
+            clusterConfig, storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController);
         resources.refresh();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {

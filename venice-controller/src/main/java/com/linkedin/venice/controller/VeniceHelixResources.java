@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.acl.AclCreationDeletionListener;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
@@ -8,6 +10,7 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushmonitor.AggPushHealthStats;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -21,6 +24,7 @@ import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import java.util.stream.Collectors;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZkClient;
@@ -47,6 +51,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final ZkStoreConfigAccessor storeConfigAccessor;
   private final VeniceLock veniceHelixResourceReadLock;
   private final VeniceLock veniceHelixResourceWriteLock;
+  private final Optional<DynamicAccessController> accessController;
 
   public VeniceHelixResources(String clusterName,
       ZkClient zkClient,
@@ -56,8 +61,10 @@ public class VeniceHelixResources implements VeniceResource {
       StoreCleaner storeCleaner,
       MetricsRepository metricsRepository,
       Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
-    this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
+      Optional<TopicReplicator> leaderFollowerTopicReplicator,
+      Optional<DynamicAccessController> accessController) {
+    this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock(),
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController);
   }
 
   /**
@@ -72,7 +79,8 @@ public class VeniceHelixResources implements VeniceResource {
                               MetricsRepository metricsRepository,
                               VeniceReentrantReadWriteLock shutdownLock,
                               Optional<TopicReplicator> onlineOfflineTopicReplicator,
-                              Optional<TopicReplicator> leaderFollowerTopicReplicator) {
+                              Optional<TopicReplicator> leaderFollowerTopicReplicator,
+                              Optional<DynamicAccessController> accessController) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
@@ -101,6 +109,7 @@ public class VeniceHelixResources implements VeniceResource {
     veniceHelixResourceReadLock = new VeniceLock(shutdownLock.readLock(), readLockDescription, metricsRepository);
     String writeLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-writeLock";
     veniceHelixResourceWriteLock = new VeniceLock(shutdownLock.writeLock(), writeLockDescription, metricsRepository);
+    this.accessController = accessController;
   }
 
   @Override
@@ -109,6 +118,14 @@ public class VeniceHelixResources implements VeniceResource {
     //make sure that metadataRepo is initialized first since schemaRepo and
     //pushMonitor depends on it
     metadataRepository.refresh();
+    /**
+     * Initialize the dynamic access client and also register the acl creation/deletion listener.
+     */
+    if (accessController.isPresent()) {
+      DynamicAccessController accessClient = accessController.get();
+      accessClient.init(metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
+      this.metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessClient));
+    }
     schemaRepository.refresh();
     routingDataRepository.refresh();
     pushMonitor.loadAllPushes();

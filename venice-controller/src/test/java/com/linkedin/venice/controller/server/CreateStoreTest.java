@@ -7,6 +7,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.Optional;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.annotations.Test;
 import spark.QueryParamsMap;
@@ -54,7 +55,8 @@ public class CreateStoreTest {
     doReturn("\"string\"").when(request)
         .queryParams(VALUE_SCHEMA);
 
-    Route createStoreRouter = CreateStore.getRoute(admin);
+    CreateStore createStoreRoute = new CreateStore(Optional.empty());
+    Route createStoreRouter = createStoreRoute.addStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
   }
@@ -94,7 +96,8 @@ public class CreateStoreTest {
     doReturn("\"string\"").when(request)
         .queryParams(VALUE_SCHEMA);
 
-    Route createStoreRouter = CreateStore.getRoute(admin);
+    CreateStore createStoreRoute = new CreateStore(Optional.empty());
+    Route createStoreRouter = createStoreRoute.addStore(admin);
     createStoreRouter.handle(request, response);
   }
 
@@ -118,7 +121,8 @@ public class CreateStoreTest {
     doReturn(clusterName).when(request)
         .queryParams(CLUSTER);
 
-    Route createStoreRouter = CreateStore.getRoute(admin);
+    CreateStore createStoreRoute = new CreateStore(Optional.empty());
+    Route createStoreRouter = createStoreRoute.addStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpStatus.SC_BAD_REQUEST);
   }
@@ -153,7 +157,8 @@ public class CreateStoreTest {
     doReturn("\"string\"").when(request)
         .queryParams(VALUE_SCHEMA);
 
-    Route createStoreRouter = CreateStore.getRoute(admin);
+    CreateStore createStoreRoute = new CreateStore(Optional.empty());
+    Route createStoreRouter = createStoreRoute.addStore(admin);
     createStoreRouter.handle(request, response);
     verify(response).status(HttpConstants.SC_MISDIRECTED_REQUEST);
   }
