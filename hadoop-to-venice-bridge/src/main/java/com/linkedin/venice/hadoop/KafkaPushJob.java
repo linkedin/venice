@@ -19,9 +19,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -71,7 +73,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
 import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -124,6 +128,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
   public static final String ENABLE_PUSH = "venice.push.enable";
+  public static final String ENABLE_SSL = "venice.ssl.enable";
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String INPUT_PATH_PROP = "input.path";
@@ -263,6 +268,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   protected class PushJobSetting {
     boolean enablePush;
+    boolean enableSsl;
+    String sslFactoryClassName;
     String veniceControllerUrl;
     String veniceRouterUrl;
     String storeName;
@@ -346,6 +353,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     // Optional configs:
     pushJobSetting = new PushJobSetting();
     pushJobSetting.enablePush = props.getBoolean(ENABLE_PUSH, true);
+    /**
+     * TODO: after controller SSL support is rolled out everywhere, change the default behavior for ssl enabled to true;
+     * Besides, change the venice controller urls list for all push job to use the new port
+     */
+    pushJobSetting.enableSsl = props.getBoolean(ENABLE_SSL, false);
+    pushJobSetting.sslFactoryClassName = props.getString(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
     pushJobSetting.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     pushJobSetting.isMapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
     pushJobSetting.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
@@ -419,7 +432,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       // Discover the cluster based on the store name and re-initialized controller client.
       this.clusterName = discoverCluster(pushJobSetting);
-      this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl);
+      Optional<SSLFactory> sslFactory = Optional.empty();
+      if (pushJobSetting.enableSsl) {
+        sslFactory = Optional.of(SslUtils.getSSLFactory(getVeniceWriterProperties(versionTopicInfo), pushJobSetting.sslFactoryClassName));
+      }
+      this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl, sslFactory);
       validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
       validateValueSchema(controllerClient, pushJobSetting, schemaInfo);
       StoreSetting storeSetting = getSettingsFromController(controllerClient, pushJobSetting);

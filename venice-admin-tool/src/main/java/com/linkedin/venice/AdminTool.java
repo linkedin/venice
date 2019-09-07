@@ -39,8 +39,10 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -76,6 +78,8 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 import static org.apache.kafka.clients.consumer.ConsumerConfig.*;
 
 
@@ -90,6 +94,7 @@ public class AdminTool {
   private static final String SUCCESS = "success";
 
   private static ControllerClient controllerClient;
+  private static Optional<SSLFactory> sslFactory = Optional.empty();
 
   public static void main(String args[])
       throws Exception {
@@ -130,6 +135,15 @@ public class AdminTool {
         convertVsonSchemaAndExit(cmd);
       }
 
+      // SSl config path is mandatory
+      if (!cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
+        /**
+         * Don't throw exception yet until all controllers are deployed with SSL support and the script
+         * that automatically generates SSL config file is provided.
+         */
+        System.out.println("[WARN] Running admin tool without SSL.");
+      }
+
       Command foundCommand = ensureOnlyOneCommand(cmd);
 
       // Variables used within the switch case need to be defined in advance
@@ -138,6 +152,7 @@ public class AdminTool {
       String storeName;
       String versionString;
       String topicName;
+      String sslConfigPath;
 
       int version;
       MultiStoreResponse storeResponse;
@@ -147,7 +162,20 @@ public class AdminTool {
           Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.CLUSTER))) {
         veniceUrl = getRequiredArgument(cmd, Arg.URL);
         clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-        controllerClient = new ControllerClient(clusterName, veniceUrl);
+
+        /**
+         * SSL config file is not mandatory now; build the controller with SSL config if provided.
+         */
+        if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.SSL_CONFIG_PATH))) {
+          /**
+           * Build SSL factory
+           */
+          sslConfigPath = getRequiredArgument(cmd, Arg.SSL_CONFIG_PATH);
+          Properties sslProperties = SslUtils.loadSSLConfig(sslConfigPath);
+          String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+          sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
+        }
+        controllerClient = new ControllerClient(clusterName, veniceUrl, sslFactory);
       }
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){
@@ -786,8 +814,8 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     StoreResponse storeResponse = srcControllerClient.getStore(storeName);
     if (storeResponse.isError()) {
@@ -857,8 +885,8 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     List<String> childControllerUrls = srcControllerClient.listChildControllers(srcClusterName).getChildControllerUrls();
     if (childControllerUrls == null) {
@@ -948,7 +976,7 @@ public class AdminTool {
     ControllerClient[] controllerClients = new ControllerClient[numChildDatacenters];
     for (int i = 0; i < numChildDatacenters; i++) {
       String controllerUrl = controllerUrls.get(i);
-      controllerClients[i] = new ControllerClient(clusterName, controllerUrl);
+      controllerClients[i] = new ControllerClient(clusterName, controllerUrl, sslFactory);
     }
     return controllerClients;
   }
@@ -1058,8 +1086,8 @@ public class AdminTool {
     }
     boolean terminate = false;
 
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     // Check arguments
     if (srcControllerClient.getStore(storeName).getStore() == null) {
@@ -1193,8 +1221,8 @@ public class AdminTool {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
     }
 
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     // Make sure destClusternName does agree with the cluster discovery result
     String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
