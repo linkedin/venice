@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -36,19 +37,25 @@ public class ControllerClient implements Closeable {
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final String localHostName;
   private String masterControllerUrl;
   private List<String> controllerDiscoveryUrls;
 
+  public ControllerClient(String clusterName, String discoveryUrls) {
+    this(clusterName, discoveryUrls, Optional.empty());
+  }
+
   /**
    * @param discoveryUrls comma-delimited urls to find master controller.
    */
-  public ControllerClient(String clusterName, String discoveryUrls) {
+  public ControllerClient(String clusterName, String discoveryUrls, Optional<SSLFactory> sslFactory) {
     if (Utils.isNullOrEmpty(discoveryUrls)) {
       throw new VeniceException("Controller discovery url list is empty: " + discoveryUrls);
     }
 
+    this.sslFactory = sslFactory;
     this.clusterName = clusterName;
     this.localHostName = Utils.getHostName();
     this.controllerDiscoveryUrls = Arrays.stream(discoveryUrls.split(",")).map(String::trim).collect(Collectors.toList());
@@ -67,7 +74,7 @@ public class ControllerClient implements Closeable {
     Collections.shuffle(urls);
 
     Exception lastException = null;
-    try (ControllerTransport transport = new ControllerTransport()) {
+    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url : urls) {
         try {
           String masterUrl = transport.request(url, ControllerRoute.MASTER_CONTROLLER, newParams(), MasterControllerResponse.class).getUrl();
@@ -519,7 +526,7 @@ public class ControllerClient implements Closeable {
     Collections.shuffle(urls);
 
     Exception lastException = null;
-    try (ControllerTransport transport = new ControllerTransport()) {
+    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (String url : urls) {
         try {
           // Because the way to get parameter is different between controller and router, in order to support query cluster
@@ -569,7 +576,7 @@ public class ControllerClient implements Closeable {
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType,
       int timeoutMs, int maxAttempts) {
     Exception lastException = null;
-    try (ControllerTransport transport = new ControllerTransport()) {
+    try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
           return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs);

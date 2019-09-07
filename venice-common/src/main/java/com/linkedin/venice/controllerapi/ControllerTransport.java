@@ -1,16 +1,19 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpMethod;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ExecutionException;
 
 import java.nio.charset.StandardCharsets;
 
+import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.log4j.Logger;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.httpclient.HttpStatus;
@@ -50,9 +53,10 @@ public class ControllerTransport implements AutoCloseable {
 
   private CloseableHttpAsyncClient httpClient;
 
-  public ControllerTransport() {
+  public ControllerTransport(Optional<SSLFactory> sslFactory) {
     this.httpClient = HttpAsyncClients.custom()
         .setDefaultRequestConfig(this.requestConfig)
+        .setSSLStrategy(sslFactory.isPresent() ? new SSLIOSessionStrategy(sslFactory.get().getSSLContext()) : null)
         .build();
     this.httpClient.start();
   }

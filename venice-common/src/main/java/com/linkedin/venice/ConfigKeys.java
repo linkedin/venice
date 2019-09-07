@@ -22,6 +22,7 @@ public class ConfigKeys {
           OFFSET_MANAGER_FLUSH_INTERVAL_MS, ZOOKEEPER_ADDRESS));
 
   public static final String ADMIN_PORT="admin.port";
+  public static final String ADMIN_SECURE_PORT="admin.secure.port";
 
   public static final String STATUS_MESSAGE_RETRY_COUNT = "status.message.retry.count";
   public static final String STATUS_MESSAGE_RETRY_DURATION_MS = "status.message.retry.duration.ms";

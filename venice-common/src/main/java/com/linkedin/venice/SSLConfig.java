@@ -6,6 +6,7 @@ import java.util.Properties;
 import org.apache.kafka.common.config.SslConfigs;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class SSLConfig {
@@ -19,6 +20,8 @@ public class SSLConfig {
   private String sslKeyManagerAlgorithm;
   private String sslTrustManagerAlgorithm;
   private String sslSecureRandomImplementation;
+  private boolean sslNeedsClientCert;
+  private boolean controllerSSLEnabled;
 
   public SSLConfig(VeniceProperties veniceProperties) {
     // The following configs are required for SSL support
@@ -32,6 +35,8 @@ public class SSLConfig {
     sslKeyManagerAlgorithm = veniceProperties.getString(SSL_KEYMANAGER_ALGORITHM);
     sslTrustManagerAlgorithm = veniceProperties.getString(SSL_TRUSTMANAGER_ALGORITHM);
     sslSecureRandomImplementation = veniceProperties.getString(SSL_SECURE_RANDOM_IMPLEMENTATION);
+    sslNeedsClientCert = veniceProperties.getBoolean(SSL_NEEDS_CLIENT_CERT, false);
+    controllerSSLEnabled = veniceProperties.getBoolean(CONTROLLER_SSL_ENABLED, true);
   }
 
   /**
@@ -95,5 +100,13 @@ public class SSLConfig {
 
   public String getSslTrustStorePassword() {
     return sslTrustStorePassword;
+  }
+
+  public boolean isSslNeedsClientCert() {
+    return sslNeedsClientCert;
+  }
+
+  public boolean isControllerSSLEnabled() {
+    return controllerSSLEnabled;
   }
 }

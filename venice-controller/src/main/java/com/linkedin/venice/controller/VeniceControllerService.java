@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
@@ -19,11 +21,11 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final Map<String, AdminConsumerService> consumerServices;
 
   public VeniceControllerService(VeniceControllerMultiClusterConfig mutliClusterConfigs,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository, boolean sslEnabled, Optional<SSLConfig> sslConfig) {
     this.mutliClusterConfigs = mutliClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(mutliClusterConfigs, metricsRepository);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(mutliClusterConfigs, metricsRepository, sslEnabled, sslConfig);
     if (mutliClusterConfigs.isParent()) {
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, mutliClusterConfigs);
+      this.admin = new VeniceParentHelixAdmin(internalAdmin, mutliClusterConfigs, sslEnabled, sslConfig);
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;

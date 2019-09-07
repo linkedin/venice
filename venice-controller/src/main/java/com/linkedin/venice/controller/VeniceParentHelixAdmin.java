@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -55,9 +58,11 @@ import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -72,6 +77,7 @@ import java.util.HashSet;
 import java.util.Optional;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
@@ -125,6 +131,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private long lastTopicCreationTime = -1;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
   private Time timer = new SystemTime();
+  private Optional<SSLFactory> sslFactory = Optional.empty();
 
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
 
@@ -160,6 +167,11 @@ public class VeniceParentHelixAdmin implements Admin {
   private final int waitingTimeForConsumptionMs;
 
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
+    this(veniceHelixAdmin, multiClusterConfigs, false, Optional.empty());
+  }
+
+  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs,
+      boolean sslEnabled, Optional<SSLConfig> sslConfig) {
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
     this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
@@ -169,6 +181,16 @@ public class VeniceParentHelixAdmin implements Admin {
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.clusterToLastOffsetMap = new HashMap<>();
     this.asyncSetupEnabledMap = new HashMap<>();
+    if (sslEnabled) {
+      try {
+        String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();
+        Properties sslProperties = sslConfig.get().getSslProperties();
+        sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
+      } catch (Exception e) {
+        logger.error("Failed to create SSL engine", e);
+        throw new VeniceException(e);
+      }
+    }
     for (String cluster : multiClusterConfigs.getClusters()) {
       VeniceControllerConfig config = multiClusterConfigs.getConfigForCluster(cluster);
       adminCommandExecutionTrackers.put(cluster,
@@ -1289,7 +1311,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, ControllerClient> controllerClients = new HashMap<>();
     VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
     veniceControllerConfig.getChildClusterMap().entrySet().
-      forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue())));
+      forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue(), sslFactory)));
     veniceControllerConfig.getChildClusterD2Map().entrySet().
       forEach(entry -> controllerClients.put(entry.getKey(),
           new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue())));
@@ -1753,7 +1775,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     // Set src store migration flag
     String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl);
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl, sslFactory);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
     srcControllerClient.updateStore(storeName, params);
 
@@ -1835,7 +1857,7 @@ public class VeniceParentHelixAdmin implements Admin {
                   List<ControllerClient> child_controller_clients = new ArrayList<>();
 
                   for (String childControllerUrl : this.getChildControllerUrls(sCN)) {
-                    ControllerClient childControllerClient = new ControllerClient(sCN, childControllerUrl);
+                    ControllerClient childControllerClient = new ControllerClient(sCN, childControllerUrl, sslFactory);
                     child_controller_clients.add(childControllerClient);
                   }
 
@@ -1862,7 +1884,7 @@ public class VeniceParentHelixAdmin implements Admin {
               // Get original store properties
               ControllerClient srcControllerClient = srcControllerClients.computeIfAbsent(srcClusterName,
                   src_cluster_name -> new ControllerClient(src_cluster_name,
-                      this.getMasterController(src_cluster_name).getUrl(false)));
+                      this.getMasterController(src_cluster_name).getUrl(false), sslFactory));
               StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
               String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
               MultiSchemaResponse.Schema[] srcValueSchemasResponse =

@@ -85,7 +85,7 @@ ext.libraries = [ // Groovy map literal
                   log4j2api: 'org.apache.logging.log4j:log4j-api:2.9.1',
                   log4j2core: 'org.apache.logging.log4j:log4j-core:2.9.1',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
-                  spark: 'com.sparkjava:spark-core:2.5.5',
+                  spark: 'com.sparkjava:spark-core:2.9.1',
                   testng: 'org.testng:testng:6.14.3',
                   // TODO remove this linkedin MP dependency, instead depends on the opensource tehuti lib.
                   tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.6',

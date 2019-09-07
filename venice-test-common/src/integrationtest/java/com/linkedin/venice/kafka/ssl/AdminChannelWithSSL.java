@@ -6,8 +6,10 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -30,14 +32,14 @@ public class AdminChannelWithSSL {
         ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
             new VeniceControllerWrapper[]{childControllerWrapper}, true);
 
-    String controllerUrl = controllerWrapper.getControllerUrl();
+    String secureControllerUrl = controllerWrapper.getSecureControllerUrl();
     // Adding store
     String storeName = "test_store";
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String valueSchemaStr = "\"string\"";
 
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
+    ControllerClient controllerClient = new ControllerClient(clusterName, secureControllerUrl, Optional.of(SslUtils.getVeniceLocalSslFactory()));
     controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
       MultiStoreResponse response = controllerClient.queryStoreList(false);
@@ -47,7 +49,8 @@ public class AdminChannelWithSSL {
       Assert.assertEquals(stores[0], storeName);
     });
 
-    ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerWrapper.getControllerUrl());
+    ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerWrapper.getSecureControllerUrl(),
+        Optional.of(SslUtils.getVeniceLocalSslFactory()));
     // Child controller is talking SSL to Kafka
     TestUtils.waitForNonDeterministicAssertion(1000, TimeUnit.MILLISECONDS, () -> {
       MultiStoreResponse response = childControllerClient.queryStoreList(false);

@@ -138,6 +138,7 @@ public class AdminTool {
       String storeName;
       String versionString;
       String topicName;
+
       int version;
       MultiStoreResponse storeResponse;
       ControllerResponse response;
