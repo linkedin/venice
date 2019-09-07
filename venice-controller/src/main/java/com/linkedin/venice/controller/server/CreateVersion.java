@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -13,6 +15,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import spark.Route;
@@ -24,8 +27,12 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 /**
  * This class will add a new version to the given store.
  */
-public class CreateVersion {
+public class CreateVersion extends AbstractRoute {
   private static final Logger logger = Logger.getLogger(CreateVersion.class);
+
+  public CreateVersion(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
 
   /**
    * Instead of asking Venice to create a version, pushes should ask venice which topic to write into.
@@ -35,10 +42,14 @@ public class CreateVersion {
    * @param admin
    * @return
    */
-  public static Route requestTopicForPushing(Admin admin) {
+  public Route requestTopicForPushing(Admin admin) {
     return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);
 
         //Query params
@@ -116,10 +127,14 @@ public class CreateVersion {
     };
   }
 
-  public static Route addVersionAndStartIngestion(Admin admin) {
+  public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {
       VersionResponse responseObject = new VersionResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, ADD_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -146,10 +161,14 @@ public class CreateVersion {
   }
 
   @Deprecated
-  public static Route uploadPushInfo(Admin admin){
+  public Route uploadPushInfo(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
 
         //Query params
@@ -168,10 +187,14 @@ public class CreateVersion {
     };
   }
 
-  public static Route writeEndOfPush(Admin admin) {
+  public Route writeEndOfPush(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
+        // TODO: Also allow whitelist users to run this command
+        if (!hasAccess(request)) {
+          throw new UnauthorizedException("ACL failed for request " + request.url());
+        }
         AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
 
         //Query params
@@ -194,10 +217,11 @@ public class CreateVersion {
     };
   }
 
-  public static Route emptyPush(Admin admin) {
+  public Route emptyPush(Admin admin) {
     return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
         //Query params

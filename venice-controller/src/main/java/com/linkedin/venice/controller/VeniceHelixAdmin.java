@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -215,12 +216,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
-        this(multiClusterConfigs, metricsRepository, false, Optional.empty());
+        this(multiClusterConfigs, metricsRepository, false, Optional.empty(), Optional.empty());
     }
 
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository,
-            boolean sslEnabled, Optional<SSLConfig> sslConfig) {
+            boolean sslEnabled, Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController) {
         this.multiClusterConfigs = multiClusterConfigs;
         VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
@@ -306,7 +307,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         addControllerClusterResourceIfRequired();
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
             zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
-            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
+            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController);
 
         // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
         // HaaS then level1 controllers should be only in participant mode.

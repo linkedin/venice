@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
@@ -39,40 +40,43 @@ public class VeniceController {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final MetricsRepository metricsRepository;
   private final List<D2Server> d2ServerList;
+  private final Optional<DynamicAccessController> accessController;
 
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
   // This constructor is being used in local mode
   public VeniceController(VeniceProperties props) {
-    this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), Collections.emptyList());
+    this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), Collections.emptyList(), Optional.empty());
   }
 
   // This constructor is being used in integration test
   public VeniceController(List<VeniceProperties> propertiesList, List<D2Server> d2ServerList) {
-    this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList);
+    this(propertiesList, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME), d2ServerList, Optional.empty());
   }
 
-  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList) {
-    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository, d2ServerList);
+  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository, List<D2Server> d2ServerList, Optional<DynamicAccessController> accessController) {
+    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository, d2ServerList, accessController);
   }
 
-  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList) {
+  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository, List<D2Server> d2ServerList, Optional<DynamicAccessController> accessController) {
     this.multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
     this.metricsRepository = metricsRepository;
     this.d2ServerList = d2ServerList;
     Optional<SSLConfig> sslConfig = multiClusterConfigs.getSslConfig();
     this.sslEnabled = sslConfig.isPresent() && sslConfig.get().isControllerSSLEnabled();
+    this.accessController = accessController;
     createServices();
   }
 
 
   public void createServices(){
-    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled, multiClusterConfigs.getSslConfig());
+    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository, sslEnabled, multiClusterConfigs.getSslConfig(), accessController);
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
         metricsRepository,
         multiClusterConfigs.getClusters(),
+        Optional.empty(),
         Optional.empty());
     if (sslEnabled) {
       /**
@@ -82,7 +86,8 @@ public class VeniceController {
           multiClusterConfigs.getAdminSecurePort(),
           controllerService.getVeniceHelixAdmin(),
           metricsRepository, multiClusterConfigs.getClusters(),
-          multiClusterConfigs.getSslConfig());
+          multiClusterConfigs.getSslConfig(),
+          accessController);
     }
     // TODO: disable TopicMonitor in Corp cluster for now.
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it

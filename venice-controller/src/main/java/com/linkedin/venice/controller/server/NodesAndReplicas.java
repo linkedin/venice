@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.NodeRemovableResult;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -12,18 +13,26 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
-public class NodesAndReplicas {
+public class NodesAndReplicas extends AbstractRoute {
+  /**
+   * TODO: Make sure services "venice-hooks-deployable" is also in whitelist
+   */
+  public NodesAndReplicas(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
 
-  public static Route listAllNodes(Admin admin) {
+  public Route listAllNodes(Admin admin) {
     return (request, response) -> {
       MultiNodeResponse responseObject = new MultiNodeResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, LIST_NODES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         List<String> nodeList = admin.getStorageNodes(responseObject.getCluster());
@@ -41,10 +50,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route listAllNodesStatus(Admin admin) {
+  public Route listAllNodesStatus(Admin admin) {
     return (request, response) -> {
       MultiNodesStatusResponse responseObject = new MultiNodesStatusResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         Map<String, String> nodesStatusesMap = admin.getStorageNodesStatus(responseObject.getCluster());
@@ -58,10 +68,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route listReplicasForStore(Admin admin) {
+  public Route listReplicasForStore(Admin admin) {
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, LIST_REPLICAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
@@ -81,10 +92,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route listReplicasForStorageNode(Admin admin){
+  public Route listReplicasForStorageNode(Admin admin){
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, NODE_REPLICAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
@@ -103,10 +115,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route isNodeRemovable(Admin admin){
+  public Route isNodeRemovable(Admin admin){
     return (request, response) -> {
       NodeStatusResponse responseObject = new NodeStatusResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
@@ -134,10 +147,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route removeNodeFromCluster(Admin admin) {
+  public Route removeNodeFromCluster(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
@@ -152,10 +166,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route addNodeIntoWhiteList(Admin admin) {
+  public Route addNodeIntoWhiteList(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, WHITE_LIST_ADD_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
@@ -170,10 +185,11 @@ public class NodesAndReplicas {
     };
   }
 
-  public static Route removeNodeFromWhiteList(Admin admin){
+  public Route removeNodeFromWhiteList(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, WHITE_LIST_REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);

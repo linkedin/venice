@@ -55,7 +55,8 @@ public class JobRoutesTest {
     String cluster = TestUtils.getUniqueString("cluster");
     String store = TestUtils.getUniqueString("store");
     int version = 5;
-    JobStatusQueryResponse response = JobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty());
+    JobRoutes jobRoutes = new JobRoutes(Optional.empty());
+    JobStatusQueryResponse response = jobRoutes.populateJobStatus(cluster, store, version, mockAdmin, Optional.empty());
 
     Long available = response.getMessagesAvailable();
     Long consumed = response.getMessagesConsumed();

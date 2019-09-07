@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
@@ -39,6 +40,8 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Admin admin;
   private final boolean sslEnabled;
   private final Optional<SSLConfig> sslConfig;
+  private final Optional<DynamicAccessController> accessController;
+
   protected static final ObjectMapper mapper = new ObjectMapper();
   final private Map<String, SparkServerStats> statsMap;
   final private SparkServerStats nonclusterSpecificStats;
@@ -50,10 +53,12 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Service httpService;
 
 
-  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters, Optional<SSLConfig> sslConfig) {
+  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters,
+      Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController) {
     this.port = port;
     this.sslEnabled = sslConfig.isPresent();
     this.sslConfig = sslConfig;
+    this.accessController = accessController;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
@@ -83,7 +88,6 @@ public class AdminSparkServer extends AbstractVeniceService {
     }
 
     httpService.before((request, response) -> {
-      // TODO: Implement ACL filter here
       AuditInfo audit = new AuditInfo(request);
       logger.info(audit.toString());
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
@@ -111,85 +115,98 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
     });
 
+    // Build all different routes
+    StoresRoutes storesRoutes = new StoresRoutes(accessController);
+    JobRoutes jobRoutes = new JobRoutes(accessController);
+    SkipAdminRoute skipAdminRoute = new SkipAdminRoute(accessController);
+    CreateVersion createVersion = new CreateVersion(accessController);
+    CreateStore createStoreRoute = new CreateStore(accessController);
+    NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(accessController);
+    SchemaRoutes schemaRoutes = new SchemaRoutes(accessController);
+    AdminCommandExecutionRoutes adminCommandExecutionRoutes = new AdminCommandExecutionRoutes(accessController);
+    RoutersClusterConfigRoutes routersClusterConfigRoutes = new RoutersClusterConfigRoutes(accessController);
+    MigrationRoutes migrationRoutes = new MigrationRoutes(accessController);
+    VersionRoute versionRoute = new VersionRoute(accessController);
+
     httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
       return writeMenu("Set Active Version", SET_VERSION.getPath(), SET_VERSION.getParams());
     });
 
     httpService.get(LIST_CHILD_CLUSTERS.getPath(), ControllerRoutes.getChildControllers(admin));
-    httpService.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
-    httpService.get(CLUSTER_HEALTH_STORES.getPath(), StoresRoutes.getAllStoresStatuses(admin));
-    httpService.get(STORE.getPath(), StoresRoutes.getStore(admin));
+    httpService.get(LIST_STORES.getPath(), storesRoutes.getAllStores(admin));
+    httpService.get(CLUSTER_HEALTH_STORES.getPath(), storesRoutes.getAllStoresStatuses(admin));
+    httpService.get(STORE.getPath(), storesRoutes.getStore(admin));
 
-    httpService.get(JOB.getPath(), JobRoutes.jobStatus(admin));
-    httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), JobRoutes.killOfflinePushJob(admin));
-    httpService.post(SKIP_ADMIN.getPath(), SkipAdminRoute.getRoute(admin));
+    httpService.get(JOB.getPath(), jobRoutes.jobStatus(admin));
+    httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), jobRoutes.killOfflinePushJob(admin));
+    httpService.post(SKIP_ADMIN.getPath(), skipAdminRoute.getRoute(admin));
 
-    httpService.post(EMPTY_PUSH.getPath(), CreateVersion.emptyPush(admin));
-    httpService.post(END_OF_PUSH.getPath(), CreateVersion.writeEndOfPush(admin));
-    httpService.post(REQUEST_TOPIC.getPath(), CreateVersion.requestTopicForPushing(admin));
-    httpService.post(ADD_VERSION.getPath(), CreateVersion.addVersionAndStartIngestion(admin));
-    httpService.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));
-    httpService.post(DELETE_STORE.getPath(), StoresRoutes.deleteStore(admin));
-    httpService.post(UPDATE_STORE.getPath(), StoresRoutes.updateStore(admin));
-    httpService.post(MIGRATE_STORE.getPath(), StoresRoutes.migrateStore(admin));
-    httpService.post(ABORT_MIGRATION.getPath(), StoresRoutes.abortMigration(admin));
+    httpService.post(EMPTY_PUSH.getPath(), createVersion.emptyPush(admin));
+    httpService.post(END_OF_PUSH.getPath(), createVersion.writeEndOfPush(admin));
+    httpService.post(REQUEST_TOPIC.getPath(), createVersion.requestTopicForPushing(admin));
+    httpService.post(ADD_VERSION.getPath(), createVersion.addVersionAndStartIngestion(admin));
+    httpService.post(NEW_STORE.getPath(), createStoreRoute.addStore(admin));
+    httpService.post(DELETE_STORE.getPath(), storesRoutes.deleteStore(admin));
+    httpService.post(UPDATE_STORE.getPath(), storesRoutes.updateStore(admin));
+    httpService.post(MIGRATE_STORE.getPath(), storesRoutes.migrateStore(admin));
+    httpService.post(ABORT_MIGRATION.getPath(), storesRoutes.abortMigration(admin));
 
-    httpService.post(ENABLE_STORE.getPath(), StoresRoutes.enableStore(admin));
+    httpService.post(ENABLE_STORE.getPath(), storesRoutes.enableStore(admin));
 
-    httpService.post(DELETE_ALL_VERSIONS.getPath(), StoresRoutes.deleteAllVersions(admin));
-    httpService.post(DELETE_OLD_VERSION.getPath(), StoresRoutes.deleteOldVersions(admin));
+    httpService.post(DELETE_ALL_VERSIONS.getPath(), storesRoutes.deleteAllVersions(admin));
+    httpService.post(DELETE_OLD_VERSION.getPath(), storesRoutes.deleteOldVersions(admin));
 
 
-    httpService.post(SET_VERSION.getPath(), StoresRoutes.setCurrentVersion(admin));
+    httpService.post(SET_VERSION.getPath(), storesRoutes.setCurrentVersion(admin));
 
-    httpService.get(ClUSTER_HEALTH_INSTANCES.getPath(), NodesAndReplicas.listAllNodesStatus(admin));
-    httpService.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
-    httpService.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
-    httpService.get(NODE_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStorageNode(admin));
-    httpService.get(NODE_REMOVABLE.getPath(), NodesAndReplicas.isNodeRemovable(admin));
-    httpService.post(WHITE_LIST_ADD_NODE.getPath(), NodesAndReplicas.addNodeIntoWhiteList(admin));
-    httpService.post(WHITE_LIST_REMOVE_NODE.getPath(), NodesAndReplicas.removeNodeFromWhiteList(admin));
-    httpService.post(REMOVE_NODE.getPath(), NodesAndReplicas.removeNodeFromCluster(admin));
+    httpService.get(ClUSTER_HEALTH_INSTANCES.getPath(), nodesAndReplicas.listAllNodesStatus(admin));
+    httpService.get(LIST_NODES.getPath(), nodesAndReplicas.listAllNodes(admin));
+    httpService.get(LIST_REPLICAS.getPath(), nodesAndReplicas.listReplicasForStore(admin));
+    httpService.get(NODE_REPLICAS.getPath(), nodesAndReplicas.listReplicasForStorageNode(admin));
+    httpService.get(NODE_REMOVABLE.getPath(), nodesAndReplicas.isNodeRemovable(admin));
+    httpService.post(WHITE_LIST_ADD_NODE.getPath(), nodesAndReplicas.addNodeIntoWhiteList(admin));
+    httpService.post(WHITE_LIST_REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromWhiteList(admin));
+    httpService.post(REMOVE_NODE.getPath(), nodesAndReplicas.removeNodeFromCluster(admin));
 
     // Operations for key schema/value schema
-    httpService.get(GET_KEY_SCHEMA.getPath(), SchemaRoutes.getKeySchema(admin));
-    httpService.post(ADD_VALUE_SCHEMA.getPath(), SchemaRoutes.addValueSchema(admin));
-    httpService.post(ADD_DERIVED_SCHEMA.getPath(), SchemaRoutes.addDerivedSchema(admin));
-    httpService.get(GET_VALUE_SCHEMA.getPath(), SchemaRoutes.getValueSchema(admin));
-    httpService.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
-    httpService.post(GET_VALUE_OR_DERIVED_SCHEMA_ID.getPath(), SchemaRoutes.getDerivedSchemaID(admin));
-    httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
-    httpService.get(GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath(), SchemaRoutes.getAllValueAndDerivedSchema(admin));
+    httpService.get(GET_KEY_SCHEMA.getPath(), schemaRoutes.getKeySchema(admin));
+    httpService.post(ADD_VALUE_SCHEMA.getPath(), schemaRoutes.addValueSchema(admin));
+    httpService.post(ADD_DERIVED_SCHEMA.getPath(), schemaRoutes.addDerivedSchema(admin));
+    httpService.get(GET_VALUE_SCHEMA.getPath(), schemaRoutes.getValueSchema(admin));
+    httpService.post(GET_VALUE_SCHEMA_ID.getPath(), schemaRoutes.getValueSchemaID(admin));
+    httpService.post(GET_VALUE_OR_DERIVED_SCHEMA_ID.getPath(), schemaRoutes.getDerivedSchemaID(admin));
+    httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), schemaRoutes.getAllValueSchema(admin));
+    httpService.get(GET_ALL_VALUE_AND_DERIVED_SCHEMA.getPath(), schemaRoutes.getAllValueAndDerivedSchema(admin));
 
-    httpService.post(SET_OWNER.getPath(), StoresRoutes.setOwner(admin));
-    httpService.post(SET_PARTITION_COUNT.getPath(), StoresRoutes.setPartitionCount(admin));
+    httpService.post(SET_OWNER.getPath(), storesRoutes.setOwner(admin));
+    httpService.post(SET_PARTITION_COUNT.getPath(), storesRoutes.setPartitionCount(admin));
 
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
     httpService.get(MASTER_CONTROLLER.getPath(), ControllerRoutes.getMasterController(admin));
 
-    httpService.get(EXECUTION.getPath(), AdminCommandExecutionRoutes.getExecution(admin));
-    httpService.get(LAST_SUCCEED_EXECUTION_ID.getPath(), AdminCommandExecutionRoutes.getLastSucceedExecutionId(admin));
+    httpService.get(EXECUTION.getPath(), adminCommandExecutionRoutes.getExecution(admin));
+    httpService.get(LAST_SUCCEED_EXECUTION_ID.getPath(), adminCommandExecutionRoutes.getLastSucceedExecutionId(admin));
 
-    httpService.get(STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), StoresRoutes.getStorageEngineOverheadRatio(admin));
+    httpService.get(STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), storesRoutes.getStorageEngineOverheadRatio(admin));
 
-    httpService.post(ENABLE_THROTTLING.getPath(), RoutersClusterConfigRoutes.enableThrottling(admin));
-    httpService.post(ENABLE_MAX_CAPACITY_PROTECTION.getPath(), RoutersClusterConfigRoutes.enableMaxCapacityProtection(admin));
-    httpService.post(ENABLE_QUOTA_REBALANCED.getPath(), RoutersClusterConfigRoutes.enableQuotaRebalanced(admin));
+    httpService.post(ENABLE_THROTTLING.getPath(), routersClusterConfigRoutes.enableThrottling(admin));
+    httpService.post(ENABLE_MAX_CAPACITY_PROTECTION.getPath(), routersClusterConfigRoutes.enableMaxCapacityProtection(admin));
+    httpService.post(ENABLE_QUOTA_REBALANCED.getPath(), routersClusterConfigRoutes.enableQuotaRebalanced(admin));
 
-    httpService.get(GET_ROUTERS_CLUSTER_CONFIG.getPath(), RoutersClusterConfigRoutes.getRoutersClusterConfig(admin));
+    httpService.get(GET_ROUTERS_CLUSTER_CONFIG.getPath(), routersClusterConfigRoutes.getRoutersClusterConfig(admin));
 
-    httpService.get(GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath(), MigrationRoutes.getAllMigrationPushStrategies(admin));
-    httpService.get(SET_MIGRATION_PUSH_STRATEGY.getPath(), MigrationRoutes.setMigrationPushStrategy(admin));
+    httpService.get(GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath(), migrationRoutes.getAllMigrationPushStrategies(admin));
+    httpService.get(SET_MIGRATION_PUSH_STRATEGY.getPath(), migrationRoutes.setMigrationPushStrategy(admin));
 
     httpService.get(CLUSTER_DISCOVERY.getPath(), ClusterDiscovery.discoverCluster(admin));
-    httpService.get(LIST_BOOTSTRAPPING_VERSIONS.getPath(), VersionRoute.listBootstrappingVersions(admin));
+    httpService.get(LIST_BOOTSTRAPPING_VERSIONS.getPath(), versionRoute.listBootstrappingVersions(admin));
 
-    httpService.post(OFFLINE_PUSH_INFO.getPath(), CreateVersion.uploadPushInfo(admin));
+    httpService.post(OFFLINE_PUSH_INFO.getPath(), createVersion.uploadPushInfo(admin));
 
-    httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), JobRoutes.uploadPushJobStatus(admin));
-    httpService.post(SEND_PUSH_JOB_DETAILS.getPath(), JobRoutes.sendPushJobDetails(admin));
+    httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), jobRoutes.uploadPushJobStatus(admin));
+    httpService.post(SEND_PUSH_JOB_DETAILS.getPath(), jobRoutes.sendPushJobDetails(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();

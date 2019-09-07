@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.acl;
 
+import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
@@ -33,7 +34,7 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.accessController = accessController.init(
         metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
     this.metadataRepository.registerStoreDataChangedListener(
-        new AclCreationDeletionListener(accessController, metadataRepository));
+        new AclCreationDeletionListener(accessController));
   }
 
   /**

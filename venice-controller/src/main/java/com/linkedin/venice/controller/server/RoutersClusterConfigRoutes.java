@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
@@ -12,11 +13,16 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
-public class RoutersClusterConfigRoutes {
-  public static Route enableThrottling(Admin admin) {
+public class RoutersClusterConfigRoutes extends AbstractRoute {
+  public RoutersClusterConfigRoutes(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
+
+  public Route enableThrottling(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ENABLE_THROTTLING.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
@@ -27,10 +33,11 @@ public class RoutersClusterConfigRoutes {
     };
   }
 
-  public static Route enableMaxCapacityProtection(Admin admin) {
+  public Route enableMaxCapacityProtection(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ENABLE_MAX_CAPACITY_PROTECTION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
@@ -41,10 +48,11 @@ public class RoutersClusterConfigRoutes {
     };
   }
 
-  public static Route enableQuotaRebalanced(Admin admin) {
+  public Route enableQuotaRebalanced(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, ENABLE_QUOTA_REBALANCED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
@@ -57,10 +65,11 @@ public class RoutersClusterConfigRoutes {
     };
   }
 
-  public static Route getRoutersClusterConfig(Admin admin) {
+  public Route getRoutersClusterConfig(Admin admin) {
     return new VeniceRouteHandler<RoutersClusterConfigResponse>(RoutersClusterConfigResponse.class) {
       @Override
       public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
+        // TODO: Only allow whitelist users to run this command
         AdminSparkServer.validateParams(request, GET_ROUTERS_CLUSTER_CONFIG.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);

@@ -1,5 +1,7 @@
 package com.linkedin.venice;
 
+import javax.servlet.http.HttpServletRequest;
+
 public class VeniceConstants {
   /** The following field is used to construct result schema for compute API. */
   public static final String VENICE_COMPUTATION_ERROR_MAP_FIELD_NAME = "__veniceComputationError__";
@@ -23,4 +25,9 @@ public class VeniceConstants {
    * should override the SSL factory class.
    */
   public static String DEFAULT_SSL_FACTORY_CLASS_NAME = "com.linkedin.venice.security.DefaultSSLFactory";
+
+  /**
+   * In a {@link HttpServletRequest}, we can get the client certificate by retrieving the following attribute.
+   */
+  public static String CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME = "javax.servlet.request.X509Certificate";
 }
