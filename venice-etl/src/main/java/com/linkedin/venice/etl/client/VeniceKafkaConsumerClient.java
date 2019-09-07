@@ -60,6 +60,7 @@ import com.typesafe.config.Config;
 
 import lombok.ToString;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 import static com.linkedin.venice.utils.Utils.*;

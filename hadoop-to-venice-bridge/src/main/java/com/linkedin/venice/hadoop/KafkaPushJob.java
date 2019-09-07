@@ -239,6 +239,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private long pushStartTime;
   private String pushId;
 
+  private Properties veniceWriterProperties;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
 
   protected class SchemaInfo {
@@ -723,7 +724,18 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private synchronized VeniceWriter<KafkaKey, byte[], byte[]> getVeniceWriter(VersionTopicInfo versionTopicInfo) {
     if (null == this.veniceWriter) {
       // Initialize VeniceWriter
-      Properties veniceWriterProperties = new Properties();
+      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(versionTopicInfo));
+
+      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(versionTopicInfo.topic);
+      logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
+      this.veniceWriter = newVeniceWriter;
+    }
+    return this.veniceWriter;
+  }
+
+  private synchronized Properties getVeniceWriterProperties(VersionTopicInfo versionTopicInfo) {
+    if (null == veniceWriterProperties) {
+      veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
@@ -750,13 +762,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       if (props.containsKey(KAFKA_PRODUCER_RETRIES_CONFIG)) {
         veniceWriterProperties.setProperty(KAFKA_PRODUCER_RETRIES_CONFIG, props.getString(KAFKA_PRODUCER_RETRIES_CONFIG));
       }
-      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
-
-      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(versionTopicInfo.topic);
-      logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
-      this.veniceWriter = newVeniceWriter;
     }
-    return this.veniceWriter;
+    return veniceWriterProperties;
   }
 
   private synchronized void closeVeniceWriter() {

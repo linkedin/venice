@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 
@@ -74,6 +76,14 @@ public class VeniceControllerMultiClusterConfig {
 
   public boolean isSslToKafka(){
     return getCommonConfig().isSslToKafka();
+  }
+
+  public Optional<SSLConfig> getSslConfig() {
+    return getCommonConfig().getSslConfig();
+  }
+
+  public String getSslFactoryClassName() {
+    return getCommonConfig().getSslFactoryClassName();
   }
 
   public String getKafkaZkAddress() {

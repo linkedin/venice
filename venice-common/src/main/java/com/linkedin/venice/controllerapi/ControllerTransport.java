@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.ExecutionException;
 
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 
 import org.apache.log4j.Logger;

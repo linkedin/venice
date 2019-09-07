@@ -94,13 +94,20 @@ public class AdminTool {
   public static void main(String args[])
       throws Exception {
 
-    /* Command Options are split up for help text formatting, see printUsageAndExit() */
-    Options options = new Options();
+    /**
+     * Command Options are split up for help text formatting, see printUsageAndExit()
+     *
+     * Gather all the commands we have in "commandGroup"
+     **/
     OptionGroup commandGroup = new OptionGroup();
     for (Command c : Command.values()){
       createCommandOpt(c, commandGroup);
     }
 
+    /**
+     * Gather all the options we have in "options"
+     */
+    Options options = new Options();
     for (Arg arg : Arg.values()){
       createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
     }
@@ -126,7 +133,11 @@ public class AdminTool {
       Command foundCommand = ensureOnlyOneCommand(cmd);
 
       // Variables used within the switch case need to be defined in advance
-      String veniceUrl = null, clusterName, storeName, versionString, topicName;
+      String veniceUrl = null;
+      String clusterName;
+      String storeName;
+      String versionString;
+      String topicName;
       int version;
       MultiStoreResponse storeResponse;
       ControllerResponse response;
@@ -337,8 +348,8 @@ public class AdminTool {
           }
           throw new VeniceException("Must supply one of the following commands: " + availableCommands.toString());
       }
-    } catch (VeniceException e){
-      printErrAndExit(e.getMessage());
+    } catch (Exception e){
+      printErrAndThrow(e, e.getMessage(), null);
     }
   }
 
@@ -381,7 +392,7 @@ public class AdminTool {
   }
 
   private static void createNewStore(CommandLine cmd)
-      throws IOException {
+      throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
     String keySchemaFile = getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
     String keySchema = readFile(keySchemaFile);
@@ -528,7 +539,7 @@ public class AdminTool {
   }
 
   private static void applyValueSchemaToStore(CommandLine cmd)
-      throws IOException {
+      throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_SCHEMA);
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA);
     String valueSchema = readFile(valueSchemaFile);
@@ -540,7 +551,7 @@ public class AdminTool {
     printObject(valueResponse);
   }
 
-  private static void applyDerivedSchemaToStore(CommandLine cmd) throws IOException {
+  private static void applyDerivedSchemaToStore(CommandLine cmd) throws Exception {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.ADD_DERIVED_SCHEMA);
     String derivedSchemaFile = getRequiredArgument(cmd, Arg.DERIVED_SCHEMA, Command.ADD_DERIVED_SCHEMA);
     int valueSchemaId = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.ADD_DERIVED_SCHEMA),
@@ -685,7 +696,7 @@ public class AdminTool {
     printObject(response);
   }
 
-  private static void deleteKafkaTopic(CommandLine cmd) {
+  private static void deleteKafkaTopic(CommandLine cmd) throws Exception {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
     Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
@@ -708,7 +719,7 @@ public class AdminTool {
       long runTime = System.currentTimeMillis() - startTime;
       printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
     } catch (VeniceOperationAgainstKafkaTimedOut e) {
-      printErrAndExit("Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.");
+      printErrAndThrow(e, "Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.", null);
     }
   }
 
@@ -1318,13 +1329,13 @@ public class AdminTool {
     }
   }
 
-  private static void verifyValidSchema(String schema) {
+  private static void verifyValidSchema(String schema) throws Exception {
     try {
       Schema.parse(schema);
     } catch (Exception e){
       Map<String, String> errMap = new HashMap<>();
       errMap.put("schema", schema);
-      printErrAndExit("Invalid Schema: " + e.getMessage(), errMap);
+      printErrAndThrow(e, "Invalid Schema: " + e.getMessage(), errMap);
     }
   }
 
@@ -1407,9 +1418,21 @@ public class AdminTool {
   }
 
   private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
+    printErr(errorMessage, customMessages);
+    System.exit(1);
+  }
+
+  private static void printErrAndThrow(Exception e, String errorMessage, Map<String, String> customMessages) throws Exception {
+    printErr(errorMessage, customMessages);
+    throw e;
+  }
+
+  private static void printErr(String errorMessage, Map<String, String> customMessages) {
     Map<String, String> errMap = new HashMap<>();
-    for (Map.Entry<String, String> messagePair : customMessages.entrySet()){
-      errMap.put(messagePair.getKey(), messagePair.getValue());
+    if (customMessages != null) {
+      for (Map.Entry<String, String> messagePair : customMessages.entrySet()) {
+        errMap.put(messagePair.getKey(), messagePair.getValue());
+      }
     }
     if (errMap.keySet().contains(ERROR)){
       errMap.put(ERROR, errMap.get(ERROR) + " " + errorMessage);
@@ -1421,7 +1444,5 @@ public class AdminTool {
     } catch (IOException e) {
       System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
     }
-    System.exit(1);
   }
-
 }

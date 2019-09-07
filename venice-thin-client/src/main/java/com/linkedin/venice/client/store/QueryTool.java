@@ -6,6 +6,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.utils.SslUtils;
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -31,15 +32,6 @@ public class QueryTool {
   private static final int SSL_CONFIG_FILE_PATH = 4;
   private static final int REQUIRED_ARGS_COUNT = 5;
 
-  private static final String SSL_ENABLED = "ssl.enabled";
-  private static final String KEYSTORE_TYPE = "keystore.type";
-  private static final String TRUSTSTORE_TYPE="truststore.type";
-  private static final String KEYSTORE_PASSWORD = "keystore.password";
-  private static final String TRUSTSTORE_PASSWORD = "truststore.password";
-  private static final String KEYSTORE_PATH="keystore.path";
-  private static final String TRUESTSTORE_PATH="truststore.path";
-
-
   public static void main(String[] args)
       throws Exception {
     if (args.length < REQUIRED_ARGS_COUNT) {
@@ -58,44 +50,13 @@ public class QueryTool {
     outputMap.entrySet().stream().forEach(System.out::println);
   }
 
-  private static Properties loadSSLConfig(String configFilePath)
-      throws IOException {
-    Properties props = new Properties();
-    try (FileInputStream inputStream = new FileInputStream(configFilePath)) {
-      props.load(inputStream);
-    } catch (IOException e) {
-      System.err.println("ERROR: Could not load ssl config file from path: " + configFilePath);
-      throw e;
-    }
-    return props;
-  }
-
-  private static SSLEngineComponentFactory getSSLEngineComponentFactory(Properties sslProperties)
-      throws Exception {
-    SSLEngineComponentFactoryImpl.Config config = new SSLEngineComponentFactoryImpl.Config();
-    config.setSslEnabled(Boolean.valueOf(sslProperties.getProperty(SSL_ENABLED)));
-    config.setKeyStoreType(sslProperties.getProperty(KEYSTORE_TYPE));
-    config.setTrustStoreFilePassword(sslProperties.getProperty(TRUSTSTORE_TYPE));
-    config.setKeyStoreFilePath(sslProperties.getProperty(KEYSTORE_PATH));
-    config.setTrustStoreFilePath(sslProperties.getProperty(TRUESTSTORE_PATH));
-    config.setKeyStorePassword(sslProperties.getProperty(KEYSTORE_PASSWORD));
-    config.setTrustStoreFilePassword(sslProperties.getProperty(TRUSTSTORE_PASSWORD));
-
-    try {
-      return new SSLEngineComponentFactoryImpl(config);
-    } catch (Exception e) {
-      System.err.println("ERROR: Could not build ssl engine component factory by config.");
-      throw e;
-    }
-  }
-
   public static Map<String, String> queryStoreForKey(String store, String keyString, String url, boolean isVsonStore, Optional<String> sslConfigFile)
       throws Exception {
 
     SSLEngineComponentFactory factory = null;
     if(sslConfigFile.isPresent()) {
-      Properties sslProperties = loadSSLConfig(sslConfigFile.get());
-      factory = getSSLEngineComponentFactory(sslProperties);
+      Properties sslProperties = SslUtils.loadSSLConfig(sslConfigFile.get());
+      factory = SslUtils.getSSLEngineComponentFactory(sslProperties);
     }
 
     // Verify the ssl engine is set up correctly.
