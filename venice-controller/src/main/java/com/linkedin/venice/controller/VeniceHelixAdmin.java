@@ -943,7 +943,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Version version = null;
         OfflinePushStrategy strategy;
         boolean isLeaderFollowerStateModel = false;
-        VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
+        VeniceControllerClusterConfig clusterConfig = resources.getConfig();
         BackupStrategy backupStrategy;
 
         try {
@@ -1018,11 +1018,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                 if (whetherStartOfflinePush) {
                     // We need to prepare to monitor before creating helix resource.
-                    startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor,
-                        strategy);
-                    createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
+                    startMonitorOfflinePush(
+                        clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, strategy);
+                    createHelixResources(
+                        clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
                     waitUntilNodesAreAssignedForResource(clusterName, version.kafkaTopicName(), strategy,
-                        getVeniceHelixResource(clusterName).getConfig().getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
+                        clusterConfig.getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
 
                     // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
                     if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
@@ -1040,6 +1041,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 resources.unlockForMetadataOperation();
             }
             return version;
+
         } catch (Throwable e) {
             if (useFastKafkaOperationTimeout && e instanceof VeniceOperationAgainstKafkaTimedOut) {
                 // Expected and retriable exception skip error handling within VeniceHelixAdmin and let the caller to
@@ -2225,43 +2227,46 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    private void waitUntilNodesAreAssignedForResource(String clusterName, String topic, OfflinePushStrategy offlinePushStrategy,
-        long offlinePushWaitTimeInMilliseconds, int replicationFactor) {
-      PushMonitor monitor = getVeniceHelixResource(clusterName).getPushMonitor();
-      RoutingDataRepository routingDataRepository = getVeniceHelixResource(clusterName).getRoutingDataRepository();
-      PushStatusDecider decider = PushStatusDecider.getDecider(offlinePushStrategy);
-      ResourceAssignment resourceAssignment;
+  private void waitUntilNodesAreAssignedForResource(
+      String clusterName,
+      String topic,
+      OfflinePushStrategy strategy,
+      long maxWaitTimeMs,
+      int replicationFactor) {
 
-      long startTime = System.currentTimeMillis();
-      long elapsedTime;
+    VeniceHelixResources clusterResources = getVeniceHelixResource(clusterName);
+    PushMonitor pushMonitor = clusterResources.getPushMonitor();
+    RoutingDataRepository routingDataRepository = clusterResources.getRoutingDataRepository();
+    PushStatusDecider statusDecider = PushStatusDecider.getDecider(strategy);
 
-      while ((elapsedTime = System.currentTimeMillis() - startTime) <= offlinePushWaitTimeInMilliseconds) {
-        if (monitor.getOfflinePush(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
-          throw new VeniceException("The push " + topic + " is already failed. Status: "+ ExecutionStatus.ERROR.toString()+". Stop waiting.");
-        }
-
-        resourceAssignment = routingDataRepository.getResourceAssignment();
-        Optional<String> reasonForNotBeingReady = decider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment);
-
-        if (!reasonForNotBeingReady.isPresent()) {
-          monitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
-          logger.info(
-              "After waiting: " + elapsedTime + "ms, resource allocation is completed for '" + topic + "'.");
-          monitor.recordPushPreparationDuration(topic, elapsedTime / Time.MS_PER_SECOND);
-          return;
-        } else {
-          logger.info("Resource '" + topic + "' does not have enough nodes, start waiting: "+ elapsedTime + "ms");
-          monitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, reasonForNotBeingReady);
-        }
-
-        Utils.sleep(WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS);
+    Optional<String> notReadyReason = Optional.of("unknown");
+    long startTime = System.currentTimeMillis();
+    for (long elapsedTime = 0; elapsedTime <= maxWaitTimeMs; elapsedTime = System.currentTimeMillis() - startTime) {
+      if (pushMonitor.getOfflinePush(topic).getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+        throw new VeniceException("Push " + topic + " has already failed.");
       }
 
-      // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
-      monitor.recordPushPreparationDuration(topic, offlinePushWaitTimeInMilliseconds / 1000);
-      throw new VeniceException("After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource '" + topic
-          + "' still could not get enough nodes.");
+      ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+      notReadyReason = statusDecider.hasEnoughNodesToStartPush(topic, replicationFactor, resourceAssignment);
+
+      if (!notReadyReason.isPresent()) {
+        logger.info("After waiting for " + elapsedTime + "ms, resource allocation is completed for " + topic + ".");
+        pushMonitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, Optional.of("Helix assignment complete"));
+        pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(elapsedTime));
+        return;
+      }
+
+      logger.info("After waiting for " + elapsedTime + "ms, resource " + topic + " does not have enough nodes" +
+          ", strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
+      pushMonitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, notReadyReason);
+      Utils.sleep(WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS);
     }
+
+    // Time out, after waiting maxWaitTimeMs, there are not enough nodes assigned.
+    pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(maxWaitTimeMs));
+    throw new VeniceException("After waiting for " + maxWaitTimeMs + "ms, resource " + topic + " does not have enough nodes," +
+        ", strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
+  }
 
     protected void deleteHelixResource(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);

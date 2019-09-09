@@ -131,17 +131,17 @@ public abstract class PushStatusDecider {
   public Optional<String> hasEnoughNodesToStartPush(String kafkaTopic, int replicationFactor, ResourceAssignment resourceAssignment) {
     if (!resourceAssignment.containsResource(kafkaTopic)) {
       String reason = "not yet in EXTERNALVIEW";
-      logger.info("Routing data repository has not created assignment for resource: " + kafkaTopic
-              + "(" + reason + ")");
+      logger.info("Routing data repository has not created assignment for resource: " + kafkaTopic + "(" + reason + ")");
       return Optional.of(reason);
     }
-    PartitionAssignment partitionAssignment =
-        resourceAssignment.getPartitionAssignment(kafkaTopic);
+
+    PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
     if (partitionAssignment.isMissingAssignedPartitions()) {
       String reason = "not enough partitions in EXTERNALVIEW";
       logger.info("There are " + reason + " assigned to resource: " + kafkaTopic);
       return Optional.of(reason);
     }
+
     ArrayList<Integer> underReplicatedPartition = new ArrayList<>();
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (!this.hasEnoughReplicasForOnePartition(partition.getWorkingInstances().size(), replicationFactor)) {
@@ -149,15 +149,15 @@ public abstract class PushStatusDecider {
         logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + kafkaTopic);
       }
     }
+
     if (underReplicatedPartition.isEmpty()) {
       return Optional.empty();
-    } else {
-      String reason = underReplicatedPartition.size() + " partitions under-replicated in EXTERNALVIEW";
-      logger.info(reason + " for resource '" + kafkaTopic + "': " + underReplicatedPartition.toString());
-      return Optional.of(reason);
     }
-  }
 
+    String reason = underReplicatedPartition.size() + " partitions under-replicated in EXTERNALVIEW";
+    logger.info(reason + " for resource '" + kafkaTopic + "': " + underReplicatedPartition.toString());
+    return Optional.of(reason);
+  }
 
   public abstract OfflinePushStrategy getStrategy();
 
