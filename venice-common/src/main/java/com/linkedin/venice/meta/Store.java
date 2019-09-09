@@ -206,6 +206,17 @@ public class Store {
    */
   private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
 
+  /**
+   * Whether or not value schema auto registration enabled from push job for this store.
+   */
+  private boolean schemaAutoRegisteFromPushJobEnabled = false;
+
+  /**
+   * Whether or not value schema auto registration enabled from Admin interface for this store.
+   */
+  private boolean schemaAutoRegisterFromAdminEnabled = false;
+
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -528,6 +539,22 @@ public class Store {
     backupStrategy = value;
   }
 
+  public boolean isSchemaAutoRegisterFromPushJobEnabled() {
+    return schemaAutoRegisteFromPushJobEnabled;
+  }
+
+  public void setSchemaAutoRegisterFromPushJobEnabled(boolean value) {
+    schemaAutoRegisteFromPushJobEnabled = value;
+  }
+
+  public boolean isSchemaAutoRegisterFromAdminEnabled() {
+    return schemaAutoRegisterFromAdminEnabled;
+  }
+
+  public void setSchemaAutoRegisterFromAdminEnabled(boolean value) {
+    schemaAutoRegisterFromAdminEnabled = value;
+  }
+
   /**
    * Add a version into store.
    *
@@ -752,6 +779,8 @@ public class Store {
     result = 31 * result + bootstrapToOnlineTimeoutInHours;
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
     result = 31 * result + backupStrategy.hashCode();
+    result = 31 * result + (schemaAutoRegisteFromPushJobEnabled ? 1 : 0);
+    result = 31 * result + (schemaAutoRegisterFromAdminEnabled ? 1 : 0);
     return result;
   }
 
@@ -792,6 +821,8 @@ public class Store {
     if (bootstrapToOnlineTimeoutInHours != store.bootstrapToOnlineTimeoutInHours) return false;
     if (leaderFollowerModelEnabled != store.leaderFollowerModelEnabled) return false;
     if (backupStrategy != store.backupStrategy) return false;
+    if (schemaAutoRegisteFromPushJobEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
+    if (schemaAutoRegisterFromAdminEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -832,6 +863,8 @@ public class Store {
     clonedStore.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
     clonedStore.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
     clonedStore.setBackupStrategy(backupStrategy);
+    clonedStore.setSchemaAutoRegisterFromPushJobEnabled(schemaAutoRegisteFromPushJobEnabled);
+    clonedStore.setSchemaAutoRegisterFromAdminEnabled(schemaAutoRegisterFromAdminEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

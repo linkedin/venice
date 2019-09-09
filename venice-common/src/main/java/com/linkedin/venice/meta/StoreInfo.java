@@ -43,6 +43,8 @@ public class StoreInfo {
     storeInfo.setBootstrapToOnlineTimeoutInHours(store.getBootstrapToOnlineTimeoutInHours());
     storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     storeInfo.setBackupStrategy(store.getBackupStrategy());
+    storeInfo.setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
+    storeInfo.setSchemaAutoRegisterFromAdminEnabled(store.isSchemaAutoRegisterFromAdminEnabled());
 
     return storeInfo;
   }
@@ -181,6 +183,17 @@ public class StoreInfo {
    * Strategies to store backup versions of a store.
    */
   private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
+
+
+  /**
+   * Whether or not value schema auto registration from Push job enabled for this store.
+   */
+  private boolean schemaAutoRegisterFromPushJobEnabled = false;
+
+  /**
+   * Whether or not value schema auto registration enabled from Nuage for this store.
+   */
+  private boolean schemaAutoRegisterFromAdminEnabled = false;
 
   public StoreInfo() {
   }
@@ -432,6 +445,22 @@ public class StoreInfo {
 
   public BackupStrategy getBackupStrategy() {
     return backupStrategy;
+  }
+
+  public boolean isSchemaAutoRegisterFromPushJobEnabled() {
+    return schemaAutoRegisterFromPushJobEnabled;
+  }
+
+  public void setSchemaAutoRegisterFromPushJobEnabled(boolean value) {
+    schemaAutoRegisterFromPushJobEnabled = value;
+  }
+
+  public boolean isSchemaAutoRegisterFromAdminEnabled() {
+    return schemaAutoRegisterFromAdminEnabled;
+  }
+
+  public void setSchemaAutoRegisterFromAdminEnabled(boolean value) {
+    schemaAutoRegisterFromAdminEnabled = value;
   }
 
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
