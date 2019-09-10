@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -50,6 +51,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -491,6 +493,48 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(valueSchemaCreationMessage.storeName.toString(), storeName);
     Assert.assertEquals(valueSchemaCreationMessage.schema.definition.toString(), valueSchemaStr);
     Assert.assertEquals(valueSchemaCreationMessage.schemaId, valueSchemaId);
+  }
+
+  @Test
+  public void testAddDerivedSchema() throws ExecutionException, InterruptedException {
+    parentAdmin.start(clusterName);
+
+    String storeName = "test-store";
+    String derivedSchemaStr = "\"string\"";
+    int valueSchemaId = 10;
+    int derivedSchemaId = 1;
+
+    doReturn(derivedSchemaId).when(internalAdmin)
+        .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
+    doReturn(new Pair<>(valueSchemaId, derivedSchemaId))
+        .when(internalAdmin).getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
+
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
+
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(any(), valueCaptor.capture(), schemaCaptor.capture());
+
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueCaptor.getValue(), schemaCaptor.getValue());
+
+    DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
+
+    Assert.assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
+    Assert.assertEquals(derivedSchemaCreation.storeName.toString(), storeName);
+    Assert.assertEquals(derivedSchemaCreation.schema.definition.toString(), derivedSchemaStr);
+    Assert.assertEquals(derivedSchemaCreation.valueSchemaId, valueSchemaId);
+    Assert.assertEquals(derivedSchemaCreation.derivedSchemaId, derivedSchemaId);
   }
 
   @Test
