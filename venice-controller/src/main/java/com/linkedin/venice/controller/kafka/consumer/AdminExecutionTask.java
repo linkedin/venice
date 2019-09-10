@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -29,6 +30,7 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Optional;
 import java.util.Queue;
@@ -184,6 +186,9 @@ public class AdminExecutionTask implements Callable<Void> {
       case ADD_VERSION:
         handleAddVersion((AddVersion) adminOperation.payloadUnion);
         break;
+      case DERIVED_SCHEMA_CREATION:
+        handleDerivedSchemaCreation((DerivedSchemaCreation) adminOperation.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
     }
@@ -217,6 +222,20 @@ public class AdminExecutionTask implements Callable<Void> {
 
     SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
     logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
+  }
+
+
+  private void handleDerivedSchemaCreation(DerivedSchemaCreation message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    String derivedSchemaStr = message.schema.definition.toString();
+    int valueSchemaId = message.valueSchemaId;
+    int derivedSchemaId = message.derivedSchemaId;
+
+    DerivedSchemaEntry derivedSchemaEntry =
+        admin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
+    logger.info(String.format("Added derived schema:\n %s\n to store: %s, value schema id: %d, derived schema id: %d",
+        derivedSchemaStr, valueSchemaId, derivedSchemaEntry));
   }
 
   private void handleDisableStoreWrite(PauseStore message) {
