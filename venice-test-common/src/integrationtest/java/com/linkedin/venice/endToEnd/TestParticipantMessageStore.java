@@ -120,9 +120,14 @@ public class TestParticipantMessageStore {
       if (participantMessageEnabled) {
         // Verify participant store consumption stats
         String metricPrefix = "." + venice.getClusterName() + "-participant_store_consumption_task";
+        String requestMetricExample = ParticipantMessageStoreUtils.getStoreNameForCluster(venice.getClusterName())
+            + "--success_request_key_count.Avg";
         Map<String, ? extends Metric> metrics = venice.getVeniceServers().iterator().next().getMetricsRepository().metrics();
         assertEquals(metrics.get(metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
         assertTrue(metrics.get(metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
+        // One from the server stats and the other from the client stats.
+        assertTrue(metrics.get("." + requestMetricExample).value() > 0);
+        assertTrue(metrics.get(".venice-client." + requestMetricExample).value() > 0);
       }
     } finally {
       controllerClient.close();

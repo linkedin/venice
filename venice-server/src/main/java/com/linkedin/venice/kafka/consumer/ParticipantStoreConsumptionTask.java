@@ -20,6 +20,8 @@ import org.apache.log4j.Logger;
 
 public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
 
+  private static final String CLIENT_STATS_PREFIX = "venice-client";
+
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final Logger logger = Logger.getLogger(ParticipantStoreConsumptionTask.class);
@@ -40,6 +42,7 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
     String participantStoreName = ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName);
     clientConfig.setStoreName(participantStoreName);
     clientConfig.setSpecificValueClass(ParticipantMessageValue.class);
+    clientConfig.setStatsPrefix(CLIENT_STATS_PREFIX);
     try {
       participantStoreClient = ClientFactory.getAndStartSpecificAvroClient(clientConfig);
     } catch (Exception e) {

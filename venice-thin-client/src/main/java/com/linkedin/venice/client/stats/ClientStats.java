@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.stats;
 
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializer;
 import com.linkedin.venice.client.store.deserialization.BatchDeserializerType;
 import com.linkedin.venice.read.RequestType;
@@ -45,7 +46,14 @@ public class ClientStats extends AbstractVeniceHttpStats {
   private final Sensor appTimedOutRequestSensor;
   private final Sensor appTimedOutRequestResultRatioSensor;
 
-  public ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
+  public static ClientStats getClientStats(MetricsRepository metricsRepository, String storeName,
+      RequestType requestType, ClientConfig clientConfig) {
+    String prefix = clientConfig == null ? null : clientConfig.getStatsPrefix();
+    String metricName = prefix == null || prefix.isEmpty() ?  storeName : prefix + "." + storeName;
+    return new ClientStats(metricsRepository, metricName, requestType);
+  }
+
+  private ClientStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
     super(metricsRepository, storeName, requestType);
 
     /**

@@ -21,6 +21,7 @@ public class ClientConfig<T extends SpecificRecord> {
   // Basic settings
   private String storeName;
   private String veniceURL;
+  private String statsPrefix;
   private Class<T> specificValueClass = null;
   private boolean isVsonClient = false;
 
@@ -131,6 +132,15 @@ public class ClientConfig<T extends SpecificRecord> {
     }
 
     this.veniceURL = veniceURL;
+    return this;
+  }
+
+  public String getStatsPrefix() {
+    return statsPrefix;
+  }
+
+  public ClientConfig<T> setStatsPrefix(String statsPrefix) {
+    this.statsPrefix = statsPrefix;
     return this;
   }
 
