@@ -790,6 +790,13 @@ public class ConfigKeys {
   public static final String ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE = "router.unhealthy.pending.connection.threshold.per.host";
 
   /**
+   * Enables HttpAsyncClient allocation per storage node.
+   */
+  public static final String ROUTER_PER_NODE_CLIENT_ENABLED = "router.per.node.client.enabled";
+
+  public static final String ROUTER_PER_NODE_CLIENT_THREAD_COUNT = "router.per.node.client.thread.count";
+
+  /**
    * In Leader/Follower state transition model, in order to avoid split brain problem (multiple leaders) as much as possible,
    * the newly promoted leader should keep checking whether there is any new messages from the old leader in the version
    * topic, and wait for some time (5 minutes by default) after the last message consumed before switching to leader role

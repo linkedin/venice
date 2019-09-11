@@ -79,6 +79,8 @@ public class VeniceRouterConfig {
   private int connectionTimeout;
   private boolean statefulRouterHealthCheckEnabled;
   private int routerUnhealthyPendingConnThresholdPerRoute;
+  private boolean perNodeClientAllocationEnabled;
+  private int perNodeClientThreadCount;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -178,7 +180,10 @@ public class VeniceRouterConfig {
     connectionTimeout = props.getInt(ROUTER_CONNECTION_TIMEOUT, 5000); // 5s
 
     statefulRouterHealthCheckEnabled = props.getBoolean(ROUTER_STATEFUL_HEALTHCHECK_ENABLED, false);
-    routerUnhealthyPendingConnThresholdPerRoute = props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 50);
+    routerUnhealthyPendingConnThresholdPerRoute = props.getInt(ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, 500);
+
+    perNodeClientAllocationEnabled = props.getBoolean(ROUTER_PER_NODE_CLIENT_ENABLED, false);
+    perNodeClientThreadCount = props.getInt(ROUTER_PER_NODE_CLIENT_THREAD_COUNT, 2);
   }
 
   public String getClusterName() {
@@ -411,6 +416,14 @@ public class VeniceRouterConfig {
 
   public int getRouterUnhealthyPendingConnThresholdPerRoute() {
     return routerUnhealthyPendingConnThresholdPerRoute;
+  }
+
+  public boolean isPerNodeClientAllocationEnabled() {
+    return perNodeClientAllocationEnabled;
+  }
+
+  public int getPerNodeClientThreadCount() {
+    return perNodeClientThreadCount;
   }
 
   /**
