@@ -143,7 +143,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
       participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(clusterName, this,
           new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
-          ClientConfig.cloneConfig(clientConfig.get()), serverConfig.getParticipantMessageConsumptionDelayMs());
+          ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
+          serverConfig.getParticipantMessageConsumptionDelayMs());
       ThreadFactory threadFactory = new DaemonThreadFactory(ParticipantStoreConsumptionTask.class.getSimpleName());
       participantStoreConsumptionTaskThread = threadFactory.newThread(participantStoreConsumptionTask);
     } else {

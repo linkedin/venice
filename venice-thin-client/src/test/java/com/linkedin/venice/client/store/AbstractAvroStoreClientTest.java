@@ -148,8 +148,9 @@ public class AbstractAvroStoreClientTest {
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats stats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE);
-    ClientStats streamingStats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING);
+    ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
+    ClientStats streamingStats = ClientStats.getClientStats(metricsRepository, storeName,
+        RequestType.COMPUTE_STREAMING, null);
     CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")
@@ -218,8 +219,9 @@ public class AbstractAvroStoreClientTest {
     SimpleStoreClient<String, GenericRecord> storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,
         false, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
     MetricsRepository metricsRepository = new MetricsRepository();
-    ClientStats stats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE);
-    ClientStats streamingStats = new ClientStats(metricsRepository, storeName, RequestType.COMPUTE_STREAMING);
+    ClientStats stats = ClientStats.getClientStats(metricsRepository, storeName, RequestType.COMPUTE, null);
+    ClientStats streamingStats = ClientStats.getClientStats(metricsRepository, storeName,
+        RequestType.COMPUTE_STREAMING, null);
     CompletableFuture<Map<String, GenericRecord>> computeFuture = storeClient.compute(Optional.of(stats), Optional.of(streamingStats), 0)
         .project("int_field")
         .dotProduct("float_array_field1", dotProductParam, "dot_product_for_float_array_field1")

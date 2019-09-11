@@ -55,13 +55,18 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     super(innerStoreClient);
     MetricsRepository metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
         .orElse(TehutiUtils.getMetricsRepository(STAT_VENICE_CLIENT_NAME));
-    this.singleGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.SINGLE_GET);
-    this.multiGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET);
-    this.multiGetStreamingStats = new ClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET_STREAMING);
-    this.schemaReaderStats =
-        new ClientStats(metricsRepository, getStoreName() + "_" + STAT_SCHEMA_READER, RequestType.SINGLE_GET);
-    this.computeStats = new ClientStats(metricsRepository, getStoreName(), RequestType.COMPUTE);
-    this.computeStreamingStats = new ClientStats(metricsRepository, getStoreName(), RequestType.COMPUTE_STREAMING);
+    this.singleGetStats = ClientStats.getClientStats(metricsRepository, getStoreName(),
+        RequestType.SINGLE_GET, clientConfig);
+    this.multiGetStats = ClientStats.getClientStats(metricsRepository, getStoreName(),
+        RequestType.MULTI_GET, clientConfig);
+    this.multiGetStreamingStats = ClientStats.getClientStats(metricsRepository, getStoreName(),
+        RequestType.MULTI_GET_STREAMING, clientConfig);
+    this.schemaReaderStats = ClientStats.getClientStats(metricsRepository, getStoreName() + "_" + STAT_SCHEMA_READER,
+        RequestType.SINGLE_GET, clientConfig);
+    this.computeStats = ClientStats.getClientStats(metricsRepository, getStoreName(),
+        RequestType.COMPUTE, clientConfig);
+    this.computeStreamingStats = ClientStats.getClientStats(metricsRepository, getStoreName(),
+        RequestType.COMPUTE_STREAMING, clientConfig);
   }
 
   @Override
