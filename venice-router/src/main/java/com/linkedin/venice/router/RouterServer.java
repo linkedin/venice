@@ -344,7 +344,7 @@ public class RouterServer extends AbstractVeniceService {
         break;
       case APACHE_HTTP_ASYNC_CLIENT:
         logger.info("Router will use Apache_Http_Async_Client");
-        storageNodeClient = new ApacheHttpAsyncStorageNodeClient(config, sslFactoryForRequests, metricsRepository);
+        storageNodeClient = new ApacheHttpAsyncStorageNodeClient(config, sslFactoryForRequests, metricsRepository, liveInstanceMonitor);
         break;
       default:
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");
