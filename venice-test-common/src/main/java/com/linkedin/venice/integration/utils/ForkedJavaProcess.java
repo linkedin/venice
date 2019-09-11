@@ -2,12 +2,12 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.utils.Time;
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,10 +35,7 @@ public final class ForkedJavaProcess extends Process {
 
   public static Process exec(Class klass, String... params) throws IOException, InterruptedException {
     // Argument preparation
-    String javaHome = System.getProperty("java.home");
-    String javaBin = javaHome +
-        File.separator + "bin" +
-        File.separator + "java";
+    String javaBin = Paths.get(System.getProperty("java.home"), "bin", "java").toAbsolutePath().toString();
     String classpath = System.getProperty("java.class.path");
     String className = klass.getCanonicalName();
     List<String> args = new ArrayList<>();

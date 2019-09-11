@@ -2266,7 +2266,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     // Time out, after waiting maxWaitTimeMs, there are not enough nodes assigned.
     pushMonitor.recordPushPreparationDuration(topic, TimeUnit.MILLISECONDS.toSeconds(maxWaitTimeMs));
-    throw new VeniceException("After waiting for " + maxWaitTimeMs + "ms, resource " + topic + " does not have enough nodes," +
+    throw new VeniceException("After waiting for " + maxWaitTimeMs + "ms, resource " + topic + " does not have enough nodes" +
         ", strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
   }
 

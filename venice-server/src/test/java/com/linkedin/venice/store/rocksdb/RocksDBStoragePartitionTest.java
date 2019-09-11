@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.TreeMap;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Options;
-import org.rocksdb.RocksDB;
 import org.rocksdb.Slice;
 import org.rocksdb.util.BytewiseComparator;
 import org.testng.Assert;
@@ -18,7 +17,7 @@ import org.testng.annotations.Test;
 
 
 public class RocksDBStoragePartitionTest {
-  private static final String DATA_BASE_DIR = "/tmp/data";
+  private static final String DATA_BASE_DIR = TestUtils.getUniqueTempPath();
   private static final String keyPrefix = "key_";
   private static final String valuePrefix = "value_";
 
@@ -41,13 +40,12 @@ public class RocksDBStoragePartitionTest {
   }
 
   private String getTempDatabaseDir(String storeName) {
-    String storePath = DATA_BASE_DIR + "/" + storeName;
-    File storeDir = new File(storePath);
+    File storeDir = new File(DATA_BASE_DIR, storeName).getAbsoluteFile();
     if (!storeDir.mkdirs()) {
-      throw new VeniceException("Failed to mkdirs for path: " + storePath);
+      throw new VeniceException("Failed to mkdirs for path: " + storeDir.getPath());
     }
     storeDir.deleteOnExit();
-    return storePath;
+    return storeDir.getPath();
   }
 
   private void removeDir(String path) {

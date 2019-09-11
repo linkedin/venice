@@ -1,10 +1,12 @@
 package com.linkedin.venice.config;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.queues.FairBlockingQueue;
+import java.nio.file.Paths;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -156,7 +158,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
-    dataBasePath = serverProperties.getString(DATA_BASE_PATH);
+    dataBasePath = serverProperties.getString(DATA_BASE_PATH,
+        Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
     autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     bdbServerConfig = new BdbServerConfig(serverProperties);
     rocksDBServerConfig = new RocksDBServerConfig(serverProperties);

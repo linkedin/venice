@@ -29,7 +29,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public static VeniceProperties getServerProperties(PersistenceType persistenceType, long flushIntervalMs) {
-    String databasePath = "/tmp/data/" + TestUtils.getUniqueString("unittest");
+    String databasePath = TestUtils.getUniqueTempPath();
     File dataBaseDir = new File(databasePath);
     dataBaseDir.deleteOnExit();
     return new PropertyBuilder()
