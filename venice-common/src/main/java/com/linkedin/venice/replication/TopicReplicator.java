@@ -102,7 +102,7 @@ public abstract class TopicReplicator {
     LOGGER.info("Successfully started topic replication from: " + sourceTopic + " to " + destinationTopic);
   }
 
-  public void terminateReplication(String sourceTopic, String destinationTopic){
+  public void terminateReplication(String sourceTopic, String destinationTopic) {
     terminateReplicationInternal(sourceTopic, destinationTopic);
   }
 

@@ -19,6 +19,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -54,6 +55,14 @@ public class TestUtils {
      * so it's better not to use dash in the store name.
      */
     return base + "-" + System.nanoTime() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
+  }
+
+  public static String getUniqueTempPath() {
+    return getUniqueTempPath("");
+  }
+
+  public static String getUniqueTempPath(String prefix) {
+    return Paths.get(System.getProperty("java.io.tmpdir"), TestUtils.getUniqueString(prefix)).toAbsolutePath().toString();
   }
 
   /**

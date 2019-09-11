@@ -11,7 +11,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
-import java.io.File;
+import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -66,7 +66,7 @@ public class VeniceClusterConfig {
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
     offsetManagerType = clusterProps.getString(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString()); // Default "bdb"
     offsetDatabasePath = clusterProps.getString(OFFSET_DATA_BASE_PATH,
-        System.getProperty("java.io.tmpdir") + File.separator + BdbStorageMetadataService.OFFSETS_STORE_NAME);
+        Paths.get(System.getProperty("java.io.tmpdir"), BdbStorageMetadataService.OFFSETS_STORE_NAME).toAbsolutePath().toString());
     offsetManagerLogFileMaxBytes = clusterProps.getInt(OFFSET_MANAGER_LOG_FILE_MAX_BYTES, 10 * 1024 * 1024); // 10 MB
     offsetManagerFlushIntervalMs = clusterProps.getLong(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
     offsetDatabaseCacheSize = clusterProps.getSizeInBytes(OFFSET_DATABASE_CACHE_SIZE, 50 * 1024 * 1024); // 50 MB

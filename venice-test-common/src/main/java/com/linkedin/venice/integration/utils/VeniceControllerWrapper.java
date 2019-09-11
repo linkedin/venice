@@ -89,7 +89,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
             .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
-            .put(OFFLINE_JOB_START_TIMEOUT_MS, 10000)
+            .put(OFFLINE_JOB_START_TIMEOUT_MS, 60 * 1000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
             .put(PERSISTENCE_TYPE, PersistenceType.BDB)
@@ -98,6 +98,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false)
             // The first cluster will always be the one to host system schemas...
             .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
+
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
           builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());

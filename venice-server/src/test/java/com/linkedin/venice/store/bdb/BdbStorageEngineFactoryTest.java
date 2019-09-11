@@ -101,13 +101,13 @@ public class BdbStorageEngineFactoryTest {
 
     environmentConfig1.setReadOnly(true);
     environmentConfig1.setAllowCreate(true);
-    File env1dir = new File("/tmp/" + TestUtils.getUniqueString("bdb-path"));
+    File env1dir = new File(TestUtils.getUniqueTempPath());
     env1dir.deleteOnExit();
     env1dir.mkdir();
     Environment environment1 = new Environment(env1dir, environmentConfig1);
 
     environmentConfig1.setReadOnly(false);
-    File env2dir = new File("/tmp/" + TestUtils.getUniqueString("bdb-path"));
+    File env2dir = new File(TestUtils.getUniqueTempPath());
     env2dir.mkdir();
     env2dir.deleteOnExit();
     Environment environment2 = new Environment(env2dir, environmentConfig1);
@@ -117,5 +117,4 @@ public class BdbStorageEngineFactoryTest {
     Assert.assertNotEquals(environment1.getConfig().getReadOnly(), environment2.getConfig().getReadOnly(),
         "Post-clone mutations should not leak across instances if cloning is implemented correctly.");
   }
-
 }
