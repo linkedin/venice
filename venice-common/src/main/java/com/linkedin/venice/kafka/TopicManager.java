@@ -79,6 +79,7 @@ public class TopicManager implements Closeable {
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
   protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
+  private static final int KAFKA_POLLING_RETRY_ATTEMPT = 3;
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics
    * if the messages are produced within 24 hours; otherwise servers could encounter MISSING
@@ -695,16 +696,34 @@ public class TopicManager implements Closeable {
     try {
       consumer.assign(Arrays.asList(topicPartition));
       consumer.seek(topicPartition, latestOffset - 1);
-      ConsumerRecords records = consumer.poll(1000L);
+      ConsumerRecords records = ConsumerRecords.EMPTY;
+      /**
+       * We should retry to get the last record from that topic/partition, never return 0L here because 0L offset
+       * will result in replaying all the messages in real-time buffer. This function is mainly used during buffer
+       * replay for hybrid stores.
+       */
+      int attempts = 0;
+      while (attempts++ < KAFKA_POLLING_RETRY_ATTEMPT && records.isEmpty()) {
+        logger.info("Trying to get the last record from topic: " + topicPartition.toString() + " at offset: " + (latestOffset - 1)
+            + ". Attempt#" + attempts + "/" + KAFKA_POLLING_RETRY_ATTEMPT);
+        records = consumer.poll(kafkaOperationTimeoutMs);
+      }
       if (records.isEmpty()) {
-        return LOWEST_OFFSET;
+        /**
+         * Failed the job if we cannot get the last offset of the topic.
+         */
+        String errorMsg = "Failed to get the last record from topic: " + topicPartition.toString() +
+            " after " + KAFKA_POLLING_RETRY_ATTEMPT + " attempts";
+        logger.error(errorMsg);
+        throw new VeniceException(errorMsg);
       }
+
+      // Get the latest record from the poll result
       ConsumerRecord record = (ConsumerRecord) records.iterator().next();
-      if (timestamp > record.timestamp()) {
-        return latestOffset;
-      } else {
-        return LOWEST_OFFSET;
-      }
+      long resultOffset = (timestamp > record.timestamp()) ? latestOffset : LOWEST_OFFSET;
+      logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString()
+          + " for timestamp: " + timestamp);
+      return resultOffset;
     } finally {
       consumer.assign(Arrays.asList());
     }
