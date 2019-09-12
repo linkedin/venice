@@ -1015,7 +1015,7 @@ public class TestVeniceParentHelixAdmin {
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isChunkingEnabled());
     // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS * 2, TimeUnit.MILLISECONDS, () -> {
       StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
       Assert.assertTrue(childStoreResponse.getStore().isChunkingEnabled());
     });
