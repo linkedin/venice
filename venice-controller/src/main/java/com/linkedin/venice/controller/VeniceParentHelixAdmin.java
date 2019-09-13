@@ -253,31 +253,33 @@ public class VeniceParentHelixAdmin implements Admin {
   private void asyncSetupForInternalRTStore(String clusterName, String storeName, String storeDescriptor,
       String keySchema, String valueSchema, int partitionCount) {
     CompletableFuture.runAsync(() -> {
-      int retryCount = 0;
-      boolean isStoreReady = false;
-      while (!isStoreReady && asyncSetupEnabledMap.get(clusterName) && retryCount < MAX_ASYNC_SETUP_RETRY_COUNT) {
-        try {
-          if (retryCount > 0) {
-            timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
+      if (isMasterController(clusterName)) {
+        int retryCount = 0;
+        boolean isStoreReady = false;
+        while (!isStoreReady && asyncSetupEnabledMap.get(clusterName) && retryCount < MAX_ASYNC_SETUP_RETRY_COUNT) {
+          try {
+            if (retryCount > 0) {
+              timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
+            }
+            isStoreReady = verifyAndCreateInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
+                partitionCount);
+          } catch (VeniceException e) {
+            logger.info("VeniceException occurred during " + storeDescriptor + " setup with store " + storeName + " in cluster "
+                + clusterName, e);
+          } catch (Exception e) {
+            logger.warn(
+                "Exception occurred aborting " + storeDescriptor + " setup with store " + storeName + " in cluster " + clusterName, e);
+            break;
+          } finally {
+            retryCount++;
+            logger.info("Async " + storeDescriptor + " setup attempts: " + retryCount + "/" + MAX_ASYNC_SETUP_RETRY_COUNT);
           }
-          isStoreReady = verifyAndCreateInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
-              partitionCount);
-        } catch (VeniceException e) {
-          logger.info("VeniceException occurred during " + storeDescriptor + " setup with store "
-              + storeName + " in cluster " + clusterName, e);
-        } catch (Exception e) {
-          logger.warn("Exception occurred aborting " + storeDescriptor + " setup with store "
-              + storeName + " in cluster " + clusterName, e);
-          break;
-        } finally {
-          retryCount++;
-          logger.info("Async " + storeDescriptor + " setup attempts: " + retryCount + "/" + MAX_ASYNC_SETUP_RETRY_COUNT);
         }
-      }
-      if (isStoreReady) {
-        logger.info(storeDescriptor + " has been successfully created or it already exists");
-      } else {
-        logger.error("Unable to create or find the " + storeDescriptor);
+        if (isStoreReady) {
+          logger.info(storeDescriptor + " has been successfully created or it already exists");
+        } else {
+          logger.error("Unable to create or find the " + storeDescriptor);
+        }
       }
     });
   }
@@ -291,10 +293,11 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   private boolean verifyAndCreateInternalStore(String clusterName, String storeName, String storeDescriptor,
       String keySchema, String valueSchema, int partitionCount) {
-    Store store = getStore(clusterName, storeName);
     boolean storeReady = false;
     UpdateStoreQueryParams updateStoreQueryParams;
     if (isMasterController(clusterName)) {
+      // We should only perform the store validation if the current controller is the master controller of the requested cluster.
+      Store store = getStore(clusterName, storeName);
       if (store == null) {
         addStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema);
         store = getStore(clusterName, storeName);
@@ -333,10 +336,6 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Unexpected real time topic name for the " + storeDescriptor);
       }
       storeReady = true;
-    } else {
-      if (store != null && store.isHybrid() && !store.getVersions().isEmpty()) {
-        storeReady = true;
-      }
     }
     return storeReady;
   }
