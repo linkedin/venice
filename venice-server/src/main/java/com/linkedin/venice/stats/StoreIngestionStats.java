@@ -18,6 +18,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   private final Sensor bytesConsumedSensor;
   private final Sensor recordsConsumedSensor;
+  private final Sensor storageQuotaUsedSensor;
 
   private final Sensor pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
@@ -30,6 +31,11 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor inconsistentStoreMetadataSensor;
 
   private final Sensor ingestionFailureSensor;
+
+  /**
+   * A gauge reporting the total the percentage of hybrid quota used.
+   */
+  private double hybridQuotaUsageGauge;
 
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
@@ -59,7 +65,11 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     unexpectedMessageSensor = registerSensor("unexpected_message", new Rate());
     inconsistentStoreMetadataSensor = registerSensor("inconsistent_store_metadata", new Count());
 
+
     ingestionFailureSensor = registerSensor("ingestion_failure", new Count());
+    storageQuotaUsedSensor = registerSensor("storage_quota_used",
+                                            new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
+
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -84,6 +94,11 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordRecordsConsumed(int count) {
     recordsConsumedSensor.record(count);
+  }
+
+  public void recordStorageQuotaUsed(double quotaUsed) {
+    hybridQuotaUsageGauge = quotaUsed;
+    storageQuotaUsedSensor.record(quotaUsed);
   }
 
   public void recordPollRequestLatency(double latency) {

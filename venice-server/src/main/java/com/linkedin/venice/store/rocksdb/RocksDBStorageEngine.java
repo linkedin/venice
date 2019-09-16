@@ -6,8 +6,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
-import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
-import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import java.io.File;
 import java.util.HashSet;
 import java.util.Set;

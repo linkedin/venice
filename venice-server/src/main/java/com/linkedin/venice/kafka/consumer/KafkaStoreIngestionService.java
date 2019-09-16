@@ -169,6 +169,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setBandwidthThrottler(consumptionBandwidthThrottler)
         .setRecordsThrottler(consumptionRecordsCountThrottler)
         .setSchemaRepository(schemaRepo)
+        .setMetadataRepository(metadataRepo)
         .setTopicManager(topicManager)
         .setStoreIngestionStats(ingestionStats)
         .setVersionedDIVStats(versionedDIVStats)

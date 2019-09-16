@@ -1,14 +1,11 @@
 package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
-import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
-import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 
 import java.util.HashSet;
 import java.util.Set;

@@ -429,4 +429,9 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       throw new VeniceException("Failed to reinitialize BDB database " + getBdbDatabaseName() + " after truncation.", e);
     }
   }
+
+  @Override
+  public long getPartitionSizeInBytes() {
+    throw new UnsupportedOperationException("Operation Not Supported");
+  }
 }

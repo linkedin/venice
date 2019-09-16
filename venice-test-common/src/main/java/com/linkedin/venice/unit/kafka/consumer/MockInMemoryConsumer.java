@@ -6,10 +6,10 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -110,5 +110,20 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
 
   public Map<TopicPartition, Long> getOffsets() {
     return offsets;
+  }
+
+  @Override
+  public void pause(String topic, int partition) {
+    delegate.pause(topic, partition);
+  }
+
+  @Override
+  public void resume(String topic, int partition) {
+    delegate.resume(topic, partition);
+  }
+
+  @Override
+  public Set<TopicPartition> paused() {
+    return delegate.paused();
   }
 }

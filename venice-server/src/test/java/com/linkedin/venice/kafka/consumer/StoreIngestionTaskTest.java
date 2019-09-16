@@ -16,6 +16,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
@@ -84,7 +85,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
-
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -136,6 +136,7 @@ public class StoreIngestionTaskTest {
   private EventThrottler mockBandwidthThrottler;
   private EventThrottler mockRecordsThrottler;
   private ReadOnlySchemaRepository mockSchemaRepo;
+  private ReadOnlyStoreRepository mockMetadataRepo;
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
   private TopicManager mockTopicManager;
@@ -222,6 +223,7 @@ public class StoreIngestionTaskTest {
     mockBandwidthThrottler = mock(EventThrottler.class);
     mockRecordsThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
+    mockMetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
     mockTopicManager = mock(TopicManager.class);
     mockStoreIngestionStats = mock(AggStoreIngestionStats.class);
@@ -338,9 +340,11 @@ public class StoreIngestionTaskTest {
     doReturn(databaseSyncBytesIntervalForDeferredWriteMode).when(storeConfig).getDatabaseSyncBytesIntervalForDeferredWriteMode();
     doReturn(false).when(storeConfig).isReadOnlyForBatchOnlyStoreEnabled();
 
+
     VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
     doReturn(500l).when(serverConfig).getServerPromotionToLeaderReplicaDelayMs();
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(serverConfig).getKafkaBootstrapServers();
+    doReturn(false).when(serverConfig).isHybridQuotaEnabled();
 
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
@@ -351,6 +355,7 @@ public class StoreIngestionTaskTest {
         .setBandwidthThrottler(mockBandwidthThrottler)
         .setRecordsThrottler(mockRecordsThrottler)
         .setSchemaRepository(mockSchemaRepo)
+        .setMetadataRepository(mockMetadataRepo)
         .setTopicManager(mockTopicManager)
         .setStoreIngestionStats(mockStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
@@ -1274,7 +1279,7 @@ public class StoreIngestionTaskTest {
   }
 
   @Test(dataProvider = "isLeaderFollowerModelEnabled")
-    public void testIncrementalPush(boolean isLeaderFollowerModelEnabled) throws Exception {
+  public void testIncrementalPush(boolean isLeaderFollowerModelEnabled) throws Exception {
     veniceWriter.broadcastStartOfPush(true, new HashMap<>());
     long fooOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());

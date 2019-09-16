@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Map;
@@ -294,4 +293,9 @@ public abstract class AbstractStorageEngine implements Store {
   }
 
   public abstract long getStoreSizeInBytes();
+
+  public long getPartitionSizeInBytes(int partitionId) {
+    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(partitionId);
+    return partition.getPartitionSizeInBytes();
+  }
 }

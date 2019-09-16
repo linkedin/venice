@@ -73,4 +73,10 @@ public abstract class AbstractStoragePartition {
   public void beginBatchWrite(Map<String, String> checkpointedInfo) {}
 
   public void endBatchWrite() {}
+
+  /**
+   * Get the partition database size in bytes
+   * @return partition database size
+   */
+  public abstract long getPartitionSizeInBytes();
 }

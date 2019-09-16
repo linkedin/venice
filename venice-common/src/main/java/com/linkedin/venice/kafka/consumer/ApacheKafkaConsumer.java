@@ -8,6 +8,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -156,6 +157,29 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   public boolean hasSubscription(String topic, int partition) {
     TopicPartition tp = new TopicPartition(topic, partition);
     return kafkaConsumer.assignment().contains(tp);
+  }
+
+  @Override
+  public void pause(String topic, int partition) {
+    TopicPartition tp = new TopicPartition(topic, partition);
+    if (kafkaConsumer.assignment().contains(tp)) {
+      kafkaConsumer.pause(Arrays.asList(tp));
+    }
+  }
+
+  /**
+   * If the partitions were not previously paused, this method is a no-op.
+   */
+  @Override
+  public void resume(String topic, int partition) {
+    TopicPartition tp = new TopicPartition(topic, partition);
+    kafkaConsumer.resume(Arrays.asList(tp));
+  }
+
+
+  @Override
+  public Set<TopicPartition> paused() {
+    return kafkaConsumer.paused();
   }
 
   @Override

@@ -95,4 +95,9 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     // no need to do any special check
     return true;
   }
+
+  @Override
+  public long getPartitionSizeInBytes() {
+    throw new UnsupportedOperationException("Operation Not Supported");
+  }
 }

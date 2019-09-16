@@ -7,6 +7,8 @@ public enum ConsumerActionType {
   SUBSCRIBE(1),
   UNSUBSCRIBE(1),
   RESET_OFFSET(1),
+  PAUSE(1),
+  RESUME(1),
   /**
    * KILL action has higher priority than others, so that once KILL action is added to the action queue,
    * we will process it immediately to avoid doing throw-away works.

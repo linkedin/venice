@@ -20,6 +20,10 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordRecordsConsumed(count);
   }
 
+  public void recordStorageQuotaUsed(String storeName, double quota) {
+    getStoreStats(storeName).recordStorageQuotaUsed(quota);
+  }
+
   public void recordPollRequestLatency(String storeName, double latency) {
     totalStats.recordPollRequestLatency(latency);
     getStoreStats(storeName).recordPollRequestLatency(latency);

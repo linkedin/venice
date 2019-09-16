@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.FlushOptions;
@@ -412,4 +413,20 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     return deferredWrite == storagePartitionConfig.isDeferredWrite() && readOnly == storagePartitionConfig.isReadOnly();
   }
 
+  /**
+   * This method calculates the file size by adding all subdirectories size
+   * @return the partition db size in bytes
+   */
+  @Override
+  public long getPartitionSizeInBytes() {
+    File partitionDbDir = new File(fullPathForPartitionDB);
+    if (partitionDbDir.exists()) {
+      /**
+       * {@link FileUtils#sizeOf(File)} will throw {@link IllegalArgumentException} if the file/dir doesn't exist.
+       */
+      return FileUtils.sizeOf(partitionDbDir);
+    } else {
+      return 0;
+    }
+  }
 }

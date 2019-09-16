@@ -7,11 +7,7 @@ import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
-import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
-import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.sleepycat.je.Environment;
-import com.sleepycat.je.EnvironmentConfig;
-import com.sleepycat.je.EnvironmentMutableConfig;
 
 import java.util.HashSet;
 import java.util.List;
