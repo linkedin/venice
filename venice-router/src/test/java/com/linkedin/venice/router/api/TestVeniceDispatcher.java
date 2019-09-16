@@ -9,6 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -41,7 +42,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.client.methods.HttpGet;
 import org.testng.Assert;
@@ -116,7 +116,7 @@ public class TestVeniceDispatcher {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
     VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
-
+    LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
     StorageNodeClient storageNodeClient;
     if (useNettyClient) {
       MultithreadEventLoopGroup workerEventLoopGroup;
@@ -134,7 +134,7 @@ public class TestVeniceDispatcher {
       storageNodeClient = new NettyStorageNodeClient(routerConfig, Optional.empty(),
           mockRouterStats, workerEventLoopGroup, channelClass);
     } else {
-      storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo);
+      storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
     }
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo, Optional.empty(),
         mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats);
