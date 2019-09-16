@@ -84,7 +84,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
           .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
-          .put(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 10)
+          .put(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100)
           .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(PERSISTENCE_TYPE, BDB)
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)

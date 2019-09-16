@@ -86,7 +86,7 @@ import static org.mockito.Mockito.eq;
 
 
 public class TestVeniceParentHelixAdmin {
-  private static final int TIMEOUT_IN_MS = 40 * Time.MS_PER_SECOND;
+  private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
