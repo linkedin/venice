@@ -4,7 +4,11 @@ import org.codehaus.jackson.annotate.JsonIgnore;
 
 public class SchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private int id;
-  private int derivedSchemaId;
+  /**
+   * An uninitialized primitive defaults to 0, which could cause the Venice Samza System producer starts sending
+   * Venice UPDATE messages instead of PUT messages.
+   */
+  private int derivedSchemaId = -1;
   private String schemaStr;
 
   public int getId() {
