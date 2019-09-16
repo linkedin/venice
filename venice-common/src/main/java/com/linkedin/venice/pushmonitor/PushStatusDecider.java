@@ -137,7 +137,8 @@ public abstract class PushStatusDecider {
 
     PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
     if (partitionAssignment.isMissingAssignedPartitions()) {
-      String reason = "not enough partitions in EXTERNALVIEW";
+      String reason = "not enough partitions in EXTERNALVIEW " +
+          partitionAssignment.getAssignedNumberOfPartitions() + "/" + partitionAssignment.getExpectedNumberOfPartitions();
       logger.info("There are " + reason + " assigned to resource: " + kafkaTopic);
       return Optional.of(reason);
     }

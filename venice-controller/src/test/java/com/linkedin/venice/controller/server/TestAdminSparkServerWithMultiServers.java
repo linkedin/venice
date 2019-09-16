@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -31,31 +32,31 @@ import org.testng.annotations.Test;
  * resource with bunch of partitions.
  * TODO: Since {@link TestAdminSparkServer} has adapted to have multi-servers. It's better to merge test cases.
  */
-@Test(singleThreaded = true)
+@Test
 public class TestAdminSparkServerWithMultiServers {
-  private static final int TIME_OUT = 20 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 20 * Time.MS_PER_SECOND;
+  private static final int STORAGE_NODE_COUNT = 3;
 
-  private VeniceClusterWrapper venice;
+  private VeniceClusterWrapper cluster;
   private ControllerClient controllerClient;
-  private final int numberOfServer = 3;
 
-  @BeforeClass(alwaysRun = true)
+  @BeforeClass
   public void setUp() {
-    venice = ServiceFactory.getVeniceCluster(1, numberOfServer, 1);
-    controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+    cluster = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 0);
+    controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
   }
 
-  @AfterClass(alwaysRun = true)
+  @AfterClass
   public void tearDown() {
-    controllerClient.close();
-    venice.close();
+    IOUtils.closeQuietly(controllerClient);
+    IOUtils.closeQuietly(cluster);
   }
 
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
-      storeNames.add(venice.getNewStore(TestUtils.getUniqueString("venice-store")).getName());
+      storeNames.add(cluster.getNewStore(TestUtils.getUniqueString("venice-store")).getName());
     }
 
     MultiStoreResponse storeResponse = controllerClient.queryStoreList();
@@ -66,8 +67,7 @@ public class TestAdminSparkServerWithMultiServers {
     }
   }
 
-
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = TEST_TIMEOUT)
   public void requestTopicIsIdempotent() {
     HashMap<String, ControllerApiConstants.PushType> storeToType = new HashMap<>(2);
     storeToType.put(TestUtils.getUniqueString("BatchStore"), ControllerApiConstants.PushType.BATCH);
@@ -78,7 +78,7 @@ public class TestAdminSparkServerWithMultiServers {
     String pushThree = TestUtils.getUniqueString("pushId");
 
     for (String storeName : storeToType.keySet()) {
-      venice.getNewStore(storeName);
+      cluster.getNewStore(storeName);
 
       // Stream
       if (storeToType.get(storeName).equals(ControllerApiConstants.PushType.STREAM)) {
@@ -110,12 +110,11 @@ public class TestAdminSparkServerWithMultiServers {
   /**
    * Multiple requests for a topic to write to for the same store.  Each request must provide the same version number
    * After the attempt, the version is made current so the next attempt generates a new version.
-   * @throws InterruptedException
    */
-  @Test(timeOut = TIME_OUT)
-  public void requestTopicIsIdempotentWithConcurrency() throws InterruptedException {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void requestTopicIsIdempotentWithConcurrency() {
     String storeName = TestUtils.getUniqueString("store");
-    venice.getNewStore(storeName);
+    cluster.getNewStore(storeName);
     AtomicReference<String> errString = new AtomicReference<>();
     try {
       for (int i = 0; i < 5; i++) { // number of attempts
@@ -149,7 +148,7 @@ public class TestAdminSparkServerWithMultiServers {
         }
 
       }
-    } catch (Exception e){
+    } catch (Exception e) {
       e.printStackTrace();
       System.err.println("Captured message: " + errString.get());
     }
@@ -173,11 +172,11 @@ public class TestAdminSparkServerWithMultiServers {
     });
   }
 
-  @Test(timeOut = TIME_OUT)
-  public void endOfPushEndpointTriggersVersionSwap(){
+  @Test(timeOut = TEST_TIMEOUT)
+  public void endOfPushEndpointTriggersVersionSwap() {
     String storeName = TestUtils.getUniqueString("store");
     String pushId = TestUtils.getUniqueString("pushId");
-    venice.getNewStore(storeName);
+    cluster.getNewStore(storeName);
     StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();
     VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId,
@@ -185,26 +184,26 @@ public class TestAdminSparkServerWithMultiServers {
     int newVersion = versionResponse.getVersion();
     Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
     controllerClient.writeEndOfPush(storeName, newVersion);
-    TestUtils.waitForNonDeterministicAssertion(TIME_OUT, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.SECONDS, () -> {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), newVersion, "Writing end of push must flip the version to current");
     });
   }
 
-  @Test(timeOut = TIME_OUT)
+  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanRemoveNodeFromCluster() {
-    Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
-    VeniceServerWrapper server = venice.getVeniceServers().get(0);
+    Admin admin = cluster.getMasterVeniceController().getVeniceAdmin();
+    VeniceServerWrapper server = cluster.getVeniceServers().get(0);
     String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
     // Trying to remove a live node.
     ControllerResponse response = controllerClient.removeNodeFromCluster(nodeId);
     Assert.assertTrue(response.isError(), "Node is still connected to cluster, could not be removed.");
 
     // Remove a disconnected node.
-    venice.stopVeniceServer(server.getPort());
+    cluster.stopVeniceServer(server.getPort());
     response = controllerClient.removeNodeFromCluster(nodeId);
     Assert.assertFalse(response.isError(), "Node is already disconnected, could be removed.");
-    Assert.assertFalse(admin.getStorageNodes(venice.getClusterName()).contains(nodeId),
+    Assert.assertFalse(admin.getStorageNodes(cluster.getClusterName()).contains(nodeId),
         "Node should be removed from the cluster.");
   }
 }
