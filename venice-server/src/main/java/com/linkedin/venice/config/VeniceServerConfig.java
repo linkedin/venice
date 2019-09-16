@@ -1,7 +1,6 @@
 package com.linkedin.venice.config;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -150,6 +149,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long participantMessageConsumptionDelayMs;
 
   /**
+   * Feature flag for hybrid quota, default false
+   */
+  private final boolean hybridQuotaEnabled;
+
+  /**
    * When a server replica is promoted to leader from standby, it wait for some time after the last message consumed
    * before it switches to the leader role.
    */
@@ -206,6 +210,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     computeFastAvroEnabled = serverProperties.getBoolean(SERVER_COMPUTE_FAST_AVRO_ENABLED, false);
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));  // 5 minutes by default
+    hybridQuotaEnabled = serverProperties.getBoolean(HYBRID_QUOTA_ENFORCEMENT_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -362,4 +367,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   public long getServerPromotionToLeaderReplicaDelayMs() {
     return serverPromotionToLeaderReplicaDelayMs;
   }
+
+  public boolean isHybridQuotaEnabled() { return hybridQuotaEnabled; }
 }

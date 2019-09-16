@@ -32,7 +32,9 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -56,6 +58,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
@@ -72,7 +75,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -114,6 +116,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final String storeNameWithoutVersionInfo;
   protected final int storeVersion;
   protected final ReadOnlySchemaRepository schemaRepo;
+  protected final ReadOnlyStoreRepository metadataRepo;
   protected final String consumerTaskId;
   protected final Properties kafkaProps;
   protected final VeniceConsumerFactory factory;
@@ -181,6 +184,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   //It's for stats measuring purpose
   protected boolean recordsPolled = true;
 
+  /** this is used to handle hybrid write quota */
+  protected Optional<HybridStoreQuotaEnforcement> hybridQuotaEnforcer;
+  protected Optional<Map<Integer, Integer>> subscribedPartitionToSize;
+
   /**
    * Track all the topics with Kafka log-compaction enabled.
    * The expectation is that the compaction strategy is immutable once Kafka log compaction is enabled.
@@ -198,6 +205,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                             EventThrottler bandwidthThrottler,
                             EventThrottler recordsThrottler,
                             ReadOnlySchemaRepository schemaRepo,
+                            ReadOnlyStoreRepository metadataRepo,
                             TopicManager topicManager,
                             AggStoreIngestionStats storeIngestionStats,
                             AggVersionedDIVStats versionedDIVStats,
@@ -222,6 +230,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.recordsThrottler = recordsThrottler;
     this.topic = storeConfig.getStoreName();
     this.schemaRepo = schemaRepo;
+    this.metadataRepo = metadataRepo;
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
     this.storeVersion = Version.parseVersionFromKafkaTopicName(topic);
     this.schemaIdSet = new HashSet<>();
@@ -262,6 +271,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.defaultReadyToServeChecker = getDefaultReadyToServeChecker();
 
     this.ingestionTaskWriteComputeAdapter = new IngestionTaskWriteComputeAdapter(storeNameWithoutVersionInfo, schemaRepo);
+
+    this.hybridQuotaEnforcer = Optional.empty();
+
+    this.subscribedPartitionToSize = Optional.empty();
+
+    if (serverConfig.isHybridQuotaEnabled()) {
+      /**
+       * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
+       */
+      AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+      if (isHybridMode() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
+        this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(this,
+                                                                    storageEngine,
+                                                                    metadataRepo.getStore(storeNameWithoutVersionInfo),
+                                                                    topic,
+                                                                    topicManager.getPartitions(topic).size()));
+        this.metadataRepo.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
+        this.subscribedPartitionToSize = Optional.of(new HashMap<>());
+      }
+    }
   }
 
   protected void validateState() {
@@ -379,7 +408,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
 
     if (partitionConsumptionState.isComplete()) {
-      //Since we know the EOP has been received, regular batch store is read to go!
+      //Since we know the EOP has been received, regular batch store is ready to go!
       return true;
     }
 
@@ -463,6 +492,16 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         recordsPolled = true;
       }
+
+      /**
+       * Enforces hybrid quota on this batch poll if this is hybrid store and persistence type is rocksDB
+       * Even if the records list is empty, we still need to check quota to potentially resume partition
+       */
+      if(hybridQuotaEnforcer.isPresent()) {
+        refillPartitionToSizeMap(records);
+        hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
+      }
+
       long totalRecordSize = 0;
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
         /**
@@ -504,9 +543,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (emitMetrics.get()) {
         storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
       }
-    } else {
-      idleCounter ++;
-      if(idleCounter > MAX_IDLE_COUNTER) {
+    } else { // the case that consumer doesn't have subscriptions
+      idleCounter++;
+      if (idleCounter > MAX_IDLE_COUNTER) {
         logger.warn(consumerTaskId + " No Partitions are subscribed to for store attempts expired after " + idleCounter);
         complete();
       } else {
@@ -1559,7 +1598,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     schemaIdSet.add(schemaId);
   }
 
-
   private synchronized void complete() {
     if (consumerActionsQueue.isEmpty()) {
       close();
@@ -1619,6 +1657,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   public boolean isPartitionConsuming(int partitionId) {
     return partitionConsumptionStateMap.containsKey(partitionId);
+  }
+
+  /**
+   * Refill subscribedPartitionToSize map with the batch records size for each subscribed partition
+   * Even when @param records are empty, we should still call this method. As stalled partitions
+   * won't appear in @param records but the disk might have more space available for them now and
+   * these partitions need to be resumed.
+   * @param records
+   */
+  private void refillPartitionToSizeMap(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
+    subscribedPartitionToSize.get().clear();
+    for (int partition : partitionConsumptionStateMap.keySet()) {
+      subscribedPartitionToSize.get().put(partition, 0);
+    }
+    if (records != null) {
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+        int partition = record.partition();
+        int recordSize = record.serializedKeySize() + record.serializedValueSize();
+        subscribedPartitionToSize.get().put(partition,
+                                            subscribedPartitionToSize.get().getOrDefault(partition, 0) + recordSize);
+      }
+    }
   }
 
   /**

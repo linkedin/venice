@@ -59,4 +59,9 @@ public class BlackHoleStorageEnginePartition extends AbstractStoragePartition {
     // All good!
     return true;
   }
+
+  @Override
+  public long getPartitionSizeInBytes() {
+    throw new UnsupportedOperationException("Operation Not Supported");
+  }
 }

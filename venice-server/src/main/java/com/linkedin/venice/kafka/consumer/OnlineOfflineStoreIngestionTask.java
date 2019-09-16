@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
@@ -44,6 +45,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       EventThrottler bandwidthThrottler,
       EventThrottler recordsThrottler,
       ReadOnlySchemaRepository schemaRepo,
+      ReadOnlyStoreRepository storeRepo,
       TopicManager topicManager,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
@@ -56,7 +58,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       boolean bufferReplayEnabledForHybrid,
       VeniceServerConfig serverConfig) {
     super(writerFactory, consumerFactory, kafkaConsumerProperties, storeRepository, storageMetadataService, notifiers,
-        bandwidthThrottler, recordsThrottler, schemaRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
+        bandwidthThrottler, recordsThrottler, schemaRepo, storeRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
         isCurrentVersion, hybridStoreConfig, isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
   }
 
@@ -141,7 +143,6 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     if (bufferReplayEnabledForHybrid) {
       StartOfBufferReplay sobr = storeVersionStateOptional.get().startOfBufferReplay;
       long sourceTopicMaxOffset = cachedLatestOffsetGetter.getOffset(sobr.sourceTopicName.toString(), partition);
-
       long sobrSourceOffset = sobr.sourceOffsets.get(partition);
 
       if (!partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {

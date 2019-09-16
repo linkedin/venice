@@ -17,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -106,6 +107,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       EventThrottler bandwidthThrottler,
       EventThrottler recordsThrottler,
       ReadOnlySchemaRepository schemaRepo,
+      ReadOnlyStoreRepository metadataRepo,
       TopicManager topicManager,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
@@ -118,7 +120,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean bufferReplayEnabledForHybrid,
       VeniceServerConfig serverConfig) {
     super(writerFactory, consumerFactory, kafkaConsumerProperties, storeRepository, storageMetadataService, notifiers,
-        bandwidthThrottler, recordsThrottler, schemaRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
+        bandwidthThrottler, recordsThrottler, schemaRepo, metadataRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
         isCurrentVersion, hybridStoreConfig, isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
   }

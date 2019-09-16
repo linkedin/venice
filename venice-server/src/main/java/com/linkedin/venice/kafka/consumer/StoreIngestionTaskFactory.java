@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -43,12 +44,12 @@ public class StoreIngestionTaskFactory {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(builder.veniceWriterFactory, builder.veniceConsumerFactory, kafkaConsumerProperties,
           builder.storeRepository, builder.storageMetadataService, builder.notifiers, builder.bandwidthThrottler, builder.recordsThrottler,
-          builder.schemaRepo, builder.topicManager, builder.ingestionStats, builder.versionedDIVStats, builder.storeBufferService, isCurrentVersion,
+          builder.schemaRepo, builder.metadataRepo, builder.topicManager, builder.ingestionStats, builder.versionedDIVStats, builder.storeBufferService, isCurrentVersion,
           hybridStoreConfig, isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
     } else {
       return new OnlineOfflineStoreIngestionTask(builder.veniceWriterFactory, builder.veniceConsumerFactory, kafkaConsumerProperties,
           builder.storeRepository, builder.storageMetadataService, builder.notifiers, builder.bandwidthThrottler, builder.recordsThrottler,
-          builder.schemaRepo, builder.topicManager, builder.ingestionStats, builder.versionedDIVStats, builder.storeBufferService, isCurrentVersion,
+          builder.schemaRepo, builder.metadataRepo, builder.topicManager, builder.ingestionStats, builder.versionedDIVStats, builder.storeBufferService, isCurrentVersion,
           hybridStoreConfig, isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
     }
   }
@@ -75,6 +76,7 @@ public class StoreIngestionTaskFactory {
     private EventThrottler bandwidthThrottler;
     private EventThrottler recordsThrottler;
     private ReadOnlySchemaRepository schemaRepo;
+    private ReadOnlyStoreRepository metadataRepo;
     private TopicManager topicManager;
     private AggStoreIngestionStats ingestionStats;
     private AggVersionedDIVStats versionedDIVStats;
@@ -140,6 +142,13 @@ public class StoreIngestionTaskFactory {
     public Builder setSchemaRepository(ReadOnlySchemaRepository schemaRepo) {
       if (!built) {
         this.schemaRepo = schemaRepo;
+      }
+      return this;
+    }
+
+    public Builder setMetadataRepository(ReadOnlyStoreRepository metadataRepo) {
+      if (!built) {
+        this.metadataRepo = metadataRepo;
       }
       return this;
     }
