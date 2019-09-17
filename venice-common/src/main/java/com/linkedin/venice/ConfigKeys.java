@@ -798,4 +798,10 @@ public class ConfigKeys {
    * This config defines whether SSL is enabled in controller.
    */
   public static final String CONTROLLER_SSL_ENABLED = "controller.ssl.enabled";
+
+  /**
+   * Flag to indicate if the controller cluster leader will be amongst one of the local Helix as a library controllers
+   * or a Helix as a service controller running remotely.
+   */
+  public static final String CONTROLLER_CLUSTER_LEADER_HAAS = "controller.cluster.leader.haas.enabled";
 }

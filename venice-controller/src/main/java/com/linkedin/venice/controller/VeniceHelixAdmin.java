@@ -180,6 +180,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, String> participantMessageStoreRTTMap;
     private final Map<String, VeniceWriter> participantMessageWriterMap;
     private final VeniceHelixAdminStats veniceHelixAdminStats;
+    private final boolean isParticipantOnlyInControllerCluster;
+    private final String coloMasterClusterName;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -254,6 +256,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
         this.veniceHelixAdminStats = new VeniceHelixAdminStats(metricsRepository, "venice_helix_admin");
+        isParticipantOnlyInControllerCluster = commonConfig.isControllerClusterLeaderHAAS();
+        coloMasterClusterName = commonConfig.getClusterName();
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -265,17 +269,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
             zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization);
 
-        // Initialized the helix manger for the level1 controller.
-        initLevel1Controller();
+        // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
+        // HaaS then level1 controllers should be only in participant mode.
+        initLevel1Controller(isParticipantOnlyInControllerCluster);
 
         // Start store migration monitor background thread
         storeConfigRepo.refresh();
         startStoreMigrationMonitor();
     }
 
-    private void initLevel1Controller() {
+    private void initLevel1Controller(boolean isParticipantOnly) {
+        InstanceType instanceType = isParticipantOnly ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
         manager = new SafeHelixManager(HelixManagerFactory
-            .getZKHelixManager(controllerClusterName, controllerName, InstanceType.CONTROLLER_PARTICIPANT,
+            .getZKHelixManager(controllerClusterName, controllerName, instanceType,
                 multiClusterConfigs.getControllerClusterZkAddresss()));
         StateMachineEngine stateMachine = manager.getStateMachineEngine();
         stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
@@ -3161,6 +3167,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public boolean isMasterControllerOfControllerCluster() {
+        if (isParticipantOnlyInControllerCluster) {
+          return isMasterController(coloMasterClusterName);
+        }
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
         if (null == leader || null == leader.getId()) {
             logger.warn("Cannot determine the result of isMasterControllerOfControllerCluster(). "

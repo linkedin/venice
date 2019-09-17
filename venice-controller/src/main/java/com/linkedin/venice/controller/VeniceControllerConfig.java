@@ -58,6 +58,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String systemSchemaClusterName;
   private final int topicDeletionStatusPollIntervalMs;
   private final boolean adminHelixMessagingChannelEnabled;
+  private final boolean isControllerClusterLeaderHAAS;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -122,6 +123,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
     this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
+    this.isControllerClusterLeaderHAAS = props.getBoolean(CONTROLLER_CLUSTER_LEADER_HAAS, false);
   }
 
   public int getAdminPort() {
@@ -245,6 +247,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   public boolean isAdminHelixMessagingChannelEnabled() { return  adminHelixMessagingChannelEnabled; }
+
+  public boolean isControllerClusterLeaderHAAS() { return isControllerClusterLeaderHAAS; }
 
   /**
    * @param clusterPros list of child controller uris

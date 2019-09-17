@@ -395,7 +395,9 @@ public class ServiceFactory {
             numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.of(zkPort)));
   }
 
-
+  public static HelixControllerWrapper getHelixController(String zkAddress, String helixClusterName) {
+    return getService(HelixControllerWrapper.SERVICE_NAME, HelixControllerWrapper.generateService(zkAddress, helixClusterName));
+  }
 
 
 
