@@ -45,7 +45,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -733,7 +732,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
     Assert.assertEquals(controllerClient.getRoutersClusterConfig().getConfig().getExpectedRouterCount(),
         expectedRouterCount);
-    // Afte enable this feature, Venice don't need expected router count, because it will use the live router count, so could give any expected router count here.
+    // After enable this feature, Venice don't need expected router count, because it will use the live router count, so could give any expected router count here.
     controllerClient.enableQuotaRebalanced(true, 0);
     Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
   }
@@ -745,17 +744,6 @@ public class TestAdminSparkServer {
     Assert.assertEquals(
         ControllerClient.discoverCluster(cluster.getMasterVeniceController().getControllerUrl(), storeName).getCluster(),
         cluster.getClusterName(), "Should be able to find the cluster which the given store belongs to.");
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
-  public void controllerClientCanUploadPushProperties() {
-    String storeName = TestUtils.getUniqueString("controllerClientCanUploadPushProperties");
-    int version = 1;
-    Properties p = new Properties();
-    for (int i = 0; i < 100; ++i) {
-      p.setProperty(i + "venice.push.properteis.xyz" + i, "http://testinfo.url" + i);
-    }
-    controllerClient.uploadPushProperties(storeName, version, p);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

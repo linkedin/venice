@@ -9,6 +9,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
@@ -17,6 +19,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -34,6 +37,8 @@ public class TestPushJobStatusUpload {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     properties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME, venice.getClusterName());
     properties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_NAME, pushJobStatusStoreName);
+    // Disable topic cleanup since the parent and child controller are using the same kafka cluster/topic in test environment.
+    properties.setProperty(ConfigKeys.TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     VeniceControllerWrapper parentController =
         ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, new VeniceProperties(properties), false);
@@ -57,14 +62,11 @@ public class TestPushJobStatusUpload {
         keyValuePairs.add(new Pair(key, value));
       }
       // Wait for the push job status store and topic to be created
-      PushJobStatusRecordKey testKey = keyValuePairs.get(0).getFirst();
-      PushJobStatusRecordValue testValue = keyValuePairs.get(0).getSecond();
-      TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-        assertFalse(controllerClient.uploadPushJobStatus(testKey.storeName.toString(), testKey.versionNumber,
-            testValue.status, testValue.pushDuration, testValue.pushId.toString(), testValue.message.toString()).isError());
-      });
+      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> assertEquals(
+              controllerClient.queryOverallJobStatus(Version.composeKafkaTopic(pushJobStatusStoreName, 1),
+                  Optional.empty()).getStatus(), ExecutionStatus.COMPLETED.toString()));
       // Upload more push job statuses via the endpoint
-      for (int i = 1; i < 3; i++) {
+      for (int i = 0; i < 3; i++) {
         PushJobStatusRecordKey key = keyValuePairs.get(i).getFirst();
         PushJobStatusRecordValue value = keyValuePairs.get(i).getSecond();
         controllerClient.uploadPushJobStatus(key.storeName.toString(), key.versionNumber, value.status,
@@ -79,9 +81,9 @@ public class TestPushJobStatusUpload {
         for (Pair<PushJobStatusRecordKey, PushJobStatusRecordValue> pair : keyValuePairs) {
           TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
             try {
-              assertTrue(client.get(pair.getFirst()).get() != null);
+              assertNotNull(client.get(pair.getFirst()).get());
             } catch (Exception e) {
-              fail("Unexpected expected thrown while reading from the venice store", e);
+              fail("Unexpected exception thrown while reading from the venice store", e);
             }
           });
           PushJobStatusRecordValue value = client.get(pair.getFirst()).get();

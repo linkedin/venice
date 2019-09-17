@@ -30,14 +30,6 @@ public class ParentHelixOfflinePushAccessor {
     this.offlinePushStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
 
-  public void createOfflinePushStatus(String clusterName, OfflinePushStatus pushStatus) {
-    logger.info(
-        "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
-    HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(clusterName, pushStatus.getKafkaTopic()),
-        pushStatus);
-    logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes for topic: " + pushStatus.getKafkaTopic());
-  }
-
   public OfflinePushStatus getOfflinePushStatus(String clusterName, String kafkaTopic) {
     OfflinePushStatus offlinePushStatus =
         offlinePushStatusAccessor.get(getOfflinePushStatusPath(clusterName, kafkaTopic), null, AccessOption.PERSISTENT);
@@ -46,20 +38,6 @@ public class ParentHelixOfflinePushAccessor {
           "Can not find offline push status in ZK from path:" + getOfflinePushStatusPath(clusterName, kafkaTopic));
     }
     return offlinePushStatus;
-  }
-
-  public void deleteOfflinePushStatus(String clusterName, String topicName) {
-    logger.info("Start deleting offline push status for topic: " + topicName + " in cluster: " + clusterName);
-    HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(clusterName, topicName));
-    logger.info("Deleted offline push status for topic: " + topicName + " in cluster: " + clusterName);
-  }
-
-  public void updateOfflinePushStatus(String clusterName, OfflinePushStatus pushStatus) {
-    HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(clusterName, pushStatus.getKafkaTopic()),
-        pushStatus);
-    logger.info(
-        "Updated push status for topic: " + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
-            + pushStatus.getCurrentStatus());
   }
 
   public List<String> getAllPushNames(String clusterName) {

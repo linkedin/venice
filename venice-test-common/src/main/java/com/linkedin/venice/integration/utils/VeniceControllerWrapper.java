@@ -60,7 +60,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         // TODO: Validate that these configs are all still used.
         // TODO: Centralize default config values in a single place
         PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
-            .put(extraProps.toProperties())
             .put(KAFKA_REPLICATION_FACTOR, 1)
             .put(ADMIN_TOPIC_REPLICATION_FACTOR, 1)
             .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
@@ -96,7 +95,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
             .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false)
             // The first cluster will always be the one to host system schemas...
-            .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0]);
+            .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0])
+            .put(extraProps.toProperties());
 
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);

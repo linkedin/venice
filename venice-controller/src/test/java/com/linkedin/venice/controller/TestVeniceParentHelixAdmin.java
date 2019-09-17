@@ -48,7 +48,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
@@ -1703,38 +1702,6 @@ public class TestVeniceParentHelixAdmin {
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v7");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v8");
     verify(mockParentAdmin, never()).truncateKafkaTopic(storeName1 + "_v10");
-  }
-
-  // Ignored until we decide if we are keeping the push job properties upload feature.
-  @Test@Ignore
-  public void testCreateOfflinePushStatus() throws ExecutionException, InterruptedException {
-    String storeName = TestUtils.getUniqueString("test_store");
-    String pushJobId = TestUtils.getUniqueString("push_job_id");
-    doReturn(new Version(storeName, 1)).when(internalAdmin)
-        .addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false, false , false, false);
-    List<String> names = new ArrayList<>();
-    int count = VeniceParentHelixAdmin.MAX_PUSH_STATUS_PER_STORE_TO_KEEP+1;
-    for(int i=0;i<count;i++){
-      names.add(storeName+"_v"+i);
-    }
-    doReturn(names).when(accessor).getAllPushNames(clusterName);
-    parentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
-    verify(accessor, atLeastOnce()).createOfflinePushStatus(eq(clusterName), any());
-    // Collect the old offline push status.
-    verify(accessor).deleteOfflinePushStatus(clusterName, storeName+"_v0");
-  }
-
-  @Test
-  public void testUpdatePushProperties(){
-    String storeName = TestUtils.getUniqueString("testUpdatePushProperties");
-    OfflinePushStatus status = new OfflinePushStatus(storeName+"_v1", 1, 1,OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    doReturn(status).when(accessor).getOfflinePushStatus(clusterName, storeName+"_v1");
-    Map<String, String> map = new HashMap<>();
-    map.put("test","test");
-    parentAdmin.updatePushProperties(clusterName, storeName, 1, map);
-    OfflinePushStatus status1 = status.clonePushStatus();
-    status1.setPushProperties(map);
-    verify(accessor).updateOfflinePushStatus(eq(clusterName), eq(status1));
   }
 
   @Test

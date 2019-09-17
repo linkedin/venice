@@ -1716,15 +1716,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties) {
-    veniceHelixAdmin.checkControllerMastership(cluster);
-    String topicName = Version.composeKafkaTopic(storeName, version);
-    OfflinePushStatus status = offlinePushAccessor.getOfflinePushStatus(cluster, topicName);
-    status.setPushProperties(properties);
-    offlinePushAccessor.updateOfflinePushStatus(cluster, status);
-  }
-
-  @Override
   public boolean isResourceStillAlive(String resourceName) {
     throw new VeniceException("VeniceParentHelixAdmin#isResourceStillAlive is not supported!");
   }
