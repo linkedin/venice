@@ -717,14 +717,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     versionTopicInfo.partitionCount = versionCreationResponse.getPartitions();
     versionTopicInfo.sslToKafka = versionCreationResponse.isEnableSSL();
     versionTopicInfo.compressionStrategy = versionCreationResponse.getCompressionStrategy();
-    // Upload the properties to controller, as it's not in the critical path, so if it's failed, just log the error
-    // but do not thrown the exception. No retries for this.
-    ControllerResponse response =
-        controllerClient.uploadPushProperties(setting.storeName, versionCreationResponse.getVersion(), props.toProperties());
-    if (response.isError()) {
-      logger.warn("Could not upload properties of this job to the controlelr. Error: " + response.getError());
-    }
-
     return versionTopicInfo;
   }
 

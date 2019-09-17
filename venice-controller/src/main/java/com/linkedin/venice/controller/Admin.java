@@ -503,8 +503,6 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     boolean truncateKafkaTopic(String topicName);
 
-    void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties);
-
     /**
      * Check whether the specified resource is fully removed or not.
      * @param resourceName

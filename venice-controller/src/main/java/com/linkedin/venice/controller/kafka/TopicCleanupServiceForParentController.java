@@ -30,7 +30,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
           int remainingFactor = storeToCountdownForDeletion.merge(topic, delayFactor, (oldVal, givenVal) -> oldVal - 1);
           if (remainingFactor > 0) {
             LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it"
-                + " after " + remainingFactor * TimeUnit.MILLISECONDS.toSeconds(sleepIntervalBetweenTopicListFetchMs) + " seconds.");
+                + " after " + remainingFactor * sleepIntervalBetweenTopicListFetchMs + " milliseconds.");
           } else {
             LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it now.");
             storeToCountdownForDeletion.remove(topic);

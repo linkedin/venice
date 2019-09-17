@@ -12,7 +12,6 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-import java.util.HashMap;
 import java.util.Map;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
@@ -146,6 +145,7 @@ public class CreateVersion {
     };
   }
 
+  @Deprecated
   public static Route uploadPushInfo(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
@@ -157,14 +157,7 @@ public class CreateVersion {
         String storeName = request.queryParams(NAME);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
-
-        String versionString = request.queryParams(VERSION);
-        int versionNumber = Integer.parseInt(versionString);
-        Map<String, String> properties = new HashMap<>();
-        for (String key : request.queryParams()) {
-          properties.put(key, request.queryParams(key));
-        }
-        admin.updatePushProperties(clusterName, storeName, versionNumber, properties);
+        // TODO No-op, can be removed once the corresponding H2V plugin version is deployed.
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

@@ -16,7 +16,6 @@ import java.util.Optional;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Arrays;
-import java.util.Properties;
 import java.util.Collections;
 import java.util.stream.Collectors;
 import java.util.function.Function;
@@ -143,16 +142,6 @@ public class ControllerClient implements Closeable {
         .add(VERSION, version)
         .add(PARTITION_COUNT, partitionCount);
     return request(ControllerRoute.ADD_VERSION, params, VersionResponse.class);
-  }
-
-  public ControllerResponse uploadPushProperties(String storeName, int version, Properties properties) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version);
-    for (Object key : properties.keySet()) {
-      params.add(key.toString(), properties.getProperty(key.toString()));
-    }
-    return request(ControllerRoute.OFFLINE_PUSH_INFO, params, ControllerResponse.class);
   }
 
   public ControllerResponse writeEndOfPush(String storeName, int version) {

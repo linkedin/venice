@@ -1587,12 +1587,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    @Override
-    public void updatePushProperties(String cluster, String storeName, int version, Map<String, String> properties) {
-        throw new VeniceUnsupportedOperationException("update push properties only supports in the paraent admin.");
-    }
-
-
     /***
      * If you need to do mutations on the store, then you must hold onto the lock until you've persisted your mutations.
      * Only use this method if you're doing read-only operations on the store.
