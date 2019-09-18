@@ -127,6 +127,7 @@ public class RouterServer extends AbstractVeniceService {
   private AsyncFuture<SocketAddress> serverFuture = null;
   private AsyncFuture<SocketAddress> secureServerFuture = null;
   private ResourceRegistry registry = null;
+  private StorageNodeClient storageNodeClient;
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
   private VeniceDelegateMode scatterGatherMode;
@@ -335,7 +336,6 @@ public class RouterServer extends AbstractVeniceService {
       serverSocketChannelClass = NioServerSocketChannel.class;
     }
 
-    StorageNodeClient storageNodeClient;
     switch (config.getStorageNodeClientType()) {
       case NETTY_4_CLIENT:
         logger.info("Router will use NETTY_4_CLIENT");
@@ -557,7 +557,7 @@ public class RouterServer extends AbstractVeniceService {
      * correctly.
      */
 
-    dispatcher.close();
+    storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
 

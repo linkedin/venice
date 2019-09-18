@@ -27,6 +27,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import io.tehuti.Metric;
 import java.io.IOException;
 import java.io.InputStream;
@@ -317,7 +318,7 @@ public abstract class TestRead {
       } catch (ExecutionException e) {
         Throwable cause = e.getCause();
         Assert.assertTrue(cause instanceof VeniceClientHttpException);
-        Assert.assertTrue(cause.getMessage().contains("Quota exceeds!"), "Did not get the expected exception message: " + cause.getMessage());
+        Assert.assertEquals(((VeniceClientHttpException)cause).getHttpStatus(), HttpResponseStatus.TOO_MANY_REQUESTS.code());
         quotaExceptionsCount++;
       }
     }

@@ -52,14 +52,6 @@ import static org.mockito.Mockito.*;
 
 //TODO: refactor Dispatcher to take a HttpClient Factory, so we don't need to spin up an HTTP server for these tests
 public class TestVeniceDispatcher {
-  @Test
-  public void parsesPartitionName(){
-    String name = "myCountry_v1_2";
-    String number = VeniceDispatcher.numberFromPartitionName(name);
-
-    Assert.assertEquals(number, "2");
-  }
-
   @DataProvider(name = "isNettyClientEnabled")
   public static Object[][] routerHttpClientStatus() {
     return new Object[][]{{false}, {true}};
