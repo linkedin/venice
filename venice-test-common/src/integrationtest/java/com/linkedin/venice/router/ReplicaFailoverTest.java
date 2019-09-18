@@ -140,6 +140,22 @@ public class ReplicaFailoverTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
+  public void testDisconnectedReplica(int maxConcurrentRequests) {
+    for (VeniceServerWrapper server : cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
+      AtomicInteger hitCount = new AtomicInteger();
+      errorHitCountMap.put(server.getPort(), hitCount);
+
+      server.getVeniceServer().setRequestHandler((ChannelHandlerContext ctx, Object msg) -> {
+        hitCount.incrementAndGet();
+        ctx.close(); // close the connection
+        return true;
+      });
+    }
+
+    runWorkload(maxConcurrentRequests, REQUEST_PERCENTILE, MAX_REQUEST_LATENCY_QD1);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
   public void testHungReplica(int maxConcurrentRequests) {
     for (VeniceServerWrapper server : cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1)) {
       AtomicInteger hitCount = new AtomicInteger();

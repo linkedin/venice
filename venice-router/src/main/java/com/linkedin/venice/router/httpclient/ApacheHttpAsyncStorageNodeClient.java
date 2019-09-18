@@ -18,6 +18,7 @@ import java.util.Random;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.concurrent.FutureCallback;
@@ -201,7 +202,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
 
     @Override
     public String getFirstHeader(String headerName) {
-      return httpResponse.getFirstHeader(headerName).getValue();
+      Header header = httpResponse.getFirstHeader(headerName);
+      return header != null ? header.getValue() : null;
     }
   }
 }
