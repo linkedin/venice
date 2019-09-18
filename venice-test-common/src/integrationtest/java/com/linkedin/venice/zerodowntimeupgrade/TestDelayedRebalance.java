@@ -17,6 +17,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
+@Test(groups = "flaky")
 public class TestDelayedRebalance {
   private VeniceClusterWrapper cluster;
   int partitionSize = 1000;
