@@ -80,7 +80,7 @@ public class TestRouterReadQuotaThrottler {
     cluster.close();
   }
 
-  @Test
+  @Test(groups = "flaky")
   public void testReadRequestBeThrottled() throws InterruptedException {
     long timeWindowInSec = TimeUnit.MILLISECONDS.toSeconds(ReadRequestThrottler.DEFAULT_STORE_QUOTA_TIME_WINDOW);
     // Setup read quota for the store.
@@ -142,7 +142,7 @@ public class TestRouterReadQuotaThrottler {
     }
   }
 
-  @Test(priority = 1)
+  @Test(priority = 1, groups = "flaky")
   public void testNoopThrottlerCanReportPerRouterStoreQuota() {
     Properties props = new Properties();
     props.put(ROUTER_ENABLE_READ_THROTTLING, "false");
