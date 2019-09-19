@@ -29,7 +29,7 @@ import static org.testng.Assert.*;
 
 
 public class TestPushJobStatusUpload {
-  @Test(timeOut = 2 * Time.MS_PER_MINUTE)
+  @Test(timeOut = 4 * Time.MS_PER_MINUTE)
   public void testPushJobStatusUpload() throws ExecutionException, InterruptedException {
     String pushJobStatusStoreName = "test-push-job-status-store";
     Properties properties = new Properties();
@@ -62,7 +62,7 @@ public class TestPushJobStatusUpload {
         keyValuePairs.add(new Pair(key, value));
       }
       // Wait for the push job status store and topic to be created
-      TestUtils.waitForNonDeterministicAssertion(90, TimeUnit.SECONDS, () -> assertEquals(
+      TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.MINUTES, () -> assertEquals(
               controllerClient.queryOverallJobStatus(Version.composeKafkaTopic(pushJobStatusStoreName, 1),
                   Optional.empty()).getStatus(), ExecutionStatus.COMPLETED.toString()));
       // Upload more push job statuses via the endpoint
