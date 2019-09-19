@@ -3,7 +3,6 @@ package com.linkedin.venice.compute;
 import com.linkedin.avro.fastserde.PrimitiveFloatList;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.ComputablePrimitiveFloatList;
-import java.util.ArrayList;
 import java.util.List;
 
 
@@ -56,7 +55,24 @@ public class ComputeOperationUtils {
 
   private static float dotProduct(int size, FloatSupplierByIndex floatSupplier1, FloatSupplierByIndex floatSupplier2) {
     float dotProductResult = 0.0f;
-    for (int i = 0; i < size; i++) {
+
+    // round up size to the largest multiple of 4
+    int i = 0;
+    int limit  = (size >> 2) << 2;
+
+    // Unrolling mult-add into blocks of 4 multiply op and assign to 4 different variables so that CPU can take
+    // advantage of out of order execution, making the operation faster (on a single thread ~2x improvement)
+    for (; i < limit; i += 4) {
+      float s0 = floatSupplier1.get(i) * floatSupplier2.get(i);
+      float s1 = floatSupplier1.get(i + 1) * floatSupplier2.get(i + 1);
+      float s2 = floatSupplier1.get(i + 2) * floatSupplier2.get(i + 2);
+      float s3 = floatSupplier1.get(i + 3) * floatSupplier2.get(i + 3);
+
+      dotProductResult += (s0 + s1 + s2 + s3);
+    }
+
+    // Multiply the remaining elements
+    for (; i < size; i++) {
       dotProductResult += floatSupplier1.get(i) * floatSupplier2.get(i);
     }
     return dotProductResult;
@@ -64,7 +80,26 @@ public class ComputeOperationUtils {
 
   private static List<Float> hadamardProduct(int size, FloatSupplierByIndex floatSupplier1, FloatSupplierByIndex floatSupplier2) {
     PrimitiveFloatList hadamardProductResult = new PrimitiveFloatList(size);
-    for (int i = 0; i < size; i++) {
+
+    // round up size to the largest multiple of 4
+    int i = 0;
+    int limit  = (size >> 2) << 2;
+
+    // Unrolling mult-add into blocks of 4 multiply op and assign to 4 different variables so that CPU can take
+    // advantage of out of order execution, making the operation faster (on a single thread ~2x improvement)
+    for (; i < limit; i += 4) {
+      float s0 = floatSupplier1.get(i) * floatSupplier2.get(i);
+      float s1 = floatSupplier1.get(i + 1) * floatSupplier2.get(i + 1);
+      float s2 = floatSupplier1.get(i + 2) * floatSupplier2.get(i + 2);
+      float s3 = floatSupplier1.get(i + 3) * floatSupplier2.get(i + 3);
+      hadamardProductResult.addPrimitive(s0);
+      hadamardProductResult.addPrimitive(s1);
+      hadamardProductResult.addPrimitive(s2);
+      hadamardProductResult.addPrimitive(s3);
+    }
+
+    // Multiply the remaining elements
+    for (; i < size; i++) {
       hadamardProductResult.addPrimitive(floatSupplier1.get(i) * floatSupplier2.get(i));
     }
     return hadamardProductResult;
