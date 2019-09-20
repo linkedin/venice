@@ -55,6 +55,11 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordValueSize(bytes);
   }
 
+  public void recordIngestionFailure(String storeName) {
+    totalStats.recordIngestionFailure();
+    getStoreStats(storeName).recordIngestionFailure();
+  }
+
   public void updateStoreConsumptionTask(String storeName, StoreIngestionTask task) {
     getStoreStats(storeName).updateStoreConsumptionTask(task);
   }

@@ -107,7 +107,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
         executeStateTransition(message, context, ()-> {
-            getStoreIngestionService().stopConsumption(getStoreConfig(), getPartition());
+            stopConsumption();
         });
     }
 
@@ -127,7 +127,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeOfflineFromError(Message message, NotificationContext context) {
         executeStateTransition(message, context, ()->{
-            getStoreIngestionService().stopConsumption(getStoreConfig(), getPartition());
+            stopConsumption();
         });
     }
 
@@ -138,7 +138,7 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
     public void onBecomeOfflineFromBootstrap(Message message, NotificationContext context) {
         executeStateTransition(message, context, ()-> {
             // TODO stop is an async operation, we need to ensure that it's really stopped before state transition is completed.
-            getStoreIngestionService().stopConsumption(getStoreConfig(), getPartition());
+            stopConsumption();
         });
     }
 

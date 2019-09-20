@@ -89,13 +89,18 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   /**
    * Stop the consumption once a replica become ERROR.
+   * This function only does clean up when any state transition fails, and it won't retry any state transition.
    */
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
     executeStateTransition(message, context, ()-> {
       logger.info(getStorePartitionDescription() + " met an error during state transition. Stop the running consumption. Caused by:",
           error.getException());
-      stopConsumptionAndDropPartitionOnError();
+      /**
+       * When state transition fails, we shouldn't remove the corresponding database here since the database could
+       * be either recovered by bounce/Helix Reset or completely dropped after going through 'ERROR' to 'DROPPED' state transition.
+       */
+      stopConsumption();
     });
   }
 
@@ -161,10 +166,8 @@ public abstract class AbstractParticipantModel extends StateModel {
           "Error dropping the partition:" + getPartition() + " in store:" + getStoreConfig().getStoreName());
     }
     /**
-     * TODO: After checking all the calls to function, I noticed that we have already unsubscribe from
-     * this topic/partition before calling this reset function. Consider removing the RESET_OFFSET action
-     * completely and move one special logic "storageMetadataService.clearOffset(topic, partition)"
-     * from RESET_OFFSET handling branch to UNSUBSCRIBE branch.
+     * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
+     * from the topic partition unsubscription.
      */
     getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), getPartition());
   }
@@ -186,8 +189,12 @@ public abstract class AbstractParticipantModel extends StateModel {
         " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
   }
 
-  protected void stopConsumptionAndDropPartitionOnError() {
+  protected void stopConsumption() {
     storeIngestionService.stopConsumption(storeConfig, partition);
+  }
+
+  protected void stopConsumptionAndDropPartitionOnError() {
+    stopConsumption();
     removePartitionFromStore();
   }
 

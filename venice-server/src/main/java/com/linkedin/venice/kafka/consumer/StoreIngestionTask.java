@@ -542,17 +542,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (VeniceIngestionTaskKilledException ke){
       logger.info(consumerTaskId+"is killed, start to report to notifier.", ke);
       notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
-    } catch (Exception e) {
+    } catch (Throwable t) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
       // So even this storage node recover eventually, controller will not confused.
       // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
       // recovered, it will send STARTED message to controller again)
-      logger.error(consumerTaskId + " failed with Exception.", e);
-      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Exception caught during poll.", e);
-    } catch (Throwable t) {
-      logger.error(consumerTaskId + " failed with Throwable!!!", t);
-      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
-          "'s run() function.", new VeniceException(t));
+      if (t instanceof Exception) {
+        logger.error(consumerTaskId + " failed with Exception.", t);
+        notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Exception caught during poll.", (Exception)t);
+      } else {
+        logger.error(consumerTaskId + " failed with Throwable!!!", t);
+        notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
+            "Non-exception Throwable caught in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
+      }
+      // Only record ingestion failure if it is not caused by kill operation
+      storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
     } finally {
       internalClose();
     }
@@ -716,6 +720,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * for now in case that in future, we do want to reset the consumer without unsubscription.
          */
         if (consumer.hasSubscription(topic, partition)) {
+          logger.error("This shouldn't happen since unsubscription should happen before reset offset for topic: " + topic + ", partition: " + partition);
           /**
            * Only update the consumer and partitionConsumptionStateMap when consumer actually has
            * subscription to this topic/partition; otherwise, we would blindly update the StateMap
