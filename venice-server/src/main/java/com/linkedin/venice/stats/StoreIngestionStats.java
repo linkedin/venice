@@ -29,6 +29,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor unexpectedMessageSensor;
   private final Sensor inconsistentStoreMetadataSensor;
 
+  private final Sensor ingestionFailureSensor;
+
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
@@ -56,6 +58,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
     unexpectedMessageSensor = registerSensor("unexpected_message", new Rate());
     inconsistentStoreMetadataSensor = registerSensor("inconsistent_store_metadata", new Count());
+
+    ingestionFailureSensor = registerSensor("ingestion_failure", new Count());
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -107,6 +111,10 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordValueSize(long bytes) {
     valueSizeSensor.record(bytes);
+  }
+
+  public void recordIngestionFailure() {
+    ingestionFailureSensor.record();
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {

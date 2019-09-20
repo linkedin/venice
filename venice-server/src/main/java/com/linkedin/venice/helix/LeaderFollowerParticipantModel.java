@@ -57,7 +57,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, context, ()-> {
-      getStoreIngestionService().stopConsumption(getStoreConfig(), getPartition());
+      stopConsumption();
     });
   }
 
