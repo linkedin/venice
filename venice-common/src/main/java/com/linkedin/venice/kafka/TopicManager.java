@@ -625,6 +625,36 @@ public class TopicManager implements Closeable {
   }
 
   /**
+   * Return the beginning offset of a topic/partition. Synchronized because it calls #getConsumer()
+   *
+   * @throws TopicDoesNotExistException
+   */
+  public synchronized long getEarliestOffset(String topic, int partition) throws TopicDoesNotExistException {
+    return getEarliestOffset(getConsumer(), topic, partition, true);
+  }
+
+  private synchronized Long getEarliestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
+    if (doTopicCheck && !containsTopicInKafkaZK(topic)) {
+      throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
+    }
+    if (partition < 0) {
+      throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
+    }
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+    long earliestOffset;
+    try {
+      consumer.assign(Arrays.asList(topicPartition));
+      consumer.seekToBeginning(Arrays.asList(topicPartition));
+      earliestOffset = consumer.position(topicPartition);
+      consumer.assign(Arrays.asList());
+    } catch (org.apache.kafka.common.errors.TimeoutException ex) {
+      throw new VeniceOperationAgainstKafkaTimedOut("Timeout exception when seeking to beginning to get earliest offset"
+          + " for topic: " + topic + " and partition: " + partition, ex);
+    }
+    return earliestOffset;
+  }
+
+  /**
    * Get offsets for only one partition with a specific timestamp.
    */
   public synchronized long getOffsetByTime(String topic, int partition, long timestamp) {
@@ -690,8 +720,20 @@ public class TopicManager implements Closeable {
   private synchronized long getOffsetByTimeIfOutOfRange(TopicPartition topicPartition, long timestamp){
     long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition());
     if (latestOffset <= 0) {
+      logger.info("End offset for topic " + topicPartition + " is " + latestOffset + "; return offset " + LOWEST_OFFSET);
       return LOWEST_OFFSET;
     }
+
+    long earliestOffset = getEarliestOffset(topicPartition.topic(), topicPartition.partition());
+    if (earliestOffset == latestOffset) {
+      /**
+       * This topic/partition is empty or retention delete the entire partition
+       */
+      logger.info("Both beginning offest and end offset is " + latestOffset + " for topic " + topicPartition
+          + "; it's empty; return offset " + latestOffset);
+      return latestOffset;
+    }
+
     KafkaConsumer consumer = getConsumer();
     try {
       consumer.assign(Arrays.asList(topicPartition));
@@ -720,7 +762,13 @@ public class TopicManager implements Closeable {
 
       // Get the latest record from the poll result
       ConsumerRecord record = (ConsumerRecord) records.iterator().next();
-      long resultOffset = (timestamp > record.timestamp()) ? latestOffset : LOWEST_OFFSET;
+
+      /**
+       * 1. If the required timestamp is bigger than the timestamp of last record, return the offset of last record
+       * 2. Otherwise, return (earliestOffset - 1) to consume from the beginning; decrease 1 because when subscribing,
+       *    we seek to the next offset; besides, safeguard the edge case that we earliest offset is already -1.
+       */
+      long resultOffset = (timestamp > record.timestamp()) ? latestOffset : Math.max(earliestOffset - 1, LOWEST_OFFSET);
       logger.info("Successfully return offset: " + resultOffset + " for topic: " + topicPartition.toString()
           + " for timestamp: " + timestamp);
       return resultOffset;

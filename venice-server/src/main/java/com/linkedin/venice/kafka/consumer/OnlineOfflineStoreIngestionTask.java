@@ -86,7 +86,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
-  protected void checkLongRunningConsumerActionState() {
+  protected void checkLongRunningTaskState() {
     // No-op for online/offline state model
   }
 

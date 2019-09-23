@@ -32,7 +32,7 @@ public enum AvroProtocolDefinition {
    * Used to persist state related to a store-version, including Start of Buffer Replay
    * offsets and whether the input is sorted.
    */
-  STORE_VERSION_STATE(25, 3, StoreVersionState.class),
+  STORE_VERSION_STATE(25, 4, StoreVersionState.class),
 
   /**
    * Used to encode metadata changes about the system as a whole. Records of this type

@@ -505,11 +505,13 @@ public class TestHybrid {
     VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber));
 
     // Mock buffer replay message
-    List<Long> bufferReplyOffsets = new ArrayList<>();
-    for (int i = 0; i < partitionCnt; ++i) {
-      bufferReplyOffsets.add(1l);
+    if (!isLeaderFollowerModelEnabled) {
+      List<Long> bufferReplyOffsets = new ArrayList<>();
+      for (int i = 0; i < partitionCnt; ++i) {
+        bufferReplyOffsets.add(1l);
+      }
+      writer.broadcastStartOfBufferReplay(bufferReplyOffsets, "", "", new HashMap<>());
     }
-    writer.broadcastStartOfBufferReplay(bufferReplyOffsets, "", "", new HashMap<>());
 
     // Write 100 records
     AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
@@ -535,6 +537,117 @@ public class TestHybrid {
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     assertFalse(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
     IOUtils.closeQuietly(topicManager);
+
+    venice.close();
+  }
+
+  @Test
+  public void testLeaderHonorLastTopicSwitchMessage() throws Exception {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(10L));
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,2, 1000000, false, false, extraProperties);
+
+    long streamingRewindSeconds = 25L;
+    long streamingMessageLag = 2L;
+
+    String storeName = TestUtils.getUniqueString("hybrid-store");
+
+    //Create store , make it a hybrid store
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getAllControllersURLs());
+    controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+        .setHybridRewindSeconds(streamingRewindSeconds)
+        .setHybridOffsetLagThreshold(streamingMessageLag)
+        .setLeaderFollowerModel(true)
+    );
+
+    // Keep a early rewind start time to cover all messages in any topic
+    long rewindStartTime = System.currentTimeMillis();
+
+    // Create a new version, and do an empty push for that version
+    VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+    int versionNumber = vcr.getVersion();
+    Assert.assertEquals(versionNumber, 1, "Version number should become 1 after an empty-push");
+    int partitionCnt = vcr.getPartitions();
+
+    /**
+     * Write 2 TopicSwitch messages into version topic:
+     * TS1 (new topic: storeName_tmp1, startTime: {@link rewindStartTime})
+     * TS2 (new topic: storeName_tmp2, startTime: {@link rewindStartTime})
+     *
+     * All messages in TS1 should not be replayed into VT and should not be queryable;
+     * but messages in TS2 should be replayed and queryable.
+     */
+    String tmpTopic1 = storeName + "_tmp1";
+    String tmpTopic2 = storeName + "_tmp2";
+    TopicManager topicManager = venice.getMasterVeniceController().getVeniceAdmin().getTopicManager();
+    topicManager.createTopic(tmpTopic1, partitionCnt, 1, true);
+    topicManager.createTopic(tmpTopic2, partitionCnt, 1, true);
+
+    /**
+     *  Build a producer that writes to {@link tmpTopic1}
+     */
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
+    VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(tmpTopic1);
+    // Write 10 records
+    AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
+    for (int i = 0; i < 10; ++i) {
+      tmpWriter1.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
+    }
+
+    /**
+     *  Build a producer that writes to {@link tmpTopic2}
+     */
+    VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(tmpTopic2);
+    // Write 10 records
+    for (int i = 10; i < 20; ++i) {
+      tmpWriter2.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
+    }
+
+    /**
+     * Wait for leader to switch over to real-time topic
+     */
+    TestUtils.waitForNonDeterministicAssertion(20 * 1000, TimeUnit.MILLISECONDS, () -> {
+          StoreResponse store = controllerClient.getStore(storeName);
+          Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
+        });
+    // Build a producer to produce 2 TS messages into RT
+    VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeRealTimeTopic(storeName));
+
+    realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic1, rewindStartTime, null);
+    realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic2, rewindStartTime, null);
+
+    /**
+     * Verify that all messages from {@link tmpTopic2} are in store and no message from {@link tmpTopic1} is in store.
+     */
+    AvroGenericStoreClient client =
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+    TestUtils.waitForNonDeterministicAssertion(30 * 1000, TimeUnit.MILLISECONDS, () -> {
+      // All messages from tmpTopic2 should exist
+      try {
+        for (int i = 10; i < 20; i++) {
+          String key = "key_" + i;
+          Assert.assertEquals(client.get(key).get().toString(), "value_" + i);
+        }
+      } catch (Exception e) {
+        e.printStackTrace();
+        Assert.fail(e.getMessage());
+      }
+
+      // No message from tmpTopic1 should exist
+      try {
+        for (int i = 0; i < 10; i++) {
+          String key = "key_" + i;
+          Object value = client.get(key).get();
+          Assert.assertEquals(value, null);
+        }
+      } catch (Exception e) {
+        e.printStackTrace();
+        Assert.fail(e.getMessage());
+      }
+    });
 
     venice.close();
   }
