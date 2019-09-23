@@ -40,6 +40,11 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void topicSwitchReceived(String storeName, int partitionId, long offset, String message) {
+    logger.info(logMessage("Received TOPIC_SWITCH", storeName, partitionId, offset, message));
+  }
+
+  @Override
   public void startOfIncrementalPushReceived(String storeName, int partitionId, long offset, String message) {
     logger.info(logMessage("Received START_OF_INCREMENTAL_PUSH", storeName, partitionId, offset, message));
   }

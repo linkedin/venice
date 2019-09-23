@@ -165,6 +165,11 @@ class IngestionNotificationDispatcher {
         notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
+  void reportTopicSwitchReceived(PartitionConsumptionState pcs) {
+    report(pcs, ExecutionStatus.TOPIC_SWITCH_RECEIVED,
+        notifier -> notifier.topicSwitchReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
+  }
+
   void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
     for(PartitionConsumptionState pcs: pcsList) {
       report(pcs, ExecutionStatus.ERROR,

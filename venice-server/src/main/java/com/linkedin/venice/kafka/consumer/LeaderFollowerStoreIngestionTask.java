@@ -491,6 +491,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     if (!serverConfig.getKafkaBootstrapServers().equals(kafkaServerUrls.get(0).toString())) {
       throw new VeniceException("Kafka server url in TopicSwitch control message is different from the url in consumer");
     }
+    notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
 
     // Calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
