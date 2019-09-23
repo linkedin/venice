@@ -101,6 +101,10 @@ public class OffsetRecord {
     return this.partitionState.lastUpdate;
   }
 
+  public void setProcessingTimeEpochMs(long updateTimeInMs) {
+    this.partitionState.lastUpdate = updateTimeInMs;
+  }
+
   public void endOfPushReceived(long endOfPushOffset) {
     if (endOfPushOffset < 1) {
       // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.

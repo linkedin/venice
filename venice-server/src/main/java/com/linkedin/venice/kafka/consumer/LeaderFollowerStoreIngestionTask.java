@@ -11,7 +11,9 @@ import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -243,60 +245,153 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * @throws InterruptedException
    */
   @Override
-  protected void checkLongRunningConsumerActionState() throws InterruptedException{
+  protected void checkLongRunningTaskState() throws InterruptedException{
     for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
-      if (!partitionConsumptionState.getLeaderState().equals(IN_TRANSITION_FROM_STANDBY_TO_LEADER)) {
-        continue;
-      }
+      switch (partitionConsumptionState.getLeaderState()) {
+        case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
+          int partition = partitionConsumptionState.getPartition();
 
-      int partition = partitionConsumptionState.getPartition();
-
-      /**
-       * If buffer replay is disabled, all replica are just consuming from version topic;
-       * promote to leader immediately.
-       */
-      if (!bufferReplayEnabledForHybrid) {
-        partitionConsumptionState.setLeaderState(LEADER);
-
-        logger.info(consumerTaskId + " promoted to leader for partition " + partition);
-
-        defaultReadyToServeChecker.apply(partitionConsumptionState);
-        return;
-      }
-
-      long lastTimestamp = getLastConsumedMessageTimestamp(topic, partition);
-      if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
-        /**
-         * There isn't any new message from the old leader for at least {@link newLeaderInactiveTime} minutes,
-         * this replica can finally be promoted to leader.
-         */
-        // unsubscribe from previous topic/partition
-        consumer.unSubscribe(topic, partition);
-
-        OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-        if (null == offsetRecord.getLeaderTopic()) {
           /**
-           * This replica is ready to actually switch to LEADER role, but it has been consuming from version topic
-           * all the time, so set the leader consumption state to its version topic consumption state.
+           * If buffer replay is disabled, all replica are just consuming from version topic;
+           * promote to leader immediately.
            */
-          offsetRecord.setLeaderConsumptionState(topic, offsetRecord.getOffset());
-        }
+          if (!bufferReplayEnabledForHybrid) {
+            partitionConsumptionState.setLeaderState(LEADER);
+            OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+            offsetRecord.setLeaderConsumptionState(this.topic, offsetRecord.getOffset());
 
-        // subscribe to the new upstream
-        consumer.subscribe(offsetRecord.getLeaderTopic(), partition, offsetRecord.getLeaderOffset());
-        partitionConsumptionState.setLeaderState(LEADER);
+            logger.info(consumerTaskId + " promoted to leader for partition " + partition);
 
-        logger.info(consumerTaskId + " promoted to leader for partition " + partition
-            + "; start consuming from " + offsetRecord.getLeaderTopic() + " offset " + offsetRecord.getLeaderOffset());
+            defaultReadyToServeChecker.apply(partitionConsumptionState);
+            return;
+          }
 
-        /**
-         * The topic switch operation will be recorded but the actual topic switch happens only after the replica
-         * is promoted to leader; we should check whether it's ready to serve after switching topic.
-         *
-         * In extreme case, if there is no message in real-time topic, there will be no new message after leader switch
-         * to the real-time topic, so `isReadyToServe()` check will never be invoked.
-         */
-        defaultReadyToServeChecker.apply(partitionConsumptionState);
+          long lastTimestamp = getLastConsumedMessageTimestamp(topic, partition);
+          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+            /**
+             * There isn't any new message from the old leader for at least {@link newLeaderInactiveTime} minutes,
+             * this replica can finally be promoted to leader.
+             */
+            // unsubscribe from previous topic/partition
+            consumer.unSubscribe(topic, partition);
+
+            OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+            if (null == offsetRecord.getLeaderTopic()) {
+              /**
+               * This replica is ready to actually switch to LEADER role, but it has been consuming from version topic
+               * all the time, so set the leader consumption state to its version topic consumption state.
+               */
+              offsetRecord.setLeaderConsumptionState(topic, offsetRecord.getOffset());
+            }
+
+            // subscribe to the new upstream
+            consumer.subscribe(offsetRecord.getLeaderTopic(), partition, offsetRecord.getLeaderOffset());
+            partitionConsumptionState.setLeaderState(LEADER);
+
+            logger.info(consumerTaskId + " promoted to leader for partition " + partition
+                + "; start consuming from " + offsetRecord.getLeaderTopic() + " offset " + offsetRecord.getLeaderOffset());
+
+            /**
+             * The topic switch operation will be recorded but the actual topic switch happens only after the replica
+             * is promoted to leader; we should check whether it's ready to serve after switching topic.
+             *
+             * In extreme case, if there is no message in real-time topic, there will be no new message after leader switch
+             * to the real-time topic, so `isReadyToServe()` check will never be invoked.
+             */
+            defaultReadyToServeChecker.apply(partitionConsumptionState);
+          }
+          break;
+        case LEADER:
+          /**
+           * Leader should finish consuming all the messages inside version topic before switching to real-time topic;
+           * if upstreamOffset exists, rewind to RT with the upstreamOffset instead of using the start timestamp in TS.
+           */
+          String currentLeaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+          if (null == currentLeaderTopic) {
+            String errorMsg = consumerTaskId + " Missing leader topic for actual leader. OffsetRecord: "
+                + partitionConsumptionState.getOffsetRecord().toDetailedString();
+            logger.error(errorMsg);
+            throw new VeniceException(errorMsg);
+          }
+
+          TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
+          if (null == topicSwitch || currentLeaderTopic.equals(topicSwitch.sourceTopicName.toString())) {
+            continue;
+          }
+
+          /**
+           * Otherwise, check whether it has been 5 minutes since the last update in the current topic
+           *
+           */
+          String newSourceTopicName = topicSwitch.sourceTopicName.toString();
+          partition = partitionConsumptionState.getPartition();
+          lastTimestamp = getLastConsumedMessageTimestamp(currentLeaderTopic, partition);
+          if (LatencyUtils.getElapsedTimeInMs(lastTimestamp) > newLeaderInactiveTime) {
+            // leader switch topic
+            long upstreamStartOffset = partitionConsumptionState.getOffsetRecord().getLeaderOffset();
+            if (upstreamStartOffset < 0) {
+              if (topicSwitch.rewindStartTimestamp > 0) {
+                upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
+                if (upstreamStartOffset != OffsetRecord.LOWEST_OFFSET) {
+                  // subscribe will seek to the next offset
+                  upstreamStartOffset -= 1;
+                }
+              } else {
+                upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
+              }
+            }
+
+            // unsubscribe the old source and subscribe to the new source
+            consumer.unSubscribe(currentLeaderTopic, partition);
+
+            // wait for the last callback to complete
+            try {
+              Future<RecordMetadata> lastFuture = partitionConsumptionState.getLastLeaderProduceFuture();
+              if (lastFuture != null) {
+                lastFuture.get();
+              }
+            } catch (Exception e) {
+              String errorMsg = "Leader failed to produce the last message to version topic before switching "
+                  + "feed topic from " + currentLeaderTopic+ " to " + newSourceTopicName + " partition: " + partition;
+              logger.error(errorMsg, e);
+              versionedDIVStats.recordLeaderProducerFailure(storeNameWithoutVersionInfo, storeVersion);
+              notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMsg, e);
+              throw new VeniceException(errorMsg, e);
+            }
+
+            // subscribe to the new upstream
+            partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
+            consumer.subscribe(newSourceTopicName, partition, upstreamStartOffset);
+
+            if (!topic.equals(currentLeaderTopic)) {
+              /**
+               * This is for Samza grandfathering.
+               *
+               * Use default upstream offset for callback so that leader won't update its own leader consumed offset after
+               * producing the TS message.
+               */
+              LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, currentLeaderTopic,
+                  topic, partition, DEFAULT_UPSTREAM_OFFSET, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
+              /**
+               * Put default upstream offset for TS message so that followers won't update the leader offset after seeing
+               * the TS message.
+               */
+              ControlMessage controlMessage = new ControlMessage();
+              controlMessage.controlMessageType = ControlMessageType.TOPIC_SWITCH.getValue();
+              controlMessage.controlMessageUnion = topicSwitch;
+              getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET);
+            }
+
+            logger.info(consumerTaskId + " leader successfully switch feed topic from " + currentLeaderTopic + " to "
+                + newSourceTopicName + " offset " + upstreamStartOffset + " partition " + partition);
+
+            // In case new topic is empty and leader can never become online
+            defaultReadyToServeChecker.apply(partitionConsumptionState);
+          }
+          break;
+        case STANDBY:
+          // no long running task for follower
+          break;
       }
     }
   }
@@ -318,24 +413,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
      * the last consumed message timestamp for the corresponding partition.
      */
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-    long lastConsumedMessageTimestamp = partitionConsumptionState.getLastConsumedMessageTimestamp();
-    if (lastConsumedMessageTimestamp == 0L) {
-      long lastConsumedVersionTopicOffset = partitionConsumptionState.getOffsetRecord().getOffset();
-      if (lastConsumedVersionTopicOffset == OffsetRecord.LOWEST_OFFSET) {
-        /**
-         * There is nothing in the version topic yet; returning 0 will mark this replica as LEADER immediately,
-         * which is contrary to the {@link newLeaderInactiveTime} minutes inactivity rule; the new leader will
-         * at least wait for the START_OF_PUSH message; so return current time in this case.
-         */
-        return SystemTime.INSTANCE.getMilliseconds();
-      }
-
-      /**
-       * no consumption happen for this partition since the (re)start of the ingestion task;
-       * get the timestamp of the last message of this partition;
-       */
-      lastConsumedMessageTimestamp = partitionConsumptionState.getOffsetRecord().getEventTimeEpochMs();
-    }
+    long lastConsumedMessageTimestamp = partitionConsumptionState.getOffsetRecord().getProcessingTimeEpochMs();
 
     return lastConsumedMessageTimestamp;
   }
@@ -394,7 +472,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
-      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+      PartitionConsumptionState partitionConsumptionState) {
     TopicSwitch topicSwitch = (TopicSwitch) controlMessage.controlMessageUnion;
     /**
      * Currently just check whether the sourceKafkaServers list inside TopicSwitch control message only contains
@@ -412,18 +490,48 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("Kafka server url in TopicSwitch control message is different from the url in consumer");
     }
 
+    // Calculate the start offset based on start timestamp
     String newSourceTopicName = topicSwitch.sourceTopicName.toString();
-    // update partition consumption state
     long upstreamStartOffset = OffsetRecord.LOWEST_OFFSET;
     if (topicSwitch.rewindStartTimestamp > 0) {
       upstreamStartOffset = topicManager.getOffsetByTime(newSourceTopicName, partition, topicSwitch.rewindStartTimestamp);
     }
 
+    // Sync TopicSwitch message into metadata store
+    Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
+    if (storeVersionState.isPresent()) {
+      String newTopicSwitchLogging = "TopicSwitch message (new source topic:" + topicSwitch.sourceTopicName
+          + "; rewind start time:" + topicSwitch.rewindStartTimestamp + ")";
+      if (null == storeVersionState.get().topicSwitch) {
+        logger.info("First time receiving a " + newTopicSwitchLogging);
+        storeVersionState.get().topicSwitch = topicSwitch;
+      } else {
+        logger.info("Previous TopicSwitch message in metadata store (source topic:" + storeVersionState.get().topicSwitch.sourceTopicName
+            + "; rewind start time:" + storeVersionState.get().topicSwitch.rewindStartTimestamp + ") will be replaced"
+            + " by the new " + newTopicSwitchLogging);
+        storeVersionState.get().topicSwitch = topicSwitch;
+      }
+      // Sync latest store version level metadata to disk
+      storageMetadataService.put(topic, storeVersionState.get());
+
+      // Put TopicSwitch message into in-memory state to avoid poking metadata store
+      partitionConsumptionState.setTopicSwitch(topicSwitch);
+    } else {
+      throw new VeniceException("Unexpected: received some " + ControlMessageType.TOPIC_SWITCH.name() +
+          " control message in a topic where we have not yet received a " +
+          ControlMessageType.START_OF_PUSH.name() + " control message.");
+    }
+
+
     if (partitionConsumptionState.getLeaderState().equals(LEADER)) {
       /**
-       * For leader, actually change your consumption source and update the leader topic/offset metadata.
+       * Leader shouldn't switch topic here (drainer thread), which would conflict with the ingestion thread which would
+       * also access consumer.
+       *
+       * Besides, if there is re-balance, leader should finish consuming the everything in VT before switching topics;
+       * there could be more than one TopicSwitch message in VT, we should honor the last one during re-balance; so
+       * don't update the consumption state like leader topic or leader offset yet until actually switching topic
        */
-
       if (!bufferReplayEnabledForHybrid) {
         /**
          * If buffer replay is disabled, everyone sticks to the version topic
@@ -434,54 +542,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
         return;
       }
-
-      // unsubscribe the old source and subscribe to the new source
-      String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      consumer.unSubscribe(leaderTopic, partition);
-
-      // finish consuming and producing all the things in queue
-      storeBufferService.drainBufferedRecordsFromTopicPartition(leaderTopic, partition);
-
-      // wait for the last callback to complete
-      try {
-        Future<RecordMetadata> lastFuture = partitionConsumptionState.getLastLeaderProduceFuture();
-        if (lastFuture != null) {
-          lastFuture.get();
-        }
-      } catch (Exception e) {
-        String errorMsg = "Leader failed to produce the last message to version topic before switching "
-            + "feed topic from " + leaderTopic+ " to " + newSourceTopicName + " partition: " + partition;
-        logger.error(errorMsg, e);
-        versionedDIVStats.recordLeaderProducerFailure(storeNameWithoutVersionInfo, storeVersion);
-        notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMsg, e);
-        throw new VeniceException(errorMsg, e);
-      }
-
-      // subscribe to the new upstream
-      partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
-      consumer.subscribe(newSourceTopicName, partition, upstreamStartOffset);
-
-      if (!topic.equals(leaderTopic)) {
-        /**
-         * Use default upstream offset for callback so that leader won't update its own leader consumed offset after
-         * producing the TS message.
-         */
-        LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-            topic, partition, DEFAULT_UPSTREAM_OFFSET, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
-        /**
-         * Put default upstream offset for TS message so that followers won't update the leader offset after seeing
-         * the TS message.
-         */
-        getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, DEFAULT_UPSTREAM_OFFSET);
-      }
-
-      logger.info(consumerTaskId + " leader successfully switch feed topic from " + leaderTopic + " to "
-          + newSourceTopicName + " offset " + upstreamStartOffset + " partition " + partition);
+      // Do not update leader consumption state until actually switching topic
     } else {
       /**
        * For follower, just keep track of what leader is doing now.
        */
       partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
+
+      /**
+       * We need to measure offset lag here for follower; if real-time topic is empty and never gets any new message,
+       * follower replica will never become online.
+       *
+       * If we measure lag here for follower, follower might become online faster than leader in extreme case:
+       * Real time topic for that partition is empty or the rewind start offset is very closed to the end, followers
+       * calculate the lag of the leader and decides the lag is small enough.
+       */
+      this.defaultReadyToServeChecker.apply(partitionConsumptionState);
     }
   }
 
@@ -507,7 +583,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
          * issue (multiple leaders producing to the same partition at the same time)
          */
-        if (newUpstreamOffset < previousUpstreamOffset
+        if (newUpstreamOffset < previousUpstreamOffset && offsetRecord.getLeaderGUID() != null
             && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID())) {
           /**
            * Check whether the data inside rewind message is the same the data inside storage engine; if so,
@@ -584,6 +660,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          */
         offsetRecord.setLeaderTopicOffset(kafkaValue.producerMetadata.upstreamOffset);
       }
+      // update leader producer GUID
+      offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
     }
   }
 

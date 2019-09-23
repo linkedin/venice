@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.concurrent.Future;
@@ -20,9 +21,15 @@ class PartitionConsumptionState {
   private boolean lagCaughtUp;
   private boolean completionReported;
   private LeaderFollowerStateType leaderState;
-  private long lastConsumedMessageTimestamp = 0L;
 
   private volatile Future<RecordMetadata> lastLeaderProduceCallback = null;
+
+  /**
+   * In-memory cache for the TopicSwitch in {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState};
+   * make sure to keep the in-memory state and StoreVersionState in sync.
+   */
+  private TopicSwitch topicSwitch = null;
+
   /**
    * The following priorities are used to store the progress of processed records since it is not efficient to
    * update offset db for every record.
@@ -195,11 +202,14 @@ class PartitionConsumptionState {
     return this.lastLeaderProduceCallback;
   }
 
-  public void setLastConsumedMessageTimestamp(long timestamp) {
-    this.lastConsumedMessageTimestamp = timestamp;
+  /**
+   * Update the in-memory state for TopicSwitch whenever encounter a new TopicSwitch message or after a restart.
+   */
+  public void setTopicSwitch(TopicSwitch topicSwitch) {
+    this.topicSwitch = topicSwitch;
   }
 
-  public long getLastConsumedMessageTimestamp() {
-    return this.lastConsumedMessageTimestamp;
+  public TopicSwitch getTopicSwitch() {
+    return this.topicSwitch;
   }
 }

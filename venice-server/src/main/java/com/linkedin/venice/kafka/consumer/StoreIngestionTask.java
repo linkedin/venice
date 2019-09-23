@@ -534,7 +534,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         */
       while (isRunning.get()) {
         processConsumerActions();
-        checkLongRunningConsumerActionState();
+        checkLongRunningTaskState();
         processMessages();
       }
 
@@ -625,6 +625,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
       if (storeVersionState.isPresent()) {
         boolean sorted = storeVersionState.get().sorted;
+        /**
+         * Put TopicSwitch message into in-memory state.
+         */
+        newPartitionConsumptionState.setTopicSwitch(storeVersionState.get().topicSwitch);
         /**
          * Notify the underlying store engine about starting batch push.
          */
@@ -758,7 +762,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  protected abstract void checkLongRunningConsumerActionState() throws InterruptedException;
+  protected abstract void checkLongRunningTaskState() throws InterruptedException;
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
 
   /**
@@ -1213,12 +1217,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logger.info("Topic " + topic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
     } else {
       /**
-       * update the timestamp of the last consumed message for this partition;
+       * Record the time when server consumes the message;
        * the message can come from version topic, real-time topic or grandfathering topic.
        */
-      partitionConsumptionState.setLastConsumedMessageTimestamp(consumerRecord.timestamp());
-
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+      offsetRecord.setProcessingTimeEpochMs(System.currentTimeMillis());
+
       if (offsetRecordTransformer.isPresent()) {
         /**
          * The reason to transform the internal state only during checkpointing is that
