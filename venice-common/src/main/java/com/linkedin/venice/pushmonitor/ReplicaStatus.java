@@ -66,7 +66,7 @@ public class ReplicaStatus {
     switch (currentStatus) {
       case STARTED:
       case PROGRESS:
-        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, WARNING, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED, WARNING, ERROR, COMPLETED);
         break;
       case WARNING:
         isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
@@ -75,13 +75,19 @@ public class ReplicaStatus {
         isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case COMPLETED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, TOPIC_SWITCH_RECEIVED);
         break;
       case END_OF_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, WARNING, ERROR, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED, WARNING, ERROR, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case START_OF_BUFFER_REPLAY_RECEIVED:
         isValid = Utils.verifyTransition(newStatus, STARTED, WARNING, ERROR, PROGRESS, COMPLETED);
+        break;
+      case TOPIC_SWITCH_RECEIVED:
+        /**
+         * For grandfathering, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
+         */
+        isValid = Utils.verifyTransition(newStatus, STARTED, TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, WARNING, ERROR, PROGRESS, COMPLETED);
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
       case END_OF_INCREMENTAL_PUSH_RECEIVED:

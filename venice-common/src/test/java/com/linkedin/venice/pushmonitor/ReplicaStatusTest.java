@@ -59,7 +59,7 @@ public class ReplicaStatusTest {
 
   @Test
   public void testUpdateStatusFromEndOfPushReceived() {
-    testValidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, START_OF_BUFFER_REPLAY_RECEIVED);
+    testValidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED);
     testInvalidTargetStatuses(END_OF_PUSH_RECEIVED, END_OF_PUSH_RECEIVED, PROGRESS);
   }
 
@@ -70,8 +70,16 @@ public class ReplicaStatusTest {
   }
 
   @Test
+  public void testUpdateStatusFromTopicSwitchReceived() {
+    /**
+     * For grandfathering, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
+     */
+    testValidTargetStatuses(TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
+  }
+
+  @Test
   public void testUpdateStatusFromCOMPLETED() {
-    testValidTargetStatuses(COMPLETED, STARTED, ERROR);
+    testValidTargetStatuses(COMPLETED, STARTED, ERROR, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, TOPIC_SWITCH_RECEIVED);
     testInvalidTargetStatuses(COMPLETED, PROGRESS, COMPLETED);
   }
 

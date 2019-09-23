@@ -146,6 +146,11 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
     public void startOfBufferReplayReceived(String storeName, int partitionId, long offset, String message) {}
 
     @Override
+    public void topicSwitchReceived(String storeName, int partitionId, long offset, String message) {
+      // no-op
+    }
+
+    @Override
     public void startOfIncrementalPushReceived(String storeName, int partitionId, long offset, String message) {}
 
     @Override

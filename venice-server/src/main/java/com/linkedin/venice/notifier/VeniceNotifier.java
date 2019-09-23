@@ -48,14 +48,26 @@ public interface VeniceNotifier {
     /**
      * The {@link ControlMessageType#START_OF_BUFFER_REPLAY} control message was consumed.
      *
-     * This is only emitted for Hybrid Stores, after the report of
+     * This is only emitted for Hybrid Stores using Online/Offline model, after the report of
      * {@link #endOfPushReceived(String, int, long)} and before {@link #completed(String, int, long)}.
      */
     default void startOfBufferReplayReceived(String storeName, int partitionId, long offset) {
         startOfBufferReplayReceived(storeName, partitionId, offset, "");
     }
 
+    /**
+     * The {@link ControlMessageType#TOPIC_SWITCH} control message was consumed.
+     *
+     * This is only emitted for Hybrid Stores using Leader/Follower model, after the report of
+     * {@link #endOfPushReceived(String, int, long)} and before {@link #completed(String, int, long)}.
+     */
+    default void topicSwitchReceived(String storeName, int partitionId, long offset) {
+        topicSwitchReceived(storeName, partitionId, offset, "");
+    }
+
     void startOfBufferReplayReceived(String storeName, int partitionId, long offset, String message);
+
+    void topicSwitchReceived(String storeName, int partitionId, long offset, String message);
 
     /**
      * Consumption is started for an incremental push
