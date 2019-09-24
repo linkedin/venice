@@ -247,9 +247,7 @@ public abstract class AbstractPushMonitor
         return;
       }
 
-      updatePushStatus(status, ExecutionStatus.ERROR, Optional.of(statusDetails));
-      routingDataRepository.unSubscribeRoutingDataChange(topic, this);
-      aggPushHealthStats.recordFailedPush(Version.parseStoreFromKafkaTopicName(topic), getDurationInSec(status));
+      handleOfflinePushUpdate(status, ExecutionStatus.ERROR, Optional.of(statusDetails));
     }
   }
 
@@ -322,6 +320,11 @@ public abstract class AbstractPushMonitor
     }
   }
 
+  /**
+   * Direct calls to updatePushStatus should be made carefully. e.g. calling with {@link ExecutionStatus}.ERROR or
+   * other terminal status update should be made through handleOfflinePushUpdate. That method will then invoke
+   * handleErrorPush and perform relevant operations to handle the ERROR status update properly.
+   */
   protected void updatePushStatus(OfflinePushStatus pushStatus, ExecutionStatus newStatus, Optional<String> newStatusDetails){
     OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
     clonedPushStatus.updateStatus(newStatus, newStatusDetails);
@@ -461,12 +464,12 @@ public abstract class AbstractPushMonitor
           } catch (Exception e) {
             // TODO: Figure out a better error handling...
             String newStatusDetails = "Failed to kick off the buffer replay";
-            updatePushStatus(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
+            handleOfflinePushUpdate(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
             logger.error(newStatusDetails + " for offlinePushStatus: " + offlinePushStatus.toString(), e);
           }
         } else {
           String newStatusDetails = "The TopicReplicator was not properly initialized!";
-          updatePushStatus(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
+          handleOfflinePushUpdate(offlinePushStatus, ExecutionStatus.ERROR, Optional.of(newStatusDetails));
           logger.error(newStatusDetails);
         }
       } else {

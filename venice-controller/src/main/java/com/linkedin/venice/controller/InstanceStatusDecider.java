@@ -116,20 +116,9 @@ public class InstanceStatusDecider {
               return NodeRemovableResult.nonremoveableResult(resourceName,
                   NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE, result.getSecond());
             }
-          } else if (versionStatus.equals(VersionStatus.STARTED)) {
-            // Push is still running
-            // Venice can not remove the given instance once job would fail due to removing.
-            //TODO: can we remove this check? Would re-balance nodes fail a running push by any means?
-            if (monitor.wouldJobFail(resourceName, partitionAssignmentAfterRemoving)) {
-              logger.info(
-                  "Instance:" + instanceId + " is not removable because the offline push for topic:" + resourceName
-                      + " would fail if this instance was removed from cluster:" + clusterName);
-              return NodeRemovableResult.nonremoveableResult(resourceName,
-                  NodeRemovableResult.BlockingRemoveReason.WILL_FAIL_PUSH, null);
-            }
           } else {
             if (logger.isDebugEnabled()) {
-              // Ignore the error version or not created version.
+              // Ignore the STARTED, ERROR and NOT_CREATED versions.
               logger.debug(
                   "Version status: " + versionStatus.toString() + ", ignore it while judging whether instance: "
                       + instanceId + " is removable.");
@@ -194,6 +183,12 @@ public class InstanceStatusDecider {
     Store store = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName));
     if (store == null) {
       logger.info("Can not find store for the resource:" + resourceName);
+      return VersionStatus.NOT_CREATED;
+    }
+    if (!store.isEnableReads()) {
+      // Ignore store replicas that have read disabled.
+      logger.info("Ignoring node removal checks for resource: " + resourceName + " because the store: "
+          + store.getName() + " has reads disabled");
       return VersionStatus.NOT_CREATED;
     }
     return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));
