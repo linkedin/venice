@@ -551,13 +551,13 @@ public class StoreIngestionTaskTest {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
-      //StoreIngestionTask#checkValueSchemaAvail will keep polling for 'NON_EXISTING_SCHEMA_ID'. It blocks the thread
-      //so that the next record would never be put into BDB.
+      //StoreIngestionTask#checkValueSchemaAvail will keep polling for 'NON_EXISTING_SCHEMA_ID'. It blocks the
+      //#putConsumerRecord and will not enter drainer queue
       verify(mockSchemaRepo, after(TEST_TIMEOUT).never()).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       verify(mockSchemaRepo, atLeastOnce()).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
       verify(mockAbstractStorageEngine, never()).put(eq(PARTITION_FOO), any(), any(byte[].class));
 
-      // Only two records(start_of_segment, start_of_push) offset were able to be recorded before thread being blocked
+      // Only two records(start_of_segment, start_of_push) offset were able to be recorded before 'NON_EXISTING_SCHEMA_ID' blocks #putConsumerRecord
       verify(mockStorageMetadataService, atMost(2)).put(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
     }, isLeaderFollowerModelEnabled);
   }
@@ -1259,6 +1259,7 @@ public class StoreIngestionTaskTest {
     DiskUsage diskFullUsage = mock(DiskUsage.class);
     doReturn(true).when(diskFullUsage).isDiskFull(anyLong());
     doReturn("mock disk full disk usage").when(diskFullUsage).getDiskStatus();
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
     runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), () -> {
     }, () -> {
