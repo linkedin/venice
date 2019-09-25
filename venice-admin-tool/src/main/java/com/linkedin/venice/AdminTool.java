@@ -533,6 +533,9 @@ public class AdminTool {
     integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT, p -> params.setBootstrapToOnlineTimeoutInHours(p));
     booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p));
     genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p));
+    booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p));
+    booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_REGISTER_FOR_READ_COMPUTE_STORE_ENABLED,
+        p -> params.setAutoSupersetSchemaEnabledFromReadComputeStore(p));
 
     ControllerResponse response = controllerClient.updateStore(storeName, params);
     printSuccess(response);

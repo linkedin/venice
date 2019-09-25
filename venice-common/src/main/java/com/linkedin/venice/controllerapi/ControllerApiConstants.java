@@ -71,6 +71,9 @@ public class ControllerApiConstants {
 
   public static final String BACKUP_STRATEGY = "backup_strategy";
 
+  public static final String SCHEMA_AUTO_REGISTER_PUSHJOB_ENABLED = "schema_auto_register_pushjob_enabled";
+  public static final String AUTO_SUPERSET_SCHEMA_ENABLED_FOR_READ_COMPUTE_STORE = "auto_superset_schema_register_enabled_for_read_compute_store";
+
 
   public static final String SKIP_DIV = "skip_div";
 

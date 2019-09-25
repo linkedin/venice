@@ -1921,6 +1921,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setAutoSchemaRegisterPushJobEnabled(String clusterName, String storeName,
+        boolean autoSchemaRegisterPushJobEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setSchemaAutoRegisterFromPushJobEnabled(autoSchemaRegisterPushJobEnabled);
+            return store;
+        });
+    }
+
+    public void setAutoSchemaRegisterAdminEnabled(String clusterName, String storeName,
+        boolean autoSchemaRegisterAdminEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            if (store.isReadComputationEnabled()) {
+                store.setSchemaAutoRegisterFromAdminEnabled(autoSchemaRegisterAdminEnabled);
+            }
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1984,7 +2002,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> readComputationEnabled,
         Optional<Integer> bootstrapToOnlineTimeoutInHours,
         Optional<Boolean> leaderFollowerModelEnabled,
-        Optional<BackupStrategy> backupStrategy) {
+        Optional<BackupStrategy> backupStrategy,
+        Optional<Boolean> autoSchemaRegisterPushJobEnabled,
+        Optional<Boolean> autoSchemaRegisterAdminEnabled
+        ) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -2128,6 +2149,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (backupStrategy.isPresent()) {
                 setBackupStrategy(clusterName, storeName, backupStrategy.get());
             }
+
+            autoSchemaRegisterPushJobEnabled.ifPresent(value ->
+                setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
+            autoSchemaRegisterAdminEnabled.ifPresent(value ->
+                setAutoSchemaRegisterAdminEnabled(clusterName, storeName, value));
 
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {

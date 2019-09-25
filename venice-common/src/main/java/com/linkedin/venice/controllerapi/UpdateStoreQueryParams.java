@@ -48,6 +48,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setReadComputationEnabled(srcStore.isReadComputationEnabled())
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
+            .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
+            .setAutoSupersetSchemaEnabledFromReadComputeStore(srcStore.isSchemaAutoRegisterFromAdminEnabled())
             .setBackupStrategy(srcStore.getBackupStrategy());
 
 
@@ -232,6 +234,22 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getBoolean(LEADER_FOLLOWER_MODEL_ENABLED);
   }
 
+
+  public UpdateStoreQueryParams setAutoSchemaPushJobEnabled(boolean autoSchemaPushJobEnabled) {
+    return putBoolean(SCHEMA_AUTO_REGISTER_PUSHJOB_ENABLED, autoSchemaPushJobEnabled);
+  }
+
+  public Optional<Boolean> getAutoSchemaRegisterPushJobEnabled() {
+    return getBoolean(SCHEMA_AUTO_REGISTER_PUSHJOB_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setAutoSupersetSchemaEnabledFromReadComputeStore(boolean autoSchemaAdminEnabled) {
+    return putBoolean(AUTO_SUPERSET_SCHEMA_ENABLED_FOR_READ_COMPUTE_STORE, autoSchemaAdminEnabled);
+  }
+
+  public Optional<Boolean> getAutoSupersetSchemaEnabledForReadComputeStore() {
+    return getBoolean(AUTO_SUPERSET_SCHEMA_ENABLED_FOR_READ_COMPUTE_STORE);
+  }
 
   public UpdateStoreQueryParams setBackupStrategy(BackupStrategy backupStrategy) {
     params.put(BACKUP_STRATEGY, backupStrategy.name());

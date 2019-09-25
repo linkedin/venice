@@ -1052,7 +1052,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> readComputationEnabled,
       Optional<Integer> bootstrapToOnlineTimeoutInHours,
       Optional<Boolean> leaderFollowerModelEnabled,
-      Optional<BackupStrategy> backupStrategy) {
+      Optional<BackupStrategy> backupStrategy,
+      Optional<Boolean> autoSchemaRegisterPushJobEnabled,
+      Optional<Boolean> autoSchemaRegisterAdminEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -1120,6 +1122,13 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.leaderFollowerModelEnabled = leaderFollowerModelEnabled.isPresent() ? leaderFollowerModelEnabled.get() : store.isLeaderFollowerModelEnabled();
       setStore.backupStrategy = (backupStrategy.orElse(store.getBackupStrategy())).ordinal();
 
+      setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled.orElse(store.isSchemaAutoRegisterFromPushJobEnabled());
+      if (autoSchemaRegisterAdminEnabled.isPresent() && autoSchemaRegisterAdminEnabled.get()) {
+        if (!setStore.readComputationEnabled) {
+          throw new VeniceException("Cannot set autoSchemaRegisterAdminEnabled to non-read-compute stores");
+        }
+        setStore.schemaAutoRegisterFromAdminEnabled = autoSchemaRegisterAdminEnabled.orElse(store.isSchemaAutoRegisterFromAdminEnabled());
+      }
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
