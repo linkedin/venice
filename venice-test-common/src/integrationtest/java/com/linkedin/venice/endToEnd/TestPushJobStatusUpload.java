@@ -62,9 +62,15 @@ public class TestPushJobStatusUpload {
         keyValuePairs.add(new Pair(key, value));
       }
       // Wait for the push job status store and topic to be created
-      TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.MINUTES, () -> assertEquals(
-              controllerClient.queryOverallJobStatus(Version.composeKafkaTopic(pushJobStatusStoreName, 1),
-                  Optional.empty()).getStatus(), ExecutionStatus.COMPLETED.toString()));
+      TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.MINUTES, true, () -> {
+        String emptyPushStatus = controllerClient.queryOverallJobStatus(
+            Version.composeKafkaTopic(pushJobStatusStoreName, 1), Optional.empty()).getStatus();
+        if (emptyPushStatus.equals(ExecutionStatus.ERROR.toString())) {
+          fail("Unexpected empty push failure for setting up the store " + pushJobStatusStoreName);
+        }
+        assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Empty push to set up the "
+            + pushJobStatusStoreName + " is not completed yet");
+      });
       // Upload more push job statuses via the endpoint
       for (int i = 0; i < 3; i++) {
         PushJobStatusRecordKey key = keyValuePairs.get(i).getFirst();

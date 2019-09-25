@@ -166,10 +166,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getPushJobStatusStoreClusterName();
   }
 
-  public int getPushJobStatusValueSchemaId() {
-    return getCommonConfig().getPushJobStatusValueSchemaId();
-  }
-
   public String getSystemSchemaClusterName() {
     return getCommonConfig().getSystemSchemaClusterName();
   }

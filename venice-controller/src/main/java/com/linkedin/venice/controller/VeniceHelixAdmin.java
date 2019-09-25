@@ -598,8 +598,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     public synchronized void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
-        if (multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
-            || multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
+        String pushJobStatusStoreClusterName = multiClusterConfigs.getPushJobStatusStoreClusterName();
+        String pushJobStatusStoreName = multiClusterConfigs.getPushJobStatusStoreName();
+        if (pushJobStatusStoreClusterName.isEmpty() || pushJobStatusStoreName.isEmpty()) {
             // Push job status upload store is not configured.
             throw new VeniceException("Unable to upload the push job status because corresponding store is not configured");
         }
@@ -625,7 +626,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (pushJobStatusWriter == null) {
             configurePushJobStatusWriter(key, value);
         }
-        pushJobStatusWriter.put(key, value, multiClusterConfigs.getPushJobStatusValueSchemaId(), null);
+        int schemaId = getValueSchemaId(pushJobStatusStoreClusterName, pushJobStatusStoreName,
+            value.getSchema().toString());
+        pushJobStatusWriter.put(key, value, schemaId, null);
         logger.info("Successfully sent push job status for store " + value.storeName.toString() + " in cluster ");
     }
 

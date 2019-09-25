@@ -51,7 +51,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int parentControllerMaxErroredTopicNumToKeep;
   private final String pushJobStatusStoreName;
   private final String pushJobStatusStoreClusterName;
-  private final int pushJobStatusValueSchemaId;
   private final boolean addVersionViaAdminProtocol;
   private final boolean addVersionViaTopicMonitor;
   private final boolean participantMessageStoreEnabled;
@@ -112,7 +111,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     this.pushJobStatusStoreName = props.getString(PUSH_JOB_STATUS_STORE_NAME, "");
     this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
-    this.pushJobStatusValueSchemaId = props.getInt(PUSH_JOB_STATUS_VALUE_SCHEMA_ID, 1);
     this.addVersionViaAdminProtocol = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false);
     this.addVersionViaTopicMonitor = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, true);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
@@ -231,8 +229,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public String getPushJobStatusStoreName() { return pushJobStatusStoreName; }
 
   public String getPushJobStatusStoreClusterName() { return pushJobStatusStoreClusterName; }
-
-  public int getPushJobStatusValueSchemaId() {return pushJobStatusValueSchemaId; }
 
   public boolean isAddVersionViaAdminProtocolEnabled() { return addVersionViaAdminProtocol; }
 
