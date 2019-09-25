@@ -235,7 +235,9 @@ public interface Admin extends AutoCloseable, Closeable {
                      Optional<Boolean> readComputationEnabled,
                      Optional<Integer> bootstrapToOnlineTimeoutInHours,
                      Optional<Boolean> leaderFollowerModelEnabled,
-                     Optional<BackupStrategy> backupStrategy);
+                     Optional<BackupStrategy> backupStrategy,
+                     Optional<Boolean> autoSchemaRegisterPushJobEnabled,
+                     Optional<Boolean> autoSupersetSchemaEnabledForReadComputeStore);
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         updateStore(
@@ -265,7 +267,9 @@ public interface Admin extends AutoCloseable, Closeable {
             params.getReadComputationEnabled(),
             params.getBootstrapToOnlineTimeoutInHours(),
             params.getLeaderFollowerModelEnabled(),
-            params.getBackupStrategy());
+            params.getBackupStrategy(),
+            params.getAutoSchemaRegisterPushJobEnabled(),
+            params.getAutoSupersetSchemaEnabledForReadComputeStore());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);

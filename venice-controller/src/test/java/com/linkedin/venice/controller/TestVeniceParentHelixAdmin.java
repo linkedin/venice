@@ -231,7 +231,9 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> readComputationEnabled,
         Optional<Integer> bootstrapToOnlineTimeoutInHours,
         Optional<Boolean> leaderFollowerModelEnabled,
-        Optional<BackupStrategy> backupStategy) {
+        Optional<BackupStrategy> backupStategy,
+        Optional<Boolean> autoSchmePushJob,
+        Optional<Boolean> autoSchmeAdmin) {
       if (hybridOffsetLagThreshold.isPresent() && hybridRewindSeconds.isPresent()) {
         doReturn(true).when(store).isHybrid();
       }
@@ -1012,6 +1014,22 @@ public class TestVeniceParentHelixAdmin {
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(storeResponse.getStore().getBackupStrategy(), BackupStrategy.DELETE_ON_NEW_PUSH_START);
 
+    // Update auto-schema-register for pushjob
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSchemaPushJobEnabled(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled());
+
+    // Update computationEnabled
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled());
+
+    // Update auto-schema-register for non read compute store.
+    try {
+      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSupersetSchemaEnabledFromReadComputeStore(true));
+      Assert.assertFalse(controllerClient.getStore(storeName).getStore().isSchemaAutoRegisterFromAdminEnabled());
+    } catch (VeniceException e) {
+    }
+
     // Update chunking
     long updateStartTimeInNS = System.nanoTime();
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setChunkingEnabled(true));
@@ -1092,13 +1110,16 @@ public class TestVeniceParentHelixAdmin {
     logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
         + " seconds to reflect store update in child controller");
 
-    // Update computationEnabled
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled());
+
     updateStartTimeInNS = System.nanoTime();
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isReadComputationEnabled());
+
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSupersetSchemaEnabledFromReadComputeStore(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isSchemaAutoRegisterFromAdminEnabled());
+
     // Update bootstrapToOnlineTimeout
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(storeResponse.getStore().getBootstrapToOnlineTimeoutInHours(), 24,
