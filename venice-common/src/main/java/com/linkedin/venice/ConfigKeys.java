@@ -714,11 +714,6 @@ public class ConfigKeys {
   public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
 
   /**
-   * Value schema id for the push job status records.
-   */
-  public static final String PUSH_JOB_STATUS_VALUE_SCHEMA_ID = "push.job.status.value.schema.id";
-
-  /**
    * The job tracker identifier as part of a map reduce job id.
    */
   public static final String PUSH_JOB_MAP_REDUCE_JT_ID = "push.job.map.reduce.jt.id";
