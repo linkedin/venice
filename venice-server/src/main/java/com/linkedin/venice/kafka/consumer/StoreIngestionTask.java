@@ -48,6 +48,7 @@ import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -57,7 +58,6 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
@@ -72,8 +72,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.collections4.map.PassiveExpiringMap;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Callback;
@@ -1670,61 +1670,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Since get real-time topic offset is expensive, so we will only retrieve source topic offset after the predefined
    * ttlMs
    */
-  protected static class CachedLatestOffsetGetter {
-    private class TopicAndPartition {
-      String topic;
-      int partitionId;
-      public TopicAndPartition(String topic, int partitionId) {
-        this.topic = topic;
-        this.partitionId = partitionId;
-      }
-
-      public String topic() {
-        return topic;
-      }
-      public int partition() {
-        return partitionId;
-      }
-
-      /**
-       * The following {@link #equals(Object)} and {@link #hashCode()} are required to make sure
-       * The following cache map: {@link #cachedLatestOffsets} works correctly.
-       * Otherwise, every {@link #getOffset(String, int)} will invoke a call to Kafka and persist
-       * a new entry in {@link #cachedLatestOffsets}, which is leaking memory.
-       */
-
-      @Override
-      public boolean equals(Object o) {
-        if (this == o) {
-          return true;
-        }
-        if (!(o instanceof TopicAndPartition)) {
-          return false;
-        }
-        TopicAndPartition that = (TopicAndPartition) o;
-        return partitionId == that.partitionId && Objects.equals(topic, that.topic);
-      }
-
-      @Override
-      public int hashCode() {
-        return Objects.hash(topic, partitionId);
-      }
-    }
+  protected class CachedLatestOffsetGetter {
+    private final long ttl;
     private final TopicManager topicManager;
-    private final Map<TopicAndPartition, Long> cachedLatestOffsets;
+    private final Map<Pair<String, Integer>, Pair<Long, Long>> offsetCache = new ConcurrentHashMap<>();
 
-
-    CachedLatestOffsetGetter(TopicManager topicManager, long ttlMs) {
+    CachedLatestOffsetGetter(TopicManager topicManager, long timeToLiveMs) {
+      this.ttl = MILLISECONDS.toNanos(timeToLiveMs);
       this.topicManager = topicManager;
-
-      //a concurrent hash map with native ttl support. get will return null if the value is expired
-      cachedLatestOffsets = new PassiveExpiringMap<>(ttlMs, new ConcurrentHashMap<>());
     }
 
-    long getOffset(String topic, int partitionId) {
-      return cachedLatestOffsets.computeIfAbsent(new TopicAndPartition(topic, partitionId),
-      tp -> topicManager.getLatestOffsetAndRetry(tp.topic(), tp.partition(), 10));
+    long getOffset(String topicName, int partitionId) {
+      long now = System.nanoTime();
+
+      Pair key = new Pair<>(topicName, partitionId);
+      Pair<Long, Long> entry = offsetCache.get(key);
+      if (entry != null && entry.getFirst() > now) {
+        return entry.getSecond();
+      }
+
+      entry = offsetCache.compute(key, (k, e) ->
+          (e != null && e.getFirst() > now) ?
+              e : new Pair<>(now + ttl, topicManager.getLatestOffsetAndRetry(topicName, partitionId, 10)));
+      return entry.getSecond();
     }
   }
-
 }
