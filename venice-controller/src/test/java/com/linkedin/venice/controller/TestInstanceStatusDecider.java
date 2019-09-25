@@ -139,16 +139,10 @@ public class TestInstanceStatusDecider {
     // Test for the running push
     prepareStoreAndVersion(storeName, version, VersionStatus.STARTED);
 
-    Mockito.doReturn(true).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
-    NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1);
-    Assert.assertFalse(result.isRemovable(),
-        "Can not remove instance because job would fail.");
-    Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_FAIL_PUSH.toString(),
-        "Can not remove instance because job would fail.");
-
     Mockito.doReturn(false).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
-    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1).isRemovable(),
-        "Instance could be removed because it will not fail the job.");
+    NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1);
+    Assert.assertTrue(result.isRemovable(),
+        "Instance should be removable because ongoing push shouldn't be a blocker.");
   }
 
   /**
