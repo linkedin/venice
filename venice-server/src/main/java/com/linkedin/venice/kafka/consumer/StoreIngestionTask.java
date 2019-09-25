@@ -465,6 +465,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       long totalRecordSize = 0;
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+        /**
+         * check schema id availability before putting consumer record to drainer queue
+         */
+        checkSchemaIdAvail(record);
         // blocking call
         storeBufferService.putConsumerRecord(record, this);
         totalRecordSize += record.serializedKeySize() + record.serializedValueSize();
@@ -1383,8 +1387,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case PUT:
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
         Put put = (Put) kafkaValue.payloadUnion;
-        // Validate schema id first
-        checkValueSchemaAvail(put.schemaId);
         ByteBuffer putValue = put.putValue;
         int valueLen = putValue.remaining();
 
@@ -1413,7 +1415,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         Update update = (Update) kafkaValue.payloadUnion;
         int valueSchemaId = update.schemaId;
         int derivedSchemaId = update.updateSchemaId;
-        checkValueSchemaAvail(valueSchemaId);
 
         //Since we have an async call to produce the message before writing it to the disk, there is a race
         //condition where, if a record gets updated multiple times shortly, the updates may be still
@@ -1472,6 +1473,34 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new VeniceMessageException(
                 consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
+    }
+  }
+
+  /**
+   * This method checks whether the given record needs to be checked schema availability. Only PUT and UPDATE message
+   * needs to #checkValueSchemaAvail
+   * @param record
+   */
+  private void checkSchemaIdAvail(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+    KafkaMessageEnvelope kafkaValue = record.value();
+    if (record.key().isControlMessage() || null == kafkaValue) {
+      return;
+    }
+    switch (MessageType.valueOf(kafkaValue)) {
+      case PUT:
+        Put put = (Put) kafkaValue.payloadUnion;
+        checkValueSchemaAvail(put.schemaId);
+        break;
+      case UPDATE:
+        Update update = (Update) kafkaValue.payloadUnion;
+        checkValueSchemaAvail(update.schemaId);
+        break;
+      case DELETE:
+        /** we don't need to check schema availability for DELETE */
+        break;
+      default:
+        throw new VeniceMessageException(
+            consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
   }
 
