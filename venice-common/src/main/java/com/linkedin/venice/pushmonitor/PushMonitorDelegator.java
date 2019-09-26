@@ -64,8 +64,9 @@ public class PushMonitorDelegator implements PushMonitor {
 
       //WriteReadyStoreRepository is the source of truth. No need to refresh metadata repo here
       if (store == null) {
-        throw new VeniceNoStoreException("Cannot find store metadata when tyring to allocate push status to push monitor."
-            + "It's likely that the store has been deleted. topic: " + topicName);
+        throw new VeniceNoStoreException(Version.parseStoreFromKafkaTopicName(kafkaTopic),
+            Optional.of("Cannot find store metadata when tyring to allocate push status to push monitor."
+                + "It's likely that the store has been deleted. topic: " + topicName));
       }
 
       //if the store is set to use L/F model, we would always use partition status based push status monitor
