@@ -177,7 +177,7 @@ public class TestStreaming {
     return new Object[][] {{true}, {false}};
   }
 
-  @Test(timeOut = 60000, dataProvider = "testReadStreamingDataProvider")
+  @Test(timeOut = 300 * 1000, dataProvider = "testReadStreamingDataProvider")
   public void testReadStreaming(boolean enableStreaming) throws Exception {
     // Start a new router every time with the right config
     // With Apache HAC on Router with client compression enabled
