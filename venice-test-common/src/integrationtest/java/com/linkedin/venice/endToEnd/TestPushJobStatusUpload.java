@@ -23,12 +23,15 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.log4j.Logger;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.*;
 
 
 public class TestPushJobStatusUpload {
+  private static final Logger logger = Logger.getLogger(TestPushJobStatusUpload.class);
+
   @Test(timeOut = 4 * Time.MS_PER_MINUTE)
   public void testPushJobStatusUpload() throws ExecutionException, InterruptedException {
     String pushJobStatusStoreName = "test-push-job-status-store";
@@ -42,7 +45,9 @@ public class TestPushJobStatusUpload {
     VeniceControllerWrapper parentController =
         ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()}, new VeniceProperties(properties), false);
-    final ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+    final ControllerClient parentControllerClient = new ControllerClient(venice.getClusterName(),
+        parentController.getControllerUrl());
+    final ControllerClient controllerClient = venice.getControllerClient();
     try {
       // Create some push job statuses.
       ArrayList<Pair<PushJobStatusRecordKey, PushJobStatusRecordValue>> keyValuePairs = new ArrayList();
@@ -61,33 +66,43 @@ public class TestPushJobStatusUpload {
         value.message = "test message " + i;
         keyValuePairs.add(new Pair(key, value));
       }
-      // Wait for the push job status store and topic to be created
-      TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.MINUTES, true, () -> {
-        String emptyPushStatus = controllerClient.queryOverallJobStatus(
-            Version.composeKafkaTopic(pushJobStatusStoreName, 1), Optional.empty()).getStatus();
-        if (emptyPushStatus.equals(ExecutionStatus.ERROR.toString())) {
-          fail("Unexpected empty push failure for setting up the store " + pushJobStatusStoreName);
+      // Wait for the push job status store and topic to be created. The polling will fast fail if the push is found to
+      // be in ERROR state.
+      TestUtils.waitForNonDeterministicAssertion(4, TimeUnit.MINUTES, () ->
+          assertNotNull(controllerClient.getStore(pushJobStatusStoreName).getStore()));
+      TestUtils.waitForNonDeterministicCompletion(4, TimeUnit.MINUTES, () -> {
+        String emptyPushStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(pushJobStatusStoreName, 1),
+            Optional.empty()).getStatus();
+        boolean ignoreError = false;
+        try {
+          assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected empty push failure");
+          ignoreError = true;
+          assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Empty push is yet to complete");
+          return true;
+        } catch (AssertionError | VerifyError e) {
+          if (ignoreError) {
+            logger.info(e.getMessage());
+            return false;
+          }
+          throw e;
         }
-        assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Empty push to set up the "
-            + pushJobStatusStoreName + " is not completed yet");
       });
-      // Upload more push job statuses via the endpoint
+      // Upload push job statuses via the endpoint.
       for (int i = 0; i < 3; i++) {
         PushJobStatusRecordKey key = keyValuePairs.get(i).getFirst();
         PushJobStatusRecordValue value = keyValuePairs.get(i).getSecond();
-        controllerClient.uploadPushJobStatus(key.storeName.toString(), key.versionNumber, value.status,
+        parentControllerClient.uploadPushJobStatus(key.storeName.toString(), key.versionNumber, value.status,
             value.pushDuration, value.pushId.toString(), value.message.toString());
       }
-      // Verify the uploaded push job status records
-      AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobStatusRecordValue> client =
+      // Verify the uploaded push job status records.
+      try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobStatusRecordValue> client =
           ClientFactory.getAndStartSpecificAvroClient(
               ClientConfig.defaultSpecificClientConfig(pushJobStatusStoreName, PushJobStatusRecordValue.class)
-                  .setVeniceURL(venice.getRandomRouterURL()));
-      try {
+                  .setVeniceURL(venice.getRandomRouterURL()))) {
         for (Pair<PushJobStatusRecordKey, PushJobStatusRecordValue> pair : keyValuePairs) {
-          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
             try {
-              assertNotNull(client.get(pair.getFirst()).get());
+              assertNotNull(client.get(pair.getFirst()).get(), "RT writes are not reflected in store yet");
             } catch (Exception e) {
               fail("Unexpected exception thrown while reading from the venice store", e);
             }
@@ -102,8 +117,6 @@ public class TestPushJobStatusUpload {
           assertEquals(value.pushId.toString(), pair.getSecond().pushId.toString(), "Push job pushId mismatch");
           assertEquals(value.message.toString(), pair.getSecond().message.toString(), "Message mismatch");
         }
-      } finally {
-        client.close();
       }
     } finally {
       controllerClient.close();

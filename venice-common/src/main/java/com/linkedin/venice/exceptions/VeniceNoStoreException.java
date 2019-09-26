@@ -1,5 +1,6 @@
 package com.linkedin.venice.exceptions;
 
+import java.util.Optional;
 import org.apache.http.HttpStatus;
 
 
@@ -24,6 +25,12 @@ public class VeniceNoStoreException extends VeniceException {
 
   public VeniceNoStoreException(String storeName) {
     super("Store: " + storeName + " does not exist");
+    this.storeName = storeName;
+    this.clusterName = "unspecified";
+  }
+
+  public VeniceNoStoreException(String storeName, Optional<String> additionalMessage) {
+    super("Store: " + storeName + " does not exist. " + (additionalMessage.orElse("")));
     this.storeName = storeName;
     this.clusterName = "unspecified";
   }
