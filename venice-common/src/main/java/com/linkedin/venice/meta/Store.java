@@ -214,8 +214,12 @@ public class Store {
   /**
    * Whether or not value schema auto registration enabled from Admin interface for this store.
    */
-  private boolean schemaAutoRegisterFromAdminEnabled = false;
+  private boolean superSetSchemaAutoGenerationForReadComputeEnabled = false;
 
+  /**
+   * For read compute stores with auto super-set schema enabled, stores the latest super-set value schema ID.
+   */
+  private int latestSuperSetValueSchemaId = -1;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
@@ -547,12 +551,20 @@ public class Store {
     schemaAutoRegisteFromPushJobEnabled = value;
   }
 
-  public boolean isSchemaAutoRegisterFromAdminEnabled() {
-    return schemaAutoRegisterFromAdminEnabled;
+  public boolean isSuperSetSchemaAutoGenerationForReadComputeEnabled() {
+    return superSetSchemaAutoGenerationForReadComputeEnabled;
   }
 
-  public void setSchemaAutoRegisterFromAdminEnabled(boolean value) {
-    schemaAutoRegisterFromAdminEnabled = value;
+  public void setSuperSetSchemaAutoGenerationForReadComputeEnabled(boolean value) {
+    superSetSchemaAutoGenerationForReadComputeEnabled = value;
+  }
+
+  public int getLatestSuperSetValueSchemaId() {
+    return latestSuperSetValueSchemaId;
+  }
+
+  public void setLatestSuperSetValueSchemaId(int valueSchemaId) {
+    latestSuperSetValueSchemaId = valueSchemaId;
   }
 
   /**
@@ -780,7 +792,8 @@ public class Store {
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
     result = 31 * result + backupStrategy.hashCode();
     result = 31 * result + (schemaAutoRegisteFromPushJobEnabled ? 1 : 0);
-    result = 31 * result + (schemaAutoRegisterFromAdminEnabled ? 1 : 0);
+    result = 31 * result + (superSetSchemaAutoGenerationForReadComputeEnabled ? 1 : 0);
+    result = 31 * result + latestSuperSetValueSchemaId;
     return result;
   }
 
@@ -822,7 +835,8 @@ public class Store {
     if (leaderFollowerModelEnabled != store.leaderFollowerModelEnabled) return false;
     if (backupStrategy != store.backupStrategy) return false;
     if (schemaAutoRegisteFromPushJobEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
-    if (schemaAutoRegisterFromAdminEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
+    if (superSetSchemaAutoGenerationForReadComputeEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
+    if (latestSuperSetValueSchemaId != store.latestSuperSetValueSchemaId) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -864,8 +878,8 @@ public class Store {
     clonedStore.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
     clonedStore.setBackupStrategy(backupStrategy);
     clonedStore.setSchemaAutoRegisterFromPushJobEnabled(schemaAutoRegisteFromPushJobEnabled);
-    clonedStore.setSchemaAutoRegisterFromAdminEnabled(schemaAutoRegisterFromAdminEnabled);
-
+    clonedStore.setSuperSetSchemaAutoGenerationForReadComputeEnabled(superSetSchemaAutoGenerationForReadComputeEnabled);
+    clonedStore.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
     }

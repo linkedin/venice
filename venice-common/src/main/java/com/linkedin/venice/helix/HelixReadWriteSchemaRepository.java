@@ -1,8 +1,8 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.SchemaDuplicateException;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.VeniceConstants;
-import com.linkedin.venice.exceptions.SchemaDuplicateException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.utils.AvroSchemaUtils;
@@ -155,13 +155,26 @@ import java.util.Collection;
       } else {
         List<SchemaEntry> exactMatches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, canonicalizedMatches);
         if (exactMatches.isEmpty()) {
-          schemaId = getSchemaEntryWithLargestId(canonicalizedMatches).getId();
+          schemaId = getLatestSchemaEntry(storeName, canonicalizedMatches).getId();
         } else {
-          schemaId = getSchemaEntryWithLargestId(exactMatches).getId();
+          schemaId = getLatestSchemaEntry(storeName, exactMatches).getId();
         }
       }
     }
     return schemaId;
+  }
+
+  private SchemaEntry getLatestSchemaEntry(String storeName, Collection<SchemaEntry> schemas) {
+    Store store = storeRepository.getStore(storeName);
+    if (store.isReadComputationEnabled() && store.getLatestSuperSetValueSchemaId() != -1) {
+      for (SchemaEntry schema : schemas) {
+        if (schema.getId() == store.getLatestSuperSetValueSchemaId()) {
+          return schema;
+        }
+      }
+      throw new VeniceException("Could not find latest value schema for store " + storeName);
+    }
+    return getSchemaEntryWithLargestId(schemas);
   }
 
   private SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {

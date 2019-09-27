@@ -1026,7 +1026,7 @@ public class TestVeniceParentHelixAdmin {
     // Update auto-schema-register for non read compute store.
     try {
       controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSupersetSchemaEnabledFromReadComputeStore(true));
-      Assert.assertFalse(controllerClient.getStore(storeName).getStore().isSchemaAutoRegisterFromAdminEnabled());
+      Assert.assertFalse(controllerClient.getStore(storeName).getStore().isSuperSetSchemaAutoGenerationForReadComputeEnabled());
     } catch (VeniceException e) {
     }
 
@@ -1118,7 +1118,7 @@ public class TestVeniceParentHelixAdmin {
 
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSupersetSchemaEnabledFromReadComputeStore(true));
     storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isSchemaAutoRegisterFromAdminEnabled());
+    Assert.assertTrue(storeResponse.getStore().isSuperSetSchemaAutoGenerationForReadComputeEnabled());
 
     // Update bootstrapToOnlineTimeout
     storeResponse = controllerClient.getStore(storeName);

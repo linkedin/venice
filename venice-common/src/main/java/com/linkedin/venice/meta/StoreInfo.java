@@ -44,8 +44,8 @@ public class StoreInfo {
     storeInfo.setLeaderFollowerModelEnabled(store.isLeaderFollowerModelEnabled());
     storeInfo.setBackupStrategy(store.getBackupStrategy());
     storeInfo.setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
-    storeInfo.setSchemaAutoRegisterFromAdminEnabled(store.isSchemaAutoRegisterFromAdminEnabled());
-
+    storeInfo.setSuperSetSchemaAutoGenerationForReadComputeEnabled(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
+    storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     return storeInfo;
   }
   /**
@@ -191,9 +191,14 @@ public class StoreInfo {
   private boolean schemaAutoRegisterFromPushJobEnabled = false;
 
   /**
-   * Whether or not value schema auto registration enabled from Nuage for this store.
+   * Whether or not value schema auto registration enabled from Admin interface for this store.
    */
-  private boolean schemaAutoRegisterFromAdminEnabled = false;
+  private boolean superSetSchemaAutoGenerationForReadComputeEnabled = false;
+
+  /**
+   * For read compute stores with auto super-set schema enabled, stores the latest super-set value schema ID.
+   */
+  private int latestSuperSetValueSchemaId = -1;
 
   public StoreInfo() {
   }
@@ -455,15 +460,23 @@ public class StoreInfo {
     schemaAutoRegisterFromPushJobEnabled = value;
   }
 
-  public boolean isSchemaAutoRegisterFromAdminEnabled() {
-    return schemaAutoRegisterFromAdminEnabled;
+  public boolean isSuperSetSchemaAutoGenerationForReadComputeEnabled() {
+    return superSetSchemaAutoGenerationForReadComputeEnabled;
   }
 
-  public void setSchemaAutoRegisterFromAdminEnabled(boolean value) {
-    schemaAutoRegisterFromAdminEnabled = value;
+  public void setSuperSetSchemaAutoGenerationForReadComputeEnabled(boolean value) {
+    superSetSchemaAutoGenerationForReadComputeEnabled = value;
   }
 
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+  }
+
+  public void setLatestSuperSetValueSchemaId(int valueSchemaId) {
+    latestSuperSetValueSchemaId = valueSchemaId;
+  }
+
+  public int getLatestSuperSetValueSchemaId() {
+    return latestSuperSetValueSchemaId;
   }
 }

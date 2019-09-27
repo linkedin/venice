@@ -359,7 +359,7 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.leaderFollowerModelEnabled),
         Optional.of(BackupStrategy.fromInt(message.backupStrategy)),
         Optional.of(message.schemaAutoRegisterFromPushJobEnabled),
-        Optional.of(message.schemaAutoRegisterFromAdminEnabled));
+        Optional.of(message.superSetSchemaAutoGenerationForReadComputeEnabled));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
