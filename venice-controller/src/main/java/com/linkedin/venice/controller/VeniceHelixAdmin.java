@@ -1932,11 +1932,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public void setAutoSchemaRegisterAdminEnabled(String clusterName, String storeName,
-        boolean autoSchemaRegisterAdminEnabled) {
+    public void setSuperSetSchemaAutoGenerationForReadComputeEnabled(String clusterName, String storeName,
+        boolean superSetSchemaAutoGenerationForReadComputeEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             if (store.isReadComputationEnabled()) {
-                store.setSchemaAutoRegisterFromAdminEnabled(autoSchemaRegisterAdminEnabled);
+                store.setSuperSetSchemaAutoGenerationForReadComputeEnabled(superSetSchemaAutoGenerationForReadComputeEnabled);
             }
             return store;
         });
@@ -2007,7 +2007,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> leaderFollowerModelEnabled,
         Optional<BackupStrategy> backupStrategy,
         Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-        Optional<Boolean> autoSchemaRegisterAdminEnabled
+        Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled
         ) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
@@ -2155,8 +2155,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             autoSchemaRegisterPushJobEnabled.ifPresent(value ->
                 setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
-            autoSchemaRegisterAdminEnabled.ifPresent(value ->
-                setAutoSchemaRegisterAdminEnabled(clusterName, storeName, value));
+            superSetSchemaAutoGenerationForReadComputeEnabled.ifPresent(value ->
+                setSuperSetSchemaAutoGenerationForReadComputeEnabled(clusterName, storeName, value));
 
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {

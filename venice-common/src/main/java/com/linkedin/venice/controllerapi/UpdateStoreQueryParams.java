@@ -49,7 +49,7 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBootstrapToOnlineTimeoutInHours(srcStore.getBootstrapToOnlineTimeoutInHours())
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
-            .setAutoSupersetSchemaEnabledFromReadComputeStore(srcStore.isSchemaAutoRegisterFromAdminEnabled())
+            .setAutoSupersetSchemaEnabledFromReadComputeStore(srcStore.isSuperSetSchemaAutoGenerationForReadComputeEnabled())
             .setBackupStrategy(srcStore.getBackupStrategy());
 
 

@@ -51,7 +51,6 @@ import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -1054,7 +1053,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> leaderFollowerModelEnabled,
       Optional<BackupStrategy> backupStrategy,
       Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-      Optional<Boolean> autoSchemaRegisterAdminEnabled) {
+      Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -1123,12 +1122,13 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.backupStrategy = (backupStrategy.orElse(store.getBackupStrategy())).ordinal();
 
       setStore.schemaAutoRegisterFromPushJobEnabled = autoSchemaRegisterPushJobEnabled.orElse(store.isSchemaAutoRegisterFromPushJobEnabled());
-      if (autoSchemaRegisterAdminEnabled.isPresent() && autoSchemaRegisterAdminEnabled.get()) {
+      if (superSetSchemaAutoGenerationForReadComputeEnabled.isPresent() && superSetSchemaAutoGenerationForReadComputeEnabled.get()) {
         if (!setStore.readComputationEnabled) {
           throw new VeniceException("Cannot set autoSchemaRegisterAdminEnabled to non-read-compute stores");
         }
-        setStore.schemaAutoRegisterFromAdminEnabled = autoSchemaRegisterAdminEnabled.orElse(store.isSchemaAutoRegisterFromAdminEnabled());
+        setStore.superSetSchemaAutoGenerationForReadComputeEnabled = superSetSchemaAutoGenerationForReadComputeEnabled.orElse(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
       }
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
