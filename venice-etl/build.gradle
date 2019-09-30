@@ -6,6 +6,7 @@ dependencies {
     implementation (libraries.avro) {
         exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     }
+    implementation libraries.azkaban
     implementation libraries.gobblinCoreBase
     implementation libraries.gobblinKafkaCommon
     implementation libraries.kafka

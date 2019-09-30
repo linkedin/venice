@@ -799,4 +799,13 @@ public class ConfigKeys {
    * or a Helix as a service controller running remotely.
    */
   public static final String CONTROLLER_CLUSTER_LEADER_HAAS = "controller.cluster.leader.haas.enabled";
+
+  /**
+   * This config defines the source directory for ETL publisher workflow.
+   */
+  public static final String ETL_SNAPSHOT_SOURCE_DIR = "etl.snapshot.source.dir";
+  /**
+   * This config defines the destination directory for ETL publisher workflow.
+   */
+  public static final String ETL_SNAPSHOT_DESTINATION_DIR = "etl.snapshot.destination.dir";
 }

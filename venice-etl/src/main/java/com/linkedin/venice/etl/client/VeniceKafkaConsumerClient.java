@@ -225,11 +225,12 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     for (Map.Entry<String, List<PartitionInfo>> topicEntry : topicList.entrySet()) {
       // filter out all topics that don't match the topic name
       if (topicNames.contains(topicEntry.getKey())) {
-        /**
-         * Use store name as the table name which will become part of the output path.
-         */
         State topicSpecificState = new State();
-        topicSpecificState.appendToSetProp(EXTRACT_TABLE_NAME_KEY, Version.parseStoreFromKafkaTopicName(topicEntry.getKey()));
+        /**
+         * Config {@link EXTRACT_TABLE_NAME_KEY} will determine the table name of a topic; we choose to use version
+         * topic name as the table name so that we create a clean ETL isolation between different versions.
+         */
+        topicSpecificState.appendToSetProp(EXTRACT_TABLE_NAME_KEY, topicEntry.getKey());
         filteredTopics.add(new KafkaTopic(topicEntry.getKey(),
             topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList()), Optional.of(topicSpecificState)));
 
