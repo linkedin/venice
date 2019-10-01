@@ -1359,7 +1359,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
-            killOfflinePush(clusterName, resourceName);
+
+            try {
+                killOfflinePush(clusterName, resourceName);
+            } catch (VeniceException e) {
+                logger.warn("Could not kill offline push for " + resourceName + " in cluster " + clusterName, e);
+            }
 
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
