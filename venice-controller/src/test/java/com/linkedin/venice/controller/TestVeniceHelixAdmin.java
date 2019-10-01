@@ -90,7 +90,7 @@ public class TestVeniceHelixAdmin {
   private String nodeId = "localhost_9985";
   private ZkServerWrapper zkServerWrapper;
   private KafkaBrokerWrapper kafkaBrokerWrapper;
-
+  private SafeHelixManager manager;
   private Map<String, SafeHelixManager> participants = new HashMap<>();
 
   private VeniceProperties controllerProps;
@@ -140,7 +140,7 @@ public class TestVeniceHelixAdmin {
   private void startParticipant(boolean isDelay, String nodeId)
       throws Exception {
     stateModelFactory.setBlockTransition(isDelay);
-    SafeHelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985, stateModelFactory,
+    manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985, stateModelFactory,
         VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
     participants.put(nodeId, manager);
     manager.connect();
@@ -1249,6 +1249,26 @@ public class TestVeniceHelixAdmin {
     }catch (VeniceException e){
       Assert.fail("Version 3 does not exist, so deletion request should be skipped without throwing any exception.");
     }
+  }
+
+  @Test
+  public void testDeleteOldVersionKillOfflineFails() {
+    String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
+    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
+    channel.registerHandler(KillOfflinePushMessage.class, message -> {
+      throw new VeniceException("offline job failed!!");
+    });
+
+    veniceAdmin.addStore(clusterName, storeName, "testOwner", keySchema, valueSchema);
+    // Add two versions.
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 2);
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.deleteOldVersionInStore(clusterName, storeName, 1);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
+        " Version 1 should be deleted.");
   }
 
   @Test
