@@ -1360,11 +1360,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
 
-            try {
-                killOfflinePush(clusterName, resourceName);
-            } catch (VeniceException e) {
-                logger.warn("Could not kill offline push for " + resourceName + " in cluster " + clusterName, e);
-            }
+            killOfflinePush(clusterName, resourceName);
 
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
@@ -1415,9 +1411,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             for (Version version : versionsToDelete) {
-                deleteOneStoreVersion(clusterName, storeName, version.getNumber());
+                try {
+                    deleteOneStoreVersion(clusterName, storeName, version.getNumber());
+                } catch (VeniceException e) {
+                    logger.warn("Could not delete store " + storeName + " version number " + version.getNumber()
+                        + " in cluster " + clusterName, e);
+                    continue;
+                }
                 logger.info("Retired store: " + store.getName() + " version:" + version.getNumber());
             }
+
             logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
 
             truncateOldTopics(clusterName, store, false);

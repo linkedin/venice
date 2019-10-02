@@ -1252,23 +1252,28 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testDeleteOldVersionKillOfflineFails() {
+  public void testRetireOldStoreVersionsKillOfflineFails() {
     String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
+    boolean deleteFirst = true;
     HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
     channel.registerHandler(KillOfflinePushMessage.class, message -> {
-      throw new VeniceException("offline job failed!!");
+      if (message.getKafkaTopic() == Version.composeKafkaTopic(storeName, 1)) {
+        throw new VeniceException("offline job failed!!");
+      }
     });
 
     veniceAdmin.addStore(clusterName, storeName, "testOwner", keySchema, valueSchema);
-    // Add two versions.
+    // Add three versions.
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
-    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
-        () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 2);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
-    veniceAdmin.deleteOldVersionInStore(clusterName, storeName, 1);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
-        " Version 1 should be deleted.");
+    veniceAdmin.retireOldStoreVersions(clusterName, storeName, false);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 3,
+        " Versions should be deleted.");
   }
 
   @Test
