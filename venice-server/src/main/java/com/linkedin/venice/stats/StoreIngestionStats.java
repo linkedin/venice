@@ -37,6 +37,12 @@ public class StoreIngestionStats extends AbstractVeniceStats{
    */
   private double hybridQuotaUsageGauge;
 
+  // Measure the avg/max time we need to spend on waiting for the leader producer
+  private final Sensor leaderProducerSynchronizeLatencySensor;
+  // Measure the avg/max latency for data lookup and deserialization
+  private final Sensor leaderWriteComputeLookUpLatencySensor;
+  // Measure the avg/max latency for the actual write computation
+  private final Sensor leaderWriteComputeUpdateLatencySensor;
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
@@ -67,9 +73,13 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
 
     ingestionFailureSensor = registerSensor("ingestion_failure", new Count());
+
     storageQuotaUsedSensor = registerSensor("storage_quota_used",
                                             new Gauge(() -> hybridQuotaUsageGauge), new Avg(), new Min(), new Max());
 
+    leaderProducerSynchronizeLatencySensor = registerSensor("leader_producer_synchronize_latency", new Avg(), new Max());
+    leaderWriteComputeLookUpLatencySensor = registerSensor("leader_write_compute_lookup_latency", new Avg(), new Max());
+    leaderWriteComputeUpdateLatencySensor = registerSensor("leader_write_compute_update_latency", new Avg(), new Max());
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -130,6 +140,18 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordIngestionFailure() {
     ingestionFailureSensor.record();
+  }
+
+  public void recordLeaderProducerSynchronizeLatency(double latency) {
+    leaderProducerSynchronizeLatencySensor.record(latency);
+  }
+
+  public void recordWriteComputeLookUpLatency(double latency) {
+    leaderWriteComputeLookUpLatencySensor.record(latency);
+  }
+
+  public void recordWriteComputeUpdateLatency(double latency) {
+    leaderWriteComputeUpdateLatencySensor.record(latency);
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {

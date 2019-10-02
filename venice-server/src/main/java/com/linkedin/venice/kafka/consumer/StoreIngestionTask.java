@@ -50,6 +50,7 @@ import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -1466,22 +1467,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         //the message and persisting it to the disk.
         //TODO: this is not efficient. We should consider optimizing the "waiting" behavior here
         try {
+          long synchronizeStartTimeInNS = System.nanoTime();
           Future<RecordMetadata> lastLeaderProduceFuture =
               partitionConsumptionStateMap.get(partition).getLastLeaderProduceFuture();
           if (lastLeaderProduceFuture != null) {
             lastLeaderProduceFuture.get();
           }
+          storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
         } catch (Exception e) {
           versionedDIVStats.recordLeaderProducerFailure(storeNameWithoutVersionInfo, storeVersion);
         }
 
+        long lookupStartTimeInNS = System.nanoTime();
         GenericRecord originalValue = ComputeChunkingAdapter.get(storeRepository.getLocalStorageEngine(topic), partition,
             ByteBuffer.wrap(keyBytes), storageMetadataService.isStoreVersionChunked(topic), null,
             null, null, storageMetadataService.getStoreVersionCompressionStrategy(topic),
             serverConfig.isComputeFastAvroEnabled(), schemaRepo, storeNameWithoutVersionInfo);
+        storeIngestionStats.recordWriteComputeLookUpLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
 
+        long writeComputeStartTimeInNS = System.nanoTime();
         byte[] updatedValueBytes = ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue,
             update.updateValue, valueSchemaId, derivedSchemaId);
+        storeIngestionStats.recordWriteComputeUpdateLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(writeComputeStartTimeInNS));
 
         ByteBuffer updateValueWithSchemaId = ByteBuffer.allocate(ValueRecord.SCHEMA_HEADER_LENGTH + updatedValueBytes.length)
             .putInt(valueSchemaId).put(updatedValueBytes);

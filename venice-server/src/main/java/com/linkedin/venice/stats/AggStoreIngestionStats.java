@@ -67,4 +67,19 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   public void updateStoreConsumptionTask(String storeName, StoreIngestionTask task) {
     getStoreStats(storeName).updateStoreConsumptionTask(task);
   }
+
+  public void recordLeaderProducerSynchronizeLatency(String storeName, double latency) {
+    totalStats.recordLeaderProducerSynchronizeLatency(latency);
+    getStoreStats(storeName).recordLeaderProducerSynchronizeLatency(latency);
+  }
+
+  public void recordWriteComputeLookUpLatency(String storeName, double latency) {
+    totalStats.recordWriteComputeLookUpLatency(latency);
+    getStoreStats(storeName).recordWriteComputeLookUpLatency(latency);
+  }
+
+  public void recordWriteComputeUpdateLatency(String storeName, double latency) {
+    totalStats.recordWriteComputeUpdateLatency(latency);
+    getStoreStats(storeName).recordWriteComputeUpdateLatency(latency);
+  }
 }
