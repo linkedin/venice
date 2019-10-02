@@ -47,9 +47,14 @@ public class IngestionTaskWriteComputeAdapter {
    */
   public byte[] getUpdatedValueBytes(GenericRecord originalValue, ByteBuffer writeComputeBytes, int valueSchemaId,
       int derivedSchemaId) {
-    //extract schema and use it to serialize the updated record back to disk. We want to make
-    //serialization schema consistent
-    Schema originalValueSchema = originalValue.getSchema();
+    //If original value is not null, extracts schema and use it to serialize the updated record back to disk.
+    // We want to make serialization schema consistent
+    Schema originalValueSchema;
+    if (originalValue != null) {
+      originalValueSchema = originalValue.getSchema();
+    } else {
+      originalValueSchema = getValueSchema(valueSchemaId);
+    }
 
     GenericRecord writeComputeRecord = getWriteComputeUpdateDeserializer(valueSchemaId, derivedSchemaId)
         .deserialize(writeComputeBytes);
