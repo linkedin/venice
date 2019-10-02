@@ -43,6 +43,7 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
+import com.linkedin.venice.storage.chunking.ChunkingUtils;
 import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -1479,11 +1480,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
 
         long lookupStartTimeInNS = System.nanoTime();
+        boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(topic);
         GenericRecord originalValue = ComputeChunkingAdapter.get(storeRepository.getLocalStorageEngine(topic), partition,
-            ByteBuffer.wrap(keyBytes), storageMetadataService.isStoreVersionChunked(topic), null,
-            null, null, storageMetadataService.getStoreVersionCompressionStrategy(topic),
-            serverConfig.isComputeFastAvroEnabled(), schemaRepo, storeNameWithoutVersionInfo);
+            ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
+            storageMetadataService.getStoreVersionCompressionStrategy(topic), serverConfig.isComputeFastAvroEnabled(),
+            schemaRepo, storeNameWithoutVersionInfo);
         storeIngestionStats.recordWriteComputeLookUpLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(lookupStartTimeInNS));
+
 
         long writeComputeStartTimeInNS = System.nanoTime();
         byte[] updatedValueBytes = ingestionTaskWriteComputeAdapter.getUpdatedValueBytes(originalValue,
@@ -1499,7 +1502,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         // Write to storage engine; potentially produce the PUT message to version topic
         //TODO: tweak here. write compute doesn't need to do fancy offset manipulation here.
         produceAndWriteToDatabase(consumerRecord,
-            key -> writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition, keyBytes, updateValueWithSchemaId),
+            key -> {
+              if (isChunkedTopic) {
+                //Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
+                //from user's input instead of getting it from store's metadata repo. This causes SN
+                //to der-se of keys a couple of times.
+                //TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
+                writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition,
+                    ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
+                    updateValueWithSchemaId);
+              } else {
+                writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition, keyBytes, updateValueWithSchemaId);
+              }
+            },
             (callback, sourceTopicOffset) ->
                 getVeniceWriter().put(keyBytes, updatedValueBytes, valueSchemaId, callback, sourceTopicOffset));
         return valueLen;

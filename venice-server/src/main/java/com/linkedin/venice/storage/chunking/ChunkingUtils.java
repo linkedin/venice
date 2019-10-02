@@ -58,7 +58,7 @@ import org.apache.avro.io.BinaryDecoder;
  */
 public class ChunkingUtils {
   final static ChunkedValueManifestSerializer CHUNKED_VALUE_MANIFEST_SERIALIZER = new ChunkedValueManifestSerializer(false);
-  final static KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER = new KeyWithChunkingSuffixSerializer();
+  public final static KeyWithChunkingSuffixSerializer KEY_WITH_CHUNKING_SUFFIX_SERIALIZER = new KeyWithChunkingSuffixSerializer();
 
   /**
    * Fills in default values for the unused parameters of the single get and batch get paths.

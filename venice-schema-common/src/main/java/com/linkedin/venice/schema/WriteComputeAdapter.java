@@ -106,7 +106,9 @@ public class WriteComputeAdapter {
 
     for (Schema.Field field : originalSchema.getFields()) {
       if (field.defaultValue() != null) {
-        record.put(field.name(), genericData.getDefaultValue(field));
+        //make a deep copy here since genericData caches each default value internally. If we
+        //use what it returns, we will mutate the cache.
+        record.put(field.name(), genericData.deepCopy(field.schema(), genericData.getDefaultValue(field)));
       } else {
         throw new VeniceException(String.format("Cannot apply updates because Field: %s is null and "
             + "default value is not defined", field.name()));
