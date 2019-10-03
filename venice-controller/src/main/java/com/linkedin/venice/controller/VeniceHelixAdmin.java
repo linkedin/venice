@@ -89,6 +89,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -181,6 +182,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, VeniceWriter> participantMessageWriterMap;
     private final VeniceHelixAdminStats veniceHelixAdminStats;
     private final boolean isParticipantOnlyInControllerCluster;
+    private final String controllerHAASSuperClusterName;
     private final String coloMasterClusterName;
 
   /**
@@ -257,6 +259,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
         this.veniceHelixAdminStats = new VeniceHelixAdminStats(metricsRepository, "venice_helix_admin");
         isParticipantOnlyInControllerCluster = commonConfig.isControllerClusterLeaderHAAS();
+        controllerHAASSuperClusterName = commonConfig.getControllerHAASSuperClusterName();
         coloMasterClusterName = commonConfig.getClusterName();
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
@@ -264,8 +267,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
-        // Create the parent controller and related cluster if required.
+        // Create the controller cluster if required.
         createControllerClusterIfRequired();
+        addControllerClusterResourceIfRequired();
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
             zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization);
 
@@ -2529,8 +2533,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return monitor.getOfflinePushProgress(kafkaTopic);
     }
 
-    // Create the cluster for all of parent controllers if required.
-    private void createControllerClusterIfRequired(){
+    // Create the controller cluster for venice cluster assignment if required.
+    private void createControllerClusterIfRequired() {
         if(admin.getClusters().contains(controllerClusterName)) {
             logger.info("Cluster  " + controllerClusterName + " already exists. ");
             return;
@@ -2586,6 +2590,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          */
         admin.setConfig(configScope, helixClusterProperties);
         admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
+    }
+
+    // Add the controller cluster resource to HAAS super cluster. Only needed if HAAS is enabled for controller cluster.
+    // This is needed for HAAS to assign a helix controller to manage the controller cluster which is just a resource in
+    // HAAS's super cluster.
+    private void addControllerClusterResourceIfRequired() {
+        if (!isParticipantOnlyInControllerCluster) {
+            return;
+        }
+        if (!admin.getResourcesInCluster(controllerHAASSuperClusterName).contains(controllerClusterName)) {
+            admin.addClusterToGrandCluster(controllerClusterName, controllerHAASSuperClusterName);
+        }
     }
 
     private void createClusterIfRequired(String clusterName) {
