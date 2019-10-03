@@ -808,4 +808,9 @@ public class ConfigKeys {
    * This config defines the destination directory for ETL publisher workflow.
    */
   public static final String ETL_SNAPSHOT_DESTINATION_DIR = "etl.snapshot.destination.dir";
+
+  /*
+   * The super cluster name for HAAS. This config is required if HAAS is enabled for the creation of helix clusters.
+   */
+  public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
 }

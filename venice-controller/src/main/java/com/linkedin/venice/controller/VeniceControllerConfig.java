@@ -58,6 +58,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int topicDeletionStatusPollIntervalMs;
   private final boolean adminHelixMessagingChannelEnabled;
   private final boolean isControllerClusterLeaderHAAS;
+  private final String controllerHAASSuperClusterName;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -122,6 +123,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
     this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
     this.isControllerClusterLeaderHAAS = props.getBoolean(CONTROLLER_CLUSTER_LEADER_HAAS, false);
+    this.controllerHAASSuperClusterName = props.getString(CONTROLLER_HAAS_SUPER_CLUSTER_NAME, "");
+    if (isControllerClusterLeaderHAAS && controllerHAASSuperClusterName.isEmpty()) {
+      throw new VeniceException(CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required if "
+          + CONTROLLER_CLUSTER_LEADER_HAAS + " is set to true");
+    }
   }
 
   public int getAdminPort() {
@@ -245,6 +251,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public boolean isAdminHelixMessagingChannelEnabled() { return  adminHelixMessagingChannelEnabled; }
 
   public boolean isControllerClusterLeaderHAAS() { return isControllerClusterLeaderHAAS; }
+
+  public String getControllerHAASSuperClusterName() { return controllerHAASSuperClusterName; }
 
   /**
    * @param clusterPros list of child controller uris

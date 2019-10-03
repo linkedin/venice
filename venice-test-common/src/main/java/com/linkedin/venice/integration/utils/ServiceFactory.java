@@ -7,7 +7,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.MockTime;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -395,8 +394,9 @@ public class ServiceFactory {
             numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.of(zkPort)));
   }
 
-  public static HelixControllerWrapper getHelixController(String zkAddress, String helixClusterName) {
-    return getService(HelixControllerWrapper.SERVICE_NAME, HelixControllerWrapper.generateService(zkAddress, helixClusterName));
+  public static HelixAsAServiceWrapper getHelixController(String zkAddress) {
+    return getService(
+        HelixAsAServiceWrapper.SERVICE_NAME, HelixAsAServiceWrapper.generateService(zkAddress));
   }
 
 
