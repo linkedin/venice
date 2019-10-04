@@ -1359,7 +1359,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
-
             killOfflinePush(clusterName, resourceName);
 
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
@@ -2840,6 +2839,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public void killOfflinePush(String clusterName, String kafkaTopic) {
+        if (!isResourceStillAlive(kafkaTopic)) {
+            /**
+             * To avoid sending kill job messages if the resource is already removed, and this
+             * could happen in the following scenario:
+             * 1. The first try of resource deletion fails in the middle, which could be caused by
+             * sending killing job message timeout;
+             * 2. The second try of deleting the same resource will try to send the killing job message
+             * again even the resource has already been deleted (kill job messages are eventually processed
+             * by every participant);
+             * So the killing job message is not necessary since the resource doesn't exist, and we should
+             * not send kill job message since it is expensive and easy to time-out.
+             */
+            logger.info("Resource: " + kafkaTopic + " doesn't exist, kill job will be skipped");
+            return;
+        }
         checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
         StatusMessageChannel messageChannel = getVeniceHelixResource(clusterName).getMessageChannel();
         // As we should already have retry outside of this function call, so we do not need to retry again inside.
