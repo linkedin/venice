@@ -51,7 +51,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    * These fields are subject to changes in #handleStoreChanged
    */
   private long storeQuotaInBytes;
-  private double diskQuotaPerPartition;
+  private long diskQuotaPerPartition;
 
   public HybridStoreQuotaEnforcement(StoreIngestionTask storeIngestionTask, AbstractStorageEngine storageEngine, Store store, String topic, int storePartitionCount) {
     this.storeIngestionTask = storeIngestionTask;
@@ -62,7 +62,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     this.partitionConsumptionSizeMap = new HashMap<>();
     this.pausedPartitions = new HashSet<>();
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
-    this.diskQuotaPerPartition = 1.0 * storeQuotaInBytes / this.storePartitionCount;
+    this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
     int storeVersion = Version.parseVersionFromKafkaTopicName(topic);
     Optional<Version> version = store.getVersion(storeVersion);
     setRTJob(version);
@@ -87,7 +87,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     Optional<Version> version = store.getVersion(storeVersion);
     setRTJob(version);
     this.storeQuotaInBytes = store.getStorageQuotaInByte();
-    this.diskQuotaPerPartition = 1.0 * storeQuotaInBytes / this.storePartitionCount;
+    this.diskQuotaPerPartition = this.storeQuotaInBytes / this.storePartitionCount;
   }
 
   /**
@@ -114,7 +114,10 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     partitionConsumptionSizeMap.get(partition).add(recordSize);
 
     /**
-     * check if the current partition violates the partition-level quota
+     * check if the current partition violates the partition-level quota.
+     * It's possible to pause an already-paused partition or resume an un-paused partition. The reason that
+     * we don't prevent this is that when a SN gets restarted, the in-memory paused partitions are empty. If
+     * we check if the partition is in paused partitions to decide whether to resume it, we may never resume it.
      */
     if (isStorageQuotaExceeded(partition)) {
       if (isRTJob()) {
@@ -122,8 +125,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
          * Pause the partition for RT job.
          */
         pausePartition(partition);
-        logger.info("Quota exceeded for store " + storeName + " partition " + partition
-                    + ", paused this partition.");
+        logger.info("Quota exceeded for store " + storeName + " partition " + partition + ", paused this partition.");
       } else {
         /**
          * GF job or hadoop push for a hybrid store, directly throw exception
@@ -158,12 +160,12 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
      * emit metrics for the ratio of (partition usage/partition quota)
      */
     // TODO: optimize the metrics
-    if (storeIngestionTask.emitMetrics.get()) {
+    if (storeIngestionTask.isMetricsEmissionEnabled()) {
       storeIngestionTask.storeIngestionStats.recordStorageQuotaUsed(storeName,
           diskQuotaPerPartition > 0 ? (diskUsagePerPartition / diskQuotaPerPartition) : 0);
     }
     if (storeQuotaInBytes != Store.UNLIMITED_STORAGE_QUOTA && diskUsagePerPartition >= diskQuotaPerPartition) {
-      logger.warn(storeIngestionTask.consumerTaskId + "exceeded the storage quota" + diskQuotaPerPartition);
+      logger.warn(storeIngestionTask.consumerTaskId + " exceeded the storage quota " + diskQuotaPerPartition);
       return true;
     }
     return false;
@@ -174,12 +176,12 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
    * partition without affecting partition subscription
    */
   private void pausePartition(int partition) {
-    this.storeIngestionTask.consumer.pause(topic, partition);
+    this.storeIngestionTask.getConsumer().pause(topic, partition);
     this.pausedPartitions.add(partition);
   }
 
   private void resumePartition(int partition) {
-    this.storeIngestionTask.consumer.resume(topic, partition);
+    this.storeIngestionTask.getConsumer().resume(topic, partition);
     this.pausedPartitions.remove(partition);
   }
 
@@ -198,6 +200,10 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
 
   protected long getStoreQuotaInBytes() {
     return storeQuotaInBytes;
+  }
+
+  protected long getPartitionQuotaInBytes() {
+    return diskQuotaPerPartition;
   }
 
   protected boolean isRTJob() {

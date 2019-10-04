@@ -1656,6 +1656,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return this.consumer;
   }
 
+  public boolean isMetricsEmissionEnabled() {
+    return this.emitMetrics.get();
+  }
+
   public void enableMetricsEmission() {
     this.emitMetrics.set(true);
   }

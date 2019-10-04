@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
+import com.linkedin.venice.utils.TestUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -15,8 +16,8 @@ public class AggStoreIngestionStatsTest {
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
 
-  private static final String STORE_FOO = "store_foo";
-  private static final String STORE_BAR = "store_bar";
+  private static final String STORE_FOO = TestUtils.getUniqueString("store_foo");
+  private static final String STORE_BAR = TestUtils.getUniqueString("store_bar");
 
   @BeforeTest
   public void setup() {
@@ -32,6 +33,9 @@ public class AggStoreIngestionStatsTest {
     stats.updateStoreConsumptionTask(STORE_FOO, task);
     stats.recordPollResultNum(STORE_FOO, 1);
     stats.recordPollResultNum(STORE_BAR, 2);
+
+    stats.recordStorageQuotaUsed(STORE_FOO, 0.6);
+    stats.recordStorageQuotaUsed(STORE_FOO, 1);
   }
 
   @AfterTest
@@ -44,5 +48,6 @@ public class AggStoreIngestionStatsTest {
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--kafka_poll_result_num.Total").value(), 1d);
     Assert.assertEquals(reporter.query("." + STORE_BAR + "--kafka_poll_result_num.Total").value(), 2d);
     Assert.assertEquals(reporter.query(".total--kafka_poll_result_num.Avg").value(), 1.5d);
+    Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Avg").value(), 0.8);
   }
 }
