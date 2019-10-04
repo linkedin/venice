@@ -285,8 +285,19 @@ public class TopicManager implements Closeable {
    * @param retentionInMS
    * @return true if the retention time config of the input topic gets updated; return false if nothing gets updated
    */
-  public synchronized boolean updateTopicRetention(String topicName, long retentionInMS) {
+  public boolean updateTopicRetention(String topicName, long retentionInMS) {
     Properties topicProperties = getTopicConfig(topicName);
+    return updateTopicRetention(topicName, retentionInMS, topicProperties);
+  }
+
+  /**
+   * Update rentention for the given topic given a {@link Properties}.
+   * @param topicName
+   * @param retentionInMS
+   * @param topicProperties
+   * @return true if the retention time gets updated; false if no update is needed.
+   */
+  public boolean updateTopicRetention(String topicName, long retentionInMS, Properties topicProperties) {
     String retentionInMSStr = Long.toString(retentionInMS);
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
@@ -297,6 +308,7 @@ public class TopicManager implements Closeable {
     // Retention time has already been updated for this topic before
     return false;
   }
+
 
   /**
    * Update topic compaction policy.
@@ -367,6 +379,10 @@ public class TopicManager implements Closeable {
     } else {
       throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
     }
+  }
+
+  public scala.collection.Map<String, Properties> getAllTopicConfig() {
+    return AdminUtils.fetchAllTopicConfigs(getZkUtils());
   }
 
   /**
