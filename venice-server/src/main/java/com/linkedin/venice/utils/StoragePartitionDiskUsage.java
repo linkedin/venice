@@ -70,4 +70,19 @@ public class StoragePartitionDiskUsage {
     this.inMemoryPartitionUsage = 0;
     return true;
   }
+
+  // for test purpose
+  protected void setPrevSyncUpTs(long millis) {
+    this.prevSyncUpTs = millis;
+  }
+
+  // for test purpose
+  protected long getPersistedOnlyPartitionUsage() {
+    return diskPartitionUsage;
+  }
+
+  // for test purpose
+  protected long getInMemoryOnlyPartitionUsage() {
+    return inMemoryPartitionUsage;
+  }
 }
