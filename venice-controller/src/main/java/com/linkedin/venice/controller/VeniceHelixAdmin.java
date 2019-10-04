@@ -2697,7 +2697,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized boolean isMasterController(String clusterName) {
+    public boolean isMasterController(String clusterName) {
         VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
         if (model == null ) {
             throwClusterNotInitialized(clusterName);
