@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
+import kafka.server.ConfigType;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
@@ -372,13 +373,11 @@ public class TopicManager implements Closeable {
    * @return
    */
   public Properties getTopicConfig(String topicName) {
-    scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
-    if (allTopicConfigs.contains(topicName)) {
-      Properties topicProperties = allTopicConfigs.get(topicName).get();
-      return topicProperties;
-    } else {
+    Properties properties  = AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
+    if (properties == null || properties.isEmpty()) {
       throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
     }
+    return properties;
   }
 
   public scala.collection.Map<String, Properties> getAllTopicConfig() {
