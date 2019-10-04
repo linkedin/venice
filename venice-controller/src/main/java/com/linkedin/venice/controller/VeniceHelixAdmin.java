@@ -96,6 +96,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -1523,6 +1524,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return false;
     }
 
+    private boolean truncateKafkaTopic(String kafkaTopicName, scala.collection.Map<String, Properties> topicConfigs) {
+        if (topicConfigs.contains(kafkaTopicName)) {
+            if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs,
+                topicConfigs.get(kafkaTopicName).get())) {
+                // retention is updated.
+                logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
+                return true;
+            }
+        } else {
+            logger.info("Topic: " + kafkaTopicName + " doesn't exist or not found in the configs, will skip the truncation");
+        }
+        // return false to indicate the retention config has already been updated.
+        return false;
+    }
+
     /**
      * Truncate old unused Kafka topics. These could arise from resource leaking of topics during certain
      * scenarios.
@@ -1590,8 +1606,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             logger.info("Detected the following old topics to truncate: " + String.join(", ", oldTopicsToTruncate));
             int numberOfNewTopicsMarkedForDelete = 0;
+            scala.collection.Map<String, Properties> topicConfigs = getTopicManager().getAllTopicConfig();
             for (String t : oldTopicsToTruncate) {
-                if (truncateKafkaTopic(t)) {
+                if (truncateKafkaTopic(t, topicConfigs)) {
                     ++numberOfNewTopicsMarkedForDelete;
                 }
                 deleteHelixResource(clusterName, t);
