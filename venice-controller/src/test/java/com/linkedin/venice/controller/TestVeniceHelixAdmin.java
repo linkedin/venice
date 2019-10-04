@@ -1254,7 +1254,6 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testRetireOldStoreVersionsKillOfflineFails() {
     String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
-    boolean deleteFirst = true;
     HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager, helixMessageChannelStats);
     channel.registerHandler(KillOfflinePushMessage.class, message -> {
       if (message.getKafkaTopic() == Version.composeKafkaTopic(storeName, 1)) {
@@ -1272,7 +1271,7 @@ public class TestVeniceHelixAdmin {
         () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 3);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.retireOldStoreVersions(clusterName, storeName, false);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 3,
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2,
         " Versions should be deleted.");
   }
 
