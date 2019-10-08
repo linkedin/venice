@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -80,8 +81,12 @@ public class TestPartitionStatusOnlineInstanceFinder {
   private PartitionStatusOnlineInstanceFinder initFinder() {
     PartitionStatusOnlineInstanceFinder finder =
         new PartitionStatusOnlineInstanceFinder(metaDataRepo, offlinePushAccessor, routingDataRepo);
-    Mockito.doReturn(getMockInstances()).when(routingDataRepo).getAllInstances(testTopic, 0);
-    Mockito.doReturn(new PartitionAssignment(testTopic, 1)).when(routingDataRepo).getPartitionAssignments(testTopic);
+
+    Map<String, List<Instance>> instances = getMockInstances();
+    PartitionAssignment partitionAssignment = new PartitionAssignment(testTopic, 1);
+    partitionAssignment.addPartition(new Partition(0, instances));
+    Mockito.doReturn(partitionAssignment).when(routingDataRepo).getPartitionAssignments(testTopic);
+    Mockito.doReturn(instances).when(routingDataRepo).getAllInstances(testTopic, 0);
     Mockito.doReturn(getMockPushStatus()).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
 
     finder.refresh();

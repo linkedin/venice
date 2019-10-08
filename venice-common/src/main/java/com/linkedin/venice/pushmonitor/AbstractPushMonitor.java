@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -309,6 +310,7 @@ public abstract class AbstractPushMonitor
 
   protected abstract Pair<ExecutionStatus, Optional<String>> checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment);
 
+  public abstract List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 
   public void refreshAndUpdatePushStatus(String kafkaTopic, ExecutionStatus newStatus, Optional<String> newStatusDetails) {
     final OfflinePushStatus refreshedPushStatus = getOfflinePush(kafkaTopic);

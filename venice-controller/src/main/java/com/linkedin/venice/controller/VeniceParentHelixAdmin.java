@@ -1493,16 +1493,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic) {
-    throw new VeniceException("getBootstrapReplicas is not supported!");
-  }
-
-  @Override
-  public List<Replica> getErrorReplicas(String clusterName, String kafkaTopic) {
-    throw new VeniceException("getErrorReplicas is not supported!");
-  }
-
-  @Override
   public List<Replica> getReplicas(String clusterName, String kafkaTopic) {
     throw new VeniceException("getReplicas is not supported!");
   }

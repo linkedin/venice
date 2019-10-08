@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.stats;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -9,6 +8,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -28,27 +28,33 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   private final ReadOnlyStoreRepository storeRepository;
 
+  private final PushMonitor pushMonitor;
+
   /**
    * Only for test usage.
    */
-  protected AggPartitionHealthStats(String clusterName, ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
+  protected AggPartitionHealthStats(String clusterName, ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor,
+      PushMonitor pushMonitor) {
     super(clusterName, null, (metricRepo, resourceName) -> new PartitionHealthStats(resourceName));
     this.requiredReplicaFactor = requiredReplicationFactor;
     this.storeRepository = storeRepository;
+    this.pushMonitor = pushMonitor;
   }
 
   public AggPartitionHealthStats(String clusterName, MetricsRepository metricsRepository, RoutingDataRepository routingDataRepository,
-      ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
+      ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor, PushMonitor pushMonitor) {
     super(clusterName, metricsRepository, (metricsRepo, resourceName) -> new PartitionHealthStats(metricsRepo, resourceName));
     this.requiredReplicaFactor = requiredReplicationFactor;
     this.storeRepository = storeRepository;
+    this.pushMonitor = pushMonitor;
+
     // Monitor changes for all topics.
     routingDataRepository.subscribeRoutingDataChange(Utils.WILDCARD_MATCH_ANY, this);
   }
 
   @Override
   public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
-    int underReplicaPartitions = 0;
+    int underReplicatedPartitions = 0;
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(partitionAssignment.getTopic());
     Store store = storeRepository.getStore(storeName);
@@ -61,11 +67,11 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
       return;
     }
     for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if (partition.getReadyToServeInstances().size() < requiredReplicaFactor) {
-        underReplicaPartitions++;
+      if (pushMonitor.getReadyToServeInstances(partitionAssignment, partition.getId()).size() < requiredReplicaFactor) {
+        underReplicatedPartitions++;
       }
     }
-    reportUnderReplicatedPartition(partitionAssignment.getTopic(), underReplicaPartitions);
+    reportUnderReplicatedPartition(partitionAssignment.getTopic(), underReplicatedPartitions);
   }
 
   @Override

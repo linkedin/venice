@@ -97,7 +97,7 @@ public class VeniceHelixResources implements VeniceResource {
             config.getRefreshIntervalForZkReconnectInMs());
     aggPartitionHealthStats =
         new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository,
-            config.getReplicaFactor());
+            config.getReplicaFactor(), pushMonitor);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
     this.shutdownLock = shutdownLock;
     this.lockStats = new LockStats(metricsRepository, clusterName);

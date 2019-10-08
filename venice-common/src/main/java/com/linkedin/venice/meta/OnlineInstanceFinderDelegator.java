@@ -31,6 +31,11 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
   }
 
   @Override
+  public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+    return getInstanceFinder(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
+  }
+
+  @Override
   public Map<String, List<Instance>> getAllInstances(String kafkaTopic, int partitionId) {
     return getInstanceFinder(kafkaTopic).getAllInstances(kafkaTopic, partitionId);
   }

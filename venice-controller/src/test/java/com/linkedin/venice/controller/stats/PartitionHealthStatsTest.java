@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import io.tehuti.metrics.Sensor;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,23 +16,27 @@ import org.testng.annotations.Test;
 
 
 public class PartitionHealthStatsTest {
+  private String topic = "test_v1";
+  private PushMonitor mockPushMonitor = Mockito.mock(PushMonitor.class);
+
   @Test
   public void testUnderReplicatedPartitionStats() {
     int replicationFactor = 3;
     int partitionCount = 3;
+
     ReadOnlyStoreRepository mockStoreRepo = Mockito.mock(ReadOnlyStoreRepository.class);
     Store mockStore = Mockito.mock(Store.class);
     Mockito.doReturn(VersionStatus.ONLINE).when(mockStore).getVersionStatus(Mockito.anyInt());
     Mockito.doReturn(mockStore).when(mockStoreRepo).getStore(Mockito.anyString());
 
     MockPartitionHealthStats stats = new MockPartitionHealthStats(mockStoreRepo, replicationFactor);
-    PartitionAssignment assignment = new PartitionAssignment("test_v1", partitionCount);
+    PartitionAssignment assignment = new PartitionAssignment(topic, partitionCount);
 
     // Prepare both under replicated partition and full replicated partition.
     for (int i = 0; i < partitionCount - 1; i++) {
-      assignment.addPartition(preparePartition(i, replicationFactor - 1));
+      assignment.addPartition(preparePartition(assignment, i, replicationFactor - 1));
     }
-    assignment.addPartition(preparePartition(partitionCount - 1, replicationFactor));
+    assignment.addPartition(preparePartition( assignment, partitionCount - 1, replicationFactor));
 
     stats.onRoutingDataChanged(assignment);
     // Verify we have recorded the correct under replicated partition count
@@ -47,14 +52,14 @@ public class PartitionHealthStatsTest {
         "We should not count the under replicated partition in on-going push.");
   }
 
-  private Partition preparePartition(int partitionId, int replicaCount) {
+  private Partition preparePartition(PartitionAssignment partitionAssignment, int partitionId, int replicaCount) {
     Partition partition = Mockito.mock(Partition.class);
     Mockito.doReturn(partitionId).when(partition).getId();
     List<Instance> mockInstancesList = new ArrayList<>();
     for (int j = 0; j < replicaCount; j++) {
       mockInstancesList.add(Mockito.mock(Instance.class));
     }
-    Mockito.doReturn(mockInstancesList).when(partition).getReadyToServeInstances();
+    Mockito.doReturn(mockInstancesList).when(mockPushMonitor).getReadyToServeInstances(partitionAssignment, partitionId);
     return partition;
   }
 
@@ -66,7 +71,7 @@ public class PartitionHealthStatsTest {
     int underReplicatedPartitionNumber = 0;
 
     public MockPartitionHealthStats(ReadOnlyStoreRepository storeRepository, int requriedReplicaFactor) {
-      super("testUnderReplicatedPartitionStats", storeRepository, requriedReplicaFactor);
+      super("testUnderReplicatedPartitionStats", storeRepository, requriedReplicaFactor, mockPushMonitor);
     }
 
     @Override

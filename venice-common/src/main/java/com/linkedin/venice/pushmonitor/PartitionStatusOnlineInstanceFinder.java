@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -78,6 +80,12 @@ public class PartitionStatusOnlineInstanceFinder
    */
   @Override
   public synchronized List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
+    return getReadyToServeInstances(routingDataRepository.getPartitionAssignments(kafkaTopic), partitionId);
+  }
+
+  @Override
+  public synchronized List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+    String kafkaTopic = partitionAssignment.getTopic();
     List<PartitionStatus> statusList = topicToPartitionMap.get(kafkaTopic);
     if (statusList == null || partitionId >= statusList.size()) {
       // have not received partition info related to this topic. Return empty list
@@ -88,13 +96,7 @@ public class PartitionStatusOnlineInstanceFinder
     }
 
     PartitionStatus partitionStatus = statusList.get(partitionId);
-    return routingDataRepository.getAllInstances(kafkaTopic, partitionId).values().stream()
-        .flatMap(List::stream)
-        .filter(instance ->
-            PushStatusDecider.getReplicaCurrentStatus(
-                partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
-            .equals(ExecutionStatus.COMPLETED))
-        .collect(Collectors.toList());
+    return PushStatusDecider.getReadyToServeInstances(partitionStatus, partitionAssignment, partitionId);
   }
 
   @Override

@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,14 +20,14 @@ public class StoreStatusDecider {
   /**
    * Get the statuses of given stores based on the replicas statues in the given assignment.
    *
-   * @return a map which's key is store name and value is store's status.
+   * @return a map in which the key is store name and the value is store's status.
    */
   public static Map<String, String> getStoreStatues(List<Store> storeList, ResourceAssignment resourceAssignment,
-      VeniceControllerClusterConfig controllerClusterConfig) {
+      PushMonitor pushMonitor, VeniceControllerClusterConfig config) {
     Map<String, String> storeStatusMap = new HashMap<>();
     for (Store store : storeList) {
-      int replicationFactor = controllerClusterConfig.getReplicaFactor();
       String resourceName = Version.composeKafkaTopic(store.getName(), store.getCurrentVersion());
+      int replicationFactor = config.getReplicaFactor();
       if (!resourceAssignment.containsResource(resourceName)) {
         // TODO: Determine if it makes sense to mark stores with no versions in them as UNAVAILABLE...? That seems ambiguous.
         logger.warn("Store:" + store.getName() + " is unavailable because current version: " + store.getCurrentVersion()
@@ -45,7 +46,7 @@ public class StoreStatusDecider {
 
       StoreStatus status = StoreStatus.FULLLY_REPLICATED;
       for (Partition partition : currentVersionAssignment.getAllPartitions()) {
-        int onlineReplicasCount = partition.getReadyToServeInstances().size();
+        int onlineReplicasCount = pushMonitor.getReadyToServeInstances(currentVersionAssignment, partition.getId()).size();
         if (onlineReplicasCount == 0) {
           // Once one partition is unavailable we say this store is unavailable, do not need to continue.
           status = StoreStatus.DEGRADED;

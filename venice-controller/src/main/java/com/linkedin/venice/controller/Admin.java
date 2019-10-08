@@ -341,8 +341,6 @@ public interface Admin extends AutoCloseable, Closeable {
        return 1;
     }
 
-    List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic);
-    List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);
     List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
     List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);

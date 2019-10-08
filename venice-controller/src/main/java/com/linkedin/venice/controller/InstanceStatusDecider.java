@@ -100,7 +100,7 @@ public class InstanceStatusDecider {
             // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
             // In that case partition would be moved to other instances and might cause the consumption from the begin
             // of topic.
-            Pair<Boolean, String> result = willLoseData(partitionAssignmentAfterRemoving);
+            Pair<Boolean, String> result = willLoseData(resources.getPushMonitor(), partitionAssignmentAfterRemoving);
             if (result.getFirst()) {
               logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
                   + " would lose data if this instance was removed from cluster:" + clusterName + " details: "
@@ -134,15 +134,16 @@ public class InstanceStatusDecider {
     }
   }
 
-  private static Pair<Boolean, String> willLoseData(PartitionAssignment partitionAssignmentAfterRemoving) {
+  private static Pair<Boolean, String> willLoseData(PushMonitor pushMonitor,
+      PartitionAssignment partitionAssignmentAfterRemoving) {
     for (Partition partitionAfterRemoving : partitionAssignmentAfterRemoving.getAllPartitions()) {
-      int onlineReplicasCount = partitionAfterRemoving.getReadyToServeInstances().size();
-      if (onlineReplicasCount < 1) {
+      if (pushMonitor.getReadyToServeInstances(partitionAssignmentAfterRemoving, partitionAfterRemoving.getId()).size() < 1) {
         // After removing the instance, no online replica exists. Venice will lose data in this case.
         return new Pair<>(true,
             "Partition: " + partitionAfterRemoving.getId() + " will have no online replicas after removing the node.");
       }
     }
+
     return new Pair<>(false, null);
   }
 

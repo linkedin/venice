@@ -2,6 +2,7 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -188,5 +189,9 @@ public class PushMonitorDelegator implements PushMonitor {
       Optional<TopicReplicator> leaderFollowerTopicReplicator) {
     partitionStatusBasedPushStatusMonitor.setTopicReplicator(leaderFollowerTopicReplicator);
     offlinePushMonitor.setTopicReplicator(onlineOfflineTopicReplicator);
+  }
+
+  public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+    return getPushMonitor(partitionAssignment.getTopic()).getReadyToServeInstances(partitionAssignment, partitionId);
   }
 }
