@@ -2,11 +2,16 @@ package com.linkedin.venice.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.collect.Lists;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.io.ResolvingDecoder;
@@ -117,5 +122,75 @@ public class AvroSchemaUtils {
     ObjectNode schemaOb = mapper.readValue(schemaStr, ObjectNode.class);
     schemaOb.put(NAMESPACE_FIELD, namespace);
     return Schema.parse(schemaOb.toString());
+  }
+
+  /**
+   * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
+   * C/D could be nested record change as well eg, array/map of records, or record of records.
+   * Prerequisite: The top-level schema are of type RECORD only and each fields have default values. ie they are compatible
+   * schemas.
+   * @param s1 1st input schema
+   * @param s2 2nd input schema
+   * @return super set schema of s1 and s2
+   */
+  public static Schema generateSuperSetSchema(Schema s1, Schema s2) {
+    if (s1.getType() != s2.getType()) {
+      throw new VeniceException("Incompatible schema");
+    }
+    if (Objects.equals(s1, s2)) {
+      return s1;
+    }
+
+    switch (s1.getType()) {
+      case RECORD:
+        Schema superSetSchema = Schema.createRecord(s1.getName(), s1.getDoc(), s1.getNamespace(), false);
+        superSetSchema.setFields(mergeFields(s1, s2));
+        return superSetSchema;
+      case ARRAY:
+        return Schema.createArray(generateSuperSetSchema(s1.getElementType(), s2.getElementType()));
+      case MAP:
+        return Schema.createMap(generateSuperSetSchema(s1.getValueType(), s2.getValueType()));
+      case UNION:
+        return unionSchema(s1, s2);
+      default:
+        throw new VeniceException("Super set schema not supported");
+    }
+  }
+
+  private static Schema unionSchema(Schema s1, Schema s2) {
+    List<Schema> combinedSchema = Lists.newArrayList();
+    Map<String, Schema> s2Schema = s2.getTypes().stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    for (Schema s : s1.getTypes()) {
+      if (s2Schema.get(s.getName()) != null) {
+        combinedSchema.add(generateSuperSetSchema(s, s2Schema.get(s.getName())));
+        s2Schema.remove(s.getName());
+      } else {
+        combinedSchema.add(s);
+      }
+    }
+    s2Schema.forEach((k, v) -> combinedSchema.add(v));
+
+    return Schema.createUnion(combinedSchema);
+  }
+
+  private static List<Schema.Field> mergeFields(Schema s1, Schema s2) {
+    List<Schema.Field> fields = Lists.newArrayList();
+
+    for (Schema.Field f1 : s1.getFields()) {
+      Schema.Field f2 = s2.getField(f1.name());
+      if (f2 == null) {
+        fields.add(new Schema.Field(f1.name(), f1.schema(), f1.doc(), f1.defaultValue(), f1.order()));
+      } else {
+        fields.add(new Schema.Field(f1.name(), generateSuperSetSchema(f1.schema(), f2.schema()),
+            f1.doc() != null ? f1.doc() : f2.doc(), f1.defaultValue()));
+      }
+    }
+
+    for (Schema.Field f2 : s2.getFields()) {
+      if (s1.getField(f2.name()) == null) {
+        fields.add(new Schema.Field(f2.name(), f2.schema(), f2.doc(), f2.defaultValue()));
+      }
+    }
+    return fields;
   }
 }
