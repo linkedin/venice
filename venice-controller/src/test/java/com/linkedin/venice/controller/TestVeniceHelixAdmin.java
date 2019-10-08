@@ -706,42 +706,6 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testGetBootstrapReplicas()
-      throws Exception {
-    stopParticipants();
-    startParticipant(true, nodeId);
-    String storeName = "test";
-    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
-    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
-      try {
-        PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
-            .getRoutingDataRepository()
-            .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
-        return partitionAssignment.getAssignedNumberOfPartitions() == 1;
-      }catch (VeniceException e){
-        return false;
-      }
-    });
-
-    List<Replica> replicas = veniceAdmin.getBootstrapReplicas(clusterName, Version.composeKafkaTopic(storeName, 1));
-    Assert.assertEquals(replicas.size(), 1);
-    Assert.assertEquals(replicas.get(0).getStatus(), HelixState.BOOTSTRAP_STATE);
-    Assert.assertEquals(replicas.get(0).getPartitionId(), 0);
-
-    // Make participant complete BOOTSTRAP->ONLINE
-    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 1), 0);
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
-      return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
-    });
-    replicas = veniceAdmin.getBootstrapReplicas(clusterName, Version.composeKafkaTopic(storeName, 1));
-    Assert.assertEquals(replicas.size(), 0);
-  }
-
-  @Test
   public void testIsInstanceRemovableForRunningPush()
       throws Exception {
     stopParticipants();
@@ -825,6 +789,7 @@ public class TestVeniceHelixAdmin {
     //Enough number of replicas, any of instance is able to moved out.
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1, false).isRemovable());
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1, false).isRemovable());
+
     // If min required replica number is 2, we can not remove any of server.
     NodeRemovableResult result = veniceAdmin.isInstanceRemovable(clusterName, nodeId, 2,false);
     Assert.assertFalse(result.isRemovable());

@@ -1683,6 +1683,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 getVeniceHelixResource(clusterName).getRoutingDataRepository();
             ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
             return StoreStatusDecider.getStoreStatues(storeList, resourceAssignment,
+                getVeniceHelixResource(clusterName).getPushMonitor(),
                 getVeniceHelixResource(clusterName).getConfig());
         } finally {
             repository.unLock();
@@ -2724,11 +2725,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
   /**
    * Calculate number of partition for given store by give size.
-   *
-   * @param clusterName
-   * @param storeName
-   * @param storeSize
-   * @return
    */
     @Override
     public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
@@ -2747,46 +2743,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic) {
-        checkControllerMastership(clusterName);
-        List<Replica> replicas = new ArrayList<>();
-        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
-        for(Partition partition:partitionAssignment.getAllPartitions()){
-            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), kafkaTopic, partition.getId(), HelixState.BOOTSTRAP_STATE);
-        }
-        return replicas;
-    }
-
-    @Override
-    public List<Replica> getErrorReplicas(String clusterName, String kafkaTopic) {
-        checkControllerMastership(clusterName);
-        List<Replica> replicas = new ArrayList<>();
-        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
-        for(Partition partition:partitionAssignment.getAllPartitions()){
-            addInstancesToReplicaList(replicas, partition.getErrorInstances(), kafkaTopic, partition.getId(), HelixState.ERROR_STATE);
-        }
-        return replicas;
-    }
-
-    @Override
     public List<Replica> getReplicas(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
         List<Replica> replicas = new ArrayList<>();
-        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
-        for(Partition partition:partitionAssignment.getAllPartitions()){
-            addInstancesToReplicaList(replicas, partition.getErrorInstances(), kafkaTopic, partition.getId(), HelixState.ERROR_STATE);
-            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), kafkaTopic, partition.getId(), HelixState.BOOTSTRAP_STATE);
-            addInstancesToReplicaList(replicas, partition.getReadyToServeInstances(), kafkaTopic, partition.getId(), HelixState.ONLINE_STATE);
-        }
-        return replicas;
-    }
+        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository()
+            .getPartitionAssignments(kafkaTopic);
 
-    private void addInstancesToReplicaList(List<Replica> replicaList, List<Instance> instancesToAdd, String resource, int partitionId, String stateOfAddedReplicas){
-        for (Instance instance : instancesToAdd){
-            Replica replica = new Replica(instance, partitionId, resource);
-            replica.setStatus(stateOfAddedReplicas);
-            replicaList.add(replica);
-        }
+        partitionAssignment.getAllPartitions().forEach(partition -> {
+            int partitionId = partition.getId();
+            partition.getAllInstances().forEach((helixState, instanceList) -> {
+                instanceList.forEach(instance -> {
+                    Replica replica = new Replica(instance, partitionId, kafkaTopic);
+                    replica.setStatus(helixState);
+                    replicas.add(replica);
+                });
+            });
+        });
+
+        return replicas;
     }
 
     @Override

@@ -35,6 +35,15 @@ public class Partition {
     return instances == null ? Collections.emptyList() : Collections.unmodifiableList(instances);
   }
 
+  /**
+   * Checking if a instance ready to serve via its Helix state is unsafe after L/F model is introduced.
+   *
+   * Avoid using this API outside of {@link com.linkedin.venice.pushmonitor.PushStatusDecider#checkPushStatusAndDetails}
+   * and {@link com.linkedin.venice.helix.HelixRoutingDataRepository#getReadyToServeInstances(String, int)}
+   *
+   * TODO: remove this API once we've fully migrate to L/F model.
+   */
+  @Deprecated
   public List<Instance> getReadyToServeInstances() {
     return getInstancesInState(HelixState.ONLINE_STATE);
   }

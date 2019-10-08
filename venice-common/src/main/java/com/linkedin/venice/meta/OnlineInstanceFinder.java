@@ -22,6 +22,12 @@ public interface OnlineInstanceFinder {
   List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId);
 
   /**
+   * Look for ready to serve instances on the given partition assignment. This is normally used to predict if
+   * a potential partition assignment will cause any replica unavailability issue
+   */
+  List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
+
+  /**
    * Query instances that belong to given kafka topic and partition.
    * @return a map that has {@link com.linkedin.venice.helix.HelixState} as the key and list of instances as the value
    */

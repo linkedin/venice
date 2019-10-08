@@ -20,11 +20,11 @@ import java.util.List;
 import java.util.Map;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.LiveInstance;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static org.mockito.Mockito.*;
 
 public class TestInstanceStatusDecider {
   private VeniceHelixResources resources;
@@ -35,28 +35,37 @@ public class TestInstanceStatusDecider {
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
   private String resourceName = Version.composeKafkaTopic(storeName, version);
-  private PushMonitorDelegator mockMontior;
+  private PushMonitorDelegator mockMonitor;
 
   @BeforeMethod
   public void setup() {
     clusterName = TestUtils.getUniqueString("TestInstanceStatusDecider");
-    resources = Mockito.mock(VeniceHelixResources.class);
-    routingDataRepository = Mockito.mock(HelixRoutingDataRepository.class);
-    readWriteStoreRepository = Mockito.mock(HelixReadWriteStoreRepository.class);
-    mockMontior = Mockito.mock(PushMonitorDelegator.class);
-    SafeHelixManager manager = Mockito.mock(SafeHelixManager.class);
-    accessor = Mockito.mock(SafeHelixDataAccessor.class);
-    Mockito.doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
-    Mockito.doReturn(readWriteStoreRepository).when(resources).getMetadataRepository();
-    Mockito.doReturn(mockMontior).when(resources).getPushMonitor();
-    Mockito.doReturn(manager).when(resources).getController();
-    Mockito.doReturn(accessor).when(manager).getHelixDataAccessor();
-    Mockito.doReturn(new LiveInstance("test")).when(accessor).getProperty(Mockito.any(PropertyKey.class));
+    resources = mock(VeniceHelixResources.class);
+    routingDataRepository = mock(HelixRoutingDataRepository.class);
+    readWriteStoreRepository = mock(HelixReadWriteStoreRepository.class);
+    mockMonitor = mock(PushMonitorDelegator.class);
+
+    doAnswer(invocation -> {
+      PartitionAssignment partitionAssignment = invocation.getArgument(0);
+      int partitionId = invocation.getArgument(1);
+
+      return partitionAssignment.getPartition(partitionId).getReadyToServeInstances();
+    }).when(mockMonitor).getReadyToServeInstances(any(PartitionAssignment.class), anyInt());
+
+    SafeHelixManager manager = mock(SafeHelixManager.class);
+
+    accessor = mock(SafeHelixDataAccessor.class);
+    doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
+    doReturn(readWriteStoreRepository).when(resources).getMetadataRepository();
+    doReturn(mockMonitor).when(resources).getPushMonitor();
+    doReturn(manager).when(resources).getController();
+    doReturn(accessor).when(manager).getHelixDataAccessor();
+    doReturn(new LiveInstance("test")).when(accessor).getProperty(any(PropertyKey.class));
   }
 
   @Test
   public void testIsRemovableNonLiveInstance() {
-    Mockito.doReturn(null).when(accessor).getProperty(Mockito.any(PropertyKey.class));
+    doReturn(null).when(accessor).getProperty(any(PropertyKey.class));
     Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "test", 1).isRemovable(),
         "A non-alive instance should be removable from cluster");
   }
@@ -139,7 +148,7 @@ public class TestInstanceStatusDecider {
     // Test for the running push
     prepareStoreAndVersion(storeName, version, VersionStatus.STARTED);
 
-    Mockito.doReturn(false).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
+    doReturn(false).when(mockMonitor).wouldJobFail(eq(resourceName), any());
     NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1);
     Assert.assertTrue(result.isRemovable(),
         "Instance should be removable because ongoing push shouldn't be a blocker.");
@@ -221,7 +230,7 @@ public class TestInstanceStatusDecider {
     ResourceAssignment resourceAssignment = new ResourceAssignment();
     PartitionAssignment partitionAssignment = new PartitionAssignment(resourceName, partitionCount);
     resourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
-    Mockito.doReturn(resourceAssignment).when(routingDataRepository).getResourceAssignment();
+    doReturn(resourceAssignment).when(routingDataRepository).getResourceAssignment();
     return partitionAssignment;
   }
 
@@ -230,6 +239,6 @@ public class TestInstanceStatusDecider {
     Version version1 = new Version(storeName, version);
     version1.setStatus(status);
     store.addVersion(version1);
-    Mockito.doReturn(store).when(readWriteStoreRepository).getStore(storeName);
+    doReturn(store).when(readWriteStoreRepository).getStore(storeName);
   }
 }

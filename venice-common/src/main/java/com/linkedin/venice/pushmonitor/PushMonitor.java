@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.replication.TopicReplicator;
@@ -100,4 +101,6 @@ public interface PushMonitor {
    * TODO: we may want to move it out of the interface
    */
   void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond);
+
+  List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId);
 }

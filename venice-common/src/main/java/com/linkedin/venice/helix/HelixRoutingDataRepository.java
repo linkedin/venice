@@ -117,8 +117,11 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
      * Get instances from local memory. All of instances are in {@link HelixState#ONLINE} state.
      */
     public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
-        logger.debug("Get instances of Resource: " + kafkaTopic + ", Partition:" + partitionId);
-        Partition partition = resourceAssignment.getPartition(kafkaTopic, partitionId);
+        return getReadyToServeInstances(resourceAssignment.getPartitionAssignment(kafkaTopic), partitionId);
+    }
+
+    public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+        Partition partition = partitionAssignment.getPartition(partitionId);
         if (partition == null) {
             return Collections.emptyList();
         } else {

@@ -8,6 +8,8 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PushMonitor;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +22,7 @@ import org.testng.annotations.Test;
 public class TestStoreStatusDecider {
   private List<Store> storeList;
   private ResourceAssignment resourceAssignment;
+  private PushMonitor mockPushMonitor = Mockito.mock(PushMonitor.class);
   private VeniceControllerClusterConfig config;
   private int replicationFactor = 3;
 
@@ -29,6 +32,9 @@ public class TestStoreStatusDecider {
     resourceAssignment = new ResourceAssignment();
     config = Mockito.mock(VeniceControllerClusterConfig.class);
     Mockito.doReturn(replicationFactor).when(config).getReplicaFactor();
+
+    OfflinePushStatus mockPushStatus = Mockito.mock(OfflinePushStatus.class);
+    Mockito.doReturn(mockPushStatus).when(mockPushMonitor).getOfflinePush(Mockito.any());
   }
 
   @Test
@@ -36,14 +42,14 @@ public class TestStoreStatusDecider {
     int partitionCount = 2;
 
     prepare(partitionCount, new int[]{replicationFactor, replicationFactor});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
+    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor, config).values()) {
       Assert.assertEquals(status, StoreStatus.FULLLY_REPLICATED.toString(), "Store should be fully replicated.");
     }
   }
 
   @Test
   public void testGetUnavailableStoreStatus() {
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
+    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor, config).values()) {
       Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
           "Store should be unavailable, because there is not version in that store.");
     }
@@ -54,7 +60,7 @@ public class TestStoreStatusDecider {
     int partitionCount = 3;
 
     prepare(partitionCount, new int[]{replicationFactor, replicationFactor});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
+    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor, config).values()) {
       Assert.assertEquals(status, StoreStatus.DEGRADED.toString(),
           "Store should be degraded because missing one partition.");
     }
@@ -65,7 +71,7 @@ public class TestStoreStatusDecider {
     int partitionCount = 2;
 
     prepare(partitionCount, new int[]{replicationFactor, 0});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
+    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor, config).values()) {
       Assert.assertEquals(status, StoreStatus.DEGRADED.toString(),
           "Store should be degraded because one partition does not have any online replica.");
     }
@@ -76,7 +82,7 @@ public class TestStoreStatusDecider {
     int partitionCount = 2;
 
     prepare(partitionCount, new int[]{replicationFactor - 1, replicationFactor - 1});
-    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
+    for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, mockPushMonitor, config).values()) {
       Assert.assertEquals(status, StoreStatus.UNDER_REPLICATED.toString(),
           "Store should be under replicated because each partition only has replicaFactor -1 replicas.");
     }
@@ -103,7 +109,7 @@ public class TestStoreStatusDecider {
       Mockito.doReturn(i).when(p).getId();
       List<Instance> instanceList = Mockito.mock(List.class);
       Mockito.doReturn(onlineReplicaCounts[i]).when(instanceList).size();
-      Mockito.doReturn(instanceList).when(p).getReadyToServeInstances();
+      Mockito.doReturn(instanceList).when(mockPushMonitor).getReadyToServeInstances(partitionAssignment, i);
       partitionAssignment.addPartition(p);
     }
     return partitionAssignment;

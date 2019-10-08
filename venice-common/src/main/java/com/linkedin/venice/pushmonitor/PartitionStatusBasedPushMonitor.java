@@ -1,10 +1,12 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.utils.Pair;
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -48,5 +50,11 @@ public class PartitionStatusBasedPushMonitor extends AbstractPushMonitor {
   protected Pair<ExecutionStatus, Optional<String>> checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
     return PushStatusDecider.getDecider(pushStatus.getStrategy())
            .checkPushStatusAndDetailsByPartitionsStatus(pushStatus, partitionAssignment);
+  }
+
+  @Override
+  public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+    return PushStatusDecider.getReadyToServeInstances(
+        getOfflinePush(partitionAssignment.getTopic()).getPartitionStatus(partitionId), partitionAssignment, partitionId);
   }
 }

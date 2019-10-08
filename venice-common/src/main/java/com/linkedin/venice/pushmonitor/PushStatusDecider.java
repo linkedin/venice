@@ -125,6 +125,17 @@ public abstract class PushStatusDecider {
     }
   }
 
+  public static List<Instance> getReadyToServeInstances(PartitionStatus partitionStatus, PartitionAssignment partitionAssignment,
+      int partitionId) {
+    return partitionAssignment.getPartition(partitionId).getAllInstances().values().stream()
+        .flatMap(List::stream)
+        .filter(instance ->
+            PushStatusDecider.getReplicaCurrentStatus(
+                partitionStatus.getReplicaHistoricStatusList(instance.getNodeId()))
+                .equals(ExecutionStatus.COMPLETED))
+        .collect(Collectors.toList());
+  }
+
   /**
    * @return status details: if empty, push has enough replicas in every partition, otherwise, message contains details
    */
