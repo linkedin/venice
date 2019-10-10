@@ -374,7 +374,7 @@ public class TopicManager implements Closeable {
    */
   public Properties getTopicConfig(String topicName) {
     Properties properties  = AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
-    if (properties == null || properties.isEmpty()) {
+    if (properties == null) {
       throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
     }
     return properties;
