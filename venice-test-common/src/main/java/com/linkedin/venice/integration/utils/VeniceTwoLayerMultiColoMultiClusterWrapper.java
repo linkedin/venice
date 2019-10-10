@@ -1,15 +1,16 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.Executors;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.io.IOUtils;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
@@ -99,26 +100,13 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStop() throws Exception {
-    for (VeniceMultiClusterWrapper cluster : clusters) {
-      Executors.newCachedThreadPool().execute(() -> {
-        cluster.close();
-      });
-    }
-
-    for (VeniceControllerWrapper controller : parentControllers) {
-      Executors.newCachedThreadPool().execute(() -> {
-        controller.close();
-      });
-    }
-
-    for (MirrorMakerWrapper mirrorMaker : mirrorMakers) {
-      Executors.newCachedThreadPool().execute(() -> {
-        mirrorMaker.close();
-      });
-    }
-
-    parentKafkaBrokerWrapper.close();
-    zkServerWrapper.close();
+    CompletableFuture.runAsync(() -> {
+      clusters.stream().forEach(IOUtils::closeQuietly);
+      parentControllers.stream().forEach(IOUtils::closeQuietly);
+      mirrorMakers.stream().forEach(IOUtils::closeQuietly);
+      parentKafkaBrokerWrapper.close();
+      zkServerWrapper.close();
+    });
   }
 
   @Override
@@ -143,24 +131,19 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceControllerWrapper getMasterController(String clusterName) {
-    return this.parentControllers
-        .stream()
-        .filter(controller -> controller.isRunning())
-        .filter(controller -> controller.isMasterController(clusterName))
-        .findAny()
-        .get();
+    return getMasterController(clusterName, 60 * Time.MS_PER_SECOND);
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName, long timeOutSec) {
-    AtomicReference<VeniceControllerWrapper> ref = new AtomicReference<>();
-    TestUtils.waitForNonDeterministicCompletion(timeOutSec, TimeUnit.SECONDS, () -> {
-      try {
-        ref.set(getMasterController(clusterName));
-      } catch (Exception e) {
-        return false;
+  public VeniceControllerWrapper getMasterController(String clusterName, long timeoutSec) {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSec);
+    while (System.nanoTime() < deadline) {
+      for (VeniceControllerWrapper controller : parentControllers) {
+        if (controller.isRunning() && controller.isMasterController(clusterName)) {
+          return controller;
+        }
       }
-      return true;
-    });
-    return ref.get();
+      Utils.sleep(Time.MS_PER_SECOND);
+    }
+    throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
   }
 }

@@ -305,11 +305,7 @@ public class Utils {
    * @param millis
    */
   public static void sleep(long millis) {
-    try {
-      Thread.sleep(millis);
-    } catch (InterruptedException e) {
-
-    }
+    sleep(millis, "");
   }
 
   /**
@@ -322,7 +318,8 @@ public class Utils {
     try {
       Thread.sleep(millis);
     } catch (InterruptedException e) {
-      throw new VeniceException(message);
+      Thread.currentThread().interrupt();
+      throw new VeniceException(message, e);
     }
   }
 
