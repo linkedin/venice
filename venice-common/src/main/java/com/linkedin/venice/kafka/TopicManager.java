@@ -373,11 +373,11 @@ public class TopicManager implements Closeable {
    * @return
    */
   public Properties getTopicConfig(String topicName) {
-    Properties properties  = AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
-    if (properties == null) {
+    if (!containsTopicInKafkaZK(topicName)) {
       throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
     }
-    return properties;
+
+    return AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
   }
 
   public scala.collection.Map<String, Properties> getAllTopicConfig() {
