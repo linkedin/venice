@@ -480,9 +480,10 @@ public class TestPushUtils {
       String keySchemaStr, String valueSchemaStr, Properties props,
       UpdateStoreQueryParams storeParams) {
 
+    String veniceUrl = props.containsKey(VENICE_DISCOVER_URL_PROP) ? props.getProperty(VENICE_DISCOVER_URL_PROP) : props.getProperty(VENICE_URL_PROP);
 
     ControllerClient controllerClient =
-        new ControllerClient(veniceClusterName, props.getProperty(KafkaPushJob.VENICE_URL_PROP));
+        new ControllerClient(veniceClusterName, veniceUrl);
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchemaStr, valueSchemaStr);
 

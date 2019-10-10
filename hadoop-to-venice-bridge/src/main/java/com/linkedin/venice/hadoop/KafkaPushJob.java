@@ -116,6 +116,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * In multi-colo mode, it must be a parent controller.
    */
   public static final String VENICE_URL_PROP = "venice.urls";
+  /**
+   * This new url field is meant to replace {@link #VENICE_URL_PROP} to avoid Venice users accidentally override
+   * this system property.
+   * Once the new prop: {@link #VENICE_DISCOVER_URL_PROP} is fully adopted, we will deprecate {@link #VENICE_URL_PROP}.
+   */
+  public static final String VENICE_DISCOVER_URL_PROP = "venice.discover.urls";
 
   public static final String ENABLE_PUSH = "venice.push.enable";
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
@@ -365,7 +371,19 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
 
     // Mandatory configs:
-    pushJobSetting.veniceControllerUrl = props.getString(VENICE_URL_PROP);
+    if (!props.containsKey(VENICE_URL_PROP) && !props.containsKey(VENICE_DISCOVER_URL_PROP)) {
+      throw new VeniceException("At least one of the following config properties needs to be present: "
+          + VENICE_URL_PROP + " or " + VENICE_DISCOVER_URL_PROP);
+    }
+    if (props.containsKey(VENICE_URL_PROP)) {
+      pushJobSetting.veniceControllerUrl = props.getString(VENICE_URL_PROP);
+    }
+    if (props.containsKey(VENICE_DISCOVER_URL_PROP)) {
+      /**
+       * {@link VENICE_DISCOVER_URL_PROP} has higher priority than {@link VENICE_URL_PROP}.
+       */
+      pushJobSetting.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
+    }
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
 
 

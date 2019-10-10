@@ -133,30 +133,39 @@ public abstract class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testCompressingRecord() throws Exception {
-    testBatchStore(inputDir -> {
-      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
-      return new Pair<>(recordSchema.getField("id").schema(),
-                        recordSchema.getField("name").schema());
-    }, properties -> {}, (avroClient, vsonClient, metricsRepository) -> {
-      //test single get
-      for (int i = 1; i <= 100; i ++) {
-        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
-      }
+    testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          //test single get
+          for (int i = 1; i <= 100; i ++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
 
-      //test batch get
-      for (int i = 0; i < 10; i ++) {
-        Set<String> keys = new HashSet<>();
-        for (int j = 1; j <= 10; j ++) {
-          keys.add(Integer.toString(i * 10 + j));
-        }
+          //test batch get
+          for (int i = 0; i < 10; i ++) {
+            Set<String> keys = new HashSet<>();
+            for (int j = 1; j <= 10; j ++) {
+              keys.add(Integer.toString(i * 10 + j));
+            }
 
-        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
-        Assert.assertEquals(values.size(), 10);
+            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+            Assert.assertEquals(values.size(), 10);
 
-        for (int j = 1; j <= 10; j ++) {
-          Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
-        }
-      }
+            for (int j = 1; j <= 10; j ++) {
+              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+            }
+          }
     }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
   }
 
