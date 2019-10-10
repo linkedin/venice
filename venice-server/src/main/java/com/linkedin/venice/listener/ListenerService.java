@@ -29,7 +29,7 @@ import org.apache.log4j.Logger;
 /**
  * Service that listens on configured port to accept incoming GET requests
  */
-public class ListenerService extends AbstractVeniceService{
+public class ListenerService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(ListenerService.class);
 
   private final ServerBootstrap bootstrap;

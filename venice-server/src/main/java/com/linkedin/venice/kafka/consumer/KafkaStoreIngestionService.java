@@ -250,12 +250,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
 
     if (consumerExecutorService != null) {
-      consumerExecutorService.shutdown();
-
+      consumerExecutorService.shutdownNow();
       try {
         consumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
-      } catch(InterruptedException e) {
-        logger.info("Error shutting down consumer service", e);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
       }
     }
 
@@ -263,7 +262,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       storeBufferService.stop();
     }
 
-    for(VeniceNotifier notifier: notifiers ) {
+    for (VeniceNotifier notifier : notifiers) {
       notifier.close();
     }
 

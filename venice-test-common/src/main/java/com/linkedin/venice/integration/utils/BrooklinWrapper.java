@@ -133,8 +133,7 @@ public class BrooklinWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
+  protected void newProcess() throws Exception {
     throw new RuntimeException("Cannot start a new process for Brooklin");
   }
 

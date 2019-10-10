@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -50,8 +51,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final String clusterName;
   private final String participantName;
   private final String zkAddress;
-  private final StateModelFactory onlineOfflineParticipantModelFactory;
-  private final StateModelFactory leaderFollowerParticipantModelFactory;
   private final StoreIngestionService ingestionService;
   private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
@@ -60,8 +59,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private SafeHelixManager manager;
   private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
-
   private HelixStatusMessageChannel messageChannel;
+  private AbstractParticipantModelFactory onlineOfflineParticipantModelFactory;
+  private AbstractParticipantModelFactory leaderFollowerParticipantModelFactory;
 
   public HelixParticipationService(@NotNull StoreIngestionService storeIngestionService,
           @NotNull StorageService storageService,
@@ -81,20 +81,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.veniceConfigLoader = veniceConfigLoader;
     this.helixReadOnlyStoreRepository = helixReadOnlyStoreRepository;
     this.metricsRepository = metricsRepository;
-    instance = new Instance(participantName, Utils.getHostName(), port);
-
-    //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
-    //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
-    //than O/O's. Thus, the size is supposed to be smaller.
-    onlineOfflineParticipantModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
-        initHelixStateTransitionThreadPool(veniceConfigLoader.getVeniceServerConfig().getMaxOnlineOfflineStateTransitionThreadNumber(),
-            "venice-O/O-state-transition", metricsRepository, "Venice_ST_thread_pool"), helixReadOnlyStoreRepository);
-    new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
-
-    leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(storeIngestionService, storageService,
-        veniceConfigLoader, initHelixStateTransitionThreadPool(veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
-        "venice-L/F-state-transition", metricsRepository, "Venice_L/F_ST_thread_pool"));
+    this.instance = new Instance(participantName, Utils.getHostName(), port);
     this.managerFuture = managerFuture;
+
+    new ParticipantStateStats(metricsRepository, "venice_O/O_partition_state");
   }
 
   //Set corePoolSize and maxPoolSize as the same value, but enable allowCoreThreadTimeOut. So the expected
@@ -114,6 +104,30 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   @Override
   public boolean startInner() {
+    //create 2 dedicated thread pools for executing incoming state transitions (1 for online offline (O/O) model and the
+    //other for leader follower (L/F) model) Since L/F transition is not blocked by ingestion, it should run much faster
+    //than O/O's. Thus, the size is supposed to be smaller.
+    onlineOfflineParticipantModelFactory = new VeniceStateModelFactory(
+        ingestionService,
+        storageService,
+        veniceConfigLoader,
+        initHelixStateTransitionThreadPool(
+            veniceConfigLoader.getVeniceServerConfig().getMaxOnlineOfflineStateTransitionThreadNumber(),
+            "venice-O/O-state-transition",
+            metricsRepository,
+            "Venice_ST_thread_pool"),
+        helixReadOnlyStoreRepository);
+
+    leaderFollowerParticipantModelFactory = new LeaderFollowerParticipantModelFactory(
+        ingestionService,
+        storageService,
+        veniceConfigLoader,
+        initHelixStateTransitionThreadPool(
+            veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
+            "venice-L/F-state-transition",
+            metricsRepository,
+            "Venice_L/F_ST_thread_pool"));
+
     logger.info("Attempting to start HelixParticipation service");
     manager = new SafeHelixManager(
         HelixManagerFactory.getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT, zkAddress));
@@ -142,8 +156,17 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   @Override
   public void stopInner() {
-    if(manager != null) {
+    if (manager != null) {
       manager.disconnect();
+    }
+
+    onlineOfflineParticipantModelFactory.getExecutorService().shutdownNow();
+    leaderFollowerParticipantModelFactory.getExecutorService().shutdownNow();
+    try {
+      onlineOfflineParticipantModelFactory.getExecutorService().awaitTermination(30, TimeUnit.SECONDS);
+      leaderFollowerParticipantModelFactory.getExecutorService().awaitTermination(30, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
   }
 

@@ -178,6 +178,6 @@ public final class ForkedJavaProcess extends Process {
         }
       }
     }
-    executorService.shutdown();
+    executorService.shutdownNow();
   }
 }
