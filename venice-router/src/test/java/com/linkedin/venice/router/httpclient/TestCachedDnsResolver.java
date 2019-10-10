@@ -52,7 +52,7 @@ public class TestCachedDnsResolver {
     }
 
     @Override
-    protected  InetAddress[] systemGetAllByName(String host) throws UnknownHostException {
+    protected InetAddress[] systemGetAllByName(String host) throws UnknownHostException {
       if (!dnsMap.containsKey(host)) {
         throw new UnknownHostException(host);
       }
@@ -105,12 +105,11 @@ public class TestCachedDnsResolver {
     Assert.assertEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
     TestUtils.waitForNonDeterministicAssertion(10000, TimeUnit.MILLISECONDS, () -> {
       try {
-        Assert.assertEquals(InetAddress.getByName("127.0.0.2"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
+        Assert.assertNotEquals(InetAddress.getByName("127.0.0.1"), cachedDnsResolver.resolve(MockCachedDnsResolver.HOST1)[0]);
       } catch (UnknownHostException e) {
         Assert.fail(MockCachedDnsResolver.HOST1 + " should be a known host");
       }
     });
 
   }
-
 }

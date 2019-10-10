@@ -43,7 +43,7 @@ public class VeniceWriterTest {
       }
     } finally {
       if (executorService != null) {
-        executorService.shutdown();
+        executorService.shutdownNow();
       }
     }
   }

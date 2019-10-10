@@ -14,7 +14,6 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -25,6 +24,8 @@ import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -45,9 +46,20 @@ public class VeniceStateModelFactoryTest {
 
   private VeniceStateModelFactory factory;
   private VenicePartitionStateModel stateModel;
+  private ExecutorService executorService;
+
+  @BeforeClass
+  void setup() {
+    executorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest"));
+  }
+
+  @AfterClass
+  void cleanup() {
+    executorService.shutdownNow();
+  }
 
   @BeforeMethod
-  public void setup() {
+  public void setupTestCase() {
     mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
     mockStorageService = Mockito.mock(StorageService.class);
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
@@ -66,8 +78,11 @@ public class VeniceStateModelFactoryTest {
 
     mockContext = Mockito.mock(NotificationContext.class);
 
-    factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader,
-        Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest")),
+    factory = new VeniceStateModelFactory(
+        mockStoreIngestionService,
+        mockStorageService,
+        mockConfigLoader,
+        this.executorService,
         mockReadOnlyStoreRepository);
     stateModel = factory.createNewStateModel(resourceName, resourceName + "_" + testPartition);
   }
@@ -148,8 +163,7 @@ public class VeniceStateModelFactoryTest {
     testExecutor.submit(blockedTask);
     int taskCount = 10;
     for (int i = 0; i < taskCount; i++) {
-      testExecutor.submit(() -> {
-      });
+      testExecutor.submit(() -> {});
     }
     Assert.assertEquals(queue.size(), taskCount);
     // Test could fail due to the signal() is executed before await()
@@ -161,7 +175,7 @@ public class VeniceStateModelFactoryTest {
     // eventually, the queue would be empty because all of task had been executed.
     TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> queue.isEmpty());
     // Make sure the idle thread will be collected eventually.
-    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, ()->executor.getPoolSize() == 0);
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> executor.getPoolSize() == 0);
   }
 
   private class BlockTask implements Runnable {

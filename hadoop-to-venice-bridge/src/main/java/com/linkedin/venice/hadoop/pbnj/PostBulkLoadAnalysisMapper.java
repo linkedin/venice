@@ -42,7 +42,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
 
   // Facilities
   private Progressable progress;
-  private Executor executor;
+  private ExecutorService executor;
   private CompletionService<Data> completionService;
   private AvroGenericStoreClient<Object, Object> veniceClient;
 
@@ -135,6 +135,15 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
         Thread.sleep(CLOSE_LOOP_TIME_OUT_MS);
       } catch (InterruptedException e) {
         throw new VeniceException("Interrupted!", e);
+      }
+    }
+
+    if (executor != null) {
+      executor.shutdown();
+      try {
+        executor.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
       }
     }
 

@@ -162,14 +162,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void internalStart()
-      throws Exception {
+  protected void internalStart() throws Exception {
     service.start();
   }
 
   @Override
-  protected void internalStop()
-      throws Exception {
+  protected void internalStop() throws Exception {
     service.stop();
   }
 
@@ -178,8 +176,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
+  protected void newProcess() throws Exception {
     /**
      * {@link D2Server} can't be reused for restart because of the following exception:
      * Caused by: java.lang.IllegalStateException: Can not start ZKConnection when STOPPED

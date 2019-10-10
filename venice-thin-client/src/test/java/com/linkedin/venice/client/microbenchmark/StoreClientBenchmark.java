@@ -200,9 +200,8 @@ public class StoreClientBenchmark {
       });
     }
 
-    executorService.awaitTermination(30, TimeUnit.SECONDS);
+    executorService.shutdownNow();
     System.out.println("This test with useFastAvro: " + useFastAvro + " took " + (System.currentTimeMillis() - startTs)
         + "ms, and it finished " + totalFetchCnt.get() + " requests");
   }
-
 }

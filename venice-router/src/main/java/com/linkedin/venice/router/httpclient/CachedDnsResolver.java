@@ -9,6 +9,7 @@ import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.http.conn.DnsResolver;
 import org.apache.log4j.Logger;
 
@@ -32,7 +33,7 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
   private final DnsLookupStats stats;
   private final Map<String, InetAddress[]> cachedDnsEntries = new ConcurrentHashMap<>();
   private final Thread refreshThread;
-  private boolean stopRefreshing = false;
+  private final AtomicBoolean stopRefreshing = new AtomicBoolean();
 
   public CachedDnsResolver(String cachedHostPattern, long refreshIntervalInMs, DnsLookupStats stats) {
     this.cachedHostPattern = cachedHostPattern;
@@ -81,22 +82,22 @@ public class CachedDnsResolver implements DnsResolver, Closeable {
 
   @Override
   public void close() throws IOException {
+    stopRefreshing.set(true);
     refreshThread.interrupt();
-    stopRefreshing = true;
   }
 
   private class DnsCacheRefreshingTask implements Runnable {
 
     @Override
     public void run() {
-      while (!stopRefreshing) {
+      while (!stopRefreshing.get()) {
         try {
           Thread.sleep(refreshIntervalInMs);
         } catch (InterruptedException e) {
           LOGGER.error("Sleep in DnsCacheRefreshingTask gets interrupted, will exit");
         }
         for (String host : cachedDnsEntries.keySet()) {
-          if (stopRefreshing) {
+          if (stopRefreshing.get()) {
             break;
           }
           // Use system default DNS resolver

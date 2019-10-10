@@ -139,8 +139,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
+  protected void newProcess() throws Exception {
     throw new UnsupportedOperationException("Mock venice router does not support restart.");
   }
 
