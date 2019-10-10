@@ -1,17 +1,17 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.Executors;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+import org.apache.commons.io.IOUtils;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
@@ -44,7 +44,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     for (int i = 0; i < numberOfClusters; i++) {
       String clusterName = randomizeClusterName ? TestUtils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
       clusterNames[i] = clusterName;
-      clusterToD2+=TestUtils.getClusterToDefaultD2String(clusterName)+",";
+      clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName)+",";
     }
     clusterToD2 = clusterToD2.substring(0, clusterToD2.length()-1);
 
@@ -80,27 +80,17 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void internalStart()
-      throws Exception {
+  protected void internalStart() throws Exception {
     // Everything should already be started. So this is a no-op.
   }
 
   @Override
-  protected void internalStop()
-      throws Exception {
-    Iterator<String> clusterIter = clusters.keySet().iterator();
-    while (clusterIter.hasNext()) {
-      String cluster = clusterIter.next();
-      VeniceClusterWrapper clusterWrapper = clusters.get(cluster);
-      Executors.newCachedThreadPool().execute(() -> {
-        clusterWrapper.close();
-      });
-    }
+  protected void internalStop() throws Exception {
+    CompletableFuture.runAsync(() -> clusters.values().stream().forEach(IOUtils::closeQuietly));
   }
 
   @Override
-  protected void newProcess()
-      throws Exception {
+  protected void newProcess() throws Exception {
     throw new UnsupportedOperationException("Cluster does not support to create new process.");
   }
 
@@ -128,37 +118,21 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return this.controllers.values().stream().filter(controller -> controller.isRunning()).findAny().get();
   }
 
-  public Optional<VeniceControllerWrapper> getMasterController(String clusterName) {
-    return this.controllers.values()
-        .stream()
-        .filter(controller -> controller.isRunning())
-        .filter(c -> c.isMasterController(clusterName))
-        .findAny();
+  public VeniceControllerWrapper getMasterController(String clusterName) {
+    return getMasterController(clusterName, 60 * Time.MS_PER_SECOND);
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName, long timeOutMs) {
-    Optional<VeniceControllerWrapper> masterController = null;
-    long startTime = System.currentTimeMillis();
-    long maxTime = startTime + timeOutMs;
-    do {
-      if (masterController != null) {
-        try {
-          Thread.sleep(timeOutMs / 10);
-        } catch (InterruptedException e) {
-          throw new VeniceException(e);
+  public VeniceControllerWrapper getMasterController(String clusterName, long timeoutSec) {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSec);
+    while (System.nanoTime() < deadline) {
+      for (VeniceControllerWrapper controller : controllers.values()) {
+        if (controller.isRunning() && controller.isMasterController(clusterName)) {
+          return controller;
         }
       }
-      try {
-        masterController = getMasterController(clusterName);
-      } catch (VeniceNoClusterException e) {
-        masterController = Optional.empty();
-        // keep going....
-      }
-    } while (!masterController.isPresent() && System.currentTimeMillis() < maxTime);
-    if (masterController.isPresent()) {
-      return masterController.get();
+      Utils.sleep(Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Could not get master controller in " + timeOutMs + " ms.");
+    throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
   }
 
   public String getControllerConnectString(){

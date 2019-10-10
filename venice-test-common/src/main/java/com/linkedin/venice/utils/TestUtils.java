@@ -42,8 +42,8 @@ public class TestUtils {
   private static final Logger LOGGER = Logger.getLogger(TestUtils.class);
 
   /** In milliseconds */
-  private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 30;
-  private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS * 100;
+  private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND / 5;
+  private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 60 * Time.MS_PER_SECOND;
 
   public static String getUniqueString() {
     return getUniqueString("");
@@ -74,9 +74,9 @@ public class TestUtils {
    * @param conditionToWaitFor A {@link BooleanSupplier} which should execute the non-deterministic action and
    *                           return true if it is successful, false otherwise.
    */
-  public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnits, BooleanSupplier conditionToWaitFor){
+  public static void waitForNonDeterministicCompletion(long timeout, TimeUnit timeoutUnits, BooleanSupplier conditionToWaitFor) {
     long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
-    while (!conditionToWaitFor.getAsBoolean()){
+    while (!conditionToWaitFor.getAsBoolean()) {
       if (System.currentTimeMillis() > timeoutTime){
         throw new RuntimeException("Operation did not complete in time");
       }
