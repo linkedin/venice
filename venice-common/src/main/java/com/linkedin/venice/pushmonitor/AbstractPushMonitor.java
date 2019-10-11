@@ -43,7 +43,7 @@ import org.apache.log4j.Logger;
 public abstract class AbstractPushMonitor
     implements PushMonitor, OfflinePushAccessor.PartitionStatusListener, RoutingDataRepository.RoutingDataChangedListener {
   protected final Logger logger = Logger.getLogger(getClass().getSimpleName());
-  public static final int MAX_ERROR_PUSH_TO_KEEP = 5;
+  public static final int MAX_PUSH_TO_KEEP = 5;
   private final OfflinePushAccessor offlinePushAccessor;
   private final String clusterName;
   private final ReadWriteStoreRepository metadataRepository;
@@ -123,7 +123,7 @@ public abstract class AbstractPushMonitor
               storeName -> new ArrayList<>()).add(Version.parseVersionFromKafkaTopicName(topic))
       );
 
-      storeToVersionNumsMap.entrySet().forEach(entry -> retireOldErrorPushes(entry.getKey(), entry.getValue()));
+      storeToVersionNumsMap.forEach(this::retireOldErrorPushes);
     }
   }
 
@@ -276,21 +276,24 @@ public abstract class AbstractPushMonitor
   }
 
   /**
-   * Once offline push failed, we want to keep some latest offline push in ZK for debug.
+   * We'd like to keep at most {@link #MAX_PUSH_TO_KEEP} push status for debugging purpose.
+   * If it's a successful push, it will be cleaned up when the version is retired. If it's
+   * error push, we'll leave it until the store reaches the push status limit.
    */
   protected void retireOldErrorPushes(String storeName, List<Integer> versionNums) {
-    while (versionNums.size() > MAX_ERROR_PUSH_TO_KEEP) {
-      int oldestVersionNumber = Collections.min(versionNums);
-      versionNums.remove(Integer.valueOf(oldestVersionNumber));
+    List<OfflinePushStatus> errorPushStatusList = versionNums.stream().sorted()
+        .map(version -> topicToPushMap.get(Version.composeKafkaTopic(storeName, version)))
+        .filter(offlinePushStatus -> offlinePushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR))
+        .collect(Collectors.toList());
 
-      String topicName = Version.composeKafkaTopic(storeName, oldestVersionNumber);
-
-      try {
-        offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(topicToPushMap.get(topicName));
-        topicToPushMap.remove(topicName);
-      } catch (Exception e) {
-        logger.warn("Could not retire push status: " + topicName, e);
+    for (OfflinePushStatus errorPushStatus : errorPushStatusList) {
+      if (versionNums.size() <= MAX_PUSH_TO_KEEP) {
+        break;
       }
+
+      versionNums.remove(Version.parseVersionFromKafkaTopicName(errorPushStatus.getKafkaTopic()));
+
+      cleanupPushStatus(errorPushStatus);
     }
   }
 
