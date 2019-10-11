@@ -16,6 +16,10 @@ import static com.linkedin.venice.schema.avro.SchemaCompatibility.SchemaCompatib
  * Internally, this class will maintain a parsed {@link org.apache.avro.Schema}
  */
 public class SchemaEntry {
+  // To ensure we don't accidentally use different compatibility type for schema creation in Venice.
+  public static final DirectionalSchemaCompatibilityType DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE =
+      DirectionalSchemaCompatibilityType.FULL;
+
   private final int id;
   private Schema schema;
   private Logger logger = Logger.getLogger(getClass());

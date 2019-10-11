@@ -11,7 +11,6 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
-import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -639,40 +638,6 @@ public class TestVeniceHelixAdmin {
     } finally {
       veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
     }
-  }
-
-  public void testAddVersion() throws Exception {
-    stopParticipants();
-    startParticipant(true, nodeId); //because we need the new version NOT to transition directly to "online" for the
-                                    //idempotent test to work
-    String storeName = TestUtils.getUniqueString("test");
-    try {
-      veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
-      Assert.fail("store " + storeName + " does not exist, admin should throw a VeniceException if we try to incrementVersionIdempotent for it");
-    } catch (VeniceException e) {
-      //Expected
-    }
-
-    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
-    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
-    try {
-      veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
-      Assert.fail("Version 1 has already existed");
-    } catch (Exception e) {
-      //Expected
-    }
-
-    veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
-
-    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 101); // set version 101 to be current;
-
-    String pushJobId = TestUtils.getUniqueString("pushJobId");
-    Version idempotentOne = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
-    Version idempotentTwo = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
-    Assert.assertEquals(idempotentOne.getNumber(), idempotentTwo.getNumber(), "Idempotent version increment with same pushId must return same version number");
-    Assert.assertEquals(idempotentOne.kafkaTopicName(), idempotentTwo.kafkaTopicName(), "Idempotent version increment with same pushId must return same kafka topic");
   }
 
   @Test
