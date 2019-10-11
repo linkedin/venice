@@ -17,8 +17,12 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+
+import org.apache.commons.io.IOUtils;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -30,7 +34,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import org.apache.commons.io.IOUtils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -45,7 +48,7 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
  */
 public class VeniceClusterWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceCluster";
-  public static final long DEFAULT_GET_MASTER_TIMEOUT_MS = 3000;
+
   private final String clusterName;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
@@ -228,10 +231,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         .forEach(HelixReadOnlyStoreRepository::refresh);
   }
 
-  public synchronized VeniceControllerWrapper getMasterVeniceController() {
-    return getMasterVeniceController(DEFAULT_GET_MASTER_TIMEOUT_MS);
-  }
-
   public synchronized VeniceControllerWrapper getRandmonVeniceController() {
     return getRandomRunningVeniceComponent(veniceControllerWrappers);
   }
@@ -247,27 +246,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return URLs;
   }
 
-  // After introducing latency into ZK socket, we might need to specify the timeout value based on how many time
-  // latency we introduced.
-  public synchronized VeniceControllerWrapper getMasterVeniceController(long timeoutMS) {
-    List<VeniceControllerWrapper> masterControllers = new ArrayList<>();
-    TestUtils.waitForNonDeterministicCompletion(timeoutMS, TimeUnit.MILLISECONDS, () -> {
-      masterControllers.addAll(veniceControllerWrappers.values().stream().filter(veniceControllerWrapper -> {
-        try {
-          return veniceControllerWrapper.isMasterController(clusterName);
-        } catch (VeniceException e) {
-          return false;
+  public VeniceControllerWrapper getMasterVeniceController() {
+    return getMasterVeniceController(60 * Time.MS_PER_SECOND);
+  }
+
+  public synchronized VeniceControllerWrapper getMasterVeniceController(long timeoutMs) {
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+    while (System.nanoTime() < deadline) {
+      for (VeniceControllerWrapper controller : veniceControllerWrappers.values()) {
+        if (controller.isRunning() && controller.isMasterController(clusterName)) {
+          return controller;
         }
-      })
-          .collect(Collectors.toList()));
-      if(masterControllers.size() == 1){
-        return true;
-      }else{
-        masterControllers.clear();
-        return false;
       }
-    });
-    return masterControllers.get(0);
+      Utils.sleep(Time.MS_PER_SECOND);
+    }
+    throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
   }
 
   public VeniceControllerWrapper addVeniceController(Properties properties) {

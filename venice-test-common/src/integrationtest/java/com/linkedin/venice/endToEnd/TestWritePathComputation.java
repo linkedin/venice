@@ -9,11 +9,12 @@ import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceTwoLayerMultiColoMultiClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import java.util.concurrent.TimeUnit;
 
 
 public class TestWritePathComputation {
@@ -22,7 +23,7 @@ public class TestWritePathComputation {
 
   @Test
   public void testFeatureFlagSingleDC() {
-    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(1, 1, 1, 1)) {
+    try (VeniceMultiClusterWrapper multiClusterWrapper = ServiceFactory.getVeniceMultiClusterWrapper(1, 1, 1, 0)) {
       String clusterName = multiClusterWrapper.getClusterNames()[0];
       String storeName = "test-store0";
 
@@ -47,7 +48,7 @@ public class TestWritePathComputation {
   @Test
   public void testFeatureFlagMultipleDC() {
     try (VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(
-        1, 1, 1, 1, 1, 1)) {
+        1, 1, 1, 1, 1, 0)) {
 
       VeniceMultiClusterWrapper multiCluster = twoLayerMultiColoMultiClusterWrapper.getClusters().get(0);
       VeniceControllerWrapper parentController = twoLayerMultiColoMultiClusterWrapper.getParentControllers().get(0);

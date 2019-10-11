@@ -4,6 +4,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+
+import org.apache.commons.io.IOUtils;
+
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -11,7 +14,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import org.apache.commons.io.IOUtils;
 
 
 public class VeniceMultiClusterWrapper extends ProcessWrapper {
@@ -122,8 +124,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     return getMasterController(clusterName, 60 * Time.MS_PER_SECOND);
   }
 
-  public VeniceControllerWrapper getMasterController(String clusterName, long timeoutSec) {
-    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSec);
+  public VeniceControllerWrapper getMasterController(String clusterName, long timeoutMs) {
+    long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
     while (System.nanoTime() < deadline) {
       for (VeniceControllerWrapper controller : controllers.values()) {
         if (controller.isRunning() && controller.isMasterController(clusterName)) {

@@ -7,15 +7,14 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 
-import java.util.concurrent.TimeUnit;
-
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.model.ExternalView;
-
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import java.util.concurrent.TimeUnit;
 
 
 public class TestStartMultiControllers {
@@ -27,7 +26,7 @@ public class TestStartMultiControllers {
   public void testStartMoreThanRequiredControllersForOneCluster() throws Exception {
     final int minControllerCount = 3;
     final int controllerCount = minControllerCount + 1;
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(controllerCount, 1, 1)) {
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(controllerCount, 0, 0)) {
 
       SafeHelixManager helixManager = new SafeHelixManager(new ZKHelixManager(
           cluster.getClusterName(), TestUtils.getUniqueString(), InstanceType.SPECTATOR, cluster.getZk().getAddress()));
@@ -35,15 +34,14 @@ public class TestStartMultiControllers {
       try {
         helixManager.connect();
 
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
           Assert.assertTrue(getActiveControllerCount(helixManager) >= minControllerCount,
-              "Not enough active controllers in the cluster");
-        });
+              "Not enough active controllers in the cluster"));
 
         TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
           int masterControllerCount = 0;
           for (VeniceControllerWrapper controller : cluster.getVeniceControllers()) {
-            if (controller.isMasterControllerForControllerCluster()) {
+            if (controller.isMasterControllerOfControllerCluster()) {
               masterControllerCount++;
             }
           }
@@ -53,10 +51,9 @@ public class TestStartMultiControllers {
         VeniceControllerWrapper oldMasterController = cluster.getMasterVeniceController();
         cluster.stopMasterVeniceControler();
 
-        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () -> {
+        TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, true, () ->
           Assert.assertTrue(getActiveControllerCount(helixManager) >= minControllerCount,
-              "Not enough active controllers in the cluster");
-        });
+              "Not enough active controllers in the cluster"));
 
         Assert.assertNotSame(cluster.getMasterVeniceController(), oldMasterController);
 
