@@ -289,7 +289,7 @@ import java.util.Collection;
     SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
-      logger.info("Value schema is already existing. Skip adding it to repository. Schema: " + schemaStr);
+      logger.info("Value schema already exists. Skipping adding it to the schema repository. Schema: " + schemaStr);
     } else {
       accessor.addValueSchema(storeName, newValueSchemaEntry);
     }

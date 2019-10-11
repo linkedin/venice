@@ -9,7 +9,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -62,7 +61,8 @@ public class SchemaRoutes {
             responseObject.getCluster(),
             responseObject.getName(),
             request.queryParams(ControllerApiConstants.VALUE_SCHEMA),
-            DirectionalSchemaCompatibilityType.FULL // TODO: Make compat type configurable to allow force registration
+            SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE
+            // TODO: Make compat type configurable to allow force registration
         );
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());

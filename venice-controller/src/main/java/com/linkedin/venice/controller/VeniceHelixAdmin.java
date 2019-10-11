@@ -25,7 +25,6 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -2385,8 +2384,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
         checkControllerMastership(clusterName);
-        return getVeniceHelixResource(clusterName).getSchemaRepository()
-            .addValueSchema(storeName, valueSchemaStr, schemaId);
+        HelixReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        int newValueSchemaId = schemaRepository.preCheckValueSchemaAndGetNextAvailableId(storeName, valueSchemaStr,
+            SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE);
+        if (newValueSchemaId != SchemaData.DUPLICATE_VALUE_SCHEMA_CODE && newValueSchemaId != schemaId) {
+            throw new VeniceException("Inconsistent value schema id between the caller and the local schema repository."
+            + " Expected new schema id of " + schemaId + " but the next available id from the local repository is "
+            + newValueSchemaId + " for store " + storeName + " in cluster " + clusterName + " Schema: " + valueSchemaStr);
+        }
+        return schemaRepository.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
     }
 
     @Override
