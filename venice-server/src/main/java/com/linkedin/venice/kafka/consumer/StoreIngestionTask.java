@@ -5,31 +5,31 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
+import com.linkedin.venice.exceptions.validation.DuplicateDataException;
+import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.exceptions.validation.DuplicateDataException;
-import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
 import com.linkedin.venice.kafka.protocol.StartOfIncrementalPush;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.protocol.Update;
-import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
-import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
-import com.linkedin.venice.kafka.validation.ProducerTracker;
-import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
-import com.linkedin.venice.kafka.protocol.GUID;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
+import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
@@ -57,6 +57,14 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.log4j.Logger;
+
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -77,12 +85,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 import static com.linkedin.venice.store.record.ValueRecord.*;
@@ -350,6 +352,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     } catch (InterruptedException e) {
       logger.warn("Wait killing is interrupted.", e);
+      Thread.currentThread().interrupt();
     }
     if (isRunning()) {
       //If task is still running, force close it.
@@ -584,7 +587,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         syncOffset(topic, partitionConsumptionState);
       }
 
-    } catch (VeniceIngestionTaskKilledException ke){
+    } catch (VeniceIngestionTaskKilledException ke) {
       logger.info(consumerTaskId+"is killed, start to report to notifier.", ke);
       notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
     } catch (Throwable t) {
@@ -642,8 +645,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       try {
         message.incrementAttempt();
         processConsumerAction(message);
-      } catch (InterruptedException e){
-        // task is killed
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
         throw new VeniceIngestionTaskKilledException(topic, e);
       } catch (Exception ex) {
         if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {

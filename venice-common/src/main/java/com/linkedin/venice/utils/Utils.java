@@ -6,7 +6,13 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import java.io.Closeable;
+
+import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.http.HttpStatus;
+import org.apache.log4j.Logger;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -27,11 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
-import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
-import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -305,21 +306,10 @@ public class Utils {
    * @param millis
    */
   public static void sleep(long millis) {
-    sleep(millis, "");
-  }
-
-  /**
-   * Sleep until number of milliseconds have passed, or the operation is interrupted. This method will catch the
-   * {@link InterruptedException} and throw it as a {@link VeniceException} with the provided {@code message}.
-   * @param millis number of milliseconds to sleep for.
-   * @param message the message for the {@link VeniceException} in the event of an {@link InterruptedException}.
-   */
-  public static void sleep(long millis, String message) {
     try {
       Thread.sleep(millis);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      throw new VeniceException(message, e);
     }
   }
 

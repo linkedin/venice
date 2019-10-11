@@ -33,6 +33,15 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
+import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -45,13 +54,6 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.kafka.TopicManager.*;
@@ -63,7 +65,7 @@ public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
   private static final int STREAMING_RECORD_SIZE = 1024;
 
-  @DataProvider(name = "isLeaderFollowerModelEnabled")
+  @DataProvider(name = "isLeaderFollowerModelEnabled", parallel = true)
   public static Object[][] isLeaderFollowerModelEnabled() {
     return new Object[][]{{false}, {true}};
   }
@@ -120,7 +122,7 @@ public class TestHybrid {
   /**
    * N.B.: Non-L/F does not support chunking, so this permutation is skipped.
    */
-  @DataProvider(name = "testPermutations")
+  @DataProvider(name = "testPermutations", parallel = true)
   public static Object[][] testPermutations() {
     return new Object[][]{
         {false, false, false},
@@ -276,13 +278,15 @@ public class TestHybrid {
     // But not old streaming record (because we waited the rewind time)
     assertEquals(client.get("2").get().toString(),"test_name_2");
 
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    List<Integer> versions = storeResponse.getStore().getVersions()
-        .stream().map(version -> version.getNumber()).collect(Collectors.toList());
-
-    assertFalse(versions.contains(1), "After version 3 comes online, version 1 should be retired");
-    assertTrue(versions.contains(2));
-    assertTrue(versions.contains(3));
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
+      assertFalse(storeResponse.isError());
+      List<Integer> versions =
+          storeResponse.getStore().getVersions().stream().map(Version::getNumber).collect(Collectors.toList());
+      assertFalse(versions.contains(1), "After version 3 comes online, version 1 should be retired");
+      assertTrue(versions.contains(2));
+      assertTrue(versions.contains(3));
+    });
 
     /**
      * For L/F model, {@link com.linkedin.venice.replication.LeaderStorageNodeReplicator#doesReplicationExist(String, String)}

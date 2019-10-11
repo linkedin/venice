@@ -8,32 +8,42 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
-import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
+import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
-import java.util.*;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.log4j.Logger;
+import io.tehuti.metrics.MetricsRepository;
+
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
@@ -41,12 +51,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
-
-import io.tehuti.metrics.MetricsRepository;
-import org.apache.commons.io.IOUtils;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.log4j.Logger;
 
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
@@ -60,8 +64,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaStoreIngestionService.class);
-
-  private static final long WAIT_THREAD_TO_STOP_TIMEOUT_MS = 10000;
 
   private final VeniceConfigLoader veniceConfigLoader;
 
@@ -138,9 +140,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * keep the reference of this {@link StoreBufferServiceStats} variable.
      */
     new StoreBufferServiceStats(metricsRepository, this.storeBufferService);
+
     if (clientConfig.isPresent()) {
       String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
-      participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(clusterName, this,
+      participantStoreConsumptionTask = new ParticipantStoreConsumptionTask(
+          clusterName,
+          this,
           new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
           ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
           serverConfig.getParticipantMessageConsumptionDelayMs());
@@ -236,7 +241,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     logger.info("Shutting down Kafka consumer service");
     isRunning.set(false);
 
-    IOUtils.closeQuietly(participantStoreConsumptionTask);
     participantStoreConsumerExecutorService.shutdownNow();
     try {
       participantStoreConsumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
