@@ -204,36 +204,6 @@ public class ServiceFactory {
     });
   }
 
-  /**
-   * Use {@link #getVeniceServer(String, KafkaBrokerWrapper, Properties, Properties)} instead.
-   */
-  @Deprecated
-  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean enableServerWhitelist, boolean autoJoinWhitelist) {
-    Properties featureProperties = new Properties();
-    featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableServerWhitelist));
-    featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(autoJoinWhitelist));
-    featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(DEFAULT_SSL_TO_STORAGE_NODES));
-    featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.FALSE.toString());
-    return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, new Properties()));
-  }
-
-  /**
-   * Use {@link #getVeniceServer(String, KafkaBrokerWrapper, Properties, Properties)} instead.
-   */
-  @Deprecated
-  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
-      boolean enableServerWhitelist, boolean autoJoinWhitelist, boolean ssl, boolean sslToKafka, Properties properties) {
-    Properties featureProperties = new Properties();
-    featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableServerWhitelist));
-    featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(autoJoinWhitelist));
-    featureProperties.setProperty(SERVER_ENABLE_SSL, Boolean.toString(ssl));
-    featureProperties.setProperty(SERVER_SSL_TO_KAFKA, Boolean.toString(sslToKafka));
-    return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, featureProperties, properties));
-  }
-
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, Properties featureProperties,
       Properties configProperties) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,

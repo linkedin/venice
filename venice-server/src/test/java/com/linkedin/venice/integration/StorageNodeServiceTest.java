@@ -17,30 +17,27 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class StorageNodeServiceTest {
-
   @Test
   public void storageServerRespondsToRequests() throws ExecutionException, InterruptedException, IOException {
-    boolean sslTrue = true;
     Utils.thisIsLocalhost();
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(sslTrue);
-    VeniceServerWrapper sslServer = venice.getVeniceServers().get(0);
-    CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(1,1, Optional.of(SslUtils.getLocalSslFactory()));
-    client.start();
+    try (
+        CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(1, 1, Optional.of(SslUtils.getLocalSslFactory()));
+        VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1, 1, 0, 1, 100, true, false)) {
 
-    // This should work, talking ssl to an ssl storage node
-    HttpGet httpsRequest = new HttpGet("https://" + sslServer.getAddress() + "/health");
-    HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
-    String content = IOUtils.toString(httpsResponse.getEntity().getContent());
-    Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
-    Assert.assertEquals(content, "OK");
+      client.start();
+      VeniceServerWrapper sslServer = venice.getVeniceServers().get(0);
+      // This should work, talking ssl to an ssl storage node
+      HttpGet httpsRequest = new HttpGet("https://" + sslServer.getAddress() + "/health");
+      HttpResponse httpsResponse = client.execute(httpsRequest, null).get();
+      String content = IOUtils.toString(httpsResponse.getEntity().getContent());
+      Assert.assertEquals(httpsResponse.getStatusLine().getStatusCode(), 200);
+      Assert.assertEquals(content, "OK");
 
-    // This should not work, talking non-ssl to an ssl storage node
-    HttpGet httpRequest = new HttpGet("http://" + sslServer.getAddress() + "/health");
-    HttpResponse httpResponse = client.execute(httpRequest, null).get();
-    Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), 403);
-    Assert.assertEquals(IOUtils.toString(httpResponse.getEntity().getContent()), "SSL Required");
-
-    client.close();
-    venice.close();
+      // This should not work, talking non-ssl to an ssl storage node
+      HttpGet httpRequest = new HttpGet("http://" + sslServer.getAddress() + "/health");
+      HttpResponse httpResponse = client.execute(httpRequest, null).get();
+      Assert.assertEquals(httpResponse.getStatusLine().getStatusCode(), 403);
+      Assert.assertEquals(IOUtils.toString(httpResponse.getEntity().getContent()), "SSL Required");
+    }
   }
 }
