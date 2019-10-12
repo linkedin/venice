@@ -3,6 +3,7 @@ package com.linkedin.venice.consumer;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -123,11 +124,12 @@ public class ConsumerIntegrationTest {
     /**
      * By doing this, we emulate having started a new controller version which knows about the new protocol...
      */
-    cluster.getRandmonVeniceController().getVeniceAdmin().addValueSchema(
+    ((VeniceHelixAdmin) cluster.getRandmonVeniceController().getVeniceAdmin()).addValueSchema(
         cluster.getClusterName(),
         systemStoreName,
         NEW_PROTOCOL_SCHEMA.toString(),
-        NEW_PROTOCOL_VERSION
+        NEW_PROTOCOL_VERSION,
+        DirectionalSchemaCompatibilityType.NONE
     );
   }
 
