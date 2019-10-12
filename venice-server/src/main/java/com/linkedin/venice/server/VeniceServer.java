@@ -38,6 +38,8 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -341,8 +343,7 @@ public class VeniceServer {
   }
 
   protected static boolean directoryExists(String dataDirectory) {
-    File dir = new File(dataDirectory).getAbsoluteFile();
-    return dir.isDirectory();
+    return Files.isDirectory(Paths.get(dataDirectory));
   }
 
   protected VeniceConfigLoader getConfigLoader() {
