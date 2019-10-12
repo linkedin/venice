@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
@@ -104,7 +105,8 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
                 clusterToInit,
                 systemStoreName,
                 schemaInLocalResources.toString(),
-                schemaVersion);
+                schemaVersion,
+                DirectionalSchemaCompatibilityType.NONE);
           } catch (Exception e) {
             LOGGER.error("Caught Exception when attempting to register '" + protocolDefinition.name()
                 + "' schema version '" + schemaVersion + "'. Will bubble up.");
