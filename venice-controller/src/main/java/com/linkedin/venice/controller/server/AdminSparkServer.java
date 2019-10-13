@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLSession;
 import javax.servlet.http.HttpServletRequest;
 import org.apache.http.HttpStatus;
@@ -76,6 +77,9 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
+    AtomicReference<Exception> initFailure = new AtomicReference<>();
+    httpService.initExceptionHandler(initFailure::set);
+
     httpService.port(port);
 
     if (sslEnabled) {
@@ -193,9 +197,14 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.post(OFFLINE_PUSH_INFO.getPath(), CreateVersion.uploadPushInfo(admin));
 
-    httpService.awaitInitialization(); // Wait for server to be initialized
-
     httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), JobRoutes.uploadPushJobStatus(admin));
+
+    httpService.awaitInitialization(); // Wait for server to be initialized
+    Exception e = initFailure.get();
+    if (e != null) {
+      logger.error("Unable to initialize spark server", e);
+      throw e;
+    }
 
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
