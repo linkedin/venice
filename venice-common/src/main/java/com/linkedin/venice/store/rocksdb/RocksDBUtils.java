@@ -5,6 +5,12 @@ import java.io.File;
 
 
 public class RocksDBUtils {
+  /**
+   * With level_compaction_dynamic_level_bytes to be false, the stable LSM structure is not guaranteed,
+   * so the maximum overhead could be around 2.111 for hybrid stores.
+   * Check https://github.com/facebook/rocksdb/wiki/Leveled-Compaction
+   */
+  public static final double ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE = 2.11;
   private static final String PARTITION_DB_NAME_SEP = "_";
   private static final String PARTITION_DB_NAME = "%s" + PARTITION_DB_NAME_SEP + "%d"; // store-name_partition_id
 

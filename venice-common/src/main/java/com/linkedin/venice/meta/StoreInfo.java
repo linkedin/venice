@@ -92,6 +92,13 @@ public class StoreInfo {
    * Maximum capacity a store version is able to have
    */
   private long storageQuotaInByte;
+
+  /**
+   * Whether a hybrid store will bypass being added db overhead ratio when updating storage quota
+   * should only be true when using AdminTool to update storage quota for hybrid stores.
+   */
+  private boolean hybridStoreOverheadBypass;
+
   /**
    * Quota for read request hit this store. Measurement is capacity unit.
    */
@@ -311,6 +318,12 @@ public class StoreInfo {
   public void setStorageQuotaInByte(long storageQuotaInByte) {
     this.storageQuotaInByte = storageQuotaInByte;
   }
+
+  public boolean getHybridStoreOverheadBypass() {
+    return hybridStoreOverheadBypass;
+  }
+
+  public void setHybridStoreOverheadBypass(boolean overheadBypass) { this.hybridStoreOverheadBypass = overheadBypass; }
 
   public long getReadQuotaInCU() {
     return readQuotaInCU;

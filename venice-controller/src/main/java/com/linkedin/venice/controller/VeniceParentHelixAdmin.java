@@ -59,6 +59,7 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
+import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
@@ -1075,6 +1076,7 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> writeability,
       Optional<Integer> partitionCount,
       Optional<Long> storageQuotaInByte,
+      Optional<Boolean> hybridStoreDbOverheadBypass,
       Optional<Long> readQuotaInCU,
       Optional<Integer> currentVersion,
       Optional<Integer> largestUsedVersionNumber,
@@ -1120,13 +1122,14 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.partitionNum = partitionCount.isPresent() ? partitionCount.get() : store.getPartitionCount();
       setStore.enableReads = readability.isPresent() ? readability.get() : store.isEnableReads();
       setStore.enableWrites = writeability.isPresent() ? writeability.get() : store.isEnableWrites();
-      setStore.storageQuotaInByte =
-          storageQuotaInByte.isPresent() ? storageQuotaInByte.get() : store.getStorageQuotaInByte();
+
       setStore.readQuotaInCU = readQuotaInCU.isPresent() ? readQuotaInCU.get() : store.getReadQuotaInCU();
       //We need to to be careful when handling currentVersion.
       //Since it is not synced between parent and local controller,
       //It is very likely to override local values unintentionally.
       setStore.currentVersion = currentVersion.isPresent()?currentVersion.get(): AdminConsumptionTask.IGNORED_CURRENT_VERSION;
+
+      boolean oldStoreHybrid = store.isHybrid();
 
       HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
           store, hybridRewindSeconds, hybridOffsetLagThreshold);
@@ -1137,6 +1140,37 @@ public class VeniceParentHelixAdmin implements Admin {
         hybridStoreConfigRecord.offsetLagThresholdToGoOnline = hybridStoreConfig.getOffsetLagThresholdToGoOnline();
         hybridStoreConfigRecord.rewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
+      }
+
+      /**
+       * Set storage quota according to store properties. For hybrid stores, rocksDB has the overhead ratio as we
+       * do append-only and compaction will happen later.
+       * We need to multiply/divide the overhead ratio by situations
+       */
+      long setStoreQuota = storageQuotaInByte.isPresent() ? storageQuotaInByte.get() : store.getStorageQuotaInByte();
+      // When hybridStoreOverheadBypass is true, we skip checking situations and simply set it to be the passed value.
+      if (hybridStoreDbOverheadBypass.isPresent() && hybridStoreDbOverheadBypass.get()) {
+        setStore.storageQuotaInByte = setStoreQuota;
+      } else {
+        if (!oldStoreHybrid) {
+          // convert from non-hybrid to hybrid store, needs to increase the storage quota accordingly
+          if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
+            setStore.storageQuotaInByte = Math.round(setStoreQuota * RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
+          } else { // user updates storage quota for non-hybrid stores or just inherit the old value
+            setStore.storageQuotaInByte = setStoreQuota;
+          }
+        } else {
+          // convert from hybrid to non-hybrid store, needs to shrink the storage quota accordingly
+          if ((hybridRewindSeconds.isPresent() && hybridRewindSeconds.get() < 0) ||
+              (hybridOffsetLagThreshold.isPresent() && hybridOffsetLagThreshold.get() < 0)) {
+            setStore.storageQuotaInByte = Math.round(setStoreQuota / RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
+            // user updates storage quota for hybrid store
+          } else if (storageQuotaInByte.isPresent()) {
+            setStore.storageQuotaInByte = Math.round(setStoreQuota * RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
+          } else { // inherit old value
+            setStore.storageQuotaInByte = setStoreQuota;
+          }
+        }
       }
 
       setStore.accessControlled = accessControlled.isPresent() ? accessControlled.get() : store.isAccessControlled();

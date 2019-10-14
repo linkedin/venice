@@ -93,6 +93,7 @@ public class TestVeniceParentHelixAdmin {
   private static final Logger logger = Logger.getLogger(TestVeniceParentHelixAdmin.class);
   private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
+  private static long STORAGE_QUOTA = 100l;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   private final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
@@ -215,6 +216,7 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> writeability,
         Optional<Integer> partitionCount,
         Optional<Long> storageQuotaInByte,
+        Optional<Boolean> hybridStoreOverheadBypass,
         Optional<Long> readQuotaInCU,
         Optional<Integer> currentVersion,
         Optional<Integer> largestUsedVersionNumber,
@@ -1036,6 +1038,22 @@ public class TestVeniceParentHelixAdmin {
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled());
 
+    // Update storage quota
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(100l));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(STORAGE_QUOTA, storeResponse.getStore().getStorageQuotaInByte());
+
+    // Update hybrid store overhead bypass
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreOverheadBypass(false)
+                                                                        .setStorageQuotaInByte(STORAGE_QUOTA)
+                                                                        .setHybridRewindSeconds(10)
+                                                                        .setHybridOffsetLagThreshold(10));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertNotEquals(STORAGE_QUOTA, storeResponse.getStore().getStorageQuotaInByte());
+
+    // revert the store back to batch-only store for the following tests
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(-10)
+                                                                        .setHybridOffsetLagThreshold(-10));
     // Update computationEnabled
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled());

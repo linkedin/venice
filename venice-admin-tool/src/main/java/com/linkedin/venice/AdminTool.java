@@ -570,6 +570,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
     booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
     longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
+    booleanParam(cmd, Arg.HYBRID_STORE_OVERHEAD_BYPASS, p -> params.setHybridStoreOverheadBypass(p), argSet);
     longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
     longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
     longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p), argSet);
@@ -590,6 +591,14 @@ public class AdminTool {
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
     booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED,
         p -> params.setAutoSupersetSchemaEnabledFromReadComputeStore(p), argSet);
+
+    /**
+     * By default when SRE updates storage quota using AdminTool, we will set the bypass as true,
+     * i.e. hybrid store storage quota will not be added overhead ratio automatically.
+     */
+    if (params.getStorageQuotaInByte().isPresent() && !params.getHybridStoreOverheadBypass().isPresent()) {
+      params.setHybridStoreOverheadBypass(true);
+    }
     return params;
   }
 
