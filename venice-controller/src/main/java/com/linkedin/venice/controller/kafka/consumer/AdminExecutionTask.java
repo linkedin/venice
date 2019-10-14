@@ -332,6 +332,7 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.enableWrites),
         Optional.of(message.partitionNum),
         Optional.of(message.storageQuotaInByte),
+        Optional.of(message.hybridStoreOverheadBypass),
         Optional.of(message.readQuotaInCU),
         message.currentVersion == IGNORED_CURRENT_VERSION
             ? Optional.empty()

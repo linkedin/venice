@@ -2030,6 +2030,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+    /**
+     * TODO: some logics are in parent controller {@link VeniceParentHelixAdmin} #updateStore and
+     *       some are in the child controller here. Need to unify them in the future.
+     *       If updateStore is triggered only in child controller, hybridStoreDbOverheadBypass would be ignored.
+     */
     @Override
     public synchronized void updateStore(
         String clusterName,
@@ -2039,6 +2044,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> writeability,
         Optional<Integer> partitionCount,
         Optional<Long> storageQuotaInByte,
+        Optional<Boolean> hybridStoreDbOverheadBypass,
         Optional<Long> readQuotaInCU,
         Optional<Integer> currentVersion,
         Optional<Integer> largestUsedVersionNumber,

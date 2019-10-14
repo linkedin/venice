@@ -28,6 +28,7 @@ public class UpdateStoreQueryParams extends QueryParams {
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams()
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
+            .setHybridStoreOverheadBypass(srcStore.getHybridStoreOverheadBypass())
             .setReadQuotaInCU(srcStore.getReadQuotaInCU())
             .setAccessControlled(srcStore.isAccessControlled())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
@@ -111,6 +112,12 @@ public class UpdateStoreQueryParams extends QueryParams {
   public Optional<Long> getStorageQuotaInByte() {
     return getLong(STORAGE_QUOTA_IN_BYTE);
   }
+
+  public UpdateStoreQueryParams setHybridStoreOverheadBypass(boolean overheadBypass) {
+    return putBoolean(HYBRID_STORE_OVERHEAD_BYPASS, overheadBypass);
+  }
+
+  public Optional<Boolean> getHybridStoreOverheadBypass() { return getBoolean(HYBRID_STORE_OVERHEAD_BYPASS); }
 
   public UpdateStoreQueryParams setReadQuotaInCU(long readQuotaInCU) {
     return putLong(READ_QUOTA_IN_CU, readQuotaInCU);
