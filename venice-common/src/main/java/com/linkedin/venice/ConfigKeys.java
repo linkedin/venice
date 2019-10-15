@@ -729,6 +729,8 @@ public class ConfigKeys {
    */
   public static final String CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL = "controller.add.version.via.admin.protocol";
 
+  public static final String CONTROLLER_EARLY_DELETE_BACKUP_ENABLED = "controller.early.delete.backup.enabled";
+
   /**
    * Flag to indicate whether to perform add version and start of ingestion via the topic monitor.
    */

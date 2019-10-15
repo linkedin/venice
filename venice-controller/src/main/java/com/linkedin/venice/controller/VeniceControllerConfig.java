@@ -60,6 +60,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean adminHelixMessagingChannelEnabled;
   private final boolean isControllerClusterLeaderHAAS;
   private final String controllerHAASSuperClusterName;
+  private final boolean earlyDeleteBackUpEnabled;
+
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -123,6 +125,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
           + " and " + PARTICIPANT_MESSAGE_STORE_ENABLED + " are set to false");
     }
     this.systemSchemaClusterName = props.getString(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, "");
+    this.earlyDeleteBackUpEnabled = props.getBoolean(CONTROLLER_EARLY_DELETE_BACKUP_ENABLED, false);
     this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
     this.isControllerClusterLeaderHAAS = props.getBoolean(CONTROLLER_CLUSTER_LEADER_HAAS, false);
     this.controllerHAASSuperClusterName = props.getString(CONTROLLER_HAAS_SUPER_CLUSTER_NAME, "");
@@ -259,6 +262,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public boolean isControllerClusterLeaderHAAS() { return isControllerClusterLeaderHAAS; }
 
   public String getControllerHAASSuperClusterName() { return controllerHAASSuperClusterName; }
+
+  public boolean isEarlyDeleteBackUpEnabled() {
+    return earlyDeleteBackUpEnabled;
+  }
 
   /**
    * @param clusterPros list of child controller uris
