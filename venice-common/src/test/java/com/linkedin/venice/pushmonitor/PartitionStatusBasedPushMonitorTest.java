@@ -19,7 +19,7 @@ public class PartitionStatusBasedPushMonitorTest extends AbstractPushMonitorTest
   protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
     return new PartitionStatusBasedPushMonitor(getClusterName(), getMockAccessor(),
         getMockStoreCleaner(), getMockStoreRepo(), getMockRoutingDataRepo(), getMockPushHealthStats(),
-        skipBufferReplayForHybrid, Optional.of(mockReplicator));
+        skipBufferReplayForHybrid, Optional.of(mockReplicator), getMetricsRepository());
   }
 
   @Test

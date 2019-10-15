@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +46,8 @@ public class PushMonitorDelegator implements PushMonitor {
       RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid,
-      Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator) {
+      Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator,
+      MetricsRepository metricsRepository) {
 
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
@@ -53,9 +55,11 @@ public class PushMonitorDelegator implements PushMonitor {
     this.lock = storeCleaner;
 
     this.offlinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
-        storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator);
-    this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor, storeCleaner,
-        metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid, leaderFollowerTopicReplicator);
+        storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator,
+        metricsRepository);
+    this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
+        storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid,
+        leaderFollowerTopicReplicator, metricsRepository);
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
   }
@@ -102,7 +106,8 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public void loadAllPushes() {
-    synchronized (lock) {
+    lockAllPushMonitorsToLoadPushes();
+    try {
       List<OfflinePushStatus> offlinePushMonitorStatuses = new ArrayList<>();
       List<OfflinePushStatus> partitionStatusBasedPushMonitorStatuses = new ArrayList<>();
 
@@ -126,7 +131,19 @@ public class PushMonitorDelegator implements PushMonitor {
       partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
 
       legacyPushStatuses.forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
+    } finally {
+      unlockAllPushMonitors();
     }
+  }
+
+  private void lockAllPushMonitorsToLoadPushes() {
+    offlinePushMonitor.acquirePushMonitorWriteLock();
+    partitionStatusBasedPushStatusMonitor.acquirePushMonitorWriteLock();
+  }
+
+  private void unlockAllPushMonitors() {
+    partitionStatusBasedPushStatusMonitor.unlockPushMonitorWriteLock();
+    offlinePushMonitor.unlockPushMonitorWriteLock();
   }
 
   @Override

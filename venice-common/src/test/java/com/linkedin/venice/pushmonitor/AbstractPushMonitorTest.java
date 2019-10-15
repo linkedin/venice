@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -29,6 +30,7 @@ public abstract class AbstractPushMonitorTest {
   private RoutingDataRepository mockRoutingDataRepo;
   private StoreCleaner mockStoreCleaner;
   private AggPushHealthStats mockPushHealthStats;
+  private MetricsRepository metricsRepository;
 
   private String clusterName =TestUtils.getUniqueString("test_cluster");
   private String storeName;
@@ -53,6 +55,7 @@ public abstract class AbstractPushMonitorTest {
     mockStoreRepo = mock(ReadWriteStoreRepository.class);
     mockRoutingDataRepo = mock(RoutingDataRepository.class);
     mockPushHealthStats = mock(AggPushHealthStats.class);
+    metricsRepository = new MetricsRepository();
     monitor = getPushMonitor();
   }
 
@@ -473,6 +476,8 @@ public abstract class AbstractPushMonitorTest {
   protected AggPushHealthStats getMockPushHealthStats() {
     return mockPushHealthStats;
   }
+
+  protected MetricsRepository getMetricsRepository() { return metricsRepository; }
 
   protected String getStoreName() {
     return storeName;
