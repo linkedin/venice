@@ -1063,7 +1063,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         clusterConfig.getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
 
                     // Early delete backup version on start of a push, controlled by store config earlyDeleteBackupEnabled
-                    if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START) {
+                    if (backupStrategy == BackupStrategy.DELETE_ON_NEW_PUSH_START
+                        && multiClusterConfigs.getConfigForCluster(clusterName).isEarlyDeleteBackUpEnabled()) {
                         try {
                             retireOldStoreVersions(clusterName, storeName, true);
                         } catch (Throwable t) {

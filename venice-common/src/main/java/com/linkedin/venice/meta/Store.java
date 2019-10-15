@@ -204,7 +204,7 @@ public class Store {
   /**
    * Strategies to store backup versions.
    */
-  private BackupStrategy backupStrategy = BackupStrategy.KEEP_MIN_VERSIONS;
+  private BackupStrategy backupStrategy = BackupStrategy.DELETE_ON_NEW_PUSH_START;
 
   /**
    * Whether or not value schema auto registration enabled from push job for this store.
