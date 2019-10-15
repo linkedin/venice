@@ -16,6 +16,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.io.ResolvingDecoder;
 import org.apache.avro.io.parsing.Symbol;
+import org.apache.commons.lang.StringUtils;
 
 
 public class AvroSchemaUtils {
@@ -128,7 +129,7 @@ public class AvroSchemaUtils {
    * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each fields have default values. ie they are compatible
-   * schemas.
+   * schemas and the generated schema will pick the default value from s1.
    * @param s1 1st input schema
    * @param s2 2nd input schema
    * @return super set schema of s1 and s2
@@ -137,12 +138,16 @@ public class AvroSchemaUtils {
     if (s1.getType() != s2.getType()) {
       throw new VeniceException("Incompatible schema");
     }
+
     if (Objects.equals(s1, s2)) {
       return s1;
     }
 
     switch (s1.getType()) {
       case RECORD:
+        if (!StringUtils.equals(s1.getNamespace(), s2.getNamespace())) {
+          throw new VeniceException("Trying to merge schema with different namespace.");
+        }
         Schema superSetSchema = Schema.createRecord(s1.getName(), s1.getDoc(), s1.getNamespace(), false);
         superSetSchema.setFields(mergeFields(s1, s2));
         return superSetSchema;
@@ -192,5 +197,66 @@ public class AvroSchemaUtils {
       }
     }
     return fields;
+  }
+
+  /**
+   * Given s1 and s2 returned SchemaEntry#equals(s1,s2) true, verify they have doc field change.
+   * It assumes rest of the fields are exactly same. DO NOT USE this to compare schemas.
+   * @param s1
+   * @param s2
+   * @return true if s1 and s2 has differences in doc field when checked recursively.
+   *         false if s1 and s2 are exactly same including the doc (but does not check for strict equality).
+   */
+  public static boolean hasDocFieldChange(Schema s1, Schema s2) {
+    if (!StringUtils.equals(s1.getDoc(), s2.getDoc())) {
+      return true;
+    }
+
+    switch (s1.getType()) {
+      case RECORD:
+        return hasDocFieldChangeFields(s1, s2);
+      case ARRAY:
+        return hasDocFieldChangeFields(s1.getElementType(), s2.getElementType());
+      case MAP:
+        return hasDocFieldChangeFields(s1.getValueType(), s2.getValueType());
+      case UNION:
+        return hasDocFieldChangeFieldsUnion(s1.getTypes(), s2.getTypes());
+      default:
+        return false;
+    }
+  }
+
+  private static boolean hasDocFieldChangeFieldsUnion(List<Schema> list1, List<Schema> list2) {
+    Map<String, Schema> s2Schema = list2.stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    for (Schema s1 : list1) {
+      Schema s2 = s2Schema.get(s1.getName());
+      if (s2 == null) {
+        throw new VeniceException("Schemas dont match!");
+      }
+      if (hasDocFieldChange(s1, s2)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean hasDocFieldChangeFields(Schema s1, Schema s2) {
+    if (!StringUtils.equals(s1.getDoc(), s2.getDoc())) {
+      return true;
+    }
+
+    for (Schema.Field f1 : s1.getFields()) {
+      Schema.Field f2 = s2.getField(f1.name());
+      if (f2 == null) {
+        throw new VeniceException("Schemas dont match!");
+      }
+      if (!StringUtils.equals(f1.doc(), f2.doc())) {
+        return true;
+      }
+      if (hasDocFieldChange(f1.schema(), f2.schema())) {
+        return true;
+      }
+    }
+    return false;
   }
 }
