@@ -584,11 +584,11 @@ public class AdminTool {
     booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p), argSet);
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p), argSet);
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p), argSet);
-    integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT, p -> params.setBootstrapToOnlineTimeoutInHours(p), argSet);
+    integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, p -> params.setBootstrapToOnlineTimeoutInHours(p), argSet);
     booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p), argSet);
     genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p), argSet);
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
-    booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_REGISTER_FOR_READ_COMPUTE_STORE_ENABLED,
+    booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED,
         p -> params.setAutoSupersetSchemaEnabledFromReadComputeStore(p), argSet);
     return params;
   }

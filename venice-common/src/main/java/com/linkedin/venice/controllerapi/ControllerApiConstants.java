@@ -39,6 +39,7 @@ public class ControllerApiConstants {
   public static final String CLIENT_DECOMPRESSION_ENABLED = "client_decompression_enabled";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
   public static final String INCREMENTAL_PUSH_ENABLED = "incremental_push_enabled";
+  public static final String BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR = "bootstrap-to-online-timeout-in-hour";
   public static final String SINGLE_GET_ROUTER_CACHE_ENABLED = "single_get_router_cache_enabled";
   public static final String BATCH_GET_ROUTER_CACHE_ENABLED = "batch_get_router_cache_enabled";
   public static final String BATCH_GET_LIMIT = "batch_get_limit";
@@ -71,8 +72,8 @@ public class ControllerApiConstants {
 
   public static final String BACKUP_STRATEGY = "backup_strategy";
 
-  public static final String SCHEMA_AUTO_REGISTER_PUSHJOB_ENABLED = "schema_auto_register_pushjob_enabled";
-  public static final String AUTO_SUPERSET_SCHEMA_ENABLED_FOR_READ_COMPUTE_STORE = "auto_superset_schema_register_enabled_for_read_compute_store";
+  public static final String AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED = "auto_auto_register_for_pushjob_enabled";
+  public static final String AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED = "auto_superset_schema_register_for_read_compute_store_enabled";
 
 
   public static final String SKIP_DIV = "skip_div";
