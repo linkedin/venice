@@ -6,7 +6,9 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.client.VeniceKafkaConsumerClient;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -16,6 +18,9 @@ import java.util.Properties;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.gobblin.runtime.api.JobExecutionDriver;
+import org.apache.gobblin.runtime.api.JobExecutionResult;
+import org.apache.gobblin.runtime.embedded.EmbeddedGobblinDistcp;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -66,12 +71,14 @@ public class VeniceETLPublisher extends AbstractJob {
     }
   };
   private static int INITIAL_QUEUE_SIZE = 10;
+  private static int DEFAULT_MAX_SNAPSHOTS_TO_KEEP = 3;
 
   // Immutable state
   private final VeniceProperties props;
   private final String veniceControllerUrls;
   private final String fabricName;
   private final String jobId;
+  private final int maxDailySnapshotsToKeep;
 
   public VeniceETLPublisher(String jobId, Properties vanillaProps) {
     super(jobId, logger);
@@ -80,6 +87,7 @@ public class VeniceETLPublisher extends AbstractJob {
     logger.info("Constructing " + VeniceETLPublisher.class.getSimpleName() + ": " + props.toString(true));
     this.veniceControllerUrls = props.getString(VENICE_CONTROLLER_URLS);
     this.fabricName = props.getString(FABRIC_NAME);
+    this.maxDailySnapshotsToKeep = props.getInt(ETL_MAX_SNAPSHOTS_TO_KEEP, DEFAULT_MAX_SNAPSHOTS_TO_KEEP);
   }
 
   @Override
@@ -101,12 +109,15 @@ public class VeniceETLPublisher extends AbstractJob {
     try {
       Configuration conf = new Configuration();
       FileSystem fs = FileSystem.get(conf);
+
       // Get all latest ETL snapshots from the source directory
       Map<String, StoreETLSnapshotInfo> storeToSnapshotPath = getSnapshotPath(snapshotSourceDir, fs);
 
       // Build ControllerClient, which will be used to determine the current version of each store
       Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(
           storeToSnapshotPath.keySet().toArray(new String[storeToSnapshotPath.size()]), this.veniceControllerUrls);
+      // Record all distcp job futures
+      Map<Pair<String, String>, JobExecutionDriver> distcpJobFutures = new HashMap<>();
       for (Map.Entry<String, StoreETLSnapshotInfo> entry : storeToSnapshotPath.entrySet()) {
         String storeName = entry.getKey();
         logger.info("Publishing ETL snapshot for store: " + storeName + " to dir: " + snapshotDestinationDir + storeName);
@@ -127,7 +138,7 @@ public class VeniceETLPublisher extends AbstractJob {
         }
 
         // Get the latest snapshot from the sorted snapshot list
-        Path snapshotSourcePath = snapshotQueue.poll();
+        Path snapshotSourcePath = snapshotQueue.peek();
         String snapshotName = snapshotSourcePath.getName();
 
         // Create the directory for the store in destination if it doesn't exist before
@@ -145,9 +156,43 @@ public class VeniceETLPublisher extends AbstractJob {
           continue;
         }
 
-        // Publish the latest snapshot to destination
-        FileUtil.copy(fs, snapshotSourcePath, fs, snapshotDestinationPath, false, conf);
-        logger.info("Successfully publish the latest snapshot " + snapshotName + " for store " + storeName + " in " + destination);
+        /**
+         * Start a Gobblin distributed cp job asynchronously to release snapshot;
+         * Distcp for different stores will run in parallel;
+         * Gobblin distcp is a MapReduce job which can speed up the data movement process a lot.
+         */
+        logger.info("Starting distcp for store " + storeName);
+        EmbeddedGobblinDistcp distcp = new EmbeddedGobblinDistcp(snapshotSourcePath, snapshotDestinationPath);
+        JobExecutionDriver jobFuture = distcp.runAsync();
+        distcpJobFutures.put(Pair.create(storeName, destination), jobFuture);
+        logger.info("Started distcp for store " + storeName + " snapshot " + snapshotName);
+
+        // clean up old snapshots in source
+        int latestSnapshotCounter = 0;
+        while (!snapshotQueue.isEmpty()) {
+          if (latestSnapshotCounter++ < maxDailySnapshotsToKeep) {
+            // keep some latest snapshots
+            snapshotQueue.poll();
+          } else {
+            Path retiredSnapshot = snapshotQueue.poll();
+            FileUtil.fullyDelete(new File(retiredSnapshot.toUri()));
+            logger.info("Cleaned up snapshot " + retiredSnapshot.toUri().getRawPath());
+          }
+        }
+      }
+
+      /**
+       * Wait for each job future to return.
+       */
+      for (Map.Entry<Pair<String, String>, JobExecutionDriver> jobEntry: distcpJobFutures.entrySet()) {
+        String storeName = jobEntry.getKey().getFirst();
+        String destination = jobEntry.getKey().getSecond();
+        JobExecutionResult result = jobEntry.getValue().get();
+        if (result.isSuccessful()) {
+          logger.info("Successfully published the latest snapshot for store " + storeName + " in " + destination);
+        } else {
+          logger.info("Distcp failed for store " + storeName, result.getErrorCause());
+        }
       }
     } catch (Exception e) {
       logger.error("Failed on file operations: ", e);
@@ -236,7 +281,7 @@ public class VeniceETLPublisher extends AbstractJob {
     /**
      * Snapshot is added to list in sorted order for two reasons:
      * 1. Return the latest snapshot easily;
-     * 2. Keep a list of snapshots instead of a single reference to latest snapshot for automatic clean up (TODO)
+     * 2. Keep a list of snapshots instead of a single reference to latest snapshot for automatic clean up
      * @param version
      * @param snapshot
      */
