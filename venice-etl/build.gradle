@@ -9,6 +9,9 @@ dependencies {
     implementation libraries.azkaban
     implementation libraries.gobblinCoreBase
     implementation libraries.gobblinKafkaCommon
+    implementation (libraries.gobblinDataManagement) {
+        exclude group: 'org.apache.kafka'
+    }
     implementation libraries.kafka
 }
 

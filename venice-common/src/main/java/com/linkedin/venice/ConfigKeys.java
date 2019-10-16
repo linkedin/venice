@@ -813,6 +813,11 @@ public class ConfigKeys {
   public static final String ETL_SNAPSHOT_DESTINATION_DIR = "etl.snapshot.destination.dir";
 
   /*
+   * This config defines how many snapshots we keep for one store.
+   */
+  public static final String ETL_MAX_SNAPSHOTS_TO_KEEP = "etl.max.snapshots.to.keep";
+
+  /*
    * The super cluster name for HAAS. This config is required if HAAS is enabled for the creation of helix clusters.
    */
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
