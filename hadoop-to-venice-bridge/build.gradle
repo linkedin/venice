@@ -1,5 +1,7 @@
 dependencies {
-    implementation project(':venice-common')
+    implementation (project(':venice-common')) {
+      exclude group: 'com.linkedin.dds-storage-core'
+    }
     implementation project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
 
     implementation libraries.commonsIo
