@@ -291,7 +291,9 @@ public abstract class AbstractPushMonitor
         break;
       }
 
-      versionNums.remove(Version.parseVersionFromKafkaTopicName(errorPushStatus.getKafkaTopic()));
+      int errorVersion = Version.parseVersionFromKafkaTopicName(errorPushStatus.getKafkaTopic());
+      // Make sure we do boxing; List.remove(primitive int) treats the primitive int as index
+      versionNums.remove(Integer.valueOf(errorVersion));
 
       cleanupPushStatus(errorPushStatus);
     }
