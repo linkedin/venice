@@ -236,19 +236,19 @@ public class UpdateStoreQueryParams extends QueryParams {
 
 
   public UpdateStoreQueryParams setAutoSchemaPushJobEnabled(boolean autoSchemaPushJobEnabled) {
-    return putBoolean(SCHEMA_AUTO_REGISTER_PUSHJOB_ENABLED, autoSchemaPushJobEnabled);
+    return putBoolean(AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, autoSchemaPushJobEnabled);
   }
 
   public Optional<Boolean> getAutoSchemaRegisterPushJobEnabled() {
-    return getBoolean(SCHEMA_AUTO_REGISTER_PUSHJOB_ENABLED);
+    return getBoolean(AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED);
   }
 
   public UpdateStoreQueryParams setAutoSupersetSchemaEnabledFromReadComputeStore(boolean autoSchemaAdminEnabled) {
-    return putBoolean(AUTO_SUPERSET_SCHEMA_ENABLED_FOR_READ_COMPUTE_STORE, autoSchemaAdminEnabled);
+    return putBoolean(AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED, autoSchemaAdminEnabled);
   }
 
   public Optional<Boolean> getAutoSupersetSchemaEnabledForReadComputeStore() {
-    return getBoolean(AUTO_SUPERSET_SCHEMA_ENABLED_FOR_READ_COMPUTE_STORE);
+    return getBoolean(AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED);
   }
 
   public UpdateStoreQueryParams setBackupStrategy(BackupStrategy backupStrategy) {
