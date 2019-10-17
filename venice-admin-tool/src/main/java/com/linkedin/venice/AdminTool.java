@@ -756,24 +756,20 @@ public class AdminTool {
   }
 
   private static void startMirrorMaker(CommandLine cmd) {
-    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
-    Properties producerProps = loadProperties(cmd, Arg.KAFKA_PRODUCER_CONFIG_FILE);
-    MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(
-        getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE),
-        getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION),
+    MirrorMakerWrapper mirrorMaker = ServiceFactory.getKafkaMirrorMaker(
+        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS),
         getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS_DESTINATION),
+        getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION),
         getRequiredArgument(cmd, Arg.KAFKA_TOPIC_WHITELIST),
-        consumerProps,
-        producerProps);
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      public void run() {
-        mirrorMakerWrapper.close();
-        System.out.println("Closed MM.");
-      }
-    });
-    while (mirrorMakerWrapper.isRunning()) {
+        loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE),
+        loadProperties(cmd, Arg.KAFKA_PRODUCER_CONFIG_FILE));
+
+    while (mirrorMaker.isRunning()) {
       Utils.sleep(1000);
     }
+
+    mirrorMaker.close();
+    System.out.println("Closed MM.");
   }
 
   private static void dumpAdminMessages(CommandLine cmd) {
