@@ -2,9 +2,6 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
-
-import static com.linkedin.venice.ConfigKeys.*;
-
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -14,6 +11,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.Properties;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -105,7 +104,9 @@ public class IntegrationTestUtils {
     }
     try {
       propsFile.createNewFile();
-      content.store(new FileWriter(propsFile), "Config file: " + fileName);
+      try (FileWriter writer = new FileWriter(propsFile)) {
+        content.store(writer, "Config file: " + fileName);
+      }
     } catch (IOException e) {
       throw new VeniceException("Fot an IOExpcetion while trying to create or write to the file: " + propsFile.getAbsolutePath(), e);
     }

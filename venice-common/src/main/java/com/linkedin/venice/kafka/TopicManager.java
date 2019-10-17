@@ -8,7 +8,6 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -29,14 +28,11 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
-import org.apache.kafka.common.PartitionInfo;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.network.ListenerName;
-import org.apache.kafka.common.protocol.SecurityProtocol;
-import org.apache.kafka.common.requests.MetadataResponse;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -260,23 +256,8 @@ public class TopicManager implements Closeable {
     }
   }
 
-  public int getReplicationFactor(String topicName){
-   return getReplicationFactor(topicName, getZkUtils());
-  }
-
-  public static int getReplicationFactor(String topicName, ZkUtils zkUtils) {
-    Set<String> topicSet = new HashSet<>();
-    topicSet.add(topicName);
-    scala.collection.Set metadataSet = AdminUtils.fetchTopicMetadataFromZk(new scala.collection.immutable.Set.Set1<>(topicName),
-        zkUtils, ListenerName.forSecurityProtocol(SecurityProtocol.SSL));
-    if (metadataSet.isEmpty()) {
-      throw new VeniceException("Couldn't fetch topic metadata from Kafka Zookeeper for topic: " + topicName);
-    }
-    if (metadataSet.size() > 1) {
-      logger.warn("More than one entry returned: " + metadataSet + " for single topic lookup: " + topicName);
-    }
-    MetadataResponse.TopicMetadata topicMetadata = (MetadataResponse.TopicMetadata)metadataSet.iterator().next();
-    return topicMetadata.partitionMetadata().get(0).replicas().size();
+  public int getReplicationFactor(String topicName) {
+    return getPartitions(topicName).iterator().next().replicas().length;
   }
 
   /**
