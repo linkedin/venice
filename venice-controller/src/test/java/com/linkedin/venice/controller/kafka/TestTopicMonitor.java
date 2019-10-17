@@ -15,7 +15,6 @@ import java.util.Collections;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.kafka.TopicManager.*;
@@ -42,7 +41,7 @@ public class TestTopicMonitor {
     String storeName = "myStore";
     String clusterName = "myCluster";
 
-    KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
+    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
 
     Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getLargestUsedVersionNumber();
@@ -86,7 +85,7 @@ public class TestTopicMonitor {
     String storeName = "myStore";
     String clusterName = "myCluster";
 
-    KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
+    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
 
     Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getLargestUsedVersionNumber();
@@ -132,7 +131,7 @@ public class TestTopicMonitor {
     String storeNameA = "aStore";
     String storeNameB = "bStore";
     String clusterName = "myCluster";
-    KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
+    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
 
     Store mockStore = mock(Store.class);
     doReturn(0).when(mockStore).getLargestUsedVersionNumber();
