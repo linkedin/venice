@@ -4,6 +4,7 @@ import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import org.apache.commons.cli.CommandLine;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -28,6 +29,18 @@ public class TestAdminTool {
     } catch (Exception e) {
       // AdminTool should enforce the rule that SSL config file must be included
       Assert.assertTrue(e.getMessage().contains("SSL config file path must be specified"));
+    }
+  }
+
+  @Test
+  public void testAdminUpdateStoreArg() {
+    String[] args = {"--update-store", "--url", "http://localhost:7036", "--cluster", "test-cluster", "--store", "testStore"};
+
+    try {
+      CommandLine commandLine = AdminTool.getCommandLine(args);
+      AdminTool.getUpdateStoreQueryParams(commandLine);
+    } catch (Exception e) {
+      Assert.fail(" All options are not added to update-store arg doc");
     }
   }
 }
