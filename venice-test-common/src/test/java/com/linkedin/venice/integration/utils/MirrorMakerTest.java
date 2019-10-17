@@ -21,7 +21,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
-import kafka.consumer.Whitelist;
+import kafka.utils.Whitelist;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
