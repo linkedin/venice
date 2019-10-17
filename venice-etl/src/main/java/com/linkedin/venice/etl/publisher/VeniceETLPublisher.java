@@ -168,17 +168,7 @@ public class VeniceETLPublisher extends AbstractJob {
         logger.info("Started distcp for store " + storeName + " snapshot " + snapshotName);
 
         // clean up old snapshots in source
-        int latestSnapshotCounter = 0;
-        while (!snapshotQueue.isEmpty()) {
-          if (latestSnapshotCounter++ < maxDailySnapshotsToKeep) {
-            // keep some latest snapshots
-            snapshotQueue.poll();
-          } else {
-            Path retiredSnapshot = snapshotQueue.poll();
-            FileUtil.fullyDelete(new File(retiredSnapshot.toUri()));
-            logger.info("Cleaned up snapshot " + retiredSnapshot.toUri().getRawPath());
-          }
-        }
+        retireOldSnapshots(snapshotQueue, fs);
       }
 
       /**
@@ -197,6 +187,30 @@ public class VeniceETLPublisher extends AbstractJob {
     } catch (Exception e) {
       logger.error("Failed on file operations: ", e);
       throw e;
+    }
+  }
+
+  /**
+   * Delete all old snapshots.
+   */
+  private void retireOldSnapshots(PriorityQueue<Path> snapshotQueue, FileSystem fs) {
+    int latestSnapshotCounter = 0;
+    try {
+      while (!snapshotQueue.isEmpty()) {
+        if (latestSnapshotCounter++ < maxDailySnapshotsToKeep) {
+          // keep some latest snapshots
+          snapshotQueue.poll();
+        } else {
+          Path retiredSnapshot = snapshotQueue.poll();
+          if (fs.delete(retiredSnapshot, true)) {
+            logger.info("Cleaned up snapshot " + retiredSnapshot.toUri().getRawPath());
+          } else {
+            logger.error("Failed to clean up snapshot " + retiredSnapshot.toUri().getRawPath());
+          }
+        }
+      }
+    } catch (Exception e) {
+      logger.error("Error when cleaning up old snapshots", e);
     }
   }
 
