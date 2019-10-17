@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.linkedin.venice.client.store.QueryTool;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -56,10 +57,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -73,10 +76,12 @@ import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
+import org.jetbrains.annotations.NotNull;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -98,52 +103,9 @@ public class AdminTool {
 
   public static void main(String args[])
       throws Exception {
-
-    /**
-     * Command Options are split up for help text formatting, see printUsageAndExit()
-     *
-     * Gather all the commands we have in "commandGroup"
-     **/
-    OptionGroup commandGroup = new OptionGroup();
-    for (Command c : Command.values()){
-      createCommandOpt(c, commandGroup);
-    }
-
-    /**
-     * Gather all the options we have in "options"
-     */
-    Options options = new Options();
-    for (Arg arg : Arg.values()){
-      createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
-    }
-
-    Options parameterOptionsForHelp = new Options();
-    for (Object obj : options.getOptions()){
-      Option o = (Option) obj;
-      parameterOptionsForHelp.addOption(o);
-    }
-
-    options.addOptionGroup(commandGroup);
-
-    CommandLineParser parser = new DefaultParser();
-    CommandLine cmd = parser.parse(options, args);
+    CommandLine cmd = getCommandLine(args);
 
     try {
-      if (cmd.hasOption(Arg.HELP.first())) {
-        printUsageAndExit(commandGroup, parameterOptionsForHelp);
-      } else if (cmd.hasOption(Command.CONVERT_VSON_SCHEMA.toString())) {
-        convertVsonSchemaAndExit(cmd);
-      }
-
-      // SSl config path is mandatory
-      if (!cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
-        /**
-         * Don't throw exception yet until all controllers are deployed with SSL support and the script
-         * that automatically generates SSL config file is provided.
-         */
-        System.out.println("[WARN] Running admin tool without SSL.");
-      }
-
       Command foundCommand = ensureOnlyOneCommand(cmd);
 
       // Variables used within the switch case need to be defined in advance
@@ -382,6 +344,54 @@ public class AdminTool {
     }
   }
 
+  @VisibleForTesting
+  static CommandLine getCommandLine(String[] args) throws ParseException, IOException {
+    /**
+     * Command Options are split up for help text formatting, see printUsageAndExit()
+     *
+     * Gather all the commands we have in "commandGroup"
+     **/
+    OptionGroup commandGroup = new OptionGroup();
+    for (Command c : Command.values()){
+      createCommandOpt(c, commandGroup);
+    }
+
+    /**
+     * Gather all the options we have in "options"
+     */
+    Options options = new Options();
+    for (Arg arg : Arg.values()){
+      createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+    }
+
+    Options parameterOptionsForHelp = new Options();
+    for (Object obj : options.getOptions()){
+      Option o = (Option) obj;
+      parameterOptionsForHelp.addOption(o);
+    }
+
+    options.addOptionGroup(commandGroup);
+
+    CommandLineParser parser = new DefaultParser();
+    CommandLine cmd = parser.parse(options, args);
+
+    if (cmd.hasOption(Arg.HELP.first())) {
+      printUsageAndExit(commandGroup, parameterOptionsForHelp);
+    } else if (cmd.hasOption(Command.CONVERT_VSON_SCHEMA.toString())) {
+      convertVsonSchemaAndExit(cmd);
+    }
+
+    // SSl config path is mandatory
+    if (!cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
+      /**
+       * Don't throw exception yet until all controllers are deployed with SSL support and the script
+       * that automatically generates SSL config file is provided.
+       */
+      System.out.println("[WARN] Running admin tool without SSL.");
+    }
+    return cmd;
+  }
+
   private static Command ensureOnlyOneCommand(CommandLine cmd){
     String foundCommand = null;
     for (Command c : Command.values()){
@@ -515,20 +525,24 @@ public class AdminTool {
     printSuccess(response);
   }
 
-  private static void integerParam(CommandLine cmd, Arg param, Consumer<Integer> setter) {
-    genericParam(cmd, param, s -> Utils.parseIntFromString(s, param.toString()), setter);
+  private static void integerParam(CommandLine cmd, Arg param, Consumer<Integer> setter, Set<Arg> argSet) {
+    genericParam(cmd, param, s -> Utils.parseIntFromString(s, param.toString()), setter, argSet);
   }
 
 
-  private static void longParam(CommandLine cmd, Arg param, Consumer<Long> setter) {
-    genericParam(cmd, param, s -> Utils.parseLongFromString(s, param.toString()), setter);
+  private static void longParam(CommandLine cmd, Arg param, Consumer<Long> setter, Set<Arg> argSet) {
+    genericParam(cmd, param, s -> Utils.parseLongFromString(s, param.toString()), setter, argSet);
   }
 
-  private static void booleanParam(CommandLine cmd, Arg param, Consumer<Boolean> setter) {
-    genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter);
+  private static void booleanParam(CommandLine cmd, Arg param, Consumer<Boolean> setter, Set<Arg> argSet) {
+    genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter, argSet);
   }
 
-  private static <TYPE> void genericParam(CommandLine cmd, Arg param, Function<String, TYPE> parser, Consumer<TYPE> setter) {
+  private static <TYPE> void genericParam(CommandLine cmd, Arg param, Function<String, TYPE> parser, Consumer<TYPE> setter,
+      Set<Arg> argSet) {
+    if (!argSet.contains(param)) {
+      throw new VeniceException(" Argument does not exist in command doc: " + param);
+    }
     String paramStr = getOptionalArgument(cmd, param);
     if (null != paramStr) {
       setter.accept(parser.apply(paramStr));
@@ -536,38 +550,47 @@ public class AdminTool {
   }
 
   private static void updateStore(CommandLine cmd) {
-    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    genericParam(cmd, Arg.OWNER, s -> s, p -> params.setOwner(p));
-    integerParam(cmd, Arg.PARTITION_COUNT, p -> params.setPartitionCount(p));
-    integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p));
-    integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p));
-    booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p));
-    booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p));
-    longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p));
-    longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p));
-    longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p));
-    longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p));
-    booleanParam(cmd, Arg.ACCESS_CONTROL, p -> params.setAccessControlled(p));
-    genericParam(cmd, Arg.COMPRESSION_STRATEGY, s -> CompressionStrategy.valueOf(s), p -> params.setCompressionStrategy(p));
-    booleanParam(cmd, Arg.CLIENT_DECOMPRESSION_ENABLED, p -> params.setClientDecompressionEnabled(p));
-    booleanParam(cmd, Arg.CHUNKING_ENABLED, p -> params.setChunkingEnabled(p));
-    booleanParam(cmd, Arg.SINGLE_GET_ROUTER_CACHE_ENABLED, p -> params.setSingleGetRouterCacheEnabled(p));
-    booleanParam(cmd, Arg.BATCH_GET_ROUTER_CACHE_ENABLED, p -> params.setBatchGetRouterCacheEnabled(p));
-    integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p));
-    integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p));
-    booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p));
-    booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p));
-    booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p));
-    integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT, p -> params.setBootstrapToOnlineTimeoutInHours(p));
-    booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p));
-    genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p));
-    booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p));
-    booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_REGISTER_FOR_READ_COMPUTE_STORE_ENABLED,
-        p -> params.setAutoSupersetSchemaEnabledFromReadComputeStore(p));
+    UpdateStoreQueryParams params = getUpdateStoreQueryParams(cmd);
 
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
     ControllerResponse response = controllerClient.updateStore(storeName, params);
     printSuccess(response);
+  }
+
+  @VisibleForTesting
+  static UpdateStoreQueryParams getUpdateStoreQueryParams(CommandLine cmd) {
+    Set<Arg> argSet = new HashSet<>(Arrays.asList(Command.UPDATE_STORE.getOptionalArgs()));
+    argSet.addAll(new HashSet<>(Arrays.asList(Command.UPDATE_STORE.getRequiredArgs())));
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    genericParam(cmd, Arg.OWNER, s -> s, p -> params.setOwner(p), argSet);
+    integerParam(cmd, Arg.PARTITION_COUNT, p -> params.setPartitionCount(p), argSet);
+    integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p), argSet);
+    integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p), argSet);
+    booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);
+    booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p), argSet);
+    longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p), argSet);
+    longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p), argSet);
+    longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p), argSet);
+    longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p), argSet);
+    booleanParam(cmd, Arg.ACCESS_CONTROL, p -> params.setAccessControlled(p), argSet);
+    genericParam(cmd, Arg.COMPRESSION_STRATEGY, s -> CompressionStrategy.valueOf(s), p -> params.setCompressionStrategy(p), argSet);
+    booleanParam(cmd, Arg.CLIENT_DECOMPRESSION_ENABLED, p -> params.setClientDecompressionEnabled(p), argSet);
+    booleanParam(cmd, Arg.CHUNKING_ENABLED, p -> params.setChunkingEnabled(p), argSet);
+    booleanParam(cmd, Arg.SINGLE_GET_ROUTER_CACHE_ENABLED, p -> params.setSingleGetRouterCacheEnabled(p), argSet);
+    booleanParam(cmd, Arg.BATCH_GET_ROUTER_CACHE_ENABLED, p -> params.setBatchGetRouterCacheEnabled(p), argSet);
+    integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p), argSet);
+    integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p), argSet);
+    booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p), argSet);
+    booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p), argSet);
+    booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p), argSet);
+    integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT, p -> params.setBootstrapToOnlineTimeoutInHours(p), argSet);
+    booleanParam(cmd, Arg.LEADER_FOLLOWER_MODEL_ENABLED, p -> params.setLeaderFollowerModel(p), argSet);
+    genericParam(cmd, Arg.BACKUP_STRATEGY, s -> BackupStrategy.valueOf(s), p -> params.setBackupStrategy(p), argSet);
+    booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
+    booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_REGISTER_FOR_READ_COMPUTE_STORE_ENABLED,
+        p -> params.setAutoSupersetSchemaEnabledFromReadComputeStore(p), argSet);
+    return params;
   }
 
   private static void applyValueSchemaToStore(CommandLine cmd)
