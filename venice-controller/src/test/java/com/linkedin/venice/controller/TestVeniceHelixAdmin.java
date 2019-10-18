@@ -1648,6 +1648,7 @@ public class TestVeniceHelixAdmin {
     properties.put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false);
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
+    properties.put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, true);
 
     return properties;
   }

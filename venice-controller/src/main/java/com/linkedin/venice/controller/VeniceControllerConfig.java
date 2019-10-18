@@ -61,6 +61,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean isControllerClusterLeaderHAAS;
   private final String controllerHAASSuperClusterName;
   private final boolean earlyDeleteBackUpEnabled;
+  private boolean sendConcurrentTopicDeleteRequestsEnabled;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -133,6 +134,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       throw new VeniceException(CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required if "
           + CONTROLLER_CLUSTER_LEADER_HAAS + " is set to true");
     }
+    this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS);
   }
 
   public int getAdminPort() {
@@ -265,6 +267,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isEarlyDeleteBackUpEnabled() {
     return earlyDeleteBackUpEnabled;
+  }
+
+  public boolean isConcurrentTopicDeleteRequestsEnabled() {
+    return sendConcurrentTopicDeleteRequestsEnabled;
   }
 
   /**

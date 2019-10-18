@@ -76,7 +76,7 @@ public class TestPushUtils {
   public static final String STRING_SCHEMA = "\"string\"";
 
   public static File getTempDataDirectory() {
-    String tmpDirectory = System.getProperty("java.io.tmpdir");
+    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
     String directoryName = TestUtils.getUniqueString("Venice-Data");
     File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
     dir.mkdir();

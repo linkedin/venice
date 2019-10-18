@@ -61,6 +61,7 @@ public class TopicManager implements Closeable {
   private final int topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
   private final VeniceConsumerFactory veniceConsumerFactory;
+  private final boolean isConcurrentTopicDeleteRequestsEnabled;
 
   // Mutable, lazily initialized, state
   private ZkClient zkClient;
@@ -77,6 +78,7 @@ public class TopicManager implements Closeable {
   protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
   private static final int KAFKA_POLLING_RETRY_ATTEMPT = 3;
+  public static final int MAX_TOPIC_DELETE_RETRIES = 3;
   /**
    * Default setting is that no log compaction should happen for hybrid store version topics
    * if the messages are produced within 24 hours; otherwise servers could encounter MISSING
@@ -84,10 +86,15 @@ public class TopicManager implements Closeable {
    * duplicate keys.
    */
   public static final long DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS = 24 * Time.MS_PER_HOUR;
+  // admin tool and venice topic consumer create this class.  We'll set this policy to false by default so those paths
+  // aren't necessarily compromised with potentially new bad behavior.
+  public static final boolean DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY = false;
 
 
+  //TODO: Consider adding a builder for this class as the number of constructors is getting high.
   public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs, long topicMinLogCompactionLagMs, VeniceConsumerFactory veniceConsumerFactory) {
+      int topicDeletionStatusPollIntervalMs, long topicMinLogCompactionLagMs, VeniceConsumerFactory veniceConsumerFactory,
+      boolean isConcurrentTopicDeleteRequestsEnabled) {
     this.zkConnection = zkConnection;
     this.sessionTimeoutMs = sessionTimeoutMs;
     this.connectionTimeoutMs = connectionTimeoutMs;
@@ -95,6 +102,13 @@ public class TopicManager implements Closeable {
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
     this.veniceConsumerFactory = veniceConsumerFactory;
+    this.isConcurrentTopicDeleteRequestsEnabled = isConcurrentTopicDeleteRequestsEnabled;
+  }
+
+  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
+      int topicDeletionStatusPollIntervalMs, long topicMinLogCompactionLagMs, VeniceConsumerFactory veniceConsumerFactory) {
+    this(zkConnection, sessionTimeoutMs, connectionTimeoutMs, kafkaOperationTimeoutMs,
+        topicDeletionStatusPollIntervalMs, topicMinLogCompactionLagMs, veniceConsumerFactory, DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY);
   }
 
   public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, int topicDeletionStatusPollIntervalMS,
@@ -390,10 +404,12 @@ public class TopicManager implements Closeable {
       // Topic doesn't exist
       return;
     }
+
     // This is trying to guard concurrent topic deletion in Kafka.
-    if (getZkUtils().getChildrenParentMayNotExist(ZkUtils.DeleteTopicsPath()).size() > 0) {
+    if (!isConcurrentTopicDeleteRequestsEnabled && getZkUtils().getChildrenParentMayNotExist(ZkUtils.DeleteTopicsPath()).size() > 0) {
       throw new VeniceException("Delete operation already in progress! Try again later.");
     }
+
     ensureTopicIsDeletedAsync(topicName);
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
     int MAX_TIMES = kafkaOperationTimeoutMs / topicDeletionStatusPollIntervalMs;
@@ -427,6 +443,25 @@ public class TopicManager implements Closeable {
       }
     }
     throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current + " attempts).");
+  }
+
+  public void ensureTopicIsDeletedAndBlockWithRetry(String topicName) {
+    // Topic deletion may time out, so go ahead and retry the operation up the max number of attempts, if we
+    // simply cannot succeed, bubble the exception up.
+    Integer attempts  = 0;
+    while(true) {
+      try {
+        ensureTopicIsDeletedAndBlock(topicName);
+        return;
+      } catch (VeniceOperationAgainstKafkaTimedOut e) {
+        attempts++;
+        logger.warn(String.format("Topic deletion for topic %s timed out!  Retry attempt %d / %d", topicName, attempts, MAX_TOPIC_DELETE_RETRIES));
+        if(attempts == MAX_TOPIC_DELETE_RETRIES) {
+          logger.error(String.format("Topic deletion for topic %s timed out! Giving up!!", topicName));
+          throw e;
+        }
+      }
+    }
   }
 
   public synchronized Set<String> listTopics() {

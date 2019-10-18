@@ -173,7 +173,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       if (topicRetentions.containsKey(realTimeTopic)) {
         if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
           LOGGER.info("Real-time topic: " + realTimeTopic + " is deprecated, will delete it");
-          getTopicManager().ensureTopicIsDeletedAndBlock(realTimeTopic);
+          getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
           LOGGER.info("Real-time topic: " + realTimeTopic + " was deleted");
         }
         topicRetentions.remove(realTimeTopic);
@@ -186,7 +186,7 @@ public class TopicCleanupService extends AbstractVeniceService {
       } else {
         LOGGER.info("Detected the following old topics to delete: " + String.join(", ", oldTopicsToDelete));
         oldTopicsToDelete.stream()
-            .forEach(t -> getTopicManager().ensureTopicIsDeletedAndBlock(t));
+            .forEach(t -> getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(t));
         LOGGER.info("Finished deleting old topics for store '" + storeName + "'.");
       }
     });

@@ -34,7 +34,7 @@ public class TopicCleanupServiceForParentController extends TopicCleanupService 
           } else {
             LOGGER.info("Retention policy for topic: " + topic + " is: " + retention + " ms, and it is deprecated, will delete it now.");
             storeToCountdownForDeletion.remove(topic);
-            getTopicManager().ensureTopicIsDeletedAndBlock(topic);
+            getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
             LOGGER.info("Topic: " + topic + " was deleted");
           }
         }
