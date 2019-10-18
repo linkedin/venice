@@ -76,7 +76,8 @@ import java.util.Optional;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Properties;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import org.apache.http.HttpStatus;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -105,12 +106,12 @@ public class VeniceParentHelixAdmin implements Admin {
   public static final int LATEST_PUSH_JOB_STATUS_VALUE_SCHEMA_ID = 2;
 
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
-  private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 1000;
-  private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 5;
+  private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 3000;
+  private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 10;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
-  private static final String PUSH_JOB_STATUS_STORE_DESCRIPTOR = "push job status store";
-  private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store";
+  private static final String PUSH_JOB_STATUS_STORE_DESCRIPTOR = "push job status store: ";
+  private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
   private static final int VERSION_ID_UNSET = -1;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
@@ -128,6 +129,9 @@ public class VeniceParentHelixAdmin implements Admin {
   private final boolean addVersionViaAdminProtocol;
   private long lastTopicCreationTime = -1;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
+  // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
+  // Based on JavaDoc "Threads that have not been used for sixty seconds are terminated and removed from the cache."
+  private final ExecutorService asyncSetupExecutor = Executors.newCachedThreadPool();
   private Time timer = new SystemTime();
   private Optional<SSLFactory> sslFactory = Optional.empty();
 
@@ -250,17 +254,18 @@ public class VeniceParentHelixAdmin implements Admin {
     if (clusterName.equals(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
       if (!multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
           && !multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
+        String storeName = multiClusterConfigs.getPushJobStatusStoreName();
         asyncSetupForInternalRTStore(multiClusterConfigs.getPushJobStatusStoreClusterName(),
-            multiClusterConfigs.getPushJobStatusStoreName(), PUSH_JOB_STATUS_STORE_DESCRIPTOR,
+            storeName, PUSH_JOB_STATUS_STORE_DESCRIPTOR + storeName,
             PushJobStatusRecordKey.SCHEMA$.toString(), PushJobStatusRecordValue.SCHEMA$.toString(),
             multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
       }
     }
 
     if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
-      asyncSetupForInternalRTStore(clusterName, ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName),
-          PARTICIPANT_MESSAGE_STORE_DESCRIPTOR, ParticipantMessageKey.SCHEMA$.toString(),
-          ParticipantMessageValue.SCHEMA$.toString(),
+      String storeName = ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName);
+      asyncSetupForInternalRTStore(clusterName, storeName, PARTICIPANT_MESSAGE_STORE_DESCRIPTOR + storeName,
+          ParticipantMessageKey.SCHEMA$.toString(), ParticipantMessageValue.SCHEMA$.toString(),
           multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
     }
   }
@@ -268,44 +273,44 @@ public class VeniceParentHelixAdmin implements Admin {
   /**
    * Setup the venice RT store used internally for hosting push job status records or participant messages.
    * If the store already exists and is in the correct state then only verification is performed.
+   * TODO replace this with {@link com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine}
    */
   private void asyncSetupForInternalRTStore(String clusterName, String storeName, String storeDescriptor,
       String keySchema, String valueSchema, int partitionCount) {
-    CompletableFuture.runAsync(() -> {
-      if (isMasterController(clusterName)) {
-        int retryCount = 0;
-        boolean isStoreReady = false;
-        while (!isStoreReady && asyncSetupEnabledMap.get(clusterName) && retryCount < MAX_ASYNC_SETUP_RETRY_COUNT) {
-          try {
-            if (retryCount > 0) {
-              timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
-            }
-            isStoreReady = verifyAndCreateInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
-                partitionCount);
-          } catch (VeniceException e) {
-            logger.info("VeniceException occurred during " + storeDescriptor + " setup with store " + storeName + " in cluster "
-                + clusterName, e);
-          } catch (Exception e) {
-            logger.warn(
-                "Exception occurred aborting " + storeDescriptor + " setup with store " + storeName + " in cluster " + clusterName, e);
-            break;
-          } finally {
-            retryCount++;
-            logger.info("Async " + storeDescriptor + " setup attempts: " + retryCount + "/" + MAX_ASYNC_SETUP_RETRY_COUNT);
+    asyncSetupExecutor.submit(() -> {
+      int retryCount = 0;
+      boolean isStoreReady = false;
+      while (!isStoreReady && asyncSetupEnabledMap.get(clusterName) && retryCount < MAX_ASYNC_SETUP_RETRY_COUNT) {
+        try {
+          if (retryCount > 0) {
+            timer.sleep(SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS);
           }
+          isStoreReady = verifyAndCreateInternalStore(clusterName, storeName, storeDescriptor, keySchema, valueSchema,
+              partitionCount);
+        } catch (VeniceException e) {
+          // Verification attempts (i.e. a controller running this routine but is not the master of the cluster) do not
+          // count towards the retry count.
+          retryCount++;
+          logger.info("VeniceException occurred during " + storeDescriptor + " setup with store " + storeName
+              + " in cluster " + clusterName, e);
+          logger.info("Async setup for " + storeDescriptor + " attempts: " + retryCount + "/" + MAX_ASYNC_SETUP_RETRY_COUNT);
+        } catch (Exception e) {
+          logger.warn(
+              "Exception occurred aborting " + storeDescriptor + " setup with store " + storeName + " in cluster " + clusterName, e);
+          break;
         }
-        if (isStoreReady) {
-          logger.info(storeDescriptor + " has been successfully created or it already exists");
-        } else {
-          logger.error("Unable to create or find the " + storeDescriptor);
-        }
+      }
+      if (isStoreReady) {
+        logger.info(storeDescriptor + " has been successfully created or it already exists");
+      } else {
+        logger.error("Unable to create or verify the " + storeDescriptor);
       }
     });
   }
 
   /**
-   * Verify the state of the internal store for push job status. The master controller will also create and configure
-   * the store if the desired state is not met.
+   * Verify the state of the system store. The master controller will also create and configure the store if the
+   * desired state is not met.
    * @param clusterName the name of the cluster that push status store belongs to.
    * @param storeName the name of the push status store.
    * @return {@code true} if the push status store is ready, {@code false} otherwise.
@@ -355,6 +360,24 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException("Unexpected real time topic name for the " + storeDescriptor);
       }
       storeReady = true;
+    } else {
+      // Verify that the store is indeed created by another controller. This is to prevent if the initial master fails
+      // or when the cluster happens to be leaderless for a bit.
+      try (ControllerClient controllerClient =
+          new ControllerClient(clusterName, getMasterController(clusterName).getUrl(false), sslFactory)) {
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        if (storeResponse.isError()) {
+          logger.info("Failed to verify " + storeDescriptor + " from the controller with URL: " +
+              controllerClient.getControllerDiscoveryUrls());
+          return false;
+        }
+        StoreInfo storeInfo = storeResponse.getStore();
+        if (storeInfo.getPartitionCount() == partitionCount && storeInfo.getHybridStoreConfig() != null
+            && !storeInfo.getVersions().isEmpty()
+            && getTopicManager().containsTopic(Version.composeRealTimeTopic(storeName))) {
+          storeReady = true;
+        }
+      }
     }
     return storeReady;
   }
@@ -1713,6 +1736,12 @@ public class VeniceParentHelixAdmin implements Admin {
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
     veniceHelixAdmin.close();
+    asyncSetupExecutor.shutdownNow();
+    try {
+      asyncSetupExecutor.awaitTermination(30, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   @Override

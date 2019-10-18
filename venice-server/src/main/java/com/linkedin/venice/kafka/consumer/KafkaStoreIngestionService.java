@@ -8,6 +8,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
@@ -28,7 +29,6 @@ import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -38,7 +38,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -85,14 +84,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final Map<String, StoreIngestionTask> topicNameToIngestionTaskMap;
   private final Optional<SchemaReader> schemaReader;
 
+  private final ExecutorService participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
+
   private ExecutorService consumerExecutorService;
 
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
   private final AtomicBoolean isRunning;
 
   private ParticipantStoreConsumptionTask participantStoreConsumptionTask = null;
-
-  private Thread participantStoreConsumptionTaskThread = null;
 
   private StoreIngestionTaskFactory ingestionTaskFactory;
 
@@ -145,8 +144,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           new ParticipantStoreConsumptionStats(metricsRepository, clusterName),
           ClientConfig.cloneConfig(clientConfig.get()).setMetricsRepository(metricsRepository),
           serverConfig.getParticipantMessageConsumptionDelayMs());
-      ThreadFactory threadFactory = new DaemonThreadFactory(ParticipantStoreConsumptionTask.class.getSimpleName());
-      participantStoreConsumptionTaskThread = threadFactory.newThread(participantStoreConsumptionTask);
     } else {
       logger.info("Unable to start participant store consumption task because client config is not provided, jobs "
           + "may not be killed if admin helix messaging channel is disabled");
@@ -190,8 +187,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     isRunning.set(true);
 
     storeBufferService.start();
-    if (participantStoreConsumptionTaskThread != null) {
-      participantStoreConsumptionTaskThread.start();
+    if (participantStoreConsumptionTask != null) {
+      participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
     // process that needs to finish before the KafkaStoreIngestionService can be considered
@@ -240,11 +237,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     isRunning.set(false);
 
     IOUtils.closeQuietly(participantStoreConsumptionTask);
-    if (participantStoreConsumptionTaskThread != null) {
-      participantStoreConsumptionTaskThread.join(WAIT_THREAD_TO_STOP_TIMEOUT_MS);
-      if (participantStoreConsumptionTaskThread.isAlive()) {
-        participantStoreConsumptionTaskThread.interrupt();
-      }
+    participantStoreConsumerExecutorService.shutdownNow();
+    try {
+      participantStoreConsumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
     }
 
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
@@ -396,16 +393,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 
+  /**
+   * @param topicName Venice topic (store and version number) for the corresponding consumer task that needs to be killed.
+   *                  No action is taken for invocations of killConsumptionTask on topics that are not in the map. This
+   *                  includes logging.
+   * @return true if a kill is needed and called, otherwise false
+   */
   @Override
-  public synchronized void killConsumptionTask(String topicName) {
+  public synchronized boolean killConsumptionTask(String topicName) {
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topicName);
-    if (consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.kill();
+    boolean killed = false;
+    if (consumerTask != null) {
+      if (consumerTask.isRunning()) {
+        consumerTask.kill();
+        killed = true;
+        logger.info("Killed consumption task for Topic " + topicName);
+      } else {
+        logger.warn("Ignoring kill signal for Topic " + topicName);
+      }
+      // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
+      // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
-      logger.info("Killed consumption task for Topic " + topicName);
-    } else {
-      logger.warn("Ignoring kill signal for Topic " + topicName);
     }
+    return killed;
   }
 
   @Override
@@ -431,8 +441,17 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   @Override
-  public Set<String> getIngestingTopics() {
-    return topicNameToIngestionTaskMap.keySet();
+  public Set<String> getIngestingTopicsWithVersionStatusNotOnline() {
+    Set<String> result = new HashSet<>();
+    for (String topic : topicNameToIngestionTaskMap.keySet()) {
+      Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(topic));
+      int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
+      if (store == null || !store.getVersion(versionNumber).isPresent()
+          || store.getVersion(versionNumber).get().getStatus() != VersionStatus.ONLINE) {
+        result.add(topic);
+      }
+    }
+    return result;
   }
 
   /**

@@ -36,7 +36,7 @@ public class TestPushJobStatusUpload {
   public void testPushJobStatusUpload() throws ExecutionException, InterruptedException {
     String pushJobStatusStoreName = "test-push-job-status-store";
     Properties properties = new Properties();
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1, 2, 1, 1, 1000000, false, false);
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false);
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     properties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME, venice.getClusterName());
     properties.setProperty(ConfigKeys.PUSH_JOB_STATUS_STORE_NAME, pushJobStatusStoreName);

@@ -67,14 +67,16 @@ public class ParticipantStoreConsumptionTask implements Runnable, Closeable {
         Utils.sleep(participantMessageConsumptionDelayMs);
         ParticipantMessageKey key = new ParticipantMessageKey();
         key.messageType = ParticipantMessageType.KILL_PUSH_JOB.getValue();
-        for (String topic : storeIngestionService.getIngestingTopics()) {
+        for (String topic : storeIngestionService.getIngestingTopicsWithVersionStatusNotOnline()) {
           key.resourceName = topic;
           ParticipantMessageValue value = participantStoreClient.get(key).get();
           if (value != null && value.messageType == ParticipantMessageType.KILL_PUSH_JOB.getValue()) {
             KillPushJob killPushJobMessage = (KillPushJob) value.messageUnion;
-            storeIngestionService.killConsumptionTask(topic);
-            stats.recordKilledPushJobs();
-            stats.recordKillPushJobLatency(Long.max(0,System.currentTimeMillis() - killPushJobMessage.timestamp));
+            if (storeIngestionService.killConsumptionTask(topic)) {
+              // emit metrics only when a confirmed kill is made
+              stats.recordKilledPushJobs();
+              stats.recordKillPushJobLatency(Long.max(0,System.currentTimeMillis() - killPushJobMessage.timestamp));
+            }
           }
         }
       }

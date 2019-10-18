@@ -37,7 +37,7 @@ public interface StoreIngestionService {
    *
    * @param topicName Venice topic (store and version number) for the corresponding consumer task that needs to be killed.
    */
-  void killConsumptionTask(String topicName);
+  boolean killConsumptionTask(String topicName);
 
 //  void promoteToStandby(VeniceStoreConfig veniceStoreConfig, int partitionId, long sessionId);
 
@@ -67,8 +67,9 @@ public interface StoreIngestionService {
   boolean isPartitionConsuming(VeniceStoreConfig veniceStore, int partitionId);
 
   /**
-   * Get topic names that are currently ingesting data.
+   * Get topic names that are currently maintained by the ingestion service with corresponding version status not in an
+   * online state. Topics with invalid store or version number are also included in the returned list.
    * @return a {@link Set} of topic names.
    */
-  Set<String> getIngestingTopics();
+  Set<String> getIngestingTopicsWithVersionStatusNotOnline();
 }

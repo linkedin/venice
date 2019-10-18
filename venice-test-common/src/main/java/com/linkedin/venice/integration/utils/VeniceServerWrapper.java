@@ -46,12 +46,18 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private TestVeniceServer veniceServer;
   private final VeniceProperties serverProps;
   private final VeniceConfigLoader config;
+  private final Optional<ClientConfig> consumerClientConfig;
+  private final Optional<SSLEngineComponentFactory> sslFactory;
 
-  VeniceServerWrapper(String serviceName, File dataDirectory, TestVeniceServer veniceServer, VeniceProperties serverProps, VeniceConfigLoader config) {
+  VeniceServerWrapper(String serviceName, File dataDirectory, TestVeniceServer veniceServer,
+      VeniceProperties serverProps, VeniceConfigLoader config, Optional<ClientConfig> consumerClientConfig,
+      Optional<SSLEngineComponentFactory> sslFactory) {
     super(serviceName, dataDirectory);
     this.veniceServer = veniceServer;
     this.serverProps = serverProps;
     this.config = config;
+    this.consumerClientConfig = consumerClientConfig;
+    this.sslFactory = sslFactory;
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName,
@@ -63,7 +69,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
-      Optional<ClientConfig> clientConfigForConsumer = Optional.ofNullable(
+      Optional<ClientConfig> consumerClientConfig = Optional.ofNullable(
           (ClientConfig) featureProperties.get(CLIENT_CONFIG_FOR_CONSUMER));
 
       /** Create config directory under {@link dataDirectory} */
@@ -112,8 +118,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
         sslFactory = Optional.of(SslUtils.getLocalSslFactory());
       }
 
-      TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty(), clientConfigForConsumer);
-      return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader);
+      TestVeniceServer server = new TestVeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory,
+          Optional.empty(), consumerClientConfig);
+      return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader,
+          consumerClientConfig, sslFactory);
     };
   }
 
@@ -161,7 +169,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
 
   @Override
   protected void newProcess() throws Exception {
-    this.veniceServer = new TestVeniceServer(config);
+    this.veniceServer = new TestVeniceServer(config, new MetricsRepository(), sslFactory, Optional.empty(),
+        consumerClientConfig);
   }
 
   public TestVeniceServer getVeniceServer() {
