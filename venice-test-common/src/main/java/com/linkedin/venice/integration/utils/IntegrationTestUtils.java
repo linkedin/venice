@@ -44,7 +44,7 @@ public class IntegrationTestUtils {
    * N.B.: Visibility is package-private on purpose.
    */
   static File getDataDirectory(String serviceName) {
-    String tmpDirectory = System.getProperty("java.io.tmpdir");
+    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
     String directoryName = TestUtils.getUniqueString("VeniceTemp-" + serviceName + "-Data");
     File dataDir = new File(tmpDirectory, directoryName).getAbsoluteFile();
     dataDir.deleteOnExit(); //Doesn't always work

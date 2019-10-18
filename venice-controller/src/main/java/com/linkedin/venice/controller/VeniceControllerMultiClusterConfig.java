@@ -138,6 +138,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicDeletionStatusPollIntervalMs();
   }
 
+  public boolean isConcurrentTopicDeleteRequestsEnabled() {
+    return getCommonConfig().isConcurrentTopicDeleteRequestsEnabled();
+  }
+
   public long getKafkaMinLogCompactionLagInMs() {
     return getCommonConfig().getKafkaMinLogCompactionLagInMs();
   }

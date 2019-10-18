@@ -75,7 +75,7 @@ public class VeniceServerTest {
       throws IOException {
 
     // setup
-    String tmpDirectory = System.getProperty("java.io.tmpdir");
+    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
     String directoryName = TestUtils.getUniqueString("testdir");
     String fileName = TestUtils.getUniqueString("testfile");
     Path dirPath = Paths.get(tmpDirectory, directoryName);

@@ -100,6 +100,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false)
             // The first cluster will always be the one to host system schemas...
             .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0])
+            .put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false)
             .put(extraProps.toProperties());
 
         if (sslToKafka) {

@@ -45,6 +45,8 @@ public class TestUtils {
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND / 5;
   private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 60 * Time.MS_PER_SECOND;
 
+  public static final String TEMP_DIRECTORY_SYSTEM_PROPERTY = "java.io.tmpdir";
+
   public static String getUniqueString() {
     return getUniqueString("");
   }
@@ -62,7 +64,7 @@ public class TestUtils {
   }
 
   public static String getUniqueTempPath(String prefix) {
-    return Paths.get(System.getProperty("java.io.tmpdir"), TestUtils.getUniqueString(prefix)).toAbsolutePath().toString();
+    return Paths.get(System.getProperty(TEMP_DIRECTORY_SYSTEM_PROPERTY), TestUtils.getUniqueString(prefix)).toAbsolutePath().toString();
   }
 
   /**

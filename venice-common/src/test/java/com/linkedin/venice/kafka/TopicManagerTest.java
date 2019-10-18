@@ -19,6 +19,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.log4j.Logger;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -108,6 +109,29 @@ public class TopicManagerTest {
     manager.ensureTopicIsDeletedAndBlock(topicName);
     Assert.assertFalse(manager.containsTopic(topicName));
   }
+
+  @Test
+  public void testDeleteTopicWithRetry() {
+    String topicName = getTopic();
+    manager.ensureTopicIsDeletedAndBlockWithRetry(topicName);
+    Assert.assertFalse(manager.containsTopic(topicName));
+  }
+
+  @Test
+  public void testDeleteTopicWithTimeout() throws IOException {
+
+    // Since we're dealing with a mock in this test case, we'll just use a fake topic name
+    String topicName = "mockTopicName";
+    TopicManager partiallyMockedTopicManager = Mockito.mock(TopicManager.class);
+    Mockito.doThrow(VeniceOperationAgainstKafkaTimedOut.class).when(partiallyMockedTopicManager).ensureTopicIsDeletedAndBlock(topicName);
+    Mockito.doCallRealMethod().when(partiallyMockedTopicManager).ensureTopicIsDeletedAndBlockWithRetry(topicName);
+
+    // Make sure everything went as planned
+    Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> partiallyMockedTopicManager.ensureTopicIsDeletedAndBlockWithRetry(topicName));
+    Mockito.verify(partiallyMockedTopicManager, times(MAX_TOPIC_DELETE_RETRIES)).ensureTopicIsDeletedAndBlock(topicName);
+    Mockito.verifyNoMoreInteractions(partiallyMockedTopicManager);
+  }
+
 
   @Test
   public void testSyncDeleteTopic() {
