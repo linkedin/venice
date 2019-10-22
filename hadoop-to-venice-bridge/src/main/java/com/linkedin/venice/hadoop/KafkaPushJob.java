@@ -20,6 +20,9 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.status.PushJobDetailsStatus;
+import com.linkedin.venice.status.protocol.PushJobDetails;
+import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
@@ -34,11 +37,14 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.ByteArrayOutputStream;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
@@ -47,9 +53,13 @@ import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.io.DatumWriter;
+import org.apache.avro.io.EncoderFactory;
+import org.apache.avro.io.JsonEncoder;
 import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
+import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -76,6 +86,7 @@ import java.util.Properties;
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.hadoop.MapReduceConstants.*;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CLASSLOADER;
 import static org.apache.hadoop.mapreduce.MRJobConfig.MAPREDUCE_JOB_CREDENTIALS_BINARY;
 import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION;
@@ -229,6 +240,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private static final long DEFAULT_JOB_STATUS_IN_UNKNOWN_STATE_TIMEOUT_MS = 30 * Time.MS_PER_MINUTE;
 
+  private static final String NON_CRITICAL_EXCEPTION = "This exception does not fail the push job. ";
+
   private String inputDirectory;
   // Immutable state
   private final VeniceProperties props;
@@ -248,6 +261,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
   private long pushStartTime;
+  private long jobStartTime;
   private String pushId;
 
   private Properties veniceWriterProperties;
@@ -306,6 +320,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     CompressionStrategy compressionStrategy;
   }
   private VersionTopicInfo versionTopicInfo;
+
+  private PushJobDetails pushJobDetails;
 
   protected class StoreSetting {
     boolean isChunkingEnabled;
@@ -420,16 +436,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   @Override
   public void run() {
     try {
+      jobStartTime = System.currentTimeMillis();
       logGreeting();
-
-      this.inputDirectory = getInputURI(this.props);
-
-      // Check data size
-      // TODO: do we actually need this information?
-      this.inputFileDataSize = calculateInputDataSize(this.inputDirectory);
-      // Get input schema
-      this.schemaInfo = getInputSchema(this.inputDirectory, this.props);
-
       // Discover the cluster based on the store name and re-initialized controller client.
       this.clusterName = discoverCluster(pushJobSetting);
       Optional<SSLFactory> sslFactory = Optional.empty();
@@ -437,6 +445,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         sslFactory = Optional.of(SslUtils.getSSLFactory(getVeniceWriterProperties(versionTopicInfo), pushJobSetting.sslFactoryClassName));
       }
       this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl, sslFactory);
+      initPushJobDetails();
+      sendPushJobDetails();
+      this.inputDirectory = getInputURI(this.props);
+
+      // Check data size
+      // TODO: do we actually need this information?
+      this.inputFileDataSize = calculateInputDataSize(this.inputDirectory);
+      // Get input schema
+      this.schemaInfo = getInputSchema(this.inputDirectory, this.props);
       validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
       validateValueSchema(controllerClient, pushJobSetting, schemaInfo);
       StoreSetting storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
@@ -448,6 +465,13 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         this.pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
         // Create new store version, topic and fetch Kafka url from backend
         versionTopicInfo = createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props);
+        // Update and send push job details with new info
+        pushJobDetails.pushId = pushId;
+        pushJobDetails.partitionCount = versionTopicInfo.partitionCount;
+        pushJobDetails.valueCompressionStrategy = versionTopicInfo.compressionStrategy.getValue();
+        pushJobDetails.chunkingEnabled = storeSetting.isChunkingEnabled;
+        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.TOPIC_CREATED.getValue()));
+        sendPushJobDetails();
         // Log Venice data push job related info
         logPushJobProperties(versionTopicInfo, pushJobSetting, schemaInfo, this.clusterName, this.inputDirectory, this.inputFileDataSize);
 
@@ -488,10 +512,17 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         // Close VeniceWriter before polling job status since polling job status could
         // trigger job deletion
         closeVeniceWriter();
-
+        // Update and send push job details with new info
+        updatePushJobDetailsWithMRCounters();
+        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.WRITE_COMPLETED.getValue()));
+        sendPushJobDetails();
         // Waiting for Venice Backend to complete consumption
         pollStatusUntilComplete(incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
         checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
+        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
+        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+        updatePushJobDetailsWithConfigs();
+        sendPushJobDetails();
       } else {
         logger.info("Skipping push job, since " + ENABLE_PUSH + " is set to false.");
       }
@@ -505,6 +536,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     } catch (Exception e) {
       logger.error("Failed to run job.", e);
       checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
+      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
+      pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+      updatePushJobDetailsWithConfigs();
+      sendPushJobDetails();
       closeVeniceWriter();
       try {
         stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
@@ -617,7 +652,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private void checkAndUploadPushJobStatus(PushJobStatus status, String message, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo, long pushStartTime, String pushId) {
     if (pushJobSetting.enablePushJobStatusUpload) {
-      int version = versionTopicInfo.topic == null ? UNCREATED_VERSION_NUMBER : Version.parseVersionFromKafkaTopicName(versionTopicInfo.topic);
+      int version = versionTopicInfo == null ? UNCREATED_VERSION_NUMBER : Version.parseVersionFromKafkaTopicName(versionTopicInfo.topic);
       long duration = pushStartTime == 0 ? 0 : System.currentTimeMillis() - pushStartTime;
       String verifiedPushId = pushId == null ? "" : pushId;
       try {
@@ -629,6 +664,128 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       } catch (Exception e) {
         logger.warn("Exception thrown while uploading push job status", e);
       }
+    }
+  }
+
+  private void initPushJobDetails() {
+    pushJobDetails = new PushJobDetails();
+    pushJobDetails.clusterName = clusterName;
+    pushJobDetails.overallStatus = new ArrayList<>();
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.STARTED.getValue()));
+    pushJobDetails.pushId = "";
+    pushJobDetails.partitionCount = -1;
+    pushJobDetails.valueCompressionStrategy = CompressionStrategy.NO_OP.getValue();
+    pushJobDetails.chunkingEnabled = false;
+    pushJobDetails.jobDurationInMs = -1;
+    pushJobDetails.totalNumberOfRecords = -1;
+    pushJobDetails.totalKeyBytes = -1;
+    pushJobDetails.totalRawValueBytes = -1;
+    pushJobDetails.totalCompressedValueBytes = -1;
+  }
+
+  private void updatePushJobDetailsWithMRCounters() {
+    try {
+      if (runningJob != null) {
+        pushJobDetails.totalNumberOfRecords =
+            runningJob.getCounters().getGroup(COUNTER_GROUP_KAFKA).getCounter(COUNTER_OUTPUT_RECORDS);
+        pushJobDetails.totalKeyBytes =
+            runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_KEY_SIZE);
+        pushJobDetails.totalRawValueBytes =
+            runningJob.getCounters().getGroup(COUNTER_GROUP_QUOTA).getCounter(COUNTER_TOTAL_VALUE_SIZE);
+        pushJobDetails.totalCompressedValueBytes =
+            runningJob.getCounters().getGroup(COUNTER_GROUP_KAFKA).getCounter(COUNTER_TOTAL_COMPRESSED_VALUE_BYTES);
+      }
+    } catch (Exception e) {
+      logger.warn("Exception caught while updating push job details with map reduce counters. "
+          + NON_CRITICAL_EXCEPTION, e);
+    }
+  }
+
+  /**
+   * Configs should only be attached to the last event for a store version due to the size of these configs. i.e. should
+   * only be attached when the overall status is a terminal state.
+   */
+  private void updatePushJobDetailsWithConfigs() {
+    try {
+      int lastStatus = pushJobDetails.overallStatus.get(pushJobDetails.overallStatus.size() - 1).status;
+      if (PushJobDetailsStatus.isTerminal(lastStatus)) {
+        Map<CharSequence, CharSequence> pushJobConfigs = new HashMap<>();
+        for (String key : props.keySet()) {
+          pushJobConfigs.put(key, props.getString(key));
+        }
+        pushJobDetails.pushJobConfigs = pushJobConfigs;
+        if (versionTopicInfo != null) {
+          Map<CharSequence, CharSequence> producerConfigs = new HashMap<>();
+          Properties producerProps = getVeniceWriterProperties(versionTopicInfo);
+          for (String key : producerProps.stringPropertyNames()) {
+            producerConfigs.put(key, producerProps.getProperty(key));
+          }
+          pushJobDetails.producerConfigs = producerConfigs;
+        }
+      }
+    } catch (Exception e) {
+      logger.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);
+    }
+  }
+
+  private void updatePushJobDetailsWithColoStatus(Map<String, String> coloSpecificInfo, Set<String> completedColos) {
+    try {
+      if (pushJobDetails.coloStatus == null) {
+        pushJobDetails.coloStatus = new HashMap<>();
+      }
+      for (Map.Entry<String, String> coloEntry : coloSpecificInfo.entrySet()) {
+        if (completedColos.contains(coloEntry.getKey()))
+          // Don't bother updating the completed colo's status
+          continue;
+        int status = PushJobDetailsStatus.valueOf(coloEntry.getValue()).getValue();
+        if (!pushJobDetails.coloStatus.containsKey(coloEntry.getKey())) {
+          List<PushJobDetailsStatusTuple> newList = new ArrayList<>();
+          newList.add(getPushJobDetailsStatusTuple(status));
+          pushJobDetails.coloStatus.put(coloEntry.getKey(), newList);
+        } else {
+          List<PushJobDetailsStatusTuple> statuses = pushJobDetails.coloStatus.get(coloEntry.getKey());
+          if (statuses.get(statuses.size() - 1).status != status) {
+            // Only add the status if there is a change
+            statuses.add(getPushJobDetailsStatusTuple(status));
+          }
+        }
+      }
+
+    } catch (Exception e) {
+      logger.warn("Exception caught while updating push job details with colo status. " + NON_CRITICAL_EXCEPTION, e);
+    }
+  }
+
+  private PushJobDetailsStatusTuple getPushJobDetailsStatusTuple(int status) {
+    PushJobDetailsStatusTuple tuple = new PushJobDetailsStatusTuple();
+    tuple.status = status;
+    tuple.timestamp = System.currentTimeMillis();
+    return tuple;
+  }
+
+  private void sendPushJobDetails() {
+    if (!pushJobSetting.enablePushJobStatusUpload || pushJobDetails == null) {
+      String detailMessage = pushJobSetting.enablePushJobStatusUpload ? "Feature is disabled"
+          : "The payload was not populated properly";
+      logger.info("Unable to send push job details for monitoring purpose. " + detailMessage);
+      return;
+    }
+    try {
+      pushJobDetails.reportTimestamp = System.currentTimeMillis();
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      JsonEncoder jsonEncoder = EncoderFactory.get().jsonEncoder(PushJobDetails.SCHEMA$, output);
+      DatumWriter<PushJobDetails> writer = new SpecificDatumWriter<>(PushJobDetails.SCHEMA$);
+      writer.write(pushJobDetails, jsonEncoder);
+      jsonEncoder.flush();
+      output.flush();
+      int version = versionTopicInfo == null ? -1 : versionTopicInfo.version;
+      ControllerResponse response =
+          controllerClient.sendPushJobDetails(pushJobSetting.storeName, version, output.toString());
+      if (response.isError()) {
+        logger.warn("Failed to send push job details. " + NON_CRITICAL_EXCEPTION + " Details: " + response.getError());
+      }
+    } catch (Exception e) {
+      logger.warn("Exception caught while sending push job details. " + NON_CRITICAL_EXCEPTION, e);
     }
   }
 
@@ -826,7 +983,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     Map<String, String> previousExtraDetails = new HashMap<>();
     // Overall job details. Stored in memory to avoid printing repetitive details.
     String previousOverallDetails = null;
-    long pollTime = System.currentTimeMillis() + pollingIntervalMs;
+    // Perform a poll first in case the job has already finished before taking breaks between polls.
+    long pollTime = 0;
 
     /**
      * The start time when some data centers enter unknown state;
@@ -855,6 +1013,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         previousOverallDetails = printJobStatus(response, previousOverallDetails, previousExtraDetails);
         ExecutionStatus overallStatus = ExecutionStatus.valueOf(response.getStatus());
         Map<String, String> datacenterSpecificInfo = response.getExtraInfo();
+        // Note that it's intended to update the push job details before updating the completed datacenter set.
+        updatePushJobDetailsWithColoStatus(datacenterSpecificInfo, completedDatacenters);
         for (String datacenter : datacenterSpecificInfo.keySet()) {
           ExecutionStatus datacenterStatus = ExecutionStatus.valueOf(datacenterSpecificInfo.get(datacenter));
           if (datacenterStatus.isTerminal()) {
@@ -887,6 +1047,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           }
         } else {
           unknownStateStartTimeInNS = 0;
+        }
+        // Only send the push job details after all error checks have passed and job is not completed yet.
+        if (keepChecking) {
+          sendPushJobDetails();
         }
       }
     }
@@ -1113,6 +1277,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public void cancel() {
     stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
     checkAndUploadPushJobStatus(PushJobStatus.KILLED, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
+    pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
+    pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+    updatePushJobDetailsWithConfigs();
+    sendPushJobDetails();
   }
 
   private void stopAndCleanup(PushJobSetting pushJobSetting, ControllerClient controllerClient, VersionTopicInfo versionTopicInfo) {

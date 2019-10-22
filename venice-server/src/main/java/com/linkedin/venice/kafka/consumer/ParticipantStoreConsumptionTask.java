@@ -3,9 +3,9 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
@@ -38,9 +38,8 @@ public class ParticipantStoreConsumptionTask implements Runnable {
     this.stats =  stats;
     this.storeIngestionService = storeIngestionService;
     this.participantMessageConsumptionDelayMs = participantMessageConsumptionDelayMs;
-
     try {
-      String participantStoreName = ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName);
+      String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
       clientConfig.setStoreName(participantStoreName);
       clientConfig.setSpecificValueClass(ParticipantMessageValue.class);
       clientConfig.setStatsPrefix(CLIENT_STATS_PREFIX);

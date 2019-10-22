@@ -12,6 +12,7 @@ import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.Pair;
@@ -522,6 +523,9 @@ public interface Admin extends AutoCloseable, Closeable {
    * @param value the value for the push job status record.
    */
     void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value);
+
+    void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value);
+
 
     void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 }

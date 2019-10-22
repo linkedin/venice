@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -15,6 +16,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -33,6 +35,8 @@ import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
+
+import static org.testng.Assert.*;
 
 
 /**
@@ -131,6 +135,30 @@ public class TestUtils {
         }
       }
     }
+  }
+
+  /**
+   * Wait for the push job for a store version or topic to be completed. The polling will fast fail if the push is
+   * found to be in ERROR state.
+   */
+  public static void waitForNonDeterministicPushCompletion(String topicName, ControllerClient controllerClient,
+      long timeout, TimeUnit timeoutUnits, Optional<Logger> logger) {
+    waitForNonDeterministicCompletion(timeout, timeoutUnits, () -> {
+      String emptyPushStatus = controllerClient.queryJobStatus(topicName, Optional.empty()).getStatus();
+      boolean ignoreError = false;
+      try {
+        assertNotEquals(emptyPushStatus, ExecutionStatus.ERROR.toString(), "Unexpected empty push failure");
+        ignoreError = true;
+        assertEquals(emptyPushStatus, ExecutionStatus.COMPLETED.toString(), "Empty push is yet to complete");
+        return true;
+      } catch (AssertionError | VerifyError e) {
+        if (ignoreError) {
+          logger.ifPresent(value -> value.info(e.getMessage()));
+          return false;
+        }
+        throw e;
+      }
+    });
   }
 
   public static Store createTestStore(@NotNull String name, @NotNull String owner, long createdTime) {

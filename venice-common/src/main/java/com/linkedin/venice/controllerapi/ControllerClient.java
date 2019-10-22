@@ -29,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 
 import org.apache.log4j.Logger;
 import org.apache.http.client.utils.URLEncodedUtils;
+import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
@@ -37,6 +38,7 @@ public class ControllerClient implements Closeable {
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final ObjectMapper objectMapper = new ObjectMapper();
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final String localHostName;
@@ -300,6 +302,15 @@ public class ControllerClient implements Closeable {
         .add(MESSAGE, message);
     return request(ControllerRoute.UPLOAD_PUSH_JOB_STATUS, params, PushJobStatusUploadResponse.class);
   }
+
+  public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version)
+        .add(PUSH_JOB_DETAILS, pushJobDetailsString);
+    return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class);
+  }
+
   public MultiStoreResponse queryStoreList() {
     return queryStoreList(true);
   }
