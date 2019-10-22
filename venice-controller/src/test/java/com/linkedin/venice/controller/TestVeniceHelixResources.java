@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Optional;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
@@ -35,7 +36,7 @@ public class TestVeniceHelixResources {
     admin.addCluster(cluster);
     return new VeniceHelixResources(cluster, zkClient, new HelixAdapterSerializer(),
         new SafeHelixManager(controller), mock(VeniceControllerClusterConfig.class),
-        mock(StoreCleaner.class), metricsRepository, lock);
+        mock(StoreCleaner.class), metricsRepository, lock, Optional.empty(), Optional.empty());
   }
 
   @Test

@@ -57,11 +57,11 @@ public abstract class AbstractPushMonitor
 
   private Map<String, OfflinePushStatus> topicToPushMap = new ConcurrentHashMap<>();
 
-  private Optional<TopicReplicator> topicReplicator = Optional.empty();
+  private Optional<TopicReplicator> topicReplicator;
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
-      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid) {
+      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -69,6 +69,7 @@ public abstract class AbstractPushMonitor
     this.routingDataRepository = routingDataRepository;
     this.aggPushHealthStats = aggPushHealthStats;
     this.skipBufferReplayForHybrid = skipBufferReplayForHybrid;
+    this.topicReplicator = topicReplicator;
 
     // This is the VeniceHelixAdmin.  Any locking should be done on this object.  If we just use
     // the synchronized keyword to lock on the OfflinePushMonitor itself, then we have a deadlock
@@ -585,6 +586,9 @@ public abstract class AbstractPushMonitor
     aggPushHealthStats.recordPushPrepartionDuration(storeName, offlinePushWaitTimeInSecond);
   }
 
+  /**
+   * For testing only; in order to override the topicReplicator with mocked Replicator.
+   */
   public void setTopicReplicator(Optional<TopicReplicator> topicReplicator) {
     this.topicReplicator = topicReplicator;
   }

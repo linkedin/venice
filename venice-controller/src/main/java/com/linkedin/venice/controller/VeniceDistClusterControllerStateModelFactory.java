@@ -5,8 +5,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.replication.TopicReplicator;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collection;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.manager.zk.ZkClient;
@@ -26,16 +28,21 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final StoreCleaner storeCleaner;
   private final MetricsRepository metricsRepository;
   private final ClusterLeaderInitializationRoutine controllerInitialization;
+  private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
+  private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner, VeniceControllerMultiClusterConfig clusterConfigs,
-      MetricsRepository metricsRepository, ClusterLeaderInitializationRoutine controllerInitialization) {
+      StoreCleaner storeCleaner, VeniceControllerMultiClusterConfig clusterConfigs, MetricsRepository metricsRepository,
+      ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
+      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
     this.storeCleaner = storeCleaner;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
+    this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
+    this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
   }
 
   @Override
@@ -51,7 +58,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterConfig, storeCleaner,
-            metricsRepository, controllerInitialization);
+            metricsRepository, controllerInitialization, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

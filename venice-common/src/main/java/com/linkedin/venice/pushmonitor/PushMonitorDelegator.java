@@ -44,17 +44,18 @@ public class PushMonitorDelegator implements PushMonitor {
   public PushMonitorDelegator(PushMonitorType pushMonitorType, String clusterName,
       RoutingDataRepository routingDataRepository, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
-      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid) {
+      AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid,
+      Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator) {
 
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
     this.lock = storeCleaner;
 
-    this.offlinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
-        offlinePushAccessor, storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid);
+    this.offlinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
+        storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor, storeCleaner,
-        metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid);
+        metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid, leaderFollowerTopicReplicator);
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
   }
@@ -183,12 +184,6 @@ public class PushMonitorDelegator implements PushMonitor {
   @Override
   public void recordPushPreparationDuration(String topic, long offlinePushWaitTimeInSecond) {
     getPushMonitor(topic).recordPushPreparationDuration(topic, offlinePushWaitTimeInSecond);
-  }
-
-  public void setTopicReplicator(Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
-    partitionStatusBasedPushStatusMonitor.setTopicReplicator(leaderFollowerTopicReplicator);
-    offlinePushMonitor.setTopicReplicator(onlineOfflineTopicReplicator);
   }
 
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {

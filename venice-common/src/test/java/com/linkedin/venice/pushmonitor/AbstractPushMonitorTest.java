@@ -38,10 +38,10 @@ public abstract class AbstractPushMonitorTest {
   private int replicationFactor = 3;
 
   protected AbstractPushMonitor getPushMonitor() {
-    return getPushMonitor(false);
+    return getPushMonitor(false, mock(TopicReplicator.class));
   }
 
-  protected abstract AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid);
+  protected abstract AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator);
 
   @BeforeMethod
   public void setup() {
@@ -309,8 +309,7 @@ public abstract class AbstractPushMonitorTest {
     store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = mock(TopicReplicator.class);
-    AbstractPushMonitor testMonitor = getPushMonitor(true);
-    testMonitor.setTopicReplicator(Optional.of(mockReplicator));
+    AbstractPushMonitor testMonitor = getPushMonitor(true, mockReplicator);
     // Start a push
     testMonitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);

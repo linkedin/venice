@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,9 +17,9 @@ import static org.mockito.Mockito.*;
 
 public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
   @Override
-  protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid) {
-    return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(),
-        getMockStoreCleaner(), getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid);
+  protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
+    return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), getMockStoreCleaner(),
+        getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid, Optional.of(mockReplicator));
   }
 
   @Test
