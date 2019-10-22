@@ -10,21 +10,12 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.security.cert.Certificate;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.util.Base64;
-import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import javax.net.ssl.SSLSession;
-import javax.servlet.http.HttpServletRequest;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -198,6 +189,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(OFFLINE_PUSH_INFO.getPath(), CreateVersion.uploadPushInfo(admin));
 
     httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), JobRoutes.uploadPushJobStatus(admin));
+    httpService.post(SEND_PUSH_JOB_DETAILS.getPath(), JobRoutes.sendPushJobDetails(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();

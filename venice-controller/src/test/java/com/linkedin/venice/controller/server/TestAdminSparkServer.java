@@ -34,7 +34,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.TestUtils;
@@ -515,7 +515,7 @@ public class TestAdminSparkServer {
       Assert.assertTrue(storesInCluster.contains(storeName), "Result of listing store status should contain all stores we created.");
     }
     List<String> storeStatuses = storeResponse.getStoreStatusMap().entrySet().stream()
-        .filter(e -> !e.getKey().equals(ParticipantMessageStoreUtils.getStoreNameForCluster(cluster.getClusterName())))
+        .filter(e -> !e.getKey().equals(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(cluster.getClusterName())))
         .map(Map.Entry::getValue).collect(Collectors.toList());
     Assert.assertFalse(storeStatuses.isEmpty());
     for (String status : storeStatuses) {

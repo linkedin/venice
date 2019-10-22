@@ -79,6 +79,8 @@ public enum ControllerRoute {
   UPLOAD_PUSH_JOB_STATUS("/upload_push_job_status", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION, PUSH_JOB_STATUS,
       PUSH_JOB_DURATION, PUSH_JOB_ID)),
 
+  SEND_PUSH_JOB_DETAILS("/send_push_job_details", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION, PUSH_JOB_DETAILS)),
+
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT));
 
   private final String path;

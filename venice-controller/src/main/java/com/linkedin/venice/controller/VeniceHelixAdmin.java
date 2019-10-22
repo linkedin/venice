@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFac
 import com.linkedin.venice.controller.stats.VeniceHelixAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -55,7 +56,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -76,6 +77,7 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -101,6 +103,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.commons.io.IOUtils;
@@ -188,6 +192,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String controllerHAASSuperClusterName;
     private final String coloMasterClusterName;
     private final Optional<SSLFactory> sslFactory;
+    private final String pushJobStatusStoreClusterName;
+    private final String pushJobStatusStoreName;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -200,8 +206,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private PropertyKey.Builder level1KeyBuilder;
 
     private String pushJobStatusTopicName;
+    private String pushJobDetailsRTTopic;
 
-    private VeniceWriter<PushJobStatusRecordKey, PushJobStatusRecordValue, byte[]> pushJobStatusWriter = null;
+    private AtomicReference<Integer> pushJobStatusValueSchemaId = new AtomicReference<>(-1);
+    private AtomicReference<Integer> pushJobDetailsSchemaId = new AtomicReference<>(-1);
+    private AtomicReference<VeniceWriter> pushJobDetailsWriter = new AtomicReference<>(null);
+    private AtomicReference<VeniceWriter> pushJobStatusWriter = new AtomicReference<>(null);
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
 
@@ -284,6 +294,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         isParticipantOnlyInControllerCluster = commonConfig.isControllerClusterLeaderHAAS();
         controllerHAASSuperClusterName = commonConfig.getControllerHAASSuperClusterName();
         coloMasterClusterName = commonConfig.getClusterName();
+        pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
+        pushJobStatusStoreName = commonConfig.getPushJobStatusStoreName();
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -353,7 +365,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         admin.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
         if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
             participantMessageStoreRTTMap.put(clusterName,
-                Version.composeRealTimeTopic(ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName)));
+                Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
         }
         waitUnitControllerJoinsCluster(clusterName);
     }
@@ -625,16 +637,63 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         logger.info("Completed cloning Store: " + storeName);
     }
 
-    public synchronized void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
-        String pushJobStatusStoreClusterName = multiClusterConfigs.getPushJobStatusStoreClusterName();
-        String pushJobStatusStoreName = multiClusterConfigs.getPushJobStatusStoreName();
+    private Integer fetchSystemStoreSchemaId(String clusterName, String storeName, String valueSchemaStr) {
+        if (isMasterController(clusterName)) {
+            // Can be fetched from local repository
+            return getValueSchemaId(clusterName, storeName, valueSchemaStr);
+        }
+        ControllerClient controllerClient = new ControllerClient(clusterName,
+            getMasterController(clusterName).getUrl(false), sslFactory);
+        SchemaResponse response = controllerClient.getValueSchemaID(storeName, valueSchemaStr);
+        if (response.isError()) {
+            throw new VeniceException("Failed to fetch schema id for store: " + storeName + ", error: "
+                + response.getError());
+        }
+        return response.getId();
+    }
+
+    // TODO duplicate code with VeniceHelixAdmin::sendPushJobStatusMessage but we intend to keep this method and remove
+    // the other one in the near future.
+    public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+        if (pushJobStatusStoreClusterName.isEmpty()) {
+            throw new VeniceException(("Unable to send the push job details because "
+                + ConfigKeys.PUSH_JOB_STATUS_STORE_CLUSTER_NAME) + " is not configured");
+        }
+        String pushJobDetailsStoreName = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+        if (pushJobDetailsRTTopic == null) {
+            // Verify the RT topic exists and give some time in case it's getting created.
+            String expectedRTTopic = Version.composeRealTimeTopic(pushJobDetailsStoreName);
+            for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt ++) {
+                if (attempt > 0)
+                    Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
+                if (topicManager.containsTopic(expectedRTTopic)) {
+                    pushJobDetailsRTTopic = expectedRTTopic;
+                    logger.info("Topic " + expectedRTTopic
+                        + " exists and is configured to receive push job details events");
+                    break;
+                }
+            }
+            if (pushJobDetailsRTTopic == null) {
+                throw new VeniceException("Expected RT topic " + expectedRTTopic + " to receive push job details events"
+                    + " not found. The topic either hasn't been created yet or it's mis-configured");
+            }
+        }
+        pushJobDetailsWriter.compareAndSet(null, getVeniceWriterFactory().getVeniceWriter(pushJobDetailsRTTopic,
+            new VeniceAvroKafkaSerializer(key.getSchema().toString()),
+            new VeniceAvroKafkaSerializer(value.getSchema().toString())));
+        pushJobDetailsSchemaId.compareAndSet(-1, fetchSystemStoreSchemaId(pushJobStatusStoreClusterName,
+            VeniceSystemStoreUtils.getPushJobDetailsStoreName(), value.getSchema().toString()));
+        pushJobDetailsWriter.get().put(key, value, pushJobDetailsSchemaId.get(), null);
+    }
+
+    public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
         if (pushJobStatusStoreClusterName.isEmpty() || pushJobStatusStoreName.isEmpty()) {
             // Push job status upload store is not configured.
             throw new VeniceException("Unable to upload the push job status because corresponding store is not configured");
         }
         if (pushJobStatusTopicName == null) {
             int getTopicAttempts = 0;
-            String expectedTopicName = Version.composeRealTimeTopic(multiClusterConfigs.getPushJobStatusStoreName());
+            String expectedTopicName = Version.composeRealTimeTopic(pushJobStatusStoreName);
             // Retry with backoff to allow the store and topic to be created when the config is changed.
             while (getTopicAttempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
                 if (getTopicAttempts != 0)
@@ -651,22 +710,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     + " for push job status. Either the topic hasn't been created yet or it's misconfigured.");
             }
         }
-        if (pushJobStatusWriter == null) {
-            configurePushJobStatusWriter(key, value);
-        }
-        int schemaId = getValueSchemaId(pushJobStatusStoreClusterName, pushJobStatusStoreName,
-            value.getSchema().toString());
-        pushJobStatusWriter.put(key, value, schemaId, null);
+        pushJobStatusWriter.compareAndSet(null, getVeniceWriterFactory().getVeniceWriter(pushJobStatusTopicName,
+            new VeniceAvroKafkaSerializer(key.getSchema().toString()),
+            new VeniceAvroKafkaSerializer(value.getSchema().toString())));
+        pushJobStatusValueSchemaId.compareAndSet(-1, fetchSystemStoreSchemaId(pushJobStatusStoreClusterName,
+            pushJobStatusStoreName, value.getSchema().toString()));
+        pushJobStatusWriter.get().put(key, value, pushJobStatusValueSchemaId.get(), null);
         logger.info("Successfully sent push job status for store " + value.storeName.toString() + " in cluster ");
-    }
-
-    private synchronized void configurePushJobStatusWriter(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
-        if (pushJobStatusWriter == null) {
-            VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(key.getSchema().toString());
-            VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(value.getSchema().toString());
-            pushJobStatusWriter = getVeniceWriterFactory()
-                .getVeniceWriter(pushJobStatusTopicName, keySerializer, valueSerializer);
-        }
     }
 
     public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
@@ -2522,7 +2572,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         admin.enablePartition(false, controllerClusterName, controllerName, clusterName, partitionNames);
         if (null != pushJobStatusWriter) {
-            IOUtils.closeQuietly(pushJobStatusWriter);
+            IOUtils.closeQuietly(pushJobStatusWriter.get());
         }
     }
 
@@ -2945,7 +2995,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (!verified) {
                         throw new VeniceException("Can't find the expected topic " + topic
                             + " for participant message store "
-                            + ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName));
+                            + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
                     }
                     return getVeniceWriterFactory().getVeniceWriter(topic,
                         new VeniceAvroKafkaSerializer(ParticipantMessageKey.SCHEMA$.toString()),
@@ -3201,7 +3251,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void close() {
         manager.disconnect();
         zkClient.close();
-        IOUtils.closeQuietly(pushJobStatusWriter);
+        IOUtils.closeQuietly(pushJobStatusWriter.get());
+        IOUtils.closeQuietly(pushJobDetailsWriter.get());
         for (VeniceWriter writer : participantMessageWriterMap.values()) {
             IOUtils.closeQuietly(writer);
         }

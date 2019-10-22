@@ -6,13 +6,18 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
+import org.apache.avro.io.DatumReader;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.map.ObjectMapper;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -20,6 +25,7 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class JobRoutes {
   private static final Logger logger = Logger.getLogger(JobRoutes.class);
+  private static final ObjectMapper objectMapper = new ObjectMapper();
 
   public static Route jobStatus(Admin admin) {
     return (request, response) -> {
@@ -100,7 +106,7 @@ public class JobRoutes {
   }
 
   public static Route uploadPushJobStatus(Admin admin) {
-    return  (request, response) -> {
+    return (request, response) -> {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       try {
         AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
@@ -127,5 +133,33 @@ public class JobRoutes {
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
+  }
+
+  public static Route sendPushJobDetails(Admin admin) {
+    return ((request, response) -> {
+      ControllerResponse controllerResponse = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, SEND_PUSH_JOB_DETAILS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+        controllerResponse.setCluster(clusterName);
+        controllerResponse.setName(storeName);
+        PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+        key.storeName = storeName;
+        key.versionNumber = versionNumber;
+
+        String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
+        DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$);
+        PushJobDetails pushJobDetails =
+            reader.read(null, DecoderFactory.get().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+        admin.sendPushJobDetails(key, pushJobDetails);
+      } catch (Throwable e) {
+        controllerResponse.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
+    });
   }
 }

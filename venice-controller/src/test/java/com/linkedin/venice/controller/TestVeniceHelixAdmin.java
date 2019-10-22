@@ -29,7 +29,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -987,7 +987,7 @@ public class TestVeniceHelixAdmin {
    */
   private void participantMessageStoreSetup() {
     int participantStorePartitionCount = 3;
-    String participantStoreName = ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName);
+    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     veniceAdmin.addStore(clusterName, participantStoreName, "venice-internal", ParticipantMessageKey.SCHEMA$.toString(),
         ParticipantMessageValue.SCHEMA$.toString());
     UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams();
@@ -1009,7 +1009,7 @@ public class TestVeniceHelixAdmin {
       throws Exception {
     participantMessageStoreSetup();
     String participantStoreRTTopic =
-        Version.composeRealTimeTopic(ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName));
+        Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
     String newNodeId = Utils.getHelixNodeIdentifier(9786);
     startParticipant(true, newNodeId);
     String storeName = "testKillPush";

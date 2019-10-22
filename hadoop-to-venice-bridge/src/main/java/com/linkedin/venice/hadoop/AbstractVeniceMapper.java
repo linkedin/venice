@@ -34,8 +34,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
   protected String topicName;
 
-  private boolean checkingRecordSize;
-
   private boolean isMapperOnly;
   private VeniceReducer reducer = null;
 
@@ -66,10 +64,8 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       return;
     }
 
-    if (checkingRecordSize) {
-      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
-      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
-    }
+    reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
+    reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
 
     output.collect(new BytesWritable(recordKey), new BytesWritable(recordValue));
   }
@@ -123,8 +119,6 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     configure(props);
 
     this.topicName = props.getString(TOPIC_PROP);
-    this.checkingRecordSize =
-        props.getLong(STORAGE_QUOTA_PROP) != Store.UNLIMITED_STORAGE_QUOTA;
 
     this.isMapperOnly = props.getBoolean(VENICE_MAP_ONLY);
     if (isMapperOnly) {

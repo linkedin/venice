@@ -182,6 +182,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     telemetry();
 
     reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_OUTPUT_RECORDS, 1);
+    reporter.incrCounter(COUNTER_GROUP_KAFKA, COUNTER_TOTAL_COMPRESSED_VALUE_BYTES, valueBytes.length);
   }
 
   private void telemetry() {

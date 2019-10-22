@@ -17,7 +17,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
@@ -26,8 +26,10 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -37,6 +39,7 @@ import static org.testng.Assert.*;
 
 
 public class TestParticipantMessageStore {
+  private static final Logger logger = Logger.getLogger(TestParticipantMessageStore.class);
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper parentZk;
@@ -52,6 +55,9 @@ public class TestParticipantMessageStore {
     Properties enableParticipantMessageStore = new Properties();
     enableParticipantMessageStore.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
     enableParticipantMessageStore.setProperty(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, "false");
+    // Disable topic cleanup since parent and child are sharing the same kafka cluster.
+    enableParticipantMessageStore.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS,
+        String.valueOf(Long.MAX_VALUE));
     venice = ServiceFactory.getVeniceCluster(1, 0, 1, 1,
         100000, false, false, enableParticipantMessageStore);
     D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
@@ -65,14 +71,11 @@ public class TestParticipantMessageStore {
         ServiceFactory.getVeniceParentController(venice.getClusterName(), parentZk.getAddress(), venice.getKafka(),
             new VeniceControllerWrapper[]{venice.getMasterVeniceController()},
             new VeniceProperties(enableParticipantMessageStore), false);
-    participantMessageStoreName = ParticipantMessageStoreUtils.getStoreNameForCluster(venice.getClusterName());
+    participantMessageStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName());
     controllerClient = venice.getControllerClient();
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
-    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.MINUTES, () -> {
-      // Ensure the participant message store is ready to serve
-      assertEquals(controllerClient.queryJobStatus(Version.composeKafkaTopic(participantMessageStoreName, 1))
-          .getStatus(), ExecutionStatus.COMPLETED.toString());
-    });
+    TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantMessageStoreName, 1),
+        controllerClient, 2, TimeUnit.MINUTES, Optional.of(logger));
   }
 
   @AfterClass
@@ -102,7 +105,7 @@ public class TestParticipantMessageStore {
     });
     // Verify participant store consumption stats
     String metricPrefix = "." + venice.getClusterName() + "-participant_store_consumption_task";
-    String requestMetricExample = ParticipantMessageStoreUtils.getStoreNameForCluster(venice.getClusterName())
+    String requestMetricExample = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName())
         + "--success_request_key_count.Avg";
     Map<String, ? extends Metric> metrics = venice.getVeniceServers().iterator().next().getMetricsRepository().metrics();
     assertEquals(metrics.get(metricPrefix + "--killed_push_jobs.Count").value(), 1.0);

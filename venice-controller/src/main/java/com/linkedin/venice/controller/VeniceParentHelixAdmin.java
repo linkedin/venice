@@ -48,7 +48,7 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.participant.ParticipantMessageStoreUtils;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
@@ -57,6 +57,7 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
@@ -112,6 +113,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
   private static final String PUSH_JOB_STATUS_STORE_DESCRIPTOR = "push job status store: ";
+  private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
   private static final int VERSION_ID_UNSET = -1;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
@@ -252,19 +254,26 @@ public class VeniceParentHelixAdmin implements Admin {
       return getVeniceWriterFactory().getBasicVeniceWriter(topicName, getTimer());
     });
 
-    if (clusterName.equals(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
-      if (!multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
-          && !multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
+    if (!multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
+        && clusterName.equals(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
+      if (!multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
         String storeName = multiClusterConfigs.getPushJobStatusStoreName();
         asyncSetupForInternalRTStore(multiClusterConfigs.getPushJobStatusStoreClusterName(),
             storeName, PUSH_JOB_STATUS_STORE_DESCRIPTOR + storeName,
             PushJobStatusRecordKey.SCHEMA$.toString(), PushJobStatusRecordValue.SCHEMA$.toString(),
             multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
       }
+
+      asyncSetupForInternalRTStore(
+          multiClusterConfigs.getPushJobStatusStoreClusterName(),
+          VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
+          PUSH_JOB_DETAILS_STORE_DESCRIPTOR + VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
+          PushJobStatusRecordKey.SCHEMA$.toString(), PushJobDetails.SCHEMA$.toString(),
+          multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
     }
 
     if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
-      String storeName = ParticipantMessageStoreUtils.getStoreNameForCluster(clusterName);
+      String storeName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
       asyncSetupForInternalRTStore(clusterName, storeName, PARTICIPANT_MESSAGE_STORE_DESCRIPTOR + storeName,
           ParticipantMessageKey.SCHEMA$.toString(), ParticipantMessageValue.SCHEMA$.toString(),
           multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
@@ -1819,6 +1828,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
   public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
     veniceHelixAdmin.sendPushJobStatusMessage(key, value);
+  }
+
+  public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
+    veniceHelixAdmin.sendPushJobDetails(key, value);
   }
 
   public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
