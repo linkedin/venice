@@ -8,7 +8,6 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.File;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -24,7 +23,6 @@ import org.apache.gobblin.runtime.embedded.EmbeddedGobblinDistcp;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.log4j.Logger;
@@ -49,15 +47,20 @@ public class VeniceETLPublisher extends AbstractJob {
   private static final Logger logger = Logger.getLogger(VeniceETLPublisher.class);
 
   /**
+   * Any job configs that start with this prefix will be applied on the {@link EmbeddedGobblinDistcp} job.
+   */
+  private static final String DISTCP_CONFIG_PREFIX = "venice.distcp.";
+
+  /**
    * Daily ETL snapshot format is "timestamp-PT-recordNumber"
    */
-  public static final String SNAPSHOT_SEPARATOR = "-PT-";
+  private static final String SNAPSHOT_SEPARATOR = "-PT-";
   /**
    * The regex is "\A[0-9]+-PT-[0-9]+\z", which matches the strings like:
    * 1570183273436-PT-558022380
    * 1570269674164-PT-558132495
    */
-  public static final Pattern SNAPSHOT_PATTERN = Pattern.compile("\\A[0-9]+" + SNAPSHOT_SEPARATOR + "[0-9]+\\z");
+  private static final Pattern SNAPSHOT_PATTERN = Pattern.compile("\\A[0-9]+" + SNAPSHOT_SEPARATOR + "[0-9]+\\z");
 
   /**
    * Hadoop Path comparator which puts bigger path in the beginning, so the PriorityQueue will be a max heap
@@ -163,6 +166,8 @@ public class VeniceETLPublisher extends AbstractJob {
          */
         logger.info("Starting distcp for store " + storeName);
         EmbeddedGobblinDistcp distcp = new EmbeddedGobblinDistcp(snapshotSourcePath, snapshotDestinationPath);
+        // Add customized configs to the distcp job
+        setupConfigs(distcp, this.props);
         JobExecutionDriver jobFuture = distcp.runAsync();
         distcpJobFutures.put(Pair.create(storeName, destination), jobFuture);
         logger.info("Started distcp for store " + storeName + " snapshot " + snapshotName);
@@ -280,6 +285,23 @@ public class VeniceETLPublisher extends AbstractJob {
   }
 
   /**
+   * Helper function that adds customized configs to Gobblin distcp job.
+   */
+  private void setupConfigs(EmbeddedGobblinDistcp distcp, VeniceProperties properties) {
+    for (String configKey : properties.keySet()) {
+      if (configKey.startsWith(DISTCP_CONFIG_PREFIX)) {
+        /**
+         * The prefix is used to distinguish the distcp configs from VeniceETLPublisher job config,
+         * remove the prefix before applying it on distcp
+         */
+        String conf = configKey.substring(DISTCP_CONFIG_PREFIX.length());
+        distcp.setConfiguration(conf, properties.getString(configKey));
+        logger.info("Added config " + conf + " with value " + properties.getString(configKey) + " to distcp");
+      }
+    }
+  }
+
+  /**
    * A helper class that stores the version to snapshot list mapping.
    */
   private static class StoreETLSnapshotInfo {
@@ -316,5 +338,5 @@ public class VeniceETLPublisher extends AbstractJob {
   /**
    * ignore hdfs files with prefix "_" and "."
    */
-  public static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
+  private static final PathFilter PATH_FILTER = p -> !p.getName().startsWith("_") && !p.getName().startsWith(".");
 }
