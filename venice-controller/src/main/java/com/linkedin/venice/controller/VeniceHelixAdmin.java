@@ -295,7 +295,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         createControllerClusterIfRequired();
         addControllerClusterResourceIfRequired();
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
-            zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization);
+            zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
+            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
 
         // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
         // HaaS then level1 controllers should be only in participant mode.
@@ -3164,7 +3165,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
         PushMonitorDelegator offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
-        offlinePushMonitor.setTopicReplicator(onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
         offlinePushMonitor.startMonitorOfflinePush(
             kafkaTopic,
             numberOfPartition,

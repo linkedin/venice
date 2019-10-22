@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreCleaner;
 import java.util.Arrays;
+import java.util.Optional;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -21,7 +22,8 @@ public class TestPushMonitorDelegator {
   @Test
   public void testDelegatorCanCleanupLegacyStatus() {
     PushMonitorDelegator delegator = new PushMonitorDelegator(pushMonitorType, clusterName, routingDataRepository,
-        offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false);
+        offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false,
+        Optional.empty(), Optional.empty());
 
     OfflinePushStatus legacyStatus = new OfflinePushStatus("legacy_v1", 1, 1,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);

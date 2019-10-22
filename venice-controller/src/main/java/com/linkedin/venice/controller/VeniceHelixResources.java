@@ -15,6 +15,7 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
@@ -22,6 +23,7 @@ import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
@@ -61,8 +63,10 @@ public class VeniceHelixResources implements VeniceResource {
       SafeHelixManager helixManager,
       VeniceControllerClusterConfig config,
       StoreCleaner storeCleaner,
-      MetricsRepository metricsRepository) {
-    this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock());
+      MetricsRepository metricsRepository,
+      Optional<TopicReplicator> onlineOfflineTopicReplicator,
+      Optional<TopicReplicator> leaderFollowerTopicReplicator) {
+    this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock(), onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
   }
 
   /**
@@ -75,7 +79,9 @@ public class VeniceHelixResources implements VeniceResource {
                               VeniceControllerClusterConfig config,
                               StoreCleaner storeCleaner,
                               MetricsRepository metricsRepository,
-                              VeniceReentrantReadWriteLock shutdownLock) {
+                              VeniceReentrantReadWriteLock shutdownLock,
+                              Optional<TopicReplicator> onlineOfflineTopicReplicator,
+                              Optional<TopicReplicator> leaderFollowerTopicReplicator) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
@@ -90,7 +96,8 @@ public class VeniceHelixResources implements VeniceResource {
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
-        metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid());
+        metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid(),
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator);
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
     routersClusterManager =
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
