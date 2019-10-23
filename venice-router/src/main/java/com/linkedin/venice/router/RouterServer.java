@@ -371,7 +371,7 @@ public class RouterServer extends AbstractVeniceService {
 
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
-            config.getClusterToD2Map(), onlineInstanceFinder);
+            config.getClusterToD2Map(), onlineInstanceFinder, metadataRepository);
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
         config.isStickyRoutingEnabledForSingleGet(),

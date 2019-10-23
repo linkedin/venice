@@ -6,10 +6,12 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
@@ -63,12 +65,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final String clusterName;
   private final Map<String, String> clusterToD2Map;
   private final OnlineInstanceFinder onlineInstanceFinder;
+  private final HelixReadOnlyStoreRepository storeRepository;
+
 
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
-      OnlineInstanceFinder onlineInstanceFinder){
+      OnlineInstanceFinder onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository){
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
@@ -76,6 +80,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
     this.onlineInstanceFinder = onlineInstanceFinder;
+    this.storeRepository = storeRepository;
   }
 
   @Override
@@ -147,6 +152,10 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       responseObject.setCluster(clusterName);
       responseObject.setName(storeName);
+      int superSetSchemaId = storeRepository.getStore(storeName).getLatestSuperSetValueSchemaId();
+      if (superSetSchemaId != -1) {
+        responseObject.setSuperSetSchemaId(superSetSchemaId);
+      }
       Collection<SchemaEntry> valueSchemaEntries = schemaRepo.getValueSchemas(storeName);
       int schemaNum = valueSchemaEntries.size();
       MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
