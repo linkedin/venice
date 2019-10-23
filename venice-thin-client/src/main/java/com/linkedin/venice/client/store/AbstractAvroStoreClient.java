@@ -34,7 +34,6 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.utils.Time;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -133,7 +132,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private final BatchDeserializer<MultiGetResponseRecordV1, K, V> batchGetDeserializer;
   private final BatchDeserializer<ComputeResponseRecordV1, K, GenericRecord> computeDeserializer;
   private final AvroGenericDeserializer.IterableImpl multiGetEnvelopeIterableImpl;
-  private final Time time;
 
   private final boolean useFastAvro;
   /**
@@ -178,7 +176,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     this.computeDeserializer = clientConfig.getBatchGetDeserializer(this.deserializationExecutor);
     this.multiGetEnvelopeIterableImpl = clientConfig.getMultiGetEnvelopeIterableImpl();
     this.useFastAvro = clientConfig.isUseFastAvro();
-    this.time = clientConfig.getTime();
   }
 
   protected boolean isUseFastAvro() {

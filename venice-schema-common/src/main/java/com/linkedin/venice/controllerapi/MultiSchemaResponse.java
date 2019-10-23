@@ -1,6 +1,19 @@
 package com.linkedin.venice.controllerapi;
 
 public class MultiSchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
+  /**
+   * If this is set it should be used to replace latestValueSchema to deserialize during read.
+   */
+  private int superSetSchemaId = -1;
+
+  public void setSuperSetSchemaId(int id) {
+    superSetSchemaId = id;
+  }
+
+  public int getSuperSetSchemaId() {
+    return superSetSchemaId;
+  }
+
   public static class Schema {
     private int id;
     /**

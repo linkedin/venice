@@ -90,7 +90,6 @@ public class ClientConfig<T extends SpecificRecord> {
         .setAlwaysOnDeserializerQueueCapacity(config.getAlwaysOnDeserializerQueueCapacity())
         .setUseFastAvro(config.isUseFastAvro())
         .setRetryOnRouterError(config.isRetryOnRouterErrorEnabled())
-
         // Security settings
         .setHttps(config.isHttps())
         .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
