@@ -78,7 +78,7 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getSslKafkaBootStrapServers();
   }
 
-  public boolean isSslToKafka(){
+  public boolean isSslToKafka() {
     return getCommonConfig().isSslToKafka();
   }
 
@@ -110,23 +110,23 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicCleanupDelayFactor();
   }
 
-  public String getControllerClusterZkAddresss() {
-    return getCommonConfig().getControllerClusterZkAddresss();
+  public String getControllerClusterZkAddress() {
+    return getCommonConfig().getControllerClusterZkAddress();
   }
 
-  public int getParentControllerWaitingTimeForConsumptionMs(){
+  public int getParentControllerWaitingTimeForConsumptionMs() {
     return getCommonConfig().getParentControllerWaitingTimeForConsumptionMs();
   }
 
-  public int getKafkaReplicaFactor(){
+  public int getKafkaReplicaFactor() {
     return getCommonConfig().getKafkaReplicationFactor();
   }
 
-  public long getTopicCreationThrottlingTimeWindowMs(){
+  public long getTopicCreationThrottlingTimeWindowMs() {
     return getCommonConfig().getTopicCreationThrottlingTimeWindowMs();
   }
 
-  public Map<String,String> getClusterToD2Map(){
+  public Map<String,String> getClusterToD2Map() {
     return getCommonConfig().getClusterToD2Map();
   }
 

@@ -92,7 +92,6 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -311,7 +310,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         InstanceType instanceType = isParticipantOnly ? InstanceType.PARTICIPANT : InstanceType.CONTROLLER_PARTICIPANT;
         manager = new SafeHelixManager(HelixManagerFactory
             .getZKHelixManager(controllerClusterName, controllerName, instanceType,
-                multiClusterConfigs.getControllerClusterZkAddresss()));
+                multiClusterConfigs.getControllerClusterZkAddress()));
         StateMachineEngine stateMachine = manager.getStateMachineEngine();
         stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
         try {
