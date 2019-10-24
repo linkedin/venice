@@ -41,24 +41,24 @@ public class TestTopicCleanupServiceForParentController {
     doReturn(true).when(admin).isTopicTruncatedBasedOnRetention(1000l);
 
     topicCleanupService.cleanupVeniceTopics();
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v1");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
 
     topicCleanupService.cleanupVeniceTopics();
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v1");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
 
     topicCleanupService.cleanupVeniceTopics();
-    verify(topicManager).ensureTopicIsDeletedAndBlock("store1_rt");
-    verify(topicManager).ensureTopicIsDeletedAndBlock("store1_v1");
-    verify(topicManager).ensureTopicIsDeletedAndBlock("store1_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("store1_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry("store1_rt");
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry("store1_v1");
+    verify(topicManager).ensureTopicIsDeletedAndBlockWithRetry("store1_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("store1_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
   }
 }
