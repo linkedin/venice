@@ -5,7 +5,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,18 +25,17 @@ import static com.linkedin.venice.ConfigKeys.*;
  * {@link VeniceControllerClusterConfig}. TODO: remove one of them
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
-
   private final int adminPort;
   private final int adminSecurePort;
   private final int controllerClusterReplica;
   private final String controllerClusterName;
-  private final String controllerClusterZkAddresss;
+  private final String controllerClusterZkAddress;
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
   private final boolean enableTopicReplicator;
-  private Map<String, String> childClusterMap = null;
-  private String d2ServiceName;
-  private Map<String, String> childClusterD2Map = null;
+  private final Map<String, String> childClusterMap;
+  private final String d2ServiceName;
+  private final Map<String, String> childClusterD2Map;
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final long adminConsumptionTimeoutMinute;
   private final long adminConsumptionCycleTimeoutMs;
@@ -47,8 +48,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int topicCleanupDelayFactor;
   private final int topicManagerKafkaOperationTimeOutMs;
   private final boolean enableTopicReplicatorSSL;
-  private int minNumberOfUnusedKafkaTopicsToPreserve;
-  private int minNumberOfStoreVersionsToPreserve;
+  private final int minNumberOfUnusedKafkaTopicsToPreserve;
+  private final int minNumberOfStoreVersionsToPreserve;
   private final int parentControllerMaxErroredTopicNumToKeep;
   private final String pushJobStatusStoreName;
   private final String pushJobStatusStoreClusterName;
@@ -61,7 +62,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean isControllerClusterLeaderHAAS;
   private final String controllerHAASSuperClusterName;
   private final boolean earlyDeleteBackUpEnabled;
-  private boolean sendConcurrentTopicDeleteRequestsEnabled;
+  private final boolean sendConcurrentTopicDeleteRequestsEnabled;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -70,7 +71,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
-    this.controllerClusterZkAddresss = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
+    this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND); // By default, time window used to throttle topic creation is 10sec.
     this.topicCreationThrottlingTimeWindowMs = props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
@@ -78,13 +79,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       String clusterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
       this.childClusterMap = parseClusterMap(props, clusterWhitelist);
       this.childClusterD2Map = parseClusterMap(props, clusterWhitelist, true);
-      if (!childClusterD2Map.isEmpty()) {
-        this.d2ServiceName = props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
-      }
+      this.d2ServiceName = childClusterD2Map.isEmpty() ? null : props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
 
       if (childClusterMap.isEmpty() && childClusterD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
       }
+    } else {
+      this.childClusterMap = Collections.emptyMap();
+      this.childClusterD2Map = Collections.emptyMap();
+      this.d2ServiceName = null;
     }
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.adminConsumptionTimeoutMinute = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
@@ -134,7 +137,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       throw new VeniceException(CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required if "
           + CONTROLLER_CLUSTER_LEADER_HAAS + " is set to true");
     }
-    this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS);
+    this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
   }
 
   public int getAdminPort() {
@@ -153,8 +156,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return controllerClusterName;
   }
 
-  public String getControllerClusterZkAddresss() {
-    return controllerClusterZkAddresss;
+  public String getControllerClusterZkAddress() {
+    return controllerClusterZkAddress;
   }
 
   public int getTopicMonitorPollIntervalMs() { return topicMonitorPollIntervalMs; }
