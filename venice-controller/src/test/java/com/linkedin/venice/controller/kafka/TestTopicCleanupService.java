@@ -116,17 +116,17 @@ public class TestTopicCleanupService {
 
     topicCleanupService.cleanupVeniceTopics();
 
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_rt");
-    verify(topicManager).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
-    verify(topicManager).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v4");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
 
     // Updated real-time topic to use low retention policy
     storeTopics.put(storeName1 + "_rt", 1000l);
     topicCleanupService.cleanupVeniceTopics();
 
-    verify(topicManager).ensureTopicIsDeletedAndBlock(storeName1 + "_rt");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
   }
 
   @Test
@@ -163,17 +163,17 @@ public class TestTopicCleanupService {
     topicCleanupService.start();
     final int TOPIC_CLEANUP_TIMEOUT_IN_MS = 2000; // 2 seconds
 
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName2 + "_v1");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName2 + "_v2");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName3 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName2 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName3 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
+    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
+    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v1");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v2");
+    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName3 + "_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName3 + "_v4");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
   }
 
   @Test
@@ -224,11 +224,11 @@ public class TestTopicCleanupService {
     topicCleanupService.start();
     final int TOPIC_CLEANUP_TIMEOUT_IN_MS = 200; // 200 ms
 
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v3");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v4");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_rt");
-    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("non_venice_topic1");
+    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
+    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry("non_venice_topic1");
   }
 }
