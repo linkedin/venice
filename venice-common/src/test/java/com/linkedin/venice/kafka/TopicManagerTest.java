@@ -129,7 +129,6 @@ public class TopicManagerTest {
     // Make sure everything went as planned
     Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class, () -> partiallyMockedTopicManager.ensureTopicIsDeletedAndBlockWithRetry(topicName));
     Mockito.verify(partiallyMockedTopicManager, times(MAX_TOPIC_DELETE_RETRIES)).ensureTopicIsDeletedAndBlock(topicName);
-    Mockito.verifyNoMoreInteractions(partiallyMockedTopicManager);
   }
 
 
