@@ -1147,9 +1147,9 @@ public class VeniceParentHelixAdmin implements Admin {
        * do append-only and compaction will happen later.
        * We need to multiply/divide the overhead ratio by situations
        */
-      long setStoreQuota = storageQuotaInByte.isPresent() ? storageQuotaInByte.get() : store.getStorageQuotaInByte();
+      long setStoreQuota = storageQuotaInByte.orElse(store.getStorageQuotaInByte());
       // When hybridStoreOverheadBypass is true, we skip checking situations and simply set it to be the passed value.
-      if (hybridStoreDbOverheadBypass.isPresent() && hybridStoreDbOverheadBypass.get()) {
+      if (hybridStoreDbOverheadBypass.orElse(false) || setStoreQuota == Store.UNLIMITED_STORAGE_QUOTA) {
         setStore.storageQuotaInByte = setStoreQuota;
       } else {
         if (!oldStoreHybrid) {
