@@ -4,6 +4,7 @@ import azkaban.jobExecutor.AbstractJob;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.client.VeniceKafkaConsumerClient;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
@@ -83,6 +84,8 @@ public class VeniceETLPublisher extends AbstractJob {
   private final String jobId;
   private final int maxDailySnapshotsToKeep;
 
+  private Map<String, String> ETLStoreToUserName;
+
   public VeniceETLPublisher(String jobId, Properties vanillaProps) {
     super(jobId, logger);
     this.jobId = jobId;
@@ -91,6 +94,11 @@ public class VeniceETLPublisher extends AbstractJob {
     this.veniceControllerUrls = props.getString(VENICE_CONTROLLER_URLS);
     this.fabricName = props.getString(FABRIC_NAME);
     this.maxDailySnapshotsToKeep = props.getInt(ETL_MAX_SNAPSHOTS_TO_KEEP, DEFAULT_MAX_SNAPSHOTS_TO_KEEP);
+    /**
+     * Build the map from etl store name to venice etl user name
+     */
+    this.ETLStoreToUserName = new HashMap<>();
+    setupETLStoreToUserName(props, ETLStoreToUserName);
   }
 
   @Override
@@ -104,9 +112,9 @@ public class VeniceETLPublisher extends AbstractJob {
      *                store name in the path.
      */
     String snapshotSourceDir = props.getString(ETL_SNAPSHOT_SOURCE_DIR);
-    String snapshotDestinationDir = props.getString(ETL_SNAPSHOT_DESTINATION_DIR);
-    if (!snapshotDestinationDir.endsWith("/")) {
-      snapshotDestinationDir = snapshotDestinationDir + "/";
+    String snapshotDestinationDirPrefix = props.getString(ETL_SNAPSHOT_DESTINATION_DIR_PREFIX);
+    if (!snapshotDestinationDirPrefix.endsWith("/")) {
+      snapshotDestinationDirPrefix = snapshotDestinationDirPrefix + "/";
     }
 
     try {
@@ -122,9 +130,16 @@ public class VeniceETLPublisher extends AbstractJob {
       // Record all distcp job futures
       Map<Pair<String, String>, JobExecutionDriver> distcpJobFutures = new HashMap<>();
       for (Map.Entry<String, StoreETLSnapshotInfo> entry : storeToSnapshotPath.entrySet()) {
+        // build destination path
         String storeName = entry.getKey();
-        logger.info("Publishing ETL snapshot for store: " + storeName + " to dir: " + snapshotDestinationDir + storeName);
-        StoreETLSnapshotInfo snapshotInfo = entry.getValue();
+        String destination = snapshotDestinationDirPrefix;
+        if (ETLStoreToUserName.containsKey(storeName)) {
+          destination += ETLStoreToUserName.get(storeName);
+        } else {
+          destination += props.getString(ETL_STORE_TO_ACCOUNT_NAME_DEFAULT);
+        }
+        destination += "/" + storeName;
+        logger.info("Publishing ETL snapshot for store: " + storeName + " to dir: " + destination);
 
         // Get current version of the store
         StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
@@ -134,6 +149,7 @@ public class VeniceETLPublisher extends AbstractJob {
         logger.info("Current version for store: " + storeName + " is " + currentVersion);
 
         // Get snapshot list for the current version
+        StoreETLSnapshotInfo snapshotInfo = entry.getValue();
         PriorityQueue<Path> snapshotQueue = snapshotInfo.getSnapshotsByVersion(currentVersion);
         if (null == snapshotQueue || snapshotQueue.size() == 0) {
           logger.info("No snapshot for store: " + storeName);
@@ -145,7 +161,6 @@ public class VeniceETLPublisher extends AbstractJob {
         String snapshotName = snapshotSourcePath.getName();
 
         // Create the directory for the store in destination if it doesn't exist before
-        String destination = snapshotDestinationDir + storeName;
         Path storePath = new Path(destination);
         if (!fs.exists(storePath)) {
           fs.mkdirs(storePath);
@@ -298,6 +313,33 @@ public class VeniceETLPublisher extends AbstractJob {
         distcp.setConfiguration(conf, properties.getString(configKey));
         logger.info("Added config " + conf + " with value " + properties.getString(configKey) + " to distcp");
       }
+    }
+  }
+
+  /**
+   * Helper function that builds the map from etl store name to user proxy name.
+   */
+  private static void setupETLStoreToUserName(VeniceProperties props, Map<String, String> ETLStoreToUserName) {
+    try {
+      /**
+       * In the format of:
+       * "{storeName1}:{proxyUser1};{storeName2}:{proxyUser2}..."
+       */
+      String etlStoreToUserName;
+      try {
+        etlStoreToUserName = props.getString(ETL_STORE_TO_ACCOUNT_NAME);
+      } catch (UndefinedPropertyException e) {
+        logger.error("The config of etl-store-to-account-name doesn't exist, will use default job path for all stores.");
+        return;
+      }
+      String[] tokens = etlStoreToUserName.split(";");
+      for (String token : tokens) {
+        String[] storeNameAndUserName = token.split(":");
+        ETLStoreToUserName.put(storeNameAndUserName[0].trim(), storeNameAndUserName[1].trim());
+      }
+    } catch (Exception e) {
+      logger.error("Failed on setting up ETL Store to User Name: ", e);
+      throw e;
     }
   }
 
