@@ -212,7 +212,11 @@ public class BdbStorageEngineFactory extends StorageEngineFactory {
     synchronized (lock) {
       try {
         for (Environment environment : environments.values()) {
-          environment.sync();
+          if (environment.isValid()) {
+            environment.sync();
+          } else {
+            logger.warn("Bdb environment has been invalidated before factory close");
+          }
           environment.close();
         }
       } catch (DatabaseException e) {
