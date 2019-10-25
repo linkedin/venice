@@ -90,13 +90,11 @@ public class SchemaReaderTest {
     schemaResponse.setSchemaStr(keySchemaStr);
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Mockito.doReturn(false).when(mockClient).isStoreClientReady();
 
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     ClientConfig clientConfig = Mockito.mock(ClientConfig.class);
-    Mockito.doReturn(1000L).when(clientConfig).getSchemaRefreshCycle();
     SchemaReader schemaReader = new SchemaReader(mockClient);
 
     Mockito.doReturn(mapper.writeValueAsBytes(multiSchemaResponse)).when(mockFuture).get();
@@ -122,7 +120,6 @@ public class SchemaReaderTest {
     int valueSchemaId = 1;
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Mockito.doReturn(false).when(mockClient).isStoreClientReady();
 
     // setup key schema
     SchemaResponse schemaResponse = new SchemaResponse();
@@ -131,7 +128,6 @@ public class SchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     ClientConfig clientConfig = Mockito.mock(ClientConfig.class);
-    Mockito.doReturn(1000L).when(clientConfig).getSchemaRefreshCycle();
 
     SchemaReader schemaReader = new SchemaReader(mockClient);
     Mockito.doReturn(null).when(mockFuture).get();
