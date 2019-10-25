@@ -23,7 +23,7 @@ def internalKafkaGroup = 'kafka'
 def internalKafkaVersion = '2.0.0.81'
 
 def ddsStorageCoreVersion = '5.4.74'
-def gobblinVersion = '1.64.1701'
+def gobblinVersion = '1.64.1495'
 
 ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.7.7',
