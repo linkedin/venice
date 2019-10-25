@@ -102,15 +102,18 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
   }
 
   @Override
-  public void stopInner()
-      throws VeniceException {
+  public void stopInner() throws VeniceException {
     try {
-      if (this.isOpen.compareAndSet(true, false)) {
-        this.offsetsBdbEnvironment.sync();
-        this.offsetsBdbDatabase.close();
-        // This will make sure the 'cleaner thread' will be shutdown properly.
-        this.offsetsBdbEnvironment.cleanLog();
-        this.offsetsBdbEnvironment.close();
+      if (isOpen.compareAndSet(true, false)) {
+        if (offsetsBdbEnvironment.isValid()) {
+          offsetsBdbEnvironment.sync();
+          offsetsBdbDatabase.close();
+          // This will make sure the 'cleaner thread' will be shutdown properly.
+          offsetsBdbEnvironment.cleanLog();
+        } else {
+          logger.warn("Bdb environment has been invalidated before service stop");
+        }
+        offsetsBdbEnvironment.close();
       }
     } catch (DatabaseException e) {
       logger.error(e);

@@ -302,10 +302,14 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   @Override
   public void close() {
     try {
-      if (this.isOpen.compareAndSet(true, false))
-        this.getBdbDatabase().close();
+      if (isOpen.compareAndSet(true, false)) {
+        if (environment.isValid()) {
+          getBdbDatabase().close();
+        } else {
+          logger.warn("Bdb environment has been invalidated before partition close");
+        }
+      }
     } catch (DatabaseException e) {
-      // this.bdbEnvironmentStats.reportException(e);
       logger.error(e);
       throw new VeniceException("Shutdown failed for BDB database " + getBdbDatabaseName(), e);
     }
