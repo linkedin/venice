@@ -207,7 +207,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    */
   @Override
   public String getBrokerLeaderHostname(String topic, int partition) {
-    Node leader = producer.partitionsFor(topic).get(0).leader();
+    Node leader = producer.partitionsFor(topic).get(partition).leader();
     if (leader != null) {
       return leader.host() + "/" + leader.id();
     } else {

@@ -422,6 +422,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
         double value = producerMetrics.get(metricName);
         long longValue = Math.round(value);
         kafkaBrokerCounter(reporter, metricName, newLeader, longValue);
+        kafkaBrokerCounter(reporter, metricName, "all brokers", longValue);
       }
     });
 
