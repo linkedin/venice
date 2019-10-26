@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.HelixUtils;
 import org.apache.helix.manager.zk.ZkClient;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -18,9 +20,14 @@ public class TestZkExecutionIdAccessor {
   @BeforeMethod
   public void setup() {
     ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
-    zkClient = new ZkClient(zkServerWrapper.getAddress());
+    zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
     zkClient.createPersistent(HelixUtils.getHelixClusterZkPath(clusterName));
     executionIdAccessor = new ZkExecutionIdAccessor(zkClient, new HelixAdapterSerializer());
+  }
+
+  @AfterMethod
+  public void cleanup() {
+    zkClient.close();
   }
 
   @Test

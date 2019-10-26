@@ -33,6 +33,7 @@ public class ZkRoutersClusterManagerTest {
 
   @AfterMethod
   public void cleanup() {
+    zkClient.close();
     zkServerWrapper.close();
   }
 

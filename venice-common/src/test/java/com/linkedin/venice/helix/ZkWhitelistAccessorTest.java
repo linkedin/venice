@@ -21,7 +21,7 @@ public class ZkWhitelistAccessorTest {
   @BeforeMethod
   public void setup() {
     zkServerWrapper = ServiceFactory.getZkServer();
-    zkClient = new ZkClient(zkServerWrapper.getAddress());
+    zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
     accessor = new ZkWhitelistAccessor(zkClient, new HelixAdapterSerializer());
     zkClient.createPersistent(HelixUtils.getHelixClusterZkPath(cluster), false);
   }

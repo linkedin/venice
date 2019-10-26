@@ -26,17 +26,19 @@ public class HelixOfflinePushMonitorAccessorTest {
   private String topic = "testTopic";
   private OfflinePushStatus offlinePushStatus =
       new OfflinePushStatus(topic, 3, 3, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+  private ZkClient zkClient;
 
   @BeforeMethod
   public void setup() {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
-    ZkClient zkClient = new ZkClient(zkAddress);
+    zkClient = ZkClientFactory.newZkClient(zkAddress);
     accessor = new HelixOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), 1, 0);
   }
 
   @AfterMethod
   public void cleanup() {
+    zkClient.close();
     zk.close();
   }
 

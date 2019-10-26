@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
@@ -46,7 +47,7 @@ public class TestZkClientStatusStats {
     ZkClient zkClient = null;
     try {
       zkServer = ServiceFactory.getZkServer();
-      zkClient = new ZkClient(zkServer.getAddress());
+      zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
       long zkConnectionTimeout = 5000;
       Assert.assertTrue(zkClient.waitUntilConnected(zkConnectionTimeout, TimeUnit.MILLISECONDS),
           "ZK did not connect within " + zkConnectionTimeout + " ms.");

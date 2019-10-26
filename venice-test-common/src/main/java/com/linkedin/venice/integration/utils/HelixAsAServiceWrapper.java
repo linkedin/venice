@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.SafeHelixManager;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,9 +51,7 @@ public class HelixAsAServiceWrapper extends ProcessWrapper{
   private HelixAsAServiceWrapper(String serviceName, File dataDirectory, String zkAddress) {
     super(serviceName, dataDirectory);
     this.zkAddress = zkAddress;
-    ZkClient zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
-    zkClient.setZkSerializer(new ZNRecordSerializer());
-    admin = new ZKHelixAdmin(zkClient);
+    admin = new ZKHelixAdmin(zkAddress);
     createClusterIfAbsent();
     keyBuilder = new PropertyKey.Builder(HELIX_SUPER_CLUSTER_NAME);
     DistClusterControllerStateModelFactory distClusterControllerStateModelFactory =

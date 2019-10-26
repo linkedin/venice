@@ -23,7 +23,7 @@ public class HelixStoreGraveyardTest {
   @BeforeMethod
   public void setup() {
     zkServerWrapper = ServiceFactory.getZkServer();
-    zkClient = new ZkClient(zkServerWrapper.getAddress());
+    zkClient = ZkClientFactory.newZkClient(zkServerWrapper.getAddress());
     graveyard =
         new HelixStoreGraveyard(zkClient, new HelixAdapterSerializer(), Arrays.asList(clusterNames));
   }

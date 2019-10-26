@@ -41,7 +41,8 @@ public class TestHelixReadOnlyStoreRepository {
   public void zkSetup() {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
-    zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
+    zkClient = ZkClientFactory.newZkClient(zkAddress);
+    zkClient.setZkSerializer(adapter);
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 

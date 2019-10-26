@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.StoreCleaner;
@@ -30,7 +31,7 @@ public class TestVeniceHelixResources {
 
   private VeniceHelixResources getVeniceHelixResources(String cluster, MetricsRepository metricsRepository, VeniceReentrantReadWriteLock lock) {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
-    ZkClient zkClient = new ZkClient(zk.getAddress());
+    ZkClient zkClient = ZkClientFactory.newZkClient(zk.getAddress());
     ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zk.getAddress());
     ZKHelixAdmin admin = new ZKHelixAdmin(zk.getAddress());
     admin.addCluster(cluster);

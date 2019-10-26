@@ -17,6 +17,7 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.WhitelistAccessor;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
@@ -73,6 +74,7 @@ public class VeniceServer {
   private MetricsRepository metricsRepository;
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
+  private ZkClient zkClient;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
@@ -230,7 +232,7 @@ public class VeniceServer {
   }
 
   private void createHelixStoreAndSchemaRepository(VeniceClusterConfig clusterConfig, MetricsRepository metricsRepository) {
-    ZkClient zkClient = new ZkClient(clusterConfig.getZookeeperAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+    zkClient = ZkClientFactory.newZkClient(clusterConfig.getZookeeperAddress());
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "server-zk-client"));
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
@@ -314,6 +316,7 @@ public class VeniceServer {
       isStarted.set(false);
 
       metricsRepository.close();
+      zkClient.close();
 
       // TODO - Efficient way to unlock java heap
     }

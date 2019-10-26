@@ -19,7 +19,7 @@ public class ZkStoreConfigAccessorTest {
   @BeforeMethod
   public void setUp() {
     zk = ServiceFactory.getZkServer();
-    zkClient = new ZkClient(zk.getAddress());
+    zkClient = ZkClientFactory.newZkClient(zk.getAddress());
     accessor = new ZkStoreConfigAccessor(zkClient, new HelixAdapterSerializer());
   }
 

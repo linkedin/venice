@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.migration;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.migration.MigrationPushStrategy;
@@ -17,12 +18,11 @@ import org.testng.annotations.Test;
 public class TestMigrationPushStrategyZKAccessor {
   private ZkServerWrapper zkServer;
   private ZkClient zkClient;
-  private static final int WAIT_TIME = 10000;
 
   @BeforeMethod
   public void setup() {
     zkServer = ServiceFactory.getZkServer();
-    zkClient = new ZkClient(zkServer.getAddress(), WAIT_TIME);
+    zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
   }
 
   @AfterMethod

@@ -33,6 +33,7 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
@@ -252,8 +253,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         // TODO: Consider re-using the same zkClient for the ZKHelixAdmin and TopicManager.
-        ZkClient zkClientForHelixAdmin = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
-            ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        ZkClient zkClientForHelixAdmin = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
         zkClientForHelixAdmin.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client-for-helix-admin"));
         /**
          * N.B.: The following setup steps are necessary when using the {@link ZKHelixAdmin} constructor which takes
@@ -269,8 +269,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
-        this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
-            ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
         this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
         this.adapterSerializer = new HelixAdapterSerializer();
         veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);

@@ -57,6 +57,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final ReadOnlyStoreRepository helixReadOnlyStoreRepository;
   private final MetricsRepository metricsRepository;
 
+  private ZkClient zkClient;
   private SafeHelixManager manager;
   private CompletableFuture<SafeHelixManager> managerFuture; //complete this future when the manager is connected
   private HelixStatusMessageChannel messageChannel;
@@ -168,6 +169,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
+
+    if (zkClient != null) {
+      zkClient.close();
+    }
   }
 
   private void checkBeforeJoinInCluster() {
@@ -195,10 +200,11 @@ public class HelixParticipationService extends AbstractVeniceService implements 
    * check RouterServer#asyncStart() for details about asyncStart
    */
   private void asyncStart() {
+    zkClient = ZkClientFactory.newZkClient(zkAddress);
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
     PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-        new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer(),
+        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
             veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
         instance.getNodeId());
