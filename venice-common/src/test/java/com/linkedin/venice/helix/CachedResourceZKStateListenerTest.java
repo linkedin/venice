@@ -25,7 +25,7 @@ public class CachedResourceZKStateListenerTest {
   @BeforeMethod
   public void setup() {
     zkServer = ServiceFactory.getZkServer();
-    zkClient = new ZkClient(zkServer.getAddress(), WAIT_TIME);
+    zkClient = ZkClientFactory.newZkClient(zkServer.getAddress());
   }
 
   @AfterMethod

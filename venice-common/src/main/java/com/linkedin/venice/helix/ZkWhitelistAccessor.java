@@ -31,7 +31,7 @@ public class ZkWhitelistAccessor implements WhitelistAccessor{
   }
 
   public ZkWhitelistAccessor(String zkAddress){
-    zkClient = new ZkClient(zkAddress);
+    zkClient = ZkClientFactory.newZkClient(zkAddress);
     isCloseAble = true;
   }
   /**
