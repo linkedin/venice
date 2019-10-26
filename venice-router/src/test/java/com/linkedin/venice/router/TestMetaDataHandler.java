@@ -5,19 +5,23 @@ import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.TestUtils;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpRequest;
@@ -51,8 +55,11 @@ public class TestMetaDataHandler {
       Map<String,String> clusterToD2ServiceMap, OnlineInstanceFinder onlineInstanceFinder)
       throws IOException {
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
+    Store store = TestUtils.createTestStore("testStore", "test", System.currentTimeMillis());
 
     HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
+    HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
+    Mockito.doReturn(store).when(helixReadOnlyStoreRepository).getStore(Mockito.anyString());
     Mockito.doReturn(requestUri).when(httpRequest).uri();
 
     ReadOnlySchemaRepository schemaRepoToUse = null;
@@ -66,7 +73,7 @@ public class TestMetaDataHandler {
     }
 
     MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse, "test-cluster",
-        storeConfigRepository , clusterToD2ServiceMap, onlineInstanceFinder);
+        storeConfigRepository , clusterToD2ServiceMap, onlineInstanceFinder, helixReadOnlyStoreRepository);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -345,8 +352,10 @@ public class TestMetaDataHandler {
 
     // Mock ChannelHandlerContext
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
+    HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
 
-    MetaDataHandler handler = new MetaDataHandler(null, null, clusterName, null, Collections.emptyMap(), null);
+    MetaDataHandler handler = new MetaDataHandler(null, null, clusterName, null, Collections.emptyMap(), null,
+        helixReadOnlyStoreRepository);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
