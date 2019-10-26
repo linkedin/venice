@@ -145,8 +145,10 @@ public class TestAvroStoreClient {
   public void testDeserializeWriterSchemaMissingReaderNamespace()
       throws IOException {
     Schema schemaWithoutNamespace = Utils.getSchemaFromResource("testSchemaWithoutNamespace.avsc");
-    setupSchemaResponse(1, schemaWithoutNamespace);
-
+    Map schemas = new HashMap<>();
+    schemas.put(1, schemaWithoutNamespace.toString());
+    byte[] multiSchemasInBytes = StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
+    setupSchemaResponse(multiSchemasInBytes, SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
     AvroSpecificStoreClientImpl specificStoreClient = new AvroSpecificStoreClientImpl(mockTransportClient,
         ClientConfig.defaultSpecificClientConfig(STORE_NAME, NamespaceTest.class));
     specificStoreClient.start();
