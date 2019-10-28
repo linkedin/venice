@@ -32,6 +32,7 @@ public class ControllerApiConstants {
   public static final String ENABLE_READS = "enable_reads";
   public static final String ENABLE_WRITES = "enable_writes";
   public static final String STORAGE_QUOTA_IN_BYTE = "storage_quota_in_byte";
+  public static final String HYBRID_STORE_DISK_QUOTA_ENABLED = "hybrid-store-disk-quota-enabled";
   public static final String HYBRID_STORE_OVERHEAD_BYPASS = "hybrid_store_overhead_bypass";
   public static final String READ_QUOTA_IN_CU = "read_quota_in_cu";
   public static final String REWIND_TIME_IN_SECONDS = "rewind_time_seconds";

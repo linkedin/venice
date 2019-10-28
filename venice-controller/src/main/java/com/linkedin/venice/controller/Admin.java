@@ -239,7 +239,8 @@ public interface Admin extends AutoCloseable, Closeable {
                      Optional<Boolean> leaderFollowerModelEnabled,
                      Optional<BackupStrategy> backupStrategy,
                      Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-                     Optional<Boolean> autoSupersetSchemaEnabledForReadComputeStore);
+                     Optional<Boolean> autoSupersetSchemaEnabledForReadComputeStore,
+                     Optional<Boolean> hybridStoreDiskQuotaEnabled);
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         updateStore(
@@ -272,7 +273,8 @@ public interface Admin extends AutoCloseable, Closeable {
             params.getLeaderFollowerModelEnabled(),
             params.getBackupStrategy(),
             params.getAutoSchemaRegisterPushJobEnabled(),
-            params.getAutoSupersetSchemaEnabledForReadComputeStore());
+            params.getAutoSupersetSchemaEnabledForReadComputeStore(),
+            params.getHybridStoreDiskQuotaEnabled());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);

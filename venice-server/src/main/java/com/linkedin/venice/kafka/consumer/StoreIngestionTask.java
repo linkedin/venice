@@ -280,7 +280,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.subscribedPartitionToSize = Optional.empty();
 
-    if (serverConfig.isHybridQuotaEnabled()) {
+    if (serverConfig.isHybridQuotaEnabled() ||
+        metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled()) {
       /**
        * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
        */

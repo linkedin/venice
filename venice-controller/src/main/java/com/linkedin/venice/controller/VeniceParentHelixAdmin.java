@@ -1107,7 +1107,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> leaderFollowerModelEnabled,
       Optional<BackupStrategy> backupStrategy,
       Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-      Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled) {
+      Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled,
+      Optional<Boolean> hybridStoreDiskQuotaEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -1215,7 +1216,7 @@ public class VeniceParentHelixAdmin implements Admin {
         }
         setStore.superSetSchemaAutoGenerationForReadComputeEnabled = superSetSchemaAutoGenerationForReadComputeEnabled.orElse(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
       }
-
+      setStore.hybridStoreDiskQuotaEnabled = hybridStoreDiskQuotaEnabled.orElse(store.isHybridStoreDiskQuotaEnabled());
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;

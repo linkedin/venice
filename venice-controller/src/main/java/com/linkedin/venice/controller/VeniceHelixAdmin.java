@@ -2045,6 +2045,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setHybridStoreDiskQuotaEnabled(String clusterName, String storeName,
+        boolean hybridStoreDiskQuotaEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -2116,7 +2124,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> leaderFollowerModelEnabled,
         Optional<BackupStrategy> backupStrategy,
         Optional<Boolean> autoSchemaRegisterPushJobEnabled,
-        Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled
+        Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled,
+        Optional<Boolean> hybridStoreDiskQuotaEnabled
         ) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
@@ -2266,6 +2275,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setAutoSchemaRegisterPushJobEnabled(clusterName, storeName, value));
             superSetSchemaAutoGenerationForReadComputeEnabled.ifPresent(value ->
                 setSuperSetSchemaAutoGenerationForReadComputeEnabled(clusterName, storeName, value));
+            hybridStoreDiskQuotaEnabled.ifPresent(value ->
+                setHybridStoreDiskQuotaEnabled(clusterName, storeName, value));
 
             if (hybridStoreDbOverheadBypass.isPresent()) {
                 logger.warn("If updateStore is triggered only in child controller, "

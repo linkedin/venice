@@ -51,7 +51,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setLeaderFollowerModel(srcStore.isLeaderFollowerModelEnabled())
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setAutoSupersetSchemaEnabledFromReadComputeStore(srcStore.isSuperSetSchemaAutoGenerationForReadComputeEnabled())
-            .setBackupStrategy(srcStore.getBackupStrategy());
+            .setBackupStrategy(srcStore.getBackupStrategy())
+            .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled());
 
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
@@ -115,6 +116,12 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public UpdateStoreQueryParams setHybridStoreOverheadBypass(boolean overheadBypass) {
     return putBoolean(HYBRID_STORE_OVERHEAD_BYPASS, overheadBypass);
+  }
+
+  public Optional<Boolean> getHybridStoreDiskQuotaEnabled() { return getBoolean(HYBRID_STORE_DISK_QUOTA_ENABLED); }
+
+  public UpdateStoreQueryParams setHybridStoreDiskQuotaEnabled(boolean enabled) {
+    return putBoolean(HYBRID_STORE_DISK_QUOTA_ENABLED, enabled);
   }
 
   public Optional<Boolean> getHybridStoreOverheadBypass() { return getBoolean(HYBRID_STORE_OVERHEAD_BYPASS); }

@@ -560,6 +560,9 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.setLeaderFollowerModelEnabled(clusterName, storeName, true);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).isLeaderFollowerModelEnabled(), true);
 
+    veniceAdmin.setHybridStoreDiskQuotaEnabled(clusterName, storeName, true);
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybridStoreDiskQuotaEnabled());
+
     // test hybrid config
     //set incrementalPushEnabled to be false as hybrid and incremental are mutex
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, false);
