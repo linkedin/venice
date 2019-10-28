@@ -46,6 +46,7 @@ public class StoreInfo {
     storeInfo.setSchemaAutoRegisterFromPushJobEnabled(store.isSchemaAutoRegisterFromPushJobEnabled());
     storeInfo.setSuperSetSchemaAutoGenerationForReadComputeEnabled(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
+    storeInfo.setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     return storeInfo;
   }
   /**
@@ -206,6 +207,11 @@ public class StoreInfo {
    * For read compute stores with auto super-set schema enabled, stores the latest super-set value schema ID.
    */
   private int latestSuperSetValueSchemaId = -1;
+
+  /**
+   * Whether or not storage disk quota is enabled for a hybrid store.
+   */
+  private boolean hybridStoreDiskQuotaEnabled = false;
 
   public StoreInfo() {
   }
@@ -492,4 +498,8 @@ public class StoreInfo {
   public int getLatestSuperSetValueSchemaId() {
     return latestSuperSetValueSchemaId;
   }
+
+  public boolean isHybridStoreDiskQuotaEnabled() { return hybridStoreDiskQuotaEnabled; }
+
+  public void setHybridStoreDiskQuotaEnabled(boolean enabled) {hybridStoreDiskQuotaEnabled = enabled; }
 }

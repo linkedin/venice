@@ -221,6 +221,11 @@ public class Store {
    */
   private int latestSuperSetValueSchemaId = -1;
 
+  /**
+   * Whether or not storage disk quota is enabled for a hybrid store.
+   */
+  private boolean hybridStoreDiskQuotaEnabled = false;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -567,6 +572,13 @@ public class Store {
     latestSuperSetValueSchemaId = valueSchemaId;
   }
 
+  public boolean isHybridStoreDiskQuotaEnabled() {
+    return hybridStoreDiskQuotaEnabled;
+  }
+
+  public void setHybridStoreDiskQuotaEnabled(boolean enabled) {
+    hybridStoreDiskQuotaEnabled = enabled;
+  }
   /**
    * Add a version into store.
    *
@@ -794,6 +806,7 @@ public class Store {
     result = 31 * result + (schemaAutoRegisteFromPushJobEnabled ? 1 : 0);
     result = 31 * result + (superSetSchemaAutoGenerationForReadComputeEnabled ? 1 : 0);
     result = 31 * result + latestSuperSetValueSchemaId;
+    result = 31 * result + (hybridStoreDiskQuotaEnabled ? 1 : 0);
     return result;
   }
 
@@ -837,6 +850,7 @@ public class Store {
     if (schemaAutoRegisteFromPushJobEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
     if (superSetSchemaAutoGenerationForReadComputeEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
     if (latestSuperSetValueSchemaId != store.latestSuperSetValueSchemaId) return false;
+    if (hybridStoreDiskQuotaEnabled != store.hybridStoreDiskQuotaEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -880,6 +894,7 @@ public class Store {
     clonedStore.setSchemaAutoRegisterFromPushJobEnabled(schemaAutoRegisteFromPushJobEnabled);
     clonedStore.setSuperSetSchemaAutoGenerationForReadComputeEnabled(superSetSchemaAutoGenerationForReadComputeEnabled);
     clonedStore.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
+    clonedStore.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
     }
