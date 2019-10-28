@@ -591,6 +591,7 @@ public class AdminTool {
     booleanParam(cmd, Arg.AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED, p -> params.setAutoSchemaPushJobEnabled(p), argSet);
     booleanParam(cmd, Arg.AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED,
         p -> params.setAutoSupersetSchemaEnabledFromReadComputeStore(p), argSet);
+    booleanParam(cmd, Arg.HYBRID_STORE_DISK_QUOTA_ENABLED, p -> params.setHybridStoreDiskQuotaEnabled(p), argSet);
 
     /**
      * By default when SRE updates storage quota using AdminTool, we will set the bypass as true,

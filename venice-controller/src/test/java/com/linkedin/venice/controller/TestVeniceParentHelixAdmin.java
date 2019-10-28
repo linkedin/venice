@@ -238,7 +238,8 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> leaderFollowerModelEnabled,
         Optional<BackupStrategy> backupStategy,
         Optional<Boolean> autoSchmePushJob,
-        Optional<Boolean> autoSchmeAdmin) {
+        Optional<Boolean> autoSchmeAdmin,
+        Optional<Boolean> hybridStoreDiskQuotaEnabled) {
       if (hybridOffsetLagThreshold.isPresent() && hybridRewindSeconds.isPresent()) {
         doReturn(true).when(store).isHybrid();
       }
@@ -1042,6 +1043,11 @@ public class TestVeniceParentHelixAdmin {
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(100l));
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(STORAGE_QUOTA, storeResponse.getStore().getStorageQuotaInByte());
+
+    // Update hybrid store storage quota feature flag
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(true));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isHybridStoreDiskQuotaEnabled());
 
     // Update hybrid store overhead bypass
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreOverheadBypass(false)
