@@ -89,14 +89,12 @@ public class TestInstanceStatusDecider {
     partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
 
     // Test the completed push.
-    VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
-    for (VersionStatus status : statuses) {
-      prepareStoreAndVersion(storeName, version, status);
-      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId, 1).isRemovable(),
-          bootstrapInstanceId + "could be removed because it's not the last online copy.");
-      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId, 1).isRemovable(),
-          onlineInstanceId + "could NOT be removed because it the last online copy.");
-    }
+    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true);
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId, 1).isRemovable(),
+        bootstrapInstanceId + "could be removed because it's not the last online copy.");
+    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId, 1).isRemovable(),
+        onlineInstanceId + "could NOT be removed because it the last online copy.");
+
   }
 
   @Test
@@ -120,24 +118,22 @@ public class TestInstanceStatusDecider {
     partitionAssignment.addPartition(new Partition(1, statusToInstancesMap));
 
     // Test the completed push.
-    VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
-    for (VersionStatus status : statuses) {
-      prepareStoreAndVersion(storeName, version, status);
-      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, 1, true).isRemovable(),
-          instance1 + "could be removed because it's not the last online copy in the instance's point of view.");
-      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance2, 1, true).isRemovable(),
-          instance2 + "could NOT be removed because it the last online copy in the instance's point of view.");
-      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, 1).isRemovable(),
-          instance1 + "could NOT be removed because in the cluster's point of view, partition 1 does not have any online replica alive.");
-    }
+    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true);
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, 1, true).isRemovable(),
+        instance1 + "could be removed because it's not the last online copy in the instance's point of view.");
+    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance2, 1, true).isRemovable(),
+        instance2 + "could NOT be removed because it the last online copy in the instance's point of view.");
+    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instance1, 1).isRemovable(),
+        instance1 + "could NOT be removed because in the cluster's point of view, partition 1 does not have any online replica alive.");
+
   }
 
   /**
-   * Test is instance removable during the push. If removing would fail the running job, we can not remove that
+   * Test if instance is removable during the push. If removing would fail the running job, we can not remove that
    * instance.
    */
   @Test
-  public void testIsRemovableFailJob() {
+  public void testIsRemovableInFlightJob() {
     String instanceId = "localhost_1";
     Map<String, List<Instance>> statusToInstancesMap = new HashMap<>();
     List<Instance> instances = new ArrayList<>();
@@ -146,7 +142,7 @@ public class TestInstanceStatusDecider {
     PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
     partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
     // Test for the running push
-    prepareStoreAndVersion(storeName, version, VersionStatus.STARTED);
+    prepareStoreAndVersion(storeName, version, VersionStatus.STARTED, false);
 
     doReturn(false).when(mockMonitor).wouldJobFail(eq(resourceName), any());
     NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1);
@@ -155,7 +151,7 @@ public class TestInstanceStatusDecider {
   }
 
   /**
-   * Test is instance removable for the ready to serve version. If removing would cause re-balance, we can remove that
+   * Test if instance is removable for the ready to serve version. If removing would cause re-balance, we can remove that
    * instance.
    */
   @Test
@@ -170,26 +166,23 @@ public class TestInstanceStatusDecider {
     PartitionAssignment partitionAssignment = prepareAssignments(resourceName);
     partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
 
-    VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
-    for (VersionStatus status : statuses) {
-      prepareStoreAndVersion(storeName, version, status);
-      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2).isRemovable(),
-          "Instance should be removable because after removing one instance, there are still 2 active replicas, it will not trigger re-balance.");
-    }
+    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true);
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2).isRemovable(),
+        "Instance should be removable because after removing one instance, there are still 2 active replicas, it will not trigger re-balance.");
+
 
     // Remove one instance
     instances.remove(instances.size() - 1);
     statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
     partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
-    for (VersionStatus status : statuses) {
-      prepareStoreAndVersion(storeName, version, status);
-      NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2);
-      Assert.assertFalse(result.isRemovable(),
-          "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
-      Assert.assertEquals(result.getBlockingReason(),
-          NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString(),
-          "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
-    }
+    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true);
+    NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2);
+    Assert.assertFalse(result.isRemovable(),
+        "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
+    Assert.assertEquals(result.getBlockingReason(),
+        NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString(),
+        "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
+
   }
 
   @Test
@@ -212,14 +205,13 @@ public class TestInstanceStatusDecider {
     statusToInstancesMap.put(HelixState.ONLINE_STATE, instances);
     partitionAssignment.addPartition(new Partition(1, statusToInstancesMap));
 
-    VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
-    for (VersionStatus status : statuses) {
-      prepareStoreAndVersion(storeName, version, status);
-      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", 2, true).isRemovable(),
-          "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0 in instance's point of view, it will not trigger re-balance.");
-      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", 2).isRemovable(),
-          "Instance should NOT be removable because after removing one instance, there are only 1 active replicas in partition 1 in cluster's point of view, it will trigger re-balance.");
-    }
+
+    prepareStoreAndVersion(storeName, version, VersionStatus.ONLINE, true);
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", 2, true).isRemovable(),
+        "Instance should be removable because after removing one instance, there are 2 active replicas in partition 0 in instance's point of view, it will not trigger re-balance.");
+    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_3", 2).isRemovable(),
+        "Instance should NOT be removable because after removing one instance, there are only 1 active replicas in partition 1 in cluster's point of view, it will trigger re-balance.");
+
   }
 
   private PartitionAssignment prepareAssignments(String resourceName) {
@@ -239,6 +231,18 @@ public class TestInstanceStatusDecider {
     Version version1 = new Version(storeName, version);
     version1.setStatus(status);
     store.addVersion(version1);
+    doReturn(store).when(readWriteStoreRepository).getStore(storeName);
+  }
+
+  private void prepareStoreAndVersion(String storeName, int version, VersionStatus status, boolean isCurrentVersion) {
+    Store store = TestUtils.createTestStore(storeName, "t", 0);
+    Version version1 = new Version(storeName, version);
+    version1.setStatus(status);
+    store.addVersion(version1);
+    if (isCurrentVersion) {
+      store.setCurrentVersion(version);
+    }
+
     doReturn(store).when(readWriteStoreRepository).getStore(storeName);
   }
 }

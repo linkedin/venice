@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -74,7 +75,6 @@ public class InstanceStatusDecider {
       }
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-      PushMonitor monitor = resources.getPushMonitor();
 
       // Get all of replicas hold by given instance
       List<Replica> replicas = getReplicasForInstance(resources, instanceId);
@@ -85,47 +85,35 @@ public class InstanceStatusDecider {
         Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
 
         for (String resourceName : resourceNameSet) {
-          // Get partition assignments that if we removed the given instance from cluster.
-          PartitionAssignment partitionAssignmentAfterRemoving =
-              getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
+          if (isCurrentVersion(resourceName, resources.getMetadataRepository())) {
+            // Get partition assignments that if we removed the given instance from cluster.
+            PartitionAssignment partitionAssignmentAfterRemoving =
+                getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
 
-          VersionStatus versionStatus = getVersionStatus(resources.getMetadataRepository(), resourceName);
-          if (versionStatus.equals(VersionStatus.ONLINE) || versionStatus.equals(VersionStatus.PUSHED)) {
-            // Push has been completed normally. The version of this push is ready to serve read requests. It might or
-            // might NOT be the current version of a store.
-            // Venice can not remove the given instance once:
-            // 1. Venice would lose data. If server hold the last ONLINE replica, we can NOT remove it otherwise data
-            // would be lost.
-            // 2. And a re-balance would be triggered. If there is not enough active replicas(including ONLINE,
-            // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
-            // In that case partition would be moved to other instances and might cause the consumption from the begin
-            // of topic.
-            Pair<Boolean, String> result = willLoseData(resources.getPushMonitor(), partitionAssignmentAfterRemoving);
-            if (result.getFirst()) {
-              logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
-                  + " would lose data if this instance was removed from cluster:" + clusterName + " details: "
-                  + result.getSecond());
-              return NodeRemovableResult.nonremoveableResult(resourceName,
-                  NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA, result.getSecond());
-            }
-            result = willTriggerRebalance(partitionAssignmentAfterRemoving, minActiveReplicas);
-            if (result.getFirst()) {
-              logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
-                  + " would be re-balanced if this instance was removed from cluster:" + clusterName + " details: "
-                  + result.getSecond());
-              return NodeRemovableResult.nonremoveableResult(resourceName,
-                  NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE, result.getSecond());
-            }
-          } else {
-            if (logger.isDebugEnabled()) {
-              // Ignore the STARTED, ERROR and NOT_CREATED versions.
-              logger.debug(
-                  "Version status: " + versionStatus.toString() + ", ignore it while judging whether instance: "
-                      + instanceId + " is removable.");
+              // Push has been completed normally. The version of this push is ready to serve read requests. It might or
+              // might NOT be the current version of a store.
+              // Venice can not remove the given instance once:
+              // 1. Venice would lose data. If server hold the last ONLINE replica, we can NOT remove it otherwise data
+              // would be lost.
+              // 2. And a re-balance would be triggered. If there is not enough active replicas(including ONLINE,
+              // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
+              // In that case partition would be moved to other instances and might cause the consumption from the begin
+              // of topic.
+              Pair<Boolean, String> result = willLoseData(resources.getPushMonitor(), partitionAssignmentAfterRemoving);
+              if (result.getFirst()) {
+                logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName + " would lose data if this instance was removed from cluster:" + clusterName + " details: "
+                    + result.getSecond());
+                return NodeRemovableResult.nonremoveableResult(resourceName, NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA, result.getSecond());
+              }
+              result = willTriggerRebalance(partitionAssignmentAfterRemoving, minActiveReplicas);
+              if (result.getFirst()) {
+                logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName + " would be re-balanced if this instance was removed from cluster:" + clusterName + " details: "
+                    + result.getSecond());
+                return NodeRemovableResult.nonremoveableResult(resourceName, NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE, result.getSecond());
+              }
             }
           }
         }
-      }
       return NodeRemovableResult.removableResult();
     } catch (Exception e) {
       String errorMsg = "Can not get current states for instance:" + instanceId + " from Zookeeper";
@@ -193,5 +181,16 @@ public class InstanceStatusDecider {
       return VersionStatus.NOT_CREATED;
     }
     return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));
+  }
+
+  private static boolean isCurrentVersion(String resourceName, HelixReadWriteStoreRepository metadataRepo) {
+    try{
+      String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+      int version = Version.parseVersionFromKafkaTopicName(resourceName);
+
+      return metadataRepo.getStore(storeName).getCurrentVersion() == version;
+    } catch (VeniceException e) {
+      return false;
+    }
   }
 }
