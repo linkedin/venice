@@ -1154,7 +1154,8 @@ public class VeniceParentHelixAdmin implements Admin {
       } else {
         if (!oldStoreHybrid) {
           // convert from non-hybrid to hybrid store, needs to increase the storage quota accordingly
-          if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
+          if ((hybridRewindSeconds.isPresent() && hybridRewindSeconds.get() >= 0) &&
+              (hybridOffsetLagThreshold.isPresent() && hybridOffsetLagThreshold.get() >= 0)) {
             setStore.storageQuotaInByte = Math.round(setStoreQuota * RocksDBUtils.ROCKSDB_OVERHEAD_RATIO_FOR_HYBRID_STORE);
           } else { // user updates storage quota for non-hybrid stores or just inherit the old value
             setStore.storageQuotaInByte = setStoreQuota;

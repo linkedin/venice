@@ -2217,6 +2217,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             superSetSchemaAutoGenerationForReadComputeEnabled.ifPresent(value ->
                 setSuperSetSchemaAutoGenerationForReadComputeEnabled(clusterName, storeName, value));
 
+            if (hybridStoreDbOverheadBypass.isPresent()) {
+                logger.warn("If updateStore is triggered only in child controller, "
+                    + "hybridStoreDbOverheadBypass would be ignored.");
+            }
+
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
             logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName
