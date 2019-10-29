@@ -20,6 +20,9 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.schema.SchemaData.*;
+
+
 public class TestHelixReadWriteSchemaRepository {
   private String zkAddress;
   private ZkClient zkClient;
@@ -249,6 +252,51 @@ public class TestHelixReadWriteSchemaRepository {
     SchemaEntry valueSchema1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     Assert.assertEquals(valueSchema1.getId(), 1);
     SchemaEntry valueSchema2 = schemaRepo.addValueSchema(storeName, valueSchemaStr2);
+  }
+
+  @Test
+  public void testAddDuplicateValueSchemaDocUpdate() {
+    String storeName = "test_store1";
+    String valueSchemaStr1 = "{\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"KeyRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
+        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
+        "               {\n" +
+        "                 \"name\": \"Suit\", \n" +
+        "                 \"type\": {\n" +
+        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
+        "                }\n" +
+        "              },\n" +
+        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
+        "           ]\n" +
+        "        }";
+    String valueSchemaStr2 = "{\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"KeyRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field updated\"},\n" +
+        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
+        "               {\n" +
+        "                 \"name\": \"Suit\", \n" +
+        "                 \"type\": {\n" +
+        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
+        "                }\n" +
+        "              },\n" +
+        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
+        "           ]\n" +
+        "        }";
+    createStore(storeName);
+    SchemaEntry entry1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    // Add the same value schema
+    SchemaEntry entry2 = schemaRepo.addValueSchema(storeName, valueSchemaStr2);
+    SchemaEntry entry3 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+
+    Assert.assertNotEquals(entry2.getId(), entry1.getId());
+    Assert.assertEquals(entry3.getId(), DUPLICATE_VALUE_SCHEMA_CODE);
+    Assert.assertEquals(schemaRepo.getValueSchemas(storeName).size(), 2);
+    Assert.assertEquals(entry2.getSchema().getField("name").doc(), "name field updated");
   }
 
   @Test(expectedExceptions = SchemaParseException.class)
