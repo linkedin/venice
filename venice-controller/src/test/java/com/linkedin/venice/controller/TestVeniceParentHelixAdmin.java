@@ -161,6 +161,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
     doReturn(true).when(config).isAddVersionViaAdminProtocolEnabled();
     doReturn(false).when(config).isAddVersionViaTopicMonitorEnabled();
+    doReturn("").when(config).getPushJobStatusStoreClusterName();
     return config;
   }
 
