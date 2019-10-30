@@ -52,7 +52,9 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
     if (avroValue == null) {
       LOGGER.warn("Received null record, skip.");
-      reporter.incrCounter(COUNTER_GROUP_KAFKA, EMPTY_RECORD, 1);
+      if (reporter != null) {
+        reporter.incrCounter(COUNTER_GROUP_KAFKA, EMPTY_RECORD, 1);
+      }
       return;
     }
 
@@ -64,8 +66,10 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
       return;
     }
 
-    reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
-    reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
+    if (reporter != null) {
+      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
+      reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
+    }
 
     output.collect(new BytesWritable(recordKey), new BytesWritable(recordValue));
   }

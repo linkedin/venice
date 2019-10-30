@@ -161,6 +161,7 @@ public class TestKafkaPushJob {
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
@@ -178,6 +179,7 @@ public class TestKafkaPushJob {
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
     String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing key field
@@ -203,6 +205,7 @@ public class TestKafkaPushJob {
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing value field
     props.put(VALUE_FIELD_PROP, "name1");
@@ -230,6 +233,7 @@ public class TestKafkaPushJob {
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
