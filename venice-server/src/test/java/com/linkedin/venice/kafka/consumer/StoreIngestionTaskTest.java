@@ -17,6 +17,7 @@ import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
@@ -345,7 +346,9 @@ public class StoreIngestionTaskTest {
     doReturn(500l).when(serverConfig).getServerPromotionToLeaderReplicaDelayMs();
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(serverConfig).getKafkaBootstrapServers();
     doReturn(false).when(serverConfig).isHybridQuotaEnabled();
-
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+    doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
         .setVeniceConsumerFactory(mockFactory)
