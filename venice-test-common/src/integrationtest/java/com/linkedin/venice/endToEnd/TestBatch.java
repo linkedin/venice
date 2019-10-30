@@ -1,5 +1,6 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -52,6 +53,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public abstract class TestBatch {
   private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int MAX_RETRY_ATTEMPTS = 3;
   private static final String STRING_SCHEMA = "\"string\"";
 
   private VeniceClusterWrapper veniceCluster;
@@ -317,7 +319,24 @@ public abstract class TestBatch {
             Utf8 expectedUtf8 = new Utf8(expectedString);
 
             LOGGER.info("About to query key: " + i);
-            Utf8 returnedUtf8Value = (Utf8) avroClient.get(key).get();
+            // This call often fails due to a race condition where the store is not perceived to exist yet
+            Utf8 returnedUtf8Value = null;
+            Integer attempts = 0;
+            while(attempts < MAX_RETRY_ATTEMPTS)
+            {
+              try {
+                returnedUtf8Value = (Utf8) avroClient.get(key).get();
+                break;
+              } catch (VeniceClientException e) {
+                attempts++;
+                if(attempts == MAX_RETRY_ATTEMPTS) {
+                  throw e;
+                }
+                // Give it a sec
+                Thread.sleep(1000);
+              }
+            }
+
             Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
             LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
             Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
