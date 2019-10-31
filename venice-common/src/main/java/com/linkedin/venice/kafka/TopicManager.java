@@ -4,23 +4,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicAlreadyMarkedForDeletionException;
 import kafka.server.ConfigType;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
+
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.IOUtils;
@@ -36,6 +27,18 @@ import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
+
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.offsets.OffsetRecord.*;
@@ -197,10 +200,18 @@ public class TopicManager implements Closeable {
    * @param useFastKafkaOperationTimeout if false, normal kafka operation timeout will be used,
    *                            if true, a much shorter timeout will be used to make topic creation non-blocking.
    */
-  public void createTopic(String topicName, int numPartitions, int replication, long retentionTimeMs,
-      boolean logCompaction, Optional<Integer> minIsr, boolean useFastKafkaOperationTimeout) {
-    int actualKafkaOperationTimeoutMs =
-        useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs;
+  public void createTopic(
+      String topicName,
+      int numPartitions,
+      int replication,
+      long retentionTimeMs,
+      boolean logCompaction,
+      Optional<Integer> minIsr,
+      boolean useFastKafkaOperationTimeout) {
+
+    long startTime = System.currentTimeMillis();
+    long deadlineMs = startTime + (useFastKafkaOperationTimeout ? FAST_KAFKA_OPERATION_TIMEOUT_MS : kafkaOperationTimeoutMs);
+
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     try {
       Properties topicProperties = new Properties();
@@ -218,7 +229,6 @@ public class TopicManager implements Closeable {
       // Just in case the Kafka cluster isn't configured as expected.
       topicProperties.put(TopicConfig.MESSAGE_TIMESTAMP_TYPE_CONFIG, "LogAppendTime");
 
-      long startTime = System.currentTimeMillis();
       boolean asyncCreateOperationSucceeded = false;
       while (!asyncCreateOperationSucceeded) {
         try {
@@ -227,27 +237,35 @@ public class TopicManager implements Closeable {
           AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
             asyncCreateOperationSucceeded = true;
         } catch (InvalidReplicationFactorException e) {
-          if (System.currentTimeMillis() > startTime + actualKafkaOperationTimeoutMs) {
-            throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + actualKafkaOperationTimeoutMs + "ms.", e);
+          if (System.currentTimeMillis() > deadlineMs) {
+            throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + (deadlineMs - startTime) + "ms.", e);
           } else {
             logger.info("Kafka failed to kick off topic creation because it appears to be under-replicated... Will treat it as a transient error and attempt to ride over it.", e);
             Utils.sleep(200);
           }
         }
       }
-      while (!containsTopic(topicName, numPartitions)) {
-        if (System.currentTimeMillis() > startTime + actualKafkaOperationTimeoutMs) {
-          throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName
-              + ".  Topic still did not pass all the checks after " + actualKafkaOperationTimeoutMs + "ms.");
-        }
-        Utils.sleep(200);
-      }
+
+      waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
       boolean eternal = retentionTimeMs == ETERNAL_TOPIC_RETENTION_POLICY_MS;
       logger.info("Successfully created " + (eternal ? "eternal " : "") + "topic: " + topicName);
+
     } catch (TopicExistsException e) {
       logger.info("Topic: " + topicName + " already exists, will update retention policy.");
+      waitUntilTopicCreated(topicName, numPartitions, deadlineMs);
       updateTopicRetention(topicName, retentionTimeMs);
       logger.info("Updated retention policy to be " + retentionTimeMs + "ms for topic: " + topicName);
+    }
+  }
+
+  protected void waitUntilTopicCreated(String topicName, int partitionCount, long deadlineMs) {
+    long startTime = System.currentTimeMillis();
+    while (!containsTopic(topicName, partitionCount)) {
+      if (System.currentTimeMillis() > deadlineMs) {
+        throw new VeniceOperationAgainstKafkaTimedOut(
+            "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after " + (deadlineMs - startTime) + "ms.");
+      }
+      Utils.sleep(200);
     }
   }
 
