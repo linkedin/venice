@@ -1,12 +1,12 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
-import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
-
 import com.linkedin.venice.controller.kafka.protocol.admin.AbortMigration;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -26,6 +26,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -46,12 +47,18 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.meta.*;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -61,39 +68,38 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-
 import java.util.HashSet;
-import java.util.Optional;
-
-import com.linkedin.venice.writer.VeniceWriterFactory;
-import java.util.Properties;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.stream.Collectors;
-import org.apache.http.HttpStatus;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
-
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
+import org.apache.avro.Schema;
+import org.apache.http.HttpStatus;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -1272,34 +1278,98 @@ public class VeniceParentHelixAdmin implements Admin {
       if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         return new SchemaEntry(veniceHelixAdmin.getValueSchemaId(clusterName, storeName, valueSchemaStr), valueSchemaStr);
       }
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      Schema existingSchema = veniceHelixAdmin.getLatestValueSchema(clusterName, store);
 
-      logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
+      if (store.isSuperSetSchemaAutoGenerationForReadComputeEnabled() && existingSchema != null) {
+        Schema upcomingSchema = Schema.parse(valueSchemaStr);
+        Schema newSuperSetSchema = AvroSchemaUtils.generateSuperSetSchema(existingSchema, upcomingSchema);
+        String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
-      ValueSchemaCreation valueSchemaCreation = (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
-      valueSchemaCreation.clusterName = clusterName;
-      valueSchemaCreation.storeName = storeName;
-      SchemaMeta schemaMeta = new SchemaMeta();
-      schemaMeta.definition = valueSchemaStr;
-      schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
-      valueSchemaCreation.schema = schemaMeta;
-      valueSchemaCreation.schemaId = newValueSchemaId;
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.getValue();
-      message.payloadUnion = valueSchemaCreation;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-
-      //defensive code checking
-      int actualValueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
-      if (actualValueSchemaId != newValueSchemaId) {
-        throw new VeniceException("Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: " + actualValueSchemaId);
+        // Register super-set schema only if it does not match with existing or upcoming schema
+        if (!newSuperSetSchemaStr.equals(upcomingSchema.toString()) && !newSuperSetSchemaStr.equals(existingSchema.toString())) {
+         // validate compatibility of the new superset schema
+          veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
+              clusterName, storeName, newSuperSetSchemaStr, expectedCompatibilityType);
+          //if we find new superset schema does not exist, use valueSchemaId + 1 as id for superset schema
+          int supersetSchemaId = veniceHelixAdmin.getValueSchemaId(clusterName, storeName, newSuperSetSchemaStr);
+          if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
+            supersetSchemaId = newValueSchemaId + 1;
+          }
+          return addSupersetValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId, newSuperSetSchemaStr, supersetSchemaId);
+        }
       }
 
-      return new SchemaEntry(actualValueSchemaId, valueSchemaStr);
+      return addValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId);
     } finally {
       releaseLock();
     }
+  }
+
+  private SchemaEntry addSupersetValueSchemaEntry(String clusterName, String storeName, String valueSchemaStr,
+      int valueSchemaId, String supersetSchemaStr, int supersetSchemaId) {
+    logger.info("Adding value schema: " + valueSchemaStr + " and superset schema " + supersetSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
+
+    SupersetSchemaCreation supersetSchemaCreation =
+        (SupersetSchemaCreation) AdminMessageType.SUPERSET_SCHEMA_CREATION.getNewInstance();
+    supersetSchemaCreation.clusterName = clusterName;
+    supersetSchemaCreation.storeName = storeName;
+    SchemaMeta schemaMeta = new SchemaMeta();
+    schemaMeta.definition = valueSchemaStr;
+    schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+    supersetSchemaCreation.valueSchema = schemaMeta;
+    supersetSchemaCreation.valueSchemaId = valueSchemaId;
+
+    SchemaMeta supersetSchemaMeta = new SchemaMeta();
+    supersetSchemaMeta.definition = supersetSchemaStr;
+    supersetSchemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+    supersetSchemaCreation.supersetSchema = supersetSchemaMeta;
+    supersetSchemaCreation.supersetSchemaId = supersetSchemaId;
+
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.SUPERSET_SCHEMA_CREATION.getValue();
+    message.payloadUnion = supersetSchemaCreation;
+
+    sendAdminMessageAndWaitForConsumed(clusterName, message);
+    return new SchemaEntry(valueSchemaId, valueSchemaStr);
+  }
+
+  private SchemaEntry addValueSchemaEntry(String clusterName, String storeName, String valueSchemaStr,
+      int newValueSchemaId) {
+    logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
+
+    ValueSchemaCreation valueSchemaCreation =
+        (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
+    valueSchemaCreation.clusterName = clusterName;
+    valueSchemaCreation.storeName = storeName;
+    SchemaMeta schemaMeta = new SchemaMeta();
+    schemaMeta.definition = valueSchemaStr;
+    schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+    valueSchemaCreation.schema = schemaMeta;
+    valueSchemaCreation.schemaId = newValueSchemaId;
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.getValue();
+    message.payloadUnion = valueSchemaCreation;
+
+    sendAdminMessageAndWaitForConsumed(clusterName, message);
+
+    //defensive code checking
+    int actualValueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    if (actualValueSchemaId != newValueSchemaId) {
+      throw new VeniceException(
+          "Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: "
+              + actualValueSchemaId);
+    }
+
+    return new SchemaEntry(actualValueSchemaId, valueSchemaStr);
+  }
+
+  @Override
+  public SchemaEntry addSupersetSchema(String clusterName, String storeName, String valueSchemaStr, int valueSchemaId,
+      String supersetSchemaStr, int supersetSchemaId) {
+    throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 
   @Override

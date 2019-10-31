@@ -70,6 +70,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -462,11 +463,14 @@ public class TestVeniceParentHelixAdmin {
 
     String storeName = "test-store";
     String valueSchemaStr = "\"string\"";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+
     int valueSchemaId = 10;
     doReturn(valueSchemaId).when(internalAdmin)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
     doReturn(valueSchemaId).when(internalAdmin)
         .getValueSchemaId(clusterName, storeName, valueSchemaStr);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
     Future future = mock(Future.class);
     doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
@@ -1209,6 +1213,74 @@ public class TestVeniceParentHelixAdmin {
     }
 
     return clientMap;
+  }
+
+  private Schema generateSchema(boolean addFieldWithDefaultValue) {
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
+        " \"type\": \"record\",\n" +
+        " \"name\": \"User\",\n" +
+        " \"fields\": [\n" +
+        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      {\n" +
+        "       \"name\": \"value\",\n" +
+        "       \"type\": {\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"ValueRecord\",\n" +
+        "           \"fields\" : [\n";
+    if (addFieldWithDefaultValue) {
+      schemaStr += "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"}\n";
+    } else {
+      schemaStr +=   "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
+    }
+    schemaStr +=
+        "           ]\n" +
+            "        }\n" +
+            "      }\n" +
+            " ]\n" +
+            "}";
+    return Schema.parse(schemaStr);
+  }
+
+  @Test(dataProvider = "isControllerSslEnabled")
+  public void testSuperSetSchemaGen(boolean isControllerSslEnabled) throws IOException {
+    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    VeniceControllerWrapper childControllerWrapper =
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper controllerWrapper =
+        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+            new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled);
+
+    String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
+    Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
+
+    // Adding store
+    String storeName = "test_store";
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = generateSchema(false);
+
+    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
+    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
+    params.setAutoSchemaPushJobEnabled(true);
+    controllerClient.updateStore(storeName, params);
+
+    valueSchema = generateSchema(true);
+    controllerClient.addValueSchema(storeName, valueSchema.toString());
+
+    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
+
+    Assert.assertEquals(schemaResponse.getSchemas().length,3);
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
+
+    controllerWrapper.close();
+    childControllerWrapper.close();
+    kafkaBrokerWrapper.close();
   }
 
   @Test

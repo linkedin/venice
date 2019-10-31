@@ -21,6 +21,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -189,6 +190,9 @@ public class AdminExecutionTask implements Callable<Void> {
       case DERIVED_SCHEMA_CREATION:
         handleDerivedSchemaCreation((DerivedSchemaCreation) adminOperation.payloadUnion);
         break;
+      case SUPERSET_SCHEMA_CREATION:
+        handleSupersetSchemaCreation((SupersetSchemaCreation) adminOperation.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
     }
@@ -235,6 +239,19 @@ public class AdminExecutionTask implements Callable<Void> {
     admin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
     logger.info(String.format("Added derived schema:\n %s\n to store: %s, value schema id: %d, derived schema id: %d",
         derivedSchemaStr, storeName, valueSchemaId, derivedSchemaId));
+  }
+
+  private void handleSupersetSchemaCreation(SupersetSchemaCreation message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    String valueSchemaStr = message.valueSchema.definition.toString();
+    int valueSchemaId = message.valueSchemaId;
+    String supersetSchemaStr = message.supersetSchema.definition.toString();
+    int supersetSchemaId = message.supersetSchemaId;
+
+    admin.addSupersetSchema(clusterName, storeName, valueSchemaStr, valueSchemaId, supersetSchemaStr, supersetSchemaId);
+    logger.info(String.format("Added value schema:\n %s\n to store: %s, value schema id: %d, also added superset schema: %s, superset schema id: %d",
+        valueSchemaStr, storeName, valueSchemaId, supersetSchemaStr, supersetSchemaId));
   }
 
   private void handleDisableStoreWrite(PauseStore message) {
