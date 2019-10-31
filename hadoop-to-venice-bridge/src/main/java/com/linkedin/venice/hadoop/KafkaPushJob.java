@@ -327,6 +327,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     boolean isChunkingEnabled;
     long storeStorageQuota;
     double storageEngineOverheadRatio;
+    boolean isSchemaAutoRegisteFromPushJobEnabled;
   }
 
   /**
@@ -454,9 +455,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       this.inputFileDataSize = calculateInputDataSize(this.inputDirectory);
       // Get input schema
       this.schemaInfo = getInputSchema(this.inputDirectory, this.props);
-      validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
-      validateValueSchema(controllerClient, pushJobSetting, schemaInfo);
       StoreSetting storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
+
+      validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
+      validateValueSchema(controllerClient, pushJobSetting, schemaInfo, storeSetting.isSchemaAutoRegisteFromPushJobEnabled);
 
       JobClient jc;
 
@@ -852,14 +854,27 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   /***
    * This method will talk to controller to validate value schema.
    */
-  private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo) {
+  private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo,
+      boolean schemaAutoRegisteFromPushJobEnabled) {
     SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
         c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
-    if (valueSchemaResponse.isError()) {
+    if (valueSchemaResponse.isError() && !schemaAutoRegisteFromPushJobEnabled) {
       throw new VeniceException("Failed to validate value schema for store: " + setting.storeName
           + "\nError from the server: " + valueSchemaResponse.getError()
           + "\nSchema for the data file: " + schemaInfo.valueSchemaString
       );
+    }
+    if (schemaAutoRegisteFromPushJobEnabled) {
+      if (valueSchemaResponse.isError()) {
+        valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
+            c.addValueSchema(setting.storeName, schemaInfo.valueSchemaString));
+        if (valueSchemaResponse.isError()) {
+          throw new VeniceException("Failed to add value schema for store: " + setting.storeName
+              + "\nError from the server: " + valueSchemaResponse.getError()
+              + "\nSchema for the data file: " + schemaInfo.valueSchemaString
+          );
+        }
+      }
     }
     schemaInfo.valueSchemaId = valueSchemaResponse.getId();
     logger.info("Got schema id: " + schemaInfo.valueSchemaId + " for value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
@@ -872,6 +887,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       throw new VeniceException("Can't get store info. " + storeResponse.getError());
     }
     storeSetting.storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+    storeSetting.isSchemaAutoRegisteFromPushJobEnabled = storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled();
     if (storeSetting.storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && setting.isMapOnly) {
       throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + setting.storeName);
     }

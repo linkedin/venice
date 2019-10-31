@@ -188,6 +188,10 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
 
+    SchemaEntry addSupersetSchema(String clusterName, String storeName, String valueSchemaStr, int valueSchemaId,
+        String supersetSchemaStr, int supersetSchemaId);
+
+
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, String derivedSchemaStr);
 
     /**

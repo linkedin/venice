@@ -21,6 +21,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.io.File;
 import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,6 +70,15 @@ public class TestUtils {
 
   public static String getUniqueTempPath(String prefix) {
     return Paths.get(System.getProperty(TEMP_DIRECTORY_SYSTEM_PROPERTY), TestUtils.getUniqueString(prefix)).toAbsolutePath().toString();
+  }
+
+  public static File getTempDataDirectory() {
+    String tmpDirectory = System.getProperty(TestUtils.TEMP_DIRECTORY_SYSTEM_PROPERTY);
+    String directoryName = TestUtils.getUniqueString("Venice-Data");
+    File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
+    dir.mkdir();
+    dir.deleteOnExit();
+    return dir;
   }
 
   /**

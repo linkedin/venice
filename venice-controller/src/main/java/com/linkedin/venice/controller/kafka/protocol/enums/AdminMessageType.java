@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SupersetSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -42,7 +43,9 @@ public enum AdminMessageType {
   MIGRATE_STORE(14),
   ABORT_MIGRATION(15),
   ADD_VERSION(16),
-  DERIVED_SCHEMA_CREATION(17);
+  DERIVED_SCHEMA_CREATION(17),
+  SUPERSET_SCHEMA_CREATION(18);
+
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -71,6 +74,7 @@ public enum AdminMessageType {
       case ABORT_MIGRATION: return new AbortMigration();
       case ADD_VERSION: return new AddVersion();
       case DERIVED_SCHEMA_CREATION: return new DerivedSchemaCreation();
+      case SUPERSET_SCHEMA_CREATION: return new SupersetSchemaCreation();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationManager;
@@ -56,7 +57,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.KillPushJob;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -71,7 +71,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
@@ -104,9 +103,9 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
+import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManagerFactory;
@@ -2520,6 +2519,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .addDerivedSchema(storeName, derivedSchemaStr, valueSchemaId, derivedSchemaId);
     }
 
+    @Override
+    public SchemaEntry addSupersetSchema(String clusterName, String storeName, String valueSchema,
+        int valueSchemaId, String supersetSchema, int supersetSchemaId) {
+        checkControllerMastership(clusterName);
+        Store store = getStore(clusterName, storeName);
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
+
+        // If the new superset schema does not exist in the schema repo, add it
+        SchemaEntry existingSchema = schemaRepository.getValueSchema(storeName, supersetSchemaId);
+        if (existingSchema != null) {
+            if (!existingSchema.toString().equals(supersetSchema)) {
+                throw new VeniceException("Existing schema with id " + existingSchema.getId() + "does not match with new schema " + supersetSchema);
+            }
+        } else {
+            schemaRepository.addValueSchema(storeName, supersetSchema, supersetSchemaId);
+        }
+
+        // Update the store config
+        store.setLatestSuperSetValueSchemaId(supersetSchemaId);
+        storeRepository.updateStore(store);
+
+        // add the value schema
+        return schemaRepository.addValueSchema(storeName, valueSchema, valueSchemaId);
+    }
+
     protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
         String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);
@@ -2555,6 +2580,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
         return instancesStatusesMap;
+    }
+
+    public Schema getLatestValueSchema(String clusterName, Store store) {
+        ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+        SchemaEntry existingSchema;
+        // If already a superset schema exists, try to generate the new superset from that and the input value schema
+        if (store.getLatestSuperSetValueSchemaId() != -1) {
+            existingSchema = schemaRepository.getValueSchema(store.getName(), store.getLatestSuperSetValueSchemaId());
+        } else {
+            existingSchema = schemaRepository.getLatestValueSchema(store.getName());
+        }
+        return existingSchema == null ? null : existingSchema.getSchema();
     }
 
     @Override
