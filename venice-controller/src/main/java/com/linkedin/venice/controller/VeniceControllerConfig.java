@@ -63,6 +63,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerHAASSuperClusterName;
   private final boolean earlyDeleteBackUpEnabled;
   private final boolean sendConcurrentTopicDeleteRequestsEnabled;
+  private final boolean enableBatchPushFromAdminInChildController;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -138,6 +139,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
           + CONTROLLER_CLUSTER_LEADER_HAAS + " is set to true");
     }
     this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
+    this.enableBatchPushFromAdminInChildController = props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
   }
 
   public int getAdminPort() {
@@ -274,6 +276,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isConcurrentTopicDeleteRequestsEnabled() {
     return sendConcurrentTopicDeleteRequestsEnabled;
+  }
+
+  public boolean isEnableBatchPushFromAdminInChildController() {
+    return enableBatchPushFromAdminInChildController;
   }
 
   /**

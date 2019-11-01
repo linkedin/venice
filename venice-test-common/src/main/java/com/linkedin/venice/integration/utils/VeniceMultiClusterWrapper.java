@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -37,7 +38,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
       int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes, Optional<Integer> zkPort, boolean randomizeClusterName) {
+      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
+      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup) {
     ZkServerWrapper zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
@@ -53,9 +55,14 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     // Create controllers for multi-cluster
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
 
+    Properties controllerProperties = new Properties();
+    if (multiColoSetup) {
+      // In multi-colo setup, we don't allow batch push to each individual child colo, but just parent colo
+      controllerProperties.put(ConfigKeys.CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, "false");
+    }
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
-          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, new Properties());
+          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2, false, false, controllerProperties);
       controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
     }
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();

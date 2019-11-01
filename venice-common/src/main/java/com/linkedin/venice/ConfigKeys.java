@@ -833,4 +833,13 @@ public class ConfigKeys {
    * The super cluster name for HAAS. This config is required if HAAS is enabled for the creation of helix clusters.
    */
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
+
+  /**
+   * Whether to enable batch push (including GF job) from Admin in Child Controller.
+   * In theory, we should disable batch push in Child Controller no matter what, but the fact is that today there are
+   * many tests, which are doing batch pushes to an individual cluster setup (only Child Controller), so disabling batch push from Admin
+   * in Child Controller will require a lot of refactoring.
+   * So the current strategy is to enable it by default, but disable it in EI and PROD.
+   */
+  public static final String CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD = "controller.enable.batch.push.from.admin.in.child";
 }

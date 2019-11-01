@@ -1909,6 +1909,14 @@ public class VeniceParentHelixAdmin implements Admin {
     veniceHelixAdmin.writeEndOfPush(clusterName, storeName, versionNumber, alsoWriteStartOfPush);
   }
 
+  @Override
+  public boolean whetherEnableBatchPushFromAdmin() {
+    /**
+     * Batch push to Parent Cluster is always enabled.
+     */
+    return true;
+  }
+
   public void migrateStore(String srcClusterName, String destClusterName, String storeName) {
     if (srcClusterName.equals(destClusterName)) {
       throw new VeniceException("Source cluster and destination cluster cannot be the same!");
