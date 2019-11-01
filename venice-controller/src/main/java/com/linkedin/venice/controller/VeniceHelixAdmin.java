@@ -1743,7 +1743,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
-            return repository.listStores();
+            return repository.getAllStores();
         } finally {
             repository.unLock();
         }
@@ -1755,7 +1755,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
-            List<Store> storeList = repository.listStores();
+            List<Store> storeList = repository.getAllStores();
             RoutingDataRepository routingDataRepository =
                 getVeniceHelixResource(clusterName).getRoutingDataRepository();
             ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
@@ -3411,7 +3411,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     for (String clusterName : activeClusters) {
                         // For each cluster, get a list of stores that are migrating
                         HelixReadWriteStoreRepository storeRepo = this.getVeniceHelixResource(clusterName).getMetadataRepository();
-                        List<Store> migratingStores = storeRepo.listStores()
+                        List<Store> migratingStores = storeRepo.getAllStores()
                             .stream()
                             .filter(s -> s.isMigrating())
                             .filter(s -> this.storeConfigRepo.getStoreConfig(s.getName()).get().getMigrationSrcCluster() != null)

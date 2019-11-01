@@ -5,15 +5,13 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -24,8 +22,6 @@ import org.testng.annotations.Test;
 
 import java.util.Collection;
 import java.util.concurrent.TimeUnit;
-
-import static org.mockito.Mockito.*;
 
 
 public class TestHelixReadOnlySchemaRepository {
@@ -209,22 +205,5 @@ public class TestHelixReadOnlySchemaRepository {
     createStore(storeName);
     // The legacy value schema should not be there
     Assert.assertNull(schemaRORepo.getValueSchema(storeName, 1));
-  }
-
-  @Test
-  public void makeSureSchemaRepoIsUsingSameLockAsStoreRepo() {
-    ReadOnlyStoreRepository mockStoreRepository = mock(ReadOnlyStoreRepository.class);
-    ReadWriteLock storeRepoLock = new ReentrantReadWriteLock();
-    doReturn(storeRepoLock).when(mockStoreRepository).getInternalReadWriteLock();
-    HelixReadOnlySchemaRepository schemaRepository = new HelixReadOnlySchemaRepository(mockStoreRepository,
-        mock(ZkClient.class), mock(HelixAdapterSerializer.class), "test-cluster", 1, 1000l);
-    Assert.assertEquals(schemaRepository.getInternalReadWriteLock(), storeRepoLock);
-
-    // When StoreRepo is not using any lock, SchemaRepo should generate its own lock
-    doReturn(null).when(mockStoreRepository).getInternalReadWriteLock();
-    schemaRepository = new HelixReadOnlySchemaRepository(mockStoreRepository,
-        mock(ZkClient.class), mock(HelixAdapterSerializer.class), "test-cluster", 1, 1000l);
-    Assert.assertNotNull(schemaRepository.getInternalReadWriteLock(), "HelixReadOnlySchemaRepository should"
-        + " generate its own lock when ReadOnlyStoreRepository is not using any lock");
   }
 }

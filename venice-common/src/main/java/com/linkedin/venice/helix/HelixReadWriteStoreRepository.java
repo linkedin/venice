@@ -1,21 +1,12 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.utils.HelixUtils;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import javax.validation.constraints.NotNull;
-import org.apache.commons.collections.map.HashedMap;
-import org.apache.helix.AccessOption;
+
 import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -24,120 +15,70 @@ import org.apache.log4j.Logger;
  * This repository do NOT listen the change of store from ZK. Because in Venice, this is the only once place to modify
  * stores.
  */
-public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository implements ReadWriteStoreRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
-
-  public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName, int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
-    super(zkClient, adapter, clusterName, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-  }
-
-  public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer, int refreshAttemptsForZkReconnect,
+public class HelixReadWriteStoreRepository extends CachedReadOnlyStoreRepository implements ReadWriteStoreRepository {
+  public HelixReadWriteStoreRepository(
+      ZkClient zkClient,
+      HelixAdapterSerializer compositeSerializer,
+      String clusterName,
+      int refreshAttemptsForZkReconnect,
       long refreshIntervalForZkReconnectInMs) {
-    super(zkClient, adapter, clusterName, serializer, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
-  }
-
-  @Override
-  public void updateStore(Store store) {
-    lock();
-    try {
-      if (!storeMap.containsKey(store.getName())) {
-        throw new VeniceNoStoreException("Store:" + store.getName() + " does not exist.");
-      }
-      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store);
-      storeMap.put(store.getName(), store);
-    } finally {
-      unLock();
-    }
-  }
-
-  @Override
-  public void deleteStore(String name) {
-    lock();
-    try {
-      if (storeMap.containsKey(name)) {
-        HelixUtils.remove(dataAccessor,composeStorePath(name));
-        storeMap.remove(name);
-        triggerStoreDeletionListener(name);
-        logger.info("Store:" + name + " is deleted.");
-      }
-    } finally {
-      unLock();
-    }
+    super(zkClient, clusterName, compositeSerializer);
   }
 
   @Override
   public void addStore(Store store) {
-    lock();
+    updateLock.lock();
     try {
-      if (storeMap.containsKey(store.getName())) {
-        throw new VeniceStoreAlreadyExistsException(store.getName());
+      if (hasStore(store.getName())) {
+        throw new VeniceStoreAlreadyExistsException(store.getName(), clusterName);
       }
-      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store);
-      storeMap.put(store.getName(), store);
-      triggerStoreCreationListener(store);
-      logger.info("Store:" + store.getName() + " is added.");
+      HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
+      putStore(store);
     } finally {
-      unLock();
+      updateLock.unlock();
     }
-  }
-
-  public List<Store> listStores() {
-    List<Store> storeList = new ArrayList<>();
-    lock();
-    try{
-      Iterator<Store> storeIter = storeMap.values().iterator();
-      while (storeIter.hasNext()){
-        storeList.add(storeIter.next().cloneStore());
-      }
-    } finally {
-      unLock();
-    }
-    return storeList;
   }
 
   @Override
-  public void refresh() {
-    lock();
+  public void updateStore(Store store) {
+    updateLock.lock();
     try {
-      Map<String, Store> newStoreMap = new HashedMap();
-      List<Store> stores = dataAccessor.getChildren(rootPath, null, AccessOption.PERSISTENT);
-      logger.info("Load " + stores.size() + " stores from Helix");
-      for (Store s : stores) {
-        newStoreMap.put(s.getName(), s);
+      if (!hasStore(store.getName())) {
+        throw new VeniceNoStoreException(store.getName(), clusterName);
       }
-      clear(); // clear local copy only if loading from ZK successfully.
-      storeMap = newStoreMap;
-      logger.info("Put " + stores.size() + " stores to local copy.");
+      HelixUtils.update(zkDataAccessor, getStoreZkPath(store.getName()), store);
+      putStore(store);
     } finally {
-      unLock();
+      updateLock.unlock();
     }
   }
-
 
   @Override
-  public void clear() {
-    lock();
+  public void deleteStore(String storeName) {
+    updateLock.lock();
     try {
-      storeMap.clear();
-      logger.info("Clear stores from local copy.");
+      if (!hasStore(storeName)) {
+        throw new VeniceNoStoreException(storeName, clusterName);
+      }
+      HelixUtils.remove(zkDataAccessor, getStoreZkPath(storeName));
+      removeStore(storeName);
     } finally {
-      unLock();
+      updateLock.unlock();
     }
   }
 
-  /**
-   * Lock the repository to do some operations atomically.
-   */
+  @Override
+  public Store refreshOneStore(String storeName) {
+    return getStore(storeName);
+  }
+
+  @Override
   public void lock() {
-    metadataLock.writeLock().lock();
+    updateLock.lock();
   }
 
-  /**
-   * Unlock the repository.
-   */
+  @Override
   public void unLock() {
-    metadataLock.writeLock().unlock();
+    updateLock.unlock();
   }
 }
