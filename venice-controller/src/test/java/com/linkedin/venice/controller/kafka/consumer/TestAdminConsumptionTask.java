@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -968,6 +969,44 @@ public class TestAdminConsumptionTask {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test
+  public void testAddingDerivedSchema() throws Exception {
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
+    executor.submit(task);
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema, 1),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) AdminMessageType.DERIVED_SCHEMA_CREATION.getNewInstance();
+    derivedSchemaCreation.clusterName = clusterName;
+    derivedSchemaCreation.storeName = storeName;
+    SchemaMeta schemaMeta = new SchemaMeta();
+    schemaMeta.definition = valueSchema;
+    schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
+    derivedSchemaCreation.schema = schemaMeta;
+    derivedSchemaCreation.valueSchemaId = 1;
+    derivedSchemaCreation.derivedSchemaId = 2;
+
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.DERIVED_SCHEMA_CREATION.getValue();
+    adminMessage.payloadUnion = derivedSchemaCreation;
+    adminMessage.executionId = 2;
+    byte[] message = adminOperationSerializer.serialize(adminMessage);
+
+    veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(getLastOffset(clusterName), 2L);
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+
+    verify(admin, timeout(TIMEOUT).atLeastOnce()).addDerivedSchema(eq(clusterName), eq(storeName),
+        eq(derivedSchemaCreation.valueSchemaId), eq(derivedSchemaCreation.derivedSchemaId), eq(schemaMeta.definition.toString()));
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema, long executionId) {

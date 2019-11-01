@@ -232,10 +232,9 @@ public class AdminExecutionTask implements Callable<Void> {
     int valueSchemaId = message.valueSchemaId;
     int derivedSchemaId = message.derivedSchemaId;
 
-    DerivedSchemaEntry derivedSchemaEntry =
-        admin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
+    admin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaId, derivedSchemaStr);
     logger.info(String.format("Added derived schema:\n %s\n to store: %s, value schema id: %d, derived schema id: %d",
-        derivedSchemaStr, valueSchemaId, derivedSchemaEntry));
+        derivedSchemaStr, storeName, valueSchemaId, derivedSchemaId));
   }
 
   private void handleDisableStoreWrite(PauseStore message) {
