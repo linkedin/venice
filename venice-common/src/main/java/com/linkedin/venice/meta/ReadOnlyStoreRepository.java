@@ -1,8 +1,9 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+
 import java.util.List;
-import java.util.concurrent.locks.ReadWriteLock;
 
 
 /**
@@ -12,30 +13,39 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
   /**
    * Get one store by given name from repository.
    *
-   * @param name name of wanted store.
+   * @param storeName name of wanted store.
    *
    * @return Store for given name.
    */
-  Store getStore(String name);
+  Store getStore(String storeName);
+  Store getStoreOrThrow(String storeName) throws VeniceNoStoreException;
 
   /**
    * Whether the store exists or not.
    *
-   * @param name store name
+   * @param storeName store name
    * @return
    */
-  boolean hasStore(String name);
+  boolean hasStore(String storeName);
 
   /**
-   * Get total read quota of all stores.
+   * Selective refresh operation which fetches one store from ZK
+   *
+   * @param storeName store name
+   * @return the newly refreshed store
    */
-  long getTotalStoreReadQuota();
+  Store refreshOneStore(String storeName);
 
   /**
    * Get all stores in the current repository
    * @return
    */
   List<Store> getAllStores();
+
+  /**
+   * Get total read quota of all stores.
+   */
+  long getTotalStoreReadQuota();
 
   /**
    * Register store data change listener.
@@ -51,42 +61,29 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
   void unregisterStoreDataChangedListener(StoreDataChangedListener listener);
 
   /**
-   * Return the internal lock, so that {@link ReadOnlySchemaRepository} will reuse it to avoid deadlock issue
+   * Get batch-get limit for the specified store
+   * @param storeName
+   * @return
    */
-  ReadWriteLock getInternalReadWriteLock();
+  int getBatchGetLimit(String storeName);
+
+  /**
+   * Whether computation is enabled for the specified store.
+   * @param storeName store name
+   * @return
+   */
+  boolean isReadComputationEnabled(String storeName);
 
   /**
    * Whether Router cache is enabled for the specified store
    * @return
    */
-  boolean isSingleGetRouterCacheEnabled(String name);
+  boolean isSingleGetRouterCacheEnabled(String storeName);
 
   /**
    * Whether Router cache for batch get is enabled for the specified store
-   * @param name name of the store
+   * @param storeName name of the store
    * @return
    */
-  boolean isBatchGetRouterCacheEnabled(String name);
-
-  /**
-   * Get batch-get limit for the specified store
-   * @param name
-   * @return
-   */
-  int getBatchGetLimit(String name);
-
-  /**
-   * Whether computation is enabled for the specified store.
-   * @param name store name
-   * @return
-   */
-  boolean isReadComputationEnabled(String name);
-
-  /**
-   * Selective refresh operation which fetches one store from ZK
-   *
-   * @param name store name
-   * @return the newly refreshed store
-   */
-  Store refreshOneStore(String name);
+  boolean isBatchGetRouterCacheEnabled(String storeName);
 }

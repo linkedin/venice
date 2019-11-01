@@ -161,7 +161,7 @@ public class HelixSchemaAccessor {
 
   private String getStorePath(String storeName) {
     StringBuilder sb = new StringBuilder(HelixUtils.getHelixClusterZkPath(clusterName));
-    sb.append(HelixReadOnlyStoreRepository.STORES_PATH)
+    sb.append(HelixReadOnlyStoreRepository.STORE_REPOSITORY_PATH)
         .append("/")
         .append(storeName)
         .append("/");

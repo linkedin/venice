@@ -5,15 +5,12 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.HashSet;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
@@ -21,6 +18,9 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class TestHelixReadOnlyStoreRepository {
@@ -207,63 +207,6 @@ public class TestHelixReadOnlyStoreRepository {
 
     // TODO: Find a good way to test that refresh() works in isolation when there are actually changes to report.
     // Currently, the other listeners are always called first, so refresh() doesn't have any work left...
-  }
-
-  @Test(timeOut = 3000)
-  public void testNoDeadLockDuringRefresh(){
-    final HashSet<String> threadNames = new HashSet<>();
-    StoreDataChangedListener listener = new StoreDataChangedListener() {
-      HelixReadOnlyStoreRepository repository = repo;
-
-      @Override
-      public void handleStoreCreated(Store store) {
-        //do not acquire lock because it will be executed in paraell
-      }
-
-      @Override
-      public void handleStoreDeleted(String storeName) {
-        repository.getInternalReadWriteLock().readLock().lock();
-        repository.getStore(storeName);
-        threadNames.add(Thread.currentThread().getName());
-        repository.getInternalReadWriteLock().readLock().unlock();
-      }
-
-      @Override
-      public void handleStoreChanged(Store store) {
-        repository.getInternalReadWriteLock().writeLock().lock();
-        repository.getStore(store.getName());
-        threadNames.add(Thread.currentThread().getName());
-        repository.getInternalReadWriteLock().writeLock().unlock();
-      }
-    };
-    // Add a store to repo
-    repo.registerStoreDataChangedListener(listener);
-    int storeCount = 20;
-    for (int i = 0; i < storeCount; i++) {
-      Store s = TestUtils.createTestStore("s" + i, "owner", System.currentTimeMillis());
-      s.setReadQuotaInCU(100);
-      writeRepo.addStore(s);
-    }
-
-    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> repo.getAllStores().size() == storeCount);
-    repo.getInternalReadWriteLock().writeLock().lock();
-    for (int i = 1; i < storeCount; i++) {
-      Store s = writeRepo.getStore("s" + i);
-      s.setReadQuotaInCU(10000);
-      writeRepo.updateStore(s);
-    }
-    // As we already lock the read repo, so it will not process the any zk event.
-    // So once we manually refresh, we will see all stores have been updated.
-    repo.refresh();
-    // Same here for store deletion. Will see all store disappear in manual refresh
-    for (int i = 1; i < storeCount; i++) {
-      writeRepo.deleteStore("s" + i);
-    }
-    repo.refresh();
-    // Ensure the listener is running in current thread only.
-    Assert.assertTrue(threadNames.size() == 1);
-    Assert.assertEquals(threadNames.iterator().next(), Thread.currentThread().getName());
-    repo.getInternalReadWriteLock().writeLock().unlock();
   }
 
   private void assertListenerCounts(TestListener testListener,

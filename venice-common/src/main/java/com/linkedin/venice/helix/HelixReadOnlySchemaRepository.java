@@ -10,15 +10,16 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import java.util.Comparator;
-import java.util.Optional;
+
 import org.I0Itec.zkclient.IZkChildListener;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -57,7 +58,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   private IZkChildListener derivedSchemaChildListener = new DerivedSchemaChildListener();
 
   // Mutex for local cache
-  private final ReadWriteLock schemaLock;
+  private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
 
   public HelixReadOnlySchemaRepository(ReadOnlyStoreRepository storeRepository, ZkClient zkClient,
       HelixAdapterSerializer adapter, String clusterName, int refreshAttemptsForZkReconnect,
@@ -67,15 +68,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName,
         refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
 
-      /**
-     * Will reuse the same lock being used by {@link ReadOnlyStoreRepository} to avoid deadlock issue.
-     */
-    this.schemaLock = storeRepository.getInternalReadWriteLock() != null ? storeRepository.getInternalReadWriteLock() :
-        new ReentrantReadWriteLock();
-
-    // Register store data change listener
     storeRepository.registerStoreDataChangedListener(this);
-
     zkStateListener =
         new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
