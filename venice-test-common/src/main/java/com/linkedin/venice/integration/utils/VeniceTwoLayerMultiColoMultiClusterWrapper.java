@@ -58,7 +58,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     for (int i = 0; i < numberOfColos; i++) {
       VeniceMultiClusterWrapper multiClusterWrapper =
           ServiceFactory.getVeniceMultiClusterWrapper(numberOfClustersInEachColo, numberOfControllers, numberOfServers,
-              numberOfRouters, false);
+              numberOfRouters, false, true);
       multiClusters.add(multiClusterWrapper);
     }
 

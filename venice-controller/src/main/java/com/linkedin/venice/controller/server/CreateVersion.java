@@ -4,12 +4,14 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -102,6 +104,9 @@ public class CreateVersion extends AbstractRoute {
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
+            if (! admin.whetherEnableBatchPushFromAdmin()) {
+              throw new VeniceUnsupportedOperationException(pushTypeString, "Please push data to Venice Parent Colo instead");
+            }
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
                     true, (pushType == PushType.INCREMENTAL), sendStartOfPush, sorted);
@@ -127,6 +132,11 @@ public class CreateVersion extends AbstractRoute {
     };
   }
 
+  /**
+   * This function is only being used by store migration, so it is fine to create version directly in Child Controller.
+   * @param admin
+   * @return
+   */
   public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {
       VersionResponse responseObject = new VersionResponse();
@@ -222,6 +232,11 @@ public class CreateVersion extends AbstractRoute {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       try {
         // TODO: Only allow whitelist users to run this command
+        if (!admin.whetherEnableBatchPushFromAdmin()) {
+          throw new VeniceUnsupportedOperationException("EMPTY PUSH",
+              "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
+        }
+
         AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
 
         //Query params
@@ -240,6 +255,7 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setVersion(versionNumber);
         responseObject.setPartitions(partitionNum);
         responseObject.setReplicas(replicationFactor);
+        responseObject.setKafkaTopic(version.kafkaTopicName());
 
         admin.writeEndOfPush(clusterName, storeName, versionNumber, true);
 

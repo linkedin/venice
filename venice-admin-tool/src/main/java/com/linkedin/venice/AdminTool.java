@@ -39,6 +39,7 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -64,6 +65,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -458,16 +460,34 @@ public class AdminTool {
     printObject(response);
   }
 
-  private static void emptyPush(CommandLine cmd)
-      throws IOException {
+  private static void emptyPush(CommandLine cmd) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.EMPTY_PUSH);
     String pushId = getRequiredArgument(cmd, Arg.PUSH_ID, Command.EMPTY_PUSH);
     String storeSizeString = getRequiredArgument(cmd, Arg.STORE_SIZE, Command.EMPTY_PUSH);
     long storeSize = Utils.parseLongFromString(storeSizeString, Arg.STORE_SIZE.name());
 
     verifyStoreExistence(store, true);
-    VersionCreationResponse response = controllerClient.emptyPush(store, pushId, storeSize);
-    printObject(response);
+    VersionCreationResponse versionCreationResponse = controllerClient.emptyPush(store, pushId, storeSize);
+    printObject(versionCreationResponse);
+    if (versionCreationResponse.isError()) {
+      return;
+    }
+    // Kafka topic name in  the above response is null, and it will be fixed with this code change.
+    String topicName = Version.composeKafkaTopic(store, versionCreationResponse.getVersion());
+    // Polling job status to make sure the empty push hits every child colo
+    while (true) {
+      JobStatusQueryResponse jobStatusQueryResponse = controllerClient.retryableRequest(3,
+          controllerClient -> controllerClient.queryJobStatus(topicName));
+      printObject(jobStatusQueryResponse);
+      if (jobStatusQueryResponse.isError()) {
+        return;
+      }
+      ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+      if (executionStatus.isTerminal()) {
+        break;
+      }
+      Utils.sleep(TimeUnit.SECONDS.toMillis(5));
+    }
   }
 
   private static void setEnableStoreWrites(CommandLine cmd, boolean enableWrites){

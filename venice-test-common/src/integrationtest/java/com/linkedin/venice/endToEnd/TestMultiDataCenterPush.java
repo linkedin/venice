@@ -16,6 +16,8 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -30,6 +32,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.Metric;
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -41,6 +44,7 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
@@ -169,6 +173,47 @@ public class TestMultiDataCenterPush {
     });
     Assert.assertTrue(childTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
     Assert.assertTrue(childTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
+  }
+
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*")
+  public void testPushDirectlyToChildColo() throws IOException {
+    // In multi-colo setup, the batch push to child controller should be disabled.
+    String clusterName = CLUSTER_NAMES[0];
+    File inputDir = getTempDataDirectory();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file:" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    String childControllerUrl = childControllers.get(0).get(0).getControllerUrl();
+    Properties props = defaultH2VProps(childControllerUrl, inputDirPath, storeName);
+    createStoreForJob(clusterName, recordSchema, props);
+
+    KafkaPushJob job = new KafkaPushJob("Test push job", props);
+    job.run();
+  }
+
+  @DataProvider (name = "testEmptyPushDataProvider")
+  public Object[][] testEmptyPushDataProvider() {
+    return new Object[][] { {true}, {false} };
+  }
+
+  @Test (dataProvider = "testEmptyPushDataProvider")
+  public void testEmptyPush(boolean toParent) {
+    String clusterName = CLUSTER_NAMES[0];
+    String storeName = TestUtils.getUniqueString("store");
+    String parentControllerUrl = parentControllers.get(0).getControllerUrl();
+    String childControllerUrl = childControllers.get(0).get(0).getControllerUrl();
+
+    // Create store first
+    ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentControllerUrl);
+    controllerClientToParent.createNewStore(storeName, "test_owner", "\"int\"", "\"int\"");
+
+    ControllerClient controllerClient = new ControllerClient(clusterName, toParent ? parentControllerUrl : childControllerUrl);
+    VersionCreationResponse response = controllerClient.emptyPush(storeName, "test_push_id", 1000);
+    if (toParent) {
+      Assert.assertFalse(response.isError(), "Empty push to parent colo should succeed");
+    } else {
+      Assert.assertTrue(response.isError(), "Empty push to child colo should be blocked");
+    }
   }
 
   @Test(timeOut = TEST_TIMEOUT)

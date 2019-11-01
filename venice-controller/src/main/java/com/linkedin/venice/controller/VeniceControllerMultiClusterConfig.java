@@ -178,4 +178,8 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getSystemSchemaClusterName();
   }
 
+  public boolean isEnableBatchPushFromAdminInChildController() {
+    return getCommonConfig().isEnableBatchPushFromAdminInChildController();
+  }
+
 }
