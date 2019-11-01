@@ -535,14 +535,20 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
     } catch (Exception e) {
       logger.error("Failed to run job.", e);
-      checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
-      pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
-      pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
-      updatePushJobDetailsWithConfigs();
-      sendPushJobDetails();
-      closeVeniceWriter();
+      // Make sure all the logic before killing the failed push jobs is captured in the following block
+      try {
+        checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
+        pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
+        pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
+        updatePushJobDetailsWithConfigs();
+        sendPushJobDetails();
+        closeVeniceWriter();
+      } catch (Exception ex) {
+        logger.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
+      }
       try {
         stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
+        logger.info("Successfully killed the failed push job.");
       } catch (Exception ex) {
         logger.info("Failed to stop and cleanup the job", ex);
       }
