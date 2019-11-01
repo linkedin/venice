@@ -83,7 +83,7 @@ public class ControllerClient implements Closeable {
           logger.info("Discovered master controller " + masterUrl + " from " + url);
           return masterUrl;
         } catch (Exception e) {
-          logger.warn("Unable to discover master controller from " + url, e);
+          logger.warn("Unable to discover master controller from " + url);
           lastException = e;
         }
       }
