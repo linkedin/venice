@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
-import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -15,7 +14,6 @@ import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -75,15 +73,16 @@ public class PartitionStatusOnlineInstanceFinder
 
   /**
    * TODO: check if we need to cache the result since this method is called very frequently.
-   * The method is synchronized with other methods that modify topicToPartitionMap.
+   * This method is in the critical read path; do not apply any global lock on it; use ConcurrentHashMap which has
+   * a much fine-grained lock. It's okay to read stale data in a small time window.
    */
   @Override
-  public synchronized List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
+  public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId) {
     return getReadyToServeInstances(routingDataRepository.getPartitionAssignments(kafkaTopic), partitionId);
   }
 
   @Override
-  public synchronized List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
+  public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     String kafkaTopic = partitionAssignment.getTopic();
     Map<Integer, PartitionStatus> statusMap = topicToPartitionStatusMap.get(kafkaTopic);
     if (statusMap == null || partitionId >= statusMap.size()) {
@@ -144,7 +143,7 @@ public class PartitionStatusOnlineInstanceFinder
       /*copy to a new list since the former is unmodifiable*/
       String topic = pushStatus.getKafkaTopic();
       List<PartitionStatus> partitionStatuses = pushStatus.getPartitionStatuses();
-      Map<Integer, PartitionStatus> partitionIdToStatusMap = new HashMap<>();
+      Map<Integer, PartitionStatus> partitionIdToStatusMap = new VeniceConcurrentHashMap<>();
       for (PartitionStatus partitionStatus : partitionStatuses) {
         partitionIdToStatusMap.put(partitionStatus.getPartitionId(), partitionStatus);
       }
@@ -192,7 +191,7 @@ public class PartitionStatusOnlineInstanceFinder
       OfflinePushStatus status = getPushStatusFromZk(pushStatusName);
       if (status != null) {
         List<PartitionStatus> partitionStatuses = status.getPartitionStatuses();
-        Map<Integer, PartitionStatus> partitionIdToStatusMap = new HashMap<>();
+        Map<Integer, PartitionStatus> partitionIdToStatusMap = new VeniceConcurrentHashMap<>();
         for (PartitionStatus partitionStatus : partitionStatuses) {
           partitionIdToStatusMap.put(partitionStatus.getPartitionId(), partitionStatus);
         }
