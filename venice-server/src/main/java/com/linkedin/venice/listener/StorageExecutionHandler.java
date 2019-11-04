@@ -209,6 +209,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
     StorageResponseObject response = new StorageResponseObject();
     response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    response.setDatabaseLookupLatency(0);
 
     ValueRecord valueRecord = SingleGetChunkingAdapter.get(store, partition, key, isChunked, response);
     response.setValueRecord(valueRecord);
@@ -223,6 +224,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    responseWrapper.setDatabaseLookupLatency(0);
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     for (MultiGetRouterRequestKeyV1 key : keys) {
       MultiGetResponseRecordV1 record =
