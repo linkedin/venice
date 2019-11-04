@@ -13,7 +13,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
@@ -31,9 +30,8 @@ public final class ForkedJavaProcess extends Process {
   private static final boolean debug = false;
   private final ExecutorService executorService;
   private final Process process;
-  private final Thread processReaper;
   private final Logger logger;
-  private final AtomicBoolean destroyCalled = new AtomicBoolean();
+  private boolean destroyCalled = false;
 
   public static Process exec(Class klass, String... params) throws IOException, InterruptedException {
     // Argument preparation
@@ -74,16 +72,14 @@ public final class ForkedJavaProcess extends Process {
    * Construction should happen via {@link #exec(Class, String...)}
    */
   private ForkedJavaProcess(Process process, Logger logger) {
-    this.processReaper = new Thread(() -> process.destroyForcibly());
-    Runtime.getRuntime().addShutdownHook(processReaper);
-
     this.process = process;
     this.logger = logger;
     this.executorService = Executors.newSingleThreadExecutor();
     executorService.submit(() -> {
+      String line;
       try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
         while (true) {
-          String line = reader.readLine();
+          line = reader.readLine();
           if (line != null) {
             logger.info(line);
           } else {
@@ -91,7 +87,7 @@ public final class ForkedJavaProcess extends Process {
           }
         }
       } catch (IOException e) {
-        if (!destroyCalled.get()) {
+        if (!destroyCalled) {
           logger.error("Got an unexpected IOException in LoggingProcess.", e);
         }
       } catch (InterruptedException e) {
@@ -149,12 +145,11 @@ public final class ForkedJavaProcess extends Process {
 
   @Override
   public void destroy() {
-    logger.info(getClass().getSimpleName() + ".destroy() called.");
+    destroyCalled = true;
+    logger.info(this.getClass().getSimpleName() + ".destroy() called.");
     long killStartTime = System.currentTimeMillis();
     long maxTime = killStartTime + 30 * Time.MS_PER_SECOND;
-    destroyCalled.set(true);
     process.destroyForcibly();
-    Runtime.getRuntime().removeShutdownHook(processReaper);
 
     /**
      * Apparently, we can leak FDs if we don't manually close these streams.
