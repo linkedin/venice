@@ -36,7 +36,7 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   @Override
   public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
     long offset = broker.produce(topic, partition, new InMemoryKafkaMessage(key, value));
-    RecordMetadata recordMetadata = new RecordMetadata(new TopicPartition(topic, partition), 0, offset, -1, -1L, -1, -1);
+    RecordMetadata recordMetadata = new RecordMetadata(new TopicPartition(topic, partition), 0, offset, -1, -1, -1, -1);
     return new Future<RecordMetadata>() {
       @Override
       public boolean cancel(boolean mayInterruptIfRunning) {
