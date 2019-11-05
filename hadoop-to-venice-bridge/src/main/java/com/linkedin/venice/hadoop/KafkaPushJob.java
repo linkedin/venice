@@ -535,7 +535,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         jc = new JobClient(pbnjJobConf);
         runningJob = jc.runJob(pbnjJobConf);
       }
-    } catch (Exception e) {
+    } catch (Throwable e) {
       logger.error("Failed to run job.", e);
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
@@ -547,15 +547,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         closeVeniceWriter();
       } catch (Exception ex) {
         logger.error("Error before killing the failed push job; still issue the kill job command to clean up states in backend", ex);
-      }
-      try {
-        stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
-        logger.info("Successfully killed the failed push job.");
-      } catch (Exception ex) {
-        logger.info("Failed to stop and cleanup the job", ex);
+      } finally {
+        try {
+          stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
+          logger.info("Successfully killed the failed push job.");
+        } catch (Exception ex) {
+          logger.info("Failed to stop and cleanup the job. New pushes might be blocked.", ex);
+        }
       }
       if (! (e instanceof VeniceException)) {
-        e = new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
+        e = new VeniceException("Exception or error caught during Hadoop to Venice Bridge!", e);
       }
       throw (VeniceException) e;
     }
