@@ -11,8 +11,10 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.gobblin.configuration.SourceState;
@@ -24,6 +26,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 
 
@@ -51,23 +54,18 @@ public class HDFSSchemaSource implements SchemaSource {
    * @param state
    */
   public void load(SourceState state) {
-    String veniceControllerUrls = state.getProp(VENICE_CONTROLLER_URLS);
-    String veniceStoreNamesList = state.getProp(VENICE_STORE_NAME);
-    String[] veniceStoreNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
-
-    getStoreSchemaFromVenice(veniceControllerUrls, veniceStoreNames);
-    for (String storeName : veniceStoreNames) {
-      setKeySchema(storeName);
-      putValueSchemas(storeName);
-    }
+    String veniceControllerUrls = state.getProp(VENICE_CHILD_CONTROLLER_URLS);
+    loadSchemas(veniceControllerUrls, state.getProp(VENICE_STORE_NAME));
+    loadSchemas(veniceControllerUrls,state.getProp(FUTURE_ETL_ENABLED_STORES));
   }
 
-  private void getStoreSchemaFromVenice(String veniceControllerUrls, String[] veniceStoreNames) {
+  private void getStoreSchemaFromVenice(String veniceControllerUrls, Set<String> veniceStoreNames) {
+
     Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(veniceStoreNames, veniceControllerUrls);
     getStoreSchema(storeToControllerClient, veniceStoreNames);
   }
 
-  private void getStoreSchema(Map<String, ControllerClient> storeToControllerClient, String[] veniceStoreNames) {
+  private void getStoreSchema(Map<String, ControllerClient> storeToControllerClient, Set<String> veniceStoreNames) {
     storeNameToKeySchemaStr = new HashMap<>();
     storeNameToAllValueSchemaStr = new HashMap<>();
     for (String storeName: veniceStoreNames) {
@@ -191,5 +189,19 @@ public class HDFSSchemaSource implements SchemaSource {
       fs.mkdirs(storeSchemaPath);
     }
     return storeSchemaDir;
+  }
+
+  private void loadSchemas(String veniceChildControllerUrls, String storeNamesList) {
+    // for current version etl
+    Set<String> veniceStoreNames = new HashSet<>();
+    String[] tokens = storeNamesList.split(VENICE_STORE_NAME_SEPARATOR);
+    for (String token : tokens) {
+      veniceStoreNames.add(token.trim());
+    }
+    getStoreSchemaFromVenice(veniceChildControllerUrls, veniceStoreNames);
+    for (String storeName : veniceStoreNames) {
+      setKeySchema(storeName);
+      putValueSchemas(storeName);
+    }
   }
 }

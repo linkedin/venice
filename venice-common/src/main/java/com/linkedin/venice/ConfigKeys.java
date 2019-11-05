@@ -841,6 +841,11 @@ public class ConfigKeys {
   public static final String ETL_MAX_SNAPSHOTS_TO_KEEP = "etl.max.snapshots.to.keep";
 
   /**
+   * This config defines a list of stores which enabled future etl feature.
+   */
+  public static final String FUTURE_ETL_ENABLED_STORES = "future.etl.enabled.stores";
+
+  /**
    * The super cluster name for HAAS. This config is required if HAAS is enabled for the creation of helix clusters.
    */
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
