@@ -97,9 +97,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
 
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
-  private String fabricName;
   private String veniceControllerUrls;
   private String[] veniceStoreNames;
+  private Set<String> futureETLEnabledStores;
 
   private Map<String, ControllerClient> storeToControllerClient = null;
   private final KafkaConsumerWrapper veniceKafkaConsumer;
@@ -109,7 +109,6 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
 
     String veniceControllerUrls = baseConfig.getString(VENICE_CONTROLLER_URLS);
     String veniceStoreNamesList = baseConfig.getString(VENICE_STORE_NAME);
-    fabricName = baseConfig.getString(FABRIC_NAME);
     veniceStoreNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
     this.veniceControllerUrls = veniceControllerUrls;
 
@@ -125,6 +124,17 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     kafkaConsumerPollingTimeoutMs = ConfigUtils.getInt(baseConfig, KAFKA_CONSUMER_POLLING_TIMEOUT_MS,
         DEFAULT_KAFKA_CONSUMER_POLLING_TIMEOUT_MS);
     Properties veniceKafkaProp = getKafkaConsumerProperties(kafkaBoostrapServers);
+
+    this.futureETLEnabledStores = new HashSet<>();
+    try {
+      String futureETLStores = baseConfig.getString(FUTURE_ETL_ENABLED_STORES);
+      String[] tokens = futureETLStores.split(VENICE_STORE_NAME_SEPARATOR);
+      for (String token : tokens) {
+        futureETLEnabledStores.add(token);
+      }
+    } catch (Exception e) {
+      logger.error("The config for future-etl-enabled-stores doesn't exist.");
+    }
 
     try {
       String tokenFilePath = System.getenv("HADOOP_TOKEN_FILE_LOCATION");
@@ -214,10 +224,18 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     for (String storeName: veniceStoreNames) {
       StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
-      Map<String, Integer> coloToCurrentVersions = storeInfo.getColoToCurrentVersions();
-      String topicName = Version.composeKafkaTopic(storeName, coloToCurrentVersions.get(fabricName));
+      // append current version topic
+      String topicName = Version.composeKafkaTopic(storeName, storeInfo.getCurrentVersion());
       topicNames.add(topicName);
-      logger.info("Topic name in this ETL pipeline: " + topicName);
+      logger.info("Topic name in this ETL pipeline is: " + topicName);
+
+      if (futureETLEnabledStores.contains(storeName)) {
+        // append future version topic
+        int futureVersion = storeInfo.getLargestUsedVersionNumber();
+        String futureTopicName = Version.composeKafkaTopic(storeName, futureVersion);
+        topicNames.add(futureTopicName);
+        logger.info("Future version topic name in this ETL pipeline is: " + futureTopicName);
+      }
     }
 
     Map<String, List<PartitionInfo>> topicList = this.veniceKafkaConsumer.listTopics();
