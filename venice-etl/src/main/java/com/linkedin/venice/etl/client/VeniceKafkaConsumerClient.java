@@ -97,23 +97,26 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
 
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
-  private String fabricName;
-  private String veniceControllerUrls;
-  private String[] veniceStoreNames;
+  private String veniceChildControllerUrls;
+  private Set<String> veniceStoreNames;
+  private Set<String> futureETLEnabledStores;
 
-  private Map<String, ControllerClient> storeToControllerClient = null;
+  private Map<String, ControllerClient> storeToControllerClient;
   private final KafkaConsumerWrapper veniceKafkaConsumer;
 
   public VeniceKafkaConsumerClient(Config baseConfig) {
     super(baseConfig);
-
-    String veniceControllerUrls = baseConfig.getString(VENICE_CONTROLLER_URLS);
+    // This needs to be child controller urls as we directly talk to local controller to get local topic info.
+    String veniceChildControllerUrls = baseConfig.getString(VENICE_CHILD_CONTROLLER_URLS);
+    this.veniceChildControllerUrls = veniceChildControllerUrls;
+    this.storeToControllerClient = new HashMap<>();
+    this.veniceStoreNames = new HashSet<>();
     String veniceStoreNamesList = baseConfig.getString(VENICE_STORE_NAME);
-    fabricName = baseConfig.getString(FABRIC_NAME);
-    veniceStoreNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
-    this.veniceControllerUrls = veniceControllerUrls;
-
-    if (null == veniceStoreNames || 0 == veniceStoreNames.length) {
+    String[] storeNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
+    for (String token : storeNames) {
+      veniceStoreNames.add(token.trim());
+    }
+    if (null == veniceStoreNames || 0 == veniceStoreNames.size()) {
       throw new VeniceException("No store name specified when creating VeniceKafkaConsumerClient");
     }
 
@@ -125,6 +128,17 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     kafkaConsumerPollingTimeoutMs = ConfigUtils.getInt(baseConfig, KAFKA_CONSUMER_POLLING_TIMEOUT_MS,
         DEFAULT_KAFKA_CONSUMER_POLLING_TIMEOUT_MS);
     Properties veniceKafkaProp = getKafkaConsumerProperties(kafkaBoostrapServers);
+
+    this.futureETLEnabledStores = new HashSet<>();
+    try {
+      String futureETLStores = baseConfig.getString(FUTURE_ETL_ENABLED_STORES);
+      String[] tokens = futureETLStores.split(VENICE_STORE_NAME_SEPARATOR);
+      for (String token : tokens) {
+        futureETLEnabledStores.add(token.trim());
+      }
+    } catch (Exception e) {
+      logger.warn("The config for future-etl-enabled-stores doesn't exist.");
+    }
 
     try {
       String tokenFilePath = System.getenv("HADOOP_TOKEN_FILE_LOCATION");
@@ -161,11 +175,11 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     veniceKafkaConsumer = new ApacheKafkaConsumer(veniceKafkaProp);
   }
 
-  public static Map<String, ControllerClient> getControllerClients(String[] veniceStoreNames, String veniceControllerUrls) {
-    Map<String, ControllerClient> controllerClientMap = new HashMap<String, ControllerClient>(veniceStoreNames.length);
+  public static Map<String, ControllerClient> getControllerClients(Set<String> storeNames, String veniceControllerUrls) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>(storeNames.size());
     // Reuse the same controller client for stores in the same cluster
     Map<String, ControllerClient> clusterToControllerClient = new HashMap<>();
-    for (String veniceStoreName: veniceStoreNames) {
+    for (String veniceStoreName: storeNames) {
       ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrls, veniceStoreName);
       if (clusterDiscoveryResponse.isError()) {
         throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
@@ -195,10 +209,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     return kafkaConsumerProperties;
   }
 
-  private synchronized void createControllersList() {
-    if (null == storeToControllerClient) {
-      storeToControllerClient = getControllerClients(veniceStoreNames, veniceControllerUrls);
-    }
+  private synchronized void createControllersList(Set<String> storeNames) {
+    Map<String, ControllerClient> storeToControllers = getControllerClients(storeNames, veniceChildControllerUrls);
+    storeToControllerClient.putAll(storeToControllers);
   }
 
   @Override
@@ -207,17 +220,32 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
      * Mapper/Reducer is not able to reach our controller clusters; but this function would only be invoked in Azkaban,
      * so we lazily create the controller clients list when it's actually needed.
      */
-    createControllersList();
-
-    // get the topic names from Venice controllers
+    // get the topic names from Venice controllers for current version etl stores
+    createControllersList(veniceStoreNames);
     Set<String> topicNames = new HashSet<String>();
     for (String storeName: veniceStoreNames) {
       StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
-      Map<String, Integer> coloToCurrentVersions = storeInfo.getColoToCurrentVersions();
-      String topicName = Version.composeKafkaTopic(storeName, coloToCurrentVersions.get(fabricName));
+      // append current version topic
+      String topicName = Version.composeKafkaTopic(storeName, storeInfo.getCurrentVersion());
       topicNames.add(topicName);
-      logger.info("Topic name in this ETL pipeline: " + topicName);
+      logger.info("Topic name in this ETL pipeline is: " + topicName);
+    }
+
+    // get the topic names for future etl stores
+    createControllersList(futureETLEnabledStores);
+    for (String storeName : futureETLEnabledStores) {
+      StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
+      StoreInfo storeInfo = storeResponse.getStore();
+      // append future version topic if the the largest used version number is larger than current version number
+      int futureVersion = storeInfo.getLargestUsedVersionNumber();
+      if (futureVersion > storeInfo.getCurrentVersion()) {
+        String futureTopicName = Version.composeKafkaTopic(storeName, futureVersion);
+        topicNames.add(futureTopicName);
+        logger.info("Future version topic name in this ETL pipeline is: " + futureTopicName);
+      } else {
+        logger.info("Store " + storeName + " doesn't have a future version running yet. Skipped.");
+      }
     }
 
     Map<String, List<PartitionInfo>> topicList = this.veniceKafkaConsumer.listTopics();

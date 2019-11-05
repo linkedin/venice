@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 public class VeniceKafkaSource extends KafkaSource<Schema, GenericRecord> {
   private static final Logger logger = LoggerFactory.getLogger(VeniceKafkaSource.class);
 
-  public static final String VENICE_CONTROLLER_URLS = "venice.urls";
+  public static final String VENICE_CHILD_CONTROLLER_URLS = "venice.child.urls";
   public static final String VENICE_STORE_NAME = "venice.store.name";
   public static final String FABRIC_NAME = "fabric.name";
   public static final String KAFKA_BOOSTRAP_SERVERS = "kafka.bootstrap.servers";
