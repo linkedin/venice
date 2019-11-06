@@ -132,6 +132,22 @@ public class OfflinePushStatus {
     }
   }
 
+  /**
+   * @param partitionStatusMap a map from partition ID to partition status
+   * @param newPartitionStatus the new partition status
+   */
+  public static void setPartitionStatusMap(Map<Integer, PartitionStatus> partitionStatusMap, PartitionStatus newPartitionStatus, String kafkaTopic) {
+    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= partitionStatusMap.size()) {
+      throw new IllegalArgumentException(
+          "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
+    }
+    if (newPartitionStatus instanceof ReadOnlyPartitionStatus) {
+      partitionStatusMap.put(newPartitionStatus.getPartitionId(), newPartitionStatus);
+    } else {
+      partitionStatusMap.put(newPartitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(newPartitionStatus));
+    }
+  }
+
   public void setPartitionStatus(PartitionStatus partitionStatus) {
     if (partitionStatus.getPartitionId() < 0 || partitionStatus.getPartitionId() >= numberOfPartition) {
       throw new VeniceException(
