@@ -8,18 +8,20 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Properties;
 import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.gobblin.runtime.JobState;
 import org.apache.gobblin.runtime.api.JobExecutionDriver;
-import org.apache.gobblin.runtime.api.JobExecutionResult;
 import org.apache.gobblin.runtime.embedded.EmbeddedGobblinDistcp;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -192,16 +194,29 @@ public class VeniceETLPublisher extends AbstractJob {
       }
 
       /**
-       * Wait for each job future to return.
+       * Wait for each job future to return. It keeps looping the jobs until all of them have finished.
        */
-      for (Map.Entry<Pair<String, String>, JobExecutionDriver> jobEntry: distcpJobFutures.entrySet()) {
-        String storeName = jobEntry.getKey().getFirst();
-        String destination = jobEntry.getKey().getSecond();
-        JobExecutionResult result = jobEntry.getValue().get();
-        if (result.isSuccessful()) {
-          logger.info("Successfully published the latest snapshot for store " + storeName + " in " + destination);
-        } else {
-          logger.info("Distcp failed for store " + storeName, result.getErrorCause());
+      while(!distcpJobFutures.entrySet().isEmpty()) {
+        Iterator<Map.Entry<Pair<String, String>, JobExecutionDriver>> itr = distcpJobFutures.entrySet().iterator();
+        while (itr.hasNext()) {
+          Map.Entry<Pair<String, String>, JobExecutionDriver> jobEntry = itr.next();
+          String storeName = jobEntry.getKey().getFirst();
+          String destination = jobEntry.getKey().getSecond();
+          JobState.RunningState jobState = jobEntry.getValue().getJobExecutionState().getRunningState();
+          if (jobState.isSuccess()) {
+            logger.info("Successfully published the latest snapshot for store " + storeName + " in " + destination);
+            itr.remove();
+          } else if (jobState.isFailure()) {
+            logger.info("Distcp job failed for store " + storeName, jobEntry.getValue().get().getErrorCause());
+            itr.remove();
+          } else if (jobState.isCancelled()){
+            logger.info("Distcp job canceled for store " + storeName + " in " + destination);
+            itr.remove();
+          } else {
+            //The jon is still running or pending, sleep for 1s
+            logger.info("Distcp job for store " + storeName + "is still ongoing.");
+            Utils.sleep(1000);
+          }
         }
       }
     } catch (Exception e) {
