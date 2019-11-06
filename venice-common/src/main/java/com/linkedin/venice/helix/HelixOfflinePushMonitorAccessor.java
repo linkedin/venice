@@ -255,6 +255,8 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   /**
    * Get all partition status ZNodes under offline push of given topic from ZK.
+   *
+   * Warning: the returned partition status list is not ordered by partition Id.
    */
   protected List<PartitionStatus> getPartitionStatuses(String topic, int partitionCount) {
     logger.debug("Start reading partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
