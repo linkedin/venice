@@ -257,8 +257,8 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
     //Start stand by controller
     newMasterAdmin.start(clusterName);
-    Assert.assertFalse(newMasterAdmin.isMasterController(clusterName),
-        "The new controller should be stand-by right now.");
+    Assert.assertFalse(veniceAdmin.isMasterController(clusterName) && newMasterAdmin.isMasterController(clusterName),
+        "At most one controller can be the master.");
     veniceAdmin.stop(clusterName);
     // Waiting state transition from standby->leader on new admin
     Thread.sleep(1000L);
