@@ -97,6 +97,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private StoreIngestionTaskFactory ingestionTaskFactory;
 
+  private final int retryStoreRefreshIntervalInMs = 5000;
+  private final int retryStoreRefreshAttempt = 10;
+
+
   public KafkaStoreIngestionService(StoreRepository storeRepository,
                                     VeniceConfigLoader veniceConfigLoader,
                                     StorageMetadataService storageMetadataService,
@@ -202,21 +206,33 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return true;
   }
 
-  private StoreIngestionTask getConsumerTask(VeniceStoreConfig veniceStoreConfig, boolean isLeaderFollowerModel) {
+  private StoreIngestionTask createConsumerTask(VeniceStoreConfig veniceStoreConfig, boolean isLeaderFollowerModel) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreConfig.getStoreName());
     int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStoreConfig.getStoreName());
     Store store = metadataRepo.getStore(storeName);
     Optional<Version> version = store.getVersion(storeVersion);
+
+    int attempt = 0;
+
+    // In theory, the version should exist since the corresponding store ingestion is ready to start.
+    // The issue could be caused by race condition that the in-memory metadata hasn't been refreshed yet,
+    // So here will refresh that store explicitly upto getRefreshAttemptsForZkReconnect times
     if (!version.isPresent()) {
-      // In theory, the version should exist since the corresponding store ingestion is ready to start.
-      // The issue could be caused by race condition that the in-memory metadata hasn't been refreshed yet,
-      // So here will refresh that store explicitly once.
-      store = metadataRepo.refreshOneStore(storeName);
-      version = store.getVersion(storeVersion);
-      if (!version.isPresent()) {
-        throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
+      while (attempt < retryStoreRefreshAttempt) {
+        store = metadataRepo.refreshOneStore(storeName);
+        version = store.getVersion(storeVersion);
+        if (version.isPresent()) {
+          break;
+        }
+        attempt++;
+        Utils.sleep(retryStoreRefreshIntervalInMs);
       }
     }
+    // Error out if no store version found even after retries
+    if (!version.isPresent()) {
+      throw new VeniceException("Version: " + storeVersion + " doesn't exist in store: " + storeName);
+    }
+
     final Store finalStore = store;
     BooleanSupplier isStoreVersionCurrent = () -> finalStore.getCurrentVersion() == storeVersion;
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
@@ -282,7 +298,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     String topic = veniceStore.getStoreName();
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if(consumerTask == null || !consumerTask.isRunning()) {
-      consumerTask = getConsumerTask(veniceStore, isLeaderFollowerModel);
+      consumerTask = createConsumerTask(veniceStore, isLeaderFollowerModel);
       topicNameToIngestionTaskMap.put(topic, consumerTask);
       if(!isRunning.get()) {
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
