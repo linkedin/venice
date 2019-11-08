@@ -774,8 +774,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private void sendPushJobDetails() {
     if (!pushJobSetting.enablePushJobStatusUpload || pushJobDetails == null) {
-      String detailMessage = pushJobSetting.enablePushJobStatusUpload ? "Feature is disabled"
-          : "The payload was not populated properly";
+      String detailMessage = pushJobSetting.enablePushJobStatusUpload ?
+          "The payload was not populated properly" : "Feature is disabled";
       logger.info("Unable to send push job details for monitoring purpose. " + detailMessage);
       return;
     }
