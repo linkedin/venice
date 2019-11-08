@@ -2880,7 +2880,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public boolean isMasterController(String clusterName) {
         VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
         if (model == null ) {
-            throwClusterNotInitialized(clusterName);
+            return false;
         }
         return model.getCurrentState().equals(LeaderStandbySMD.States.LEADER.toString());
     }
