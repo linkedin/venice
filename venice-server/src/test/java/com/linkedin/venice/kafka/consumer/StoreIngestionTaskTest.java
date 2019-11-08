@@ -130,6 +130,7 @@ public class StoreIngestionTaskTest {
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;
   private List<Object[]> mockNotifierProgress;
+  private List<Object[]> mockNotifierEOPReveived;
   private List<Object[]> mockNotifierCompleted;
   private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
@@ -205,6 +206,12 @@ public class StoreIngestionTaskTest {
       mockNotifierProgress.add(args);
       return null;
     }).when(mockNotifier).progress(anyString(), anyInt(), anyLong());
+    mockNotifierEOPReveived = new ArrayList<>();
+    doAnswer(invocation -> {
+      Object[] args = invocation.getArguments();
+      mockNotifierEOPReveived.add(args);
+      return null;
+    }).when(mockNotifier).endOfPushReceived(anyString(), anyInt(), anyLong());
     mockNotifierCompleted = new ArrayList<>();
     doAnswer(invocation -> {
       Object[] args = invocation.getArguments();
@@ -369,7 +376,6 @@ public class StoreIngestionTaskTest {
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true);
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
-
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {
@@ -1272,11 +1278,16 @@ public class StoreIngestionTaskTest {
     runTest(new RandomPollStrategy(), getSet(PARTITION_FOO), () -> {
     }, () -> {
       waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-        Assert.assertFalse(mockNotifierError.isEmpty(), "Disk Usage should have triggered an ingestion error");
-        String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getCause().getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
-            .collect(Collectors.joining());
-        Assert.assertTrue(errorMessages.contains("Disk is full"),
-            "Expected disk full error, found following error messages: " + errorMessages);
+
+        // If the partition already got EndOfPushReceived, then all errors will be suppressed and not reported.
+        // The speed for a partition to get EOP is non-deterministic, adds the if check here to make this test not flaky.
+        if (mockNotifierEOPReveived.isEmpty()) {
+          Assert.assertFalse(mockNotifierError.isEmpty(), "Disk Usage should have triggered an ingestion error");
+          String errorMessages = mockNotifierError.stream().map(o -> ((Exception) o[3]).getCause().getMessage()) //elements in object array are 0:store name (String), 1: partition (int), 2: message (String), 3: cause (Exception)
+              .collect(Collectors.joining());
+          Assert.assertTrue(errorMessages.contains("Disk is full"),
+              "Expected disk full error, found following error messages: " + errorMessages);
+        }
       });
     }, Optional.empty(), Optional.of(diskFullUsage), isLeaderFollowerModelEnabled);
   }
