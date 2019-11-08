@@ -304,6 +304,7 @@ public class TestKafkaPushJob {
     String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(VALUE_FIELD_PROP, "age");
+    props.setProperty(CONTROLLER_REQUEST_RETRY_ATTEMPTS, "2");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }

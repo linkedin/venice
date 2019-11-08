@@ -237,7 +237,8 @@ public class ControllerClient implements Closeable {
     int currentAttempt = 1;
     while (true) {
       R response = request.apply(client);
-      if (!response.isError() || currentAttempt == totalAttempts) {
+      // Do not retry if value schema is not found. TODO: Ideally response should not be an error but should return INVALID schema ID in the response.
+      if (!response.isError() || currentAttempt == totalAttempts || valueSchemaNotFoundSchemaResponse(response)) {
         return response;
       } else {
         logger.warn("Error on attempt " + currentAttempt + "/" + totalAttempts + " of querying the Controller: " + response.getError());
@@ -245,6 +246,10 @@ public class ControllerClient implements Closeable {
         Utils.sleep(2000);
       }
     }
+  }
+
+  private static <R> boolean valueSchemaNotFoundSchemaResponse(R response) {
+    return (response instanceof SchemaResponse && ((SchemaResponse) response).getError().contains("Can not find any registered value schema for the store"));
   }
 
   /**
