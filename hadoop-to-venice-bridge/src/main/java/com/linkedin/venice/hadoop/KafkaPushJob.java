@@ -723,14 +723,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
           pushJobConfigs.put(key, props.getString(key));
         }
         pushJobDetails.pushJobConfigs = pushJobConfigs;
-        if (versionTopicInfo != null) {
-          Map<CharSequence, CharSequence> producerConfigs = new HashMap<>();
-          Properties producerProps = getVeniceWriterProperties(versionTopicInfo);
-          for (String key : producerProps.stringPropertyNames()) {
-            producerConfigs.put(key, producerProps.getProperty(key));
-          }
-          pushJobDetails.producerConfigs = producerConfigs;
-        }
+        // TODO find a way to get meaningful producer configs to populate the producerConfigs map here.
+        // Currently most of the easily accessible VeniceWriter configs are not interesting and contains sensitive
+        // information such as passwords which doesn't seem appropriate to propagate them to push job details.
+        pushJobDetails.producerConfigs = new HashMap<>();
       }
     } catch (Exception e) {
       logger.warn("Exception caught while updating push job details with configs. " + NON_CRITICAL_EXCEPTION, e);

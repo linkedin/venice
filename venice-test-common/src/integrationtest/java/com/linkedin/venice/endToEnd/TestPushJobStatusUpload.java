@@ -194,7 +194,7 @@ public class TestPushJobStatusUpload {
       assertNotNull(value.pushJobConfigs);
       assertFalse(value.pushJobConfigs.isEmpty());
       assertNotNull(value.producerConfigs);
-      assertFalse(value.pushJobConfigs.isEmpty());
+      assertTrue(value.producerConfigs.isEmpty());
     }
   }
 }
