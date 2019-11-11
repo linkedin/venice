@@ -70,7 +70,8 @@ public class ListenerService extends AbstractVeniceService {
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
     StorageExecutionHandler requestHandler = createRequestHandler(
-        executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService, serverConfig.isComputeFastAvroEnabled());
+        executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
+        serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize());
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, accessController, requestHandler);
@@ -122,8 +123,11 @@ public class ListenerService extends AbstractVeniceService {
       ReadOnlySchemaRepository schemaRepository,
       MetadataRetriever metadataRetriever,
       DiskHealthCheckService diskHealthService,
-      boolean fastAvroEnabled) {
+      boolean fastAvroEnabled,
+      boolean parallelBatchGetEnabled,
+      int parallelBatchGetChunkSize) {
     return new StorageExecutionHandler(
-        executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService, fastAvroEnabled);
+        executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
+        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize);
   }
 }

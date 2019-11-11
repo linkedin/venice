@@ -63,7 +63,7 @@ import static com.linkedin.venice.router.api.VenicePathParser.*;
 //TODO: merge TestRead and TestRouterCache.
 @Test(singleThreaded = true)
 public abstract class TestRead {
-  private static final int MAX_KEY_LIMIT = 10;
+  private static final int MAX_KEY_LIMIT = 20;
   private static final Logger logger = Logger.getLogger(TestRead.class);
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
@@ -98,7 +98,7 @@ public abstract class TestRead {
     System.setProperty("io.netty.leakDetection.level", "paranoid");
 
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 1, 0, 2, 100, true, false);
 
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
@@ -113,6 +113,8 @@ public abstract class TestRead {
     // By default, the storage engine is BDB, and we would like test ROCKS_DB here as well.
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, ROCKS_DB);
+    serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true); // test parallel lookup
+    serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 3);
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
     veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);

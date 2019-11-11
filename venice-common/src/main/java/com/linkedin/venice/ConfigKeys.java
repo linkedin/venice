@@ -273,6 +273,17 @@ public class ConfigKeys {
    */
   public static final String SERVER_COMPUTE_FAST_AVRO_ENABLED = "server.compute.fast.avro.enabled";
 
+  /**
+   * Whether to enable parallel lookup for batch-get.
+   */
+  public static final String SERVER_ENABLE_PARALLEL_BATCH_GET = "server.enable.parallel.batch.get";
+
+  /**
+   * Chunk size of each task for parallel lookup of batch-get.
+   */
+  public static final String SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE = "server.parallel.batch.get.chunk.size";
+
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

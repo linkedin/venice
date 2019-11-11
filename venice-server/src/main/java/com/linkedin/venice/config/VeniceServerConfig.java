@@ -159,6 +159,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final long serverPromotionToLeaderReplicaDelayMs;
 
+  private final boolean enableParallelBatchGet;
+
+  private final int parallelBatchGetChunkSize;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -211,6 +215,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     participantMessageConsumptionDelayMs = serverProperties.getLong(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 60000);
     serverPromotionToLeaderReplicaDelayMs = TimeUnit.SECONDS.toMillis(serverProperties.getLong(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, 300));  // 5 minutes by default
     hybridQuotaEnabled = serverProperties.getBoolean(HYBRID_QUOTA_ENFORCEMENT_ENABLED, false);
+
+    enableParallelBatchGet = serverProperties.getBoolean(SERVER_ENABLE_PARALLEL_BATCH_GET, false);
+    parallelBatchGetChunkSize = serverProperties.getInt(SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 5);
   }
 
   public int getListenerPort() {
@@ -369,4 +376,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   public boolean isHybridQuotaEnabled() { return hybridQuotaEnabled; }
+
+  public boolean isEnableParallelBatchGet() {
+    return enableParallelBatchGet;
+  }
+
+  public int getParallelBatchGetChunkSize() {
+    return parallelBatchGetChunkSize;
+  }
 }
