@@ -51,13 +51,16 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -95,6 +98,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final MetadataRetriever metadataRetriever;
   private final Map<Utf8, Schema> computeResultSchemaCache;
   private final boolean fastAvroEnabled;
+  private final boolean parallelBatchGetEnabled;
+  private final int parallelBatchGetChunkSize;
+
 
   private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>() {
     {
@@ -107,7 +113,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
       @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepository,
       @NotNull MetadataRetriever metadataRetriever, @NotNull DiskHealthCheckService healthCheckService,
-      boolean fastAvroEnabled) {
+      boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storeRepository = storeRepository;
@@ -116,6 +122,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.diskHealthCheckService = healthCheckService;
     this.fastAvroEnabled = fastAvroEnabled;
     this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
+    this.parallelBatchGetEnabled = parallelBatchGetEnabled;
+    this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
   }
 
   @Override
@@ -143,6 +151,25 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     if (message instanceof RouterRequest) {
       RouterRequest request = (RouterRequest) message;
+      /**
+       * For now, we are evaluating whether parallel lookup is good overall or not.
+       * Eventually, we either pick up the new parallel implementation or keep the original one, so it is fine
+       * to have some duplicate code for the time-being.
+       */
+      if (parallelBatchGetEnabled && request.getRequestType().equals(RequestType.MULTI_GET)) {
+        handleMultiGetRequestInParallel((MultiGetRouterRequestWrapper) request, parallelBatchGetChunkSize)
+            .whenComplete( (v, e) -> {
+              if (e != null) {
+                String exceptionMessage = ExceptionUtils.stackTraceToString(e);
+                context.writeAndFlush(new HttpShortcutResponse(exceptionMessage, HttpResponseStatus.INTERNAL_SERVER_ERROR));
+              } else {
+                context.writeAndFlush(v);
+              }
+            });
+        return;
+      }
+
+
       getExecutor(request.getRequestType()).submit(new LabeledRunnable(request.getStoreName(), () -> {
         double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
         ReadResponse response;
@@ -215,6 +242,76 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     response.setValueRecord(valueRecord);
     response.setOffset(offset);
     return response;
+  }
+
+  private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request, int parallelChunkSize) {
+    String topic = request.getResourceName();
+    Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
+    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+
+    MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
+    responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
+    responseWrapper.setDatabaseLookupLatency(0);
+    boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
+
+    ExecutorService executorService = getExecutor(RequestType.MULTI_GET);
+    if (!(keys instanceof ArrayList)) {
+      throw new VeniceException("'keys' in MultiGetResponseWrapper should be an ArrayList");
+    }
+    final ArrayList<MultiGetRouterRequestKeyV1> keyList = (ArrayList)keys;
+    int totalKeyNum = keyList.size();
+    int splitSize = (int)Math.ceil((double)totalKeyNum / parallelChunkSize);
+
+    ReentrantLock requestLock = new ReentrantLock();
+    CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
+
+    for (int cur = 0; cur < splitSize; ++cur) {
+      final int finalCur = cur;
+      chunkFutures[cur] = CompletableFuture.runAsync(() -> {
+        int startPos = finalCur * parallelChunkSize;
+        int endPos = Math.min((finalCur + 1) * parallelChunkSize, totalKeyNum);
+        for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
+          final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
+          MultiGetResponseRecordV1 record =
+              BatchGetChunkingAdapter.get(store, key.partitionId, key.keyBytes, isChunked, responseWrapper);
+          if (null == record) {
+            if (request.isStreamingRequest()) {
+              // For streaming, we would like to send back non-existing keys since the end-user won't know the status of
+              // non-existing keys in the response if the response is partial.
+              record = new MultiGetResponseRecordV1();
+              // Negative key index to indicate the non-existing keys
+              record.keyIndex = Math.negateExact(key.keyIndex);
+              record.schemaId = StreamingConstants.NON_EXISTING_KEY_SCHEMA_ID;
+              record.value = StreamingUtils.EMPTY_BYTE_BUFFER;
+            }
+          } else {
+            record.keyIndex = key.keyIndex;
+          }
+
+          if (null != record) {
+            // TODO: streaming support in storage node
+            requestLock.lock();
+            try {
+              responseWrapper.addRecord(record);
+            } finally {
+              requestLock.unlock();
+            }
+          }
+        }
+      }, executorService);
+    }
+
+    // Offset data
+    Set<Integer> partitionIdSet = new HashSet<>();
+    keys.forEach(routerRequestKey ->
+        addPartitionOffsetMapping(topic, routerRequestKey.partitionId, partitionIdSet, responseWrapper));
+
+    return CompletableFuture.allOf(chunkFutures).handle((v, e) -> {
+      if (e != null) {
+        throw new VeniceException(e);
+      }
+      return responseWrapper;
+    });
   }
 
   private ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {

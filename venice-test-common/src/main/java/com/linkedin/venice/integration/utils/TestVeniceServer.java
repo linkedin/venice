@@ -69,10 +69,13 @@ public class TestVeniceServer extends VeniceServer {
           ReadOnlySchemaRepository schemaRepository,
           MetadataRetriever metadataRetriever,
           DiskHealthCheckService diskHealthService,
-          boolean fastAvroEnabled) {
+          boolean fastAvroEnabled,
+          boolean parallelBatchGetEnabled,
+          int parallelBatchGetChunkSize) {
 
         return new StorageExecutionHandler(
-            executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService, fastAvroEnabled) {
+            executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
+            fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
             RequestHandler handler = requestHandler.get();
