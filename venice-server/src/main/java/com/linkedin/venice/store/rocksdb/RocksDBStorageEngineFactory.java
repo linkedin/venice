@@ -77,6 +77,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     newOptions.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
     newOptions.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
 
+    // Inherit Direct IO for read settings from globals
+    newOptions.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+
     // Cache index and bloom filter in block cache
     // and share the same cache across all the RocksDB databases
     BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();

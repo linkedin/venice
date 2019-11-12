@@ -9,6 +9,13 @@ import org.rocksdb.CompressionType;
 
 public class RocksDBServerConfig {
   /**
+   * Ability to use direct IO for disk reads, might yield better performance on Azure disks.
+   * Also makes caching behavior more consistent, by limiting the caching to only RocksDB.
+   * This also reduces number of mem copies which might yield improved performance.
+   */
+  public static final String ROCKSDB_OPTIONS_USE_DIRECT_READS = "rocksdb.options.use.direct.reads";
+
+  /**
    * Thread pool being used by all the RocksDB databases.
    */
   public static final String ROCKSDB_ENV_FLUSH_POOL_SIZE = "rocksdb.env.flush.pool.size";
@@ -80,6 +87,8 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_BYTES_PER_SYNC = "rocksdb.bytes.per.sync";
 
+  private final boolean rocksDBUseDirectReads;
+
   private final int rocksDBEnvFlushPoolSize;
   private final int rocksDBEnvCompactionPoolSize;
 
@@ -102,6 +111,10 @@ public class RocksDBServerConfig {
   private final long rocksDBBytesPerSync;
 
   public RocksDBServerConfig(VeniceProperties props) {
+
+    // Do not use Direct IO for reads by default
+    this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS,false);
+
     this.rocksDBEnvFlushPoolSize = props.getInt(ROCKSDB_ENV_FLUSH_POOL_SIZE, 4);
     this.rocksDBEnvCompactionPoolSize = props.getInt(ROCKSDB_ENV_COMPACTION_POOL_SIZE, 4);
 
@@ -146,6 +159,9 @@ public class RocksDBServerConfig {
 
     // https://github.com/facebook/rocksdb/wiki/Set-Up-Options
     this.rocksDBBytesPerSync = props.getSizeInBytes(ROCKSDB_BYTES_PER_SYNC, 1024 * 1024); // 1MB
+  }
+  public boolean getRocksDBUseDirectReads() {
+    return rocksDBUseDirectReads;
   }
 
   public int getRocksDBEnvFlushPoolSize() {
