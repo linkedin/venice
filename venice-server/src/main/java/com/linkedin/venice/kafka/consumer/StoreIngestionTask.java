@@ -647,7 +647,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         message.incrementAttempt();
         processConsumerAction(message);
       } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
         throw new VeniceIngestionTaskKilledException(topic, e);
       } catch (Exception ex) {
         if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {
