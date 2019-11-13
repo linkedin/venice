@@ -48,7 +48,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericData;
@@ -212,6 +217,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   public static final String KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS = "kafka.metrics.to.report.as.mr.counters";
 
+  /**
+   * Config to control the thread pool size for HDFS operations.
+   */
+  public static final String HDFS_OPERATIONS_PARALLEL_THREAD_NUM = "hdfs.operations.parallel.thread.num";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -266,6 +276,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private Properties veniceWriterProperties;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
+
+  // Thread pool for Hadoop File System operations.
+  private final Executor hdfsExecutor;
 
   protected class SchemaInfo {
     boolean isAvro = true;
@@ -421,6 +434,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
 
+    int hdfsOperationThreadNum = props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20);
+    hdfsExecutor = Executors.newFixedThreadPool(hdfsOperationThreadNum);
   }
 
   /**
@@ -1329,18 +1344,24 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return field.schema();
   }
 
-  private Schema getAvroFileHeader(FileSystem fs, Path path) throws IOException {
+  private Schema getAvroFileHeader(FileSystem fs, Path path) {
     logger.debug("path:" + path.toUri().getPath());
 
     GenericDatumReader<Object> avroReader = new GenericDatumReader<Object>();
     DataFileStream<Object> avroDataFileStream = null;
-    Schema schema;
+    Schema schema = null;
     try (InputStream hdfsInputStream = fs.open(path)) {
       avroDataFileStream = new DataFileStream<>(hdfsInputStream, avroReader);
       schema = avroDataFileStream.getSchema();
+    } catch (IOException e) {
+      throw new VeniceException("Encountered exception when extracting avro schema from file: " + path, e);
     } finally {
       if (avroDataFileStream != null) {
-        avroDataFileStream.close();
+        try {
+          avroDataFileStream.close();
+        } catch (IOException e) {
+          throw new VeniceException("Failed to close data file: " + path, e);
+        }
       }
     }
 
@@ -1357,55 +1378,74 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         VsonSchema.parse(fileMetadata.get(FILE_VALUE_SCHEMA)));
   }
 
+  /**
+   * This function is to execute HDFS operation in parallel, and the level of parallelism is controlled by this config: {@link #HDFS_OPERATIONS_PARALLEL_THREAD_NUM}
+   */
+  private void parallelExecuteHDFSOperation(final FileStatus[] fileStatusList, String operation, boolean skipFirstOne, Consumer<FileStatus> fileStatusConsumer) {
+    int len = fileStatusList.length;
+    int cur = skipFirstOne ? 1 : 0;
+    CompletableFuture<Void>[] futures = new CompletableFuture[len - cur];
+    for (; cur < len; ++cur) {
+      final int finalCur = cur;
+      futures[cur] = CompletableFuture.runAsync(() -> fileStatusConsumer.accept(fileStatusList[finalCur]), hdfsExecutor);
+    }
+    try {
+      CompletableFuture.allOf(futures).get();
+    } catch (Exception e) {
+      throw new VeniceException("Failed to execute " + operation + " in parallel", e);
+    }
+  }
+
+  //Avro-based file composes key and value schema as a whole
+  private Schema checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) {
+    int len = fileStatusList.length;
+    if (len == 0) {
+      throw new VeniceException("fileStatusList shouldn't be empty");
+    }
+    Schema avroSchema = getAvroFileHeader(fs, fileStatusList[0].getPath());
+    parallelExecuteHDFSOperation(fileStatusList, "checkAvroSchemaConsistency", true, fileStatus -> {
+      Schema newSchema = getAvroFileHeader(fs, fileStatus.getPath());
+        if (!avroSchema.equals(newSchema)) {
+          throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Avro schema found. File: %s.\n"
+                  + "Expected file schema: %s.\n Real File schema: %s.", fileStatus.getPath().getName(),
+              avroSchema.toString(), newSchema.toString()));
+        }
+    });
+    return avroSchema;
+  }
+
   //Vson-based file store key / value schema string as separated properties in file header
   private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) {
-    Pair<VsonSchema, VsonSchema> vsonSchema = null;
-    for (FileStatus status : fileStatusList) {
-      Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(fs, status.getPath());
-      if (vsonSchema == null) {
-        vsonSchema = newSchema;
-      } else {
-        if (!vsonSchema.getFirst().equals(newSchema.getFirst()) || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
-          throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
-                          + "Expected value schema: %s.\n File key schema: %s.\n File value schema: %s.", status.getPath().getName(),
-                  vsonSchema.getFirst().toString(), vsonSchema.getSecond().toString(), newSchema.getFirst().toString(), newSchema.getSecond().toString()));
-        }
-      }
+    int len = fileStatusList.length;
+    if (len == 0) {
+      throw new VeniceException("fileStatusList shouldn't be empty");
     }
+    Pair<VsonSchema, VsonSchema> vsonSchema = getVsonFileHeader(fs, fileStatusList[0].getPath());
+    parallelExecuteHDFSOperation(fileStatusList, "checkVsonSchemaConsistency", true, fileStatus -> {
+      Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(fs, fileStatus.getPath());
+      if (!vsonSchema.getFirst().equals(newSchema.getFirst()) || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
+        throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
+                + "Expected value schema: %s.\n File key schema: %s.\n File value schema: %s.", fileStatus.getPath().getName(),
+            vsonSchema.getFirst().toString(), vsonSchema.getSecond().toString(), newSchema.getFirst().toString(), newSchema.getSecond().toString()));
+      }
+    });
 
     return vsonSchema;
   }
 
-  //Avro-based file composes key and value schema as a whole
-  private Schema checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) throws IOException{
-    Schema avroSchema = null;
-    for (FileStatus status : fileStatusList) {
-      Schema newSchema = getAvroFileHeader(fs, status.getPath());
-      if (avroSchema == null) {
-        avroSchema = newSchema;
-      } else {
-        if (!avroSchema.equals(newSchema)) {
-          throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Avro schema found. File: %s.\n"
-              + "Expected file schema: %s.\n Real File schema: %s.", status.getPath().getName(),
-              avroSchema.toString(), newSchema.toString()));
-        }
-      }
-    }
-    return avroSchema;
-  }
+  private long validateInputDir(final FileStatus[] fileStatuses) {
+    final AtomicLong inputFileDataSize = new AtomicLong(0);
 
-  private long validateInputDir(FileStatus[] fileStatuses) {
-    long inputFileDataSize = 0;
-    for (FileStatus status : fileStatuses) {
-      if (status.isDirectory()) {
+    parallelExecuteHDFSOperation(fileStatuses, "validateInputDir", false, fileStatus -> {
+      if (fileStatus.isDirectory()) {
         // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
-        throw new VeniceException("Input directory: " + status.getPath().getParent().getName() +
-            " should not have sub directory: " + status.getPath().getName());
+        throw new VeniceException("Input directory: " + fileStatus.getPath().getParent().getName() +
+            " should not have sub directory: " + fileStatus.getPath().getName());
       }
+      inputFileDataSize.addAndGet(fileStatus.getLen());
+    });
 
-      inputFileDataSize += status.getLen();
-    }
-    return inputFileDataSize;
+    return inputFileDataSize.get();
   }
 
   private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path) {
