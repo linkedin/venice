@@ -14,9 +14,85 @@ public class TestAvroSchemaUtils {
     String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\", \"doc\": \"company name here\"}]}";
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3);
+  }
+
+  @Test
+  public void testCompareWithDifferentOrderFields() {
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"company\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"name\",\"type\":\"string\"}]}";
+
+
+    Schema s1 = Schema.parse(schemaStr1);
+    Schema s2 = Schema.parse(schemaStr2);
+    AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2);
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
+  }
+
+  @Test
+  public void testCompareWithDifferentOrderFieldsNested() {
+    String recordSchemaStr1 = "{\n" +
+        "  \"type\" : \"record\",\n" +
+        "  \"name\" : \"testRecord\",\n" +
+        "  \"namespace\" : \"com.linkedin.avro\",\n" +
+        "  \"fields\" : [ {\n" +
+        "    \"name\" : \"hits\",\n" +
+        "    \"type\" : {\n" +
+        "      \"type\" : \"array\",\n" +
+        "      \"items\" : {\n" +
+        "        \"type\" : \"record\",\n" +
+        "        \"name\" : \"JobAlertHit\",\n" +
+        "        \"fields\" : [ {\n" +
+        "          \"name\" : \"memberId\",\n" +
+        "          \"type\" : \"long\"\n" +
+        "        }, {\n" +
+        "          \"name\" : \"searchId\",\n" +
+        "          \"type\" : \"long\"\n" +
+        "        } ]\n"
+        + "      }\n" +
+        "    },\n" +
+        "    \"default\" : [ ]\n" +
+        "  }, {\n" +
+        "    \"name\" : \"hasNext\",\n" +
+        "    \"type\" : \"boolean\",\n" +
+        "    \"default\" : false\n" +
+        "  } ]\n" +
+        "}";
+    String recordSchemaStr2 = "{\n" +
+        "  \"type\" : \"record\",\n" +
+        "  \"name\" : \"testRecord\",\n" +
+        "  \"namespace\" : \"com.linkedin.avro\",\n" +
+        "  \"fields\" : [ {\n" +
+        "    \"name\" : \"hits\",\n" +
+        "    \"type\" : {\n" +
+        "      \"type\" : \"array\",\n" +
+        "      \"items\" : {\n" +
+        "        \"type\" : \"record\",\n" +
+        "        \"name\" : \"JobAlertHit\",\n" +
+        "        \"fields\" : [ {\n" +
+        "          \"name\" : \"searchId\",\n" +
+        "          \"type\" : \"long\"\n" +
+        "        }, {\n" +
+        "          \"name\" : \"memberId\",\n" +
+        "          \"type\" : \"long\"\n" +
+        "        } ]\n"
+        + "      }\n" +
+        "    },\n" +
+        "    \"default\" : [ ]\n" +
+        "  }, {\n" +
+        "    \"name\" : \"hasNext\",\n" +
+        "    \"type\" : \"boolean\",\n" +
+        "    \"default\" : false\n" +
+        "  } ]\n" +
+        "}";
+
+
+    Schema s1 = Schema.parse(recordSchemaStr1);
+    Schema s2 = Schema.parse(recordSchemaStr2);
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
   }
 
   @Test (expectedExceptions = VeniceException.class)
@@ -26,6 +102,7 @@ public class TestAvroSchemaUtils {
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
 
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
     AvroSchemaUtils.generateSuperSetSchema(s1, s2);
   }
 
@@ -62,6 +139,7 @@ public class TestAvroSchemaUtils {
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
 
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
     AvroSchemaUtils.generateSuperSetSchema(s1, s2);
   }
 
@@ -72,7 +150,7 @@ public class TestAvroSchemaUtils {
 
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
-
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3);
   }
@@ -84,6 +162,7 @@ public class TestAvroSchemaUtils {
 
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("company"));
@@ -97,6 +176,7 @@ public class TestAvroSchemaUtils {
 
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("id1"));
@@ -165,6 +245,7 @@ public class TestAvroSchemaUtils {
         "}";
     Schema s1 = Schema.parse(recordSchemaStr1);
     Schema s2 = Schema.parse(recordSchemaStr2);
+    Assert.assertFalse(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3);
@@ -205,6 +286,7 @@ public class TestAvroSchemaUtils {
 
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s1, s2);
     Assert.assertNotNull(s3.getField("salary").defaultValue());
@@ -244,6 +326,7 @@ public class TestAvroSchemaUtils {
         "        }";
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Assert.assertTrue(s1.equals(s2));
     Assert.assertFalse(AvroSchemaUtils.hasDocFieldChange(s1, s2));
@@ -257,6 +340,7 @@ public class TestAvroSchemaUtils {
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
     Assert.assertTrue(s1.equals(s2));
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Assert.assertTrue(AvroSchemaUtils.hasDocFieldChange(s1, s2));
   }
@@ -323,6 +407,7 @@ public class TestAvroSchemaUtils {
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
     Assert.assertTrue(s1.equals(s2));
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
 
     Assert.assertTrue(AvroSchemaUtils.hasDocFieldChange(s1, s2));
   }
