@@ -1383,11 +1383,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private void parallelExecuteHDFSOperation(final FileStatus[] fileStatusList, String operation, boolean skipFirstOne, Consumer<FileStatus> fileStatusConsumer) {
     int len = fileStatusList.length;
-    int cur = skipFirstOne ? 1 : 0;
-    CompletableFuture<Void>[] futures = new CompletableFuture[len - cur];
-    for (; cur < len; ++cur) {
+    int startPos = skipFirstOne ? 1 : 0;
+    CompletableFuture<Void>[] futures = new CompletableFuture[len - startPos];
+    for (int cur = startPos; cur < len; ++cur) {
       final int finalCur = cur;
-      futures[cur] = CompletableFuture.runAsync(() -> fileStatusConsumer.accept(fileStatusList[finalCur]), hdfsExecutor);
+      futures[cur - startPos] = CompletableFuture.runAsync(() -> fileStatusConsumer.accept(fileStatusList[finalCur]), hdfsExecutor);
     }
     try {
       CompletableFuture.allOf(futures).get();
