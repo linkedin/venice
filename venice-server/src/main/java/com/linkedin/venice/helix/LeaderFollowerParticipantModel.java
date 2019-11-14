@@ -39,7 +39,7 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   }
 
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
-  public void onBecomeLeaderFromStandby(Message message, NotificationContext context) throws Exception {
+  public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
     executeStateTransition(message, context, () -> {
       getStoreIngestionService().promoteToLeader(getStoreConfig(), getPartition(), checker);

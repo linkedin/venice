@@ -16,6 +16,8 @@ import org.apache.helix.participant.statemachine.Transition;
 
 public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   private boolean isBlock = false;
+
+  //we have a list of state model as the value because this factory could be shared by different participants
   private Map<String, List<OnlineOfflineStateModel>> modelToModelListMap = new HashMap<>();
   @Override
   public StateModel createNewStateModel(String resourceName, String partitionName) {
