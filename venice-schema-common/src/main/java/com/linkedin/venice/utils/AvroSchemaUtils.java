@@ -126,6 +126,64 @@ public class AvroSchemaUtils {
   }
 
   /**
+   * Compares two schema with possible re-ordering of the fields. Otherwise If compares every fields at every level.
+   * @param s1
+   * @param s2
+   * @return true is the schemas are same with possible reordered fields.
+   */
+  public static boolean compareSchemaIgnoreFieldOrder(Schema s1, Schema s2) {
+    if (s1.getType() != s2.getType()) {
+      return false;
+    }
+    if (Objects.equals(s1, s2)) {
+      return true;
+    }
+    switch (s1.getType()) {
+      case RECORD:
+        return StringUtils.equals(s1.getNamespace(), s2.getNamespace()) && compareFields(s1, s2);
+      case ARRAY:
+        return compareSchemaIgnoreFieldOrder(s1.getElementType(), s2.getElementType());
+      case MAP:
+        return compareSchemaIgnoreFieldOrder(s1.getValueType(), s2.getValueType());
+      case UNION:
+        return compareSchemaUnion(s1.getTypes(), s2.getTypes());
+      case ENUM:
+        return compareSchemaEnum(s1.getEnumSymbols(), s2.getEnumSymbols());
+      default:
+        throw new VeniceException("Schema compare not supported for " + s1.toString());
+    }
+  }
+
+  private static boolean compareSchemaEnum(List<String> list1, List<String> list2) {
+    return list1.equals(list2);
+  }
+
+  private static boolean compareSchemaUnion(List<Schema> list1, List<Schema> list2) {
+    Map<String, Schema> s2Schema = list2.stream().collect(Collectors.toMap(s -> s.getName(), s -> s));
+    for (Schema s1 : list1) {
+      Schema s2 = s2Schema.get(s1.getName());
+      if (s2 == null || !compareSchemaIgnoreFieldOrder(s1, s2)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean compareFields(Schema s1, Schema s2) {
+    if (s1.getFields().size() != s2.getFields().size()) {
+      return false;
+    }
+
+    for (Schema.Field f1 : s1.getFields()) {
+      Schema.Field f2 = s2.getField(f1.name());
+      if (f2  == null || !Objects.equals(f1.defaultValue(), f2.defaultValue()) || !compareSchemaIgnoreFieldOrder(f1.schema(), f2.schema())) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Generate super-set schema of two Schemas. If we have {A,B,C} and {A,B,D} it will generate {A,B,C,D}, where
    * C/D could be nested record change as well eg, array/map of records, or record of records.
    * Prerequisite: The top-level schema are of type RECORD only and each fields have default values. ie they are compatible
