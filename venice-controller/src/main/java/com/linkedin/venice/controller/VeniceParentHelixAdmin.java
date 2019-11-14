@@ -74,6 +74,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
@@ -191,7 +192,7 @@ public class VeniceParentHelixAdmin implements Admin {
         this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
     this.clusterToLastOffsetMap = new HashMap<>();
-    this.asyncSetupEnabledMap = new HashMap<>();
+    this.asyncSetupEnabledMap = new VeniceConcurrentHashMap<>();
     if (sslEnabled) {
       try {
         String sslFactoryClassName = multiClusterConfigs.getSslFactoryClassName();

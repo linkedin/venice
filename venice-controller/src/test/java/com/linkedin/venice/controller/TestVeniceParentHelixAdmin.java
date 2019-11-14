@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
@@ -38,6 +39,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -56,11 +58,11 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -95,6 +97,8 @@ public class TestVeniceParentHelixAdmin {
   private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
   private static long STORAGE_QUOTA = 100l;
+  private static final String PUSH_JOB_STATUS_STORE_NAME = "push-job-status-store";
+  private static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   private final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
@@ -162,7 +166,9 @@ public class TestVeniceParentHelixAdmin {
     doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
     doReturn(true).when(config).isAddVersionViaAdminProtocolEnabled();
     doReturn(false).when(config).isAddVersionViaTopicMonitorEnabled();
-    doReturn("").when(config).getPushJobStatusStoreClusterName();
+    doReturn(clusterName).when(config).getPushJobStatusStoreClusterName();
+    doReturn(PUSH_JOB_STATUS_STORE_NAME).when(config).getPushJobStatusStoreName();
+    doReturn(true).when(config).isParticipantMessageStoreEnabled();
     return config;
   }
 
@@ -190,15 +196,14 @@ public class TestVeniceParentHelixAdmin {
     verify(topicManager).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
   }
 
-  private class AsyncSetupMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
-    private Store store;
-    private String pushJobStatusStoreName;
+  /**
+   * Partially stubbed class to verify async setup behavior.
+   */
+  private static class AsyncSetupMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
+    private Map<String, Store> systemStores = new VeniceConcurrentHashMap<>();
 
-    public AsyncSetupMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config,
-        Store store, String pushJobStatusStoreName) {
+    public AsyncSetupMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
       super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
-      this.store = store;
-      this.pushJobStatusStoreName = pushJobStatusStoreName;
     }
 
     public boolean isAsyncSetupRunning(String clusterName) {
@@ -207,7 +212,21 @@ public class TestVeniceParentHelixAdmin {
 
     @Override
     public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
-      doReturn(store).when(internalAdmin).getStore(clusterName, pushJobStatusStoreName);
+      if (systemStores.containsKey(storeName)) {
+        // no op
+        return;
+      }
+      Store newStore = new Store(storeName, owner, System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+          RoutingStrategy.HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      systemStores.put(storeName, newStore);
+    }
+
+    @Override
+    public Store getStore(String clusterName, String storeName) {
+      if (!systemStores.containsKey(storeName)) {
+        return null;
+      }
+      return systemStores.get(storeName).cloneStore();
     }
 
     @Override
@@ -242,52 +261,60 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> autoSchmePushJob,
         Optional<Boolean> autoSchmeAdmin,
         Optional<Boolean> hybridStoreDiskQuotaEnabled) {
-      if (hybridOffsetLagThreshold.isPresent() && hybridRewindSeconds.isPresent()) {
-        doReturn(true).when(store).isHybrid();
+      if (!systemStores.containsKey(storeName)) {
+        throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
+      }
+      if (hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent()) {
+        systemStores.get(storeName)
+            .setHybridStoreConfig(new HybridStoreConfig(hybridRewindSeconds.get(), hybridOffsetLagThreshold.get()));
       }
     }
 
     @Override
-    public Version incrementVersionIdempotent(String clusterName,
-        String storeName,
-        String pushJobId,
-        int numberOfPartition,
-        int replicationFactor,
-        boolean offlinePush) {
-      List versions = new ArrayList();
-      versions.add(new Version("push-job-status-store", 1, "test-id"));
-      doReturn(versions).when(store).getVersions();
-      return new Version("push-job-status-store", 1, "test-id");
+    public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
+        int numberOfPartition, int replicationFactor, boolean offlinePush) {
+      if (!systemStores.containsKey(storeName)) {
+        throw new VeniceNoStoreException("Cannot add version to store " + storeName + " because it's missing.");
+      }
+      Version version = new Version(storeName, 1, "test-id");
+      List<Version> versions = new ArrayList<>();
+      versions.add(version);
+      systemStores.get(storeName).setVersions(versions);
+      return version;
     }
-
   }
 
   @Test (timeOut = TIMEOUT_IN_MS)
   public void testAsyncSetupForPushStatusStore() {
-    String pushJobStatusStoreName = "push-job-status-store";
-    Store store = mock(Store.class);
-    doReturn(false).when(store).isHybrid();
-    doReturn(Collections.emptyList()).when(store).getVersions();
+    String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     doReturn(true).when(internalAdmin).isMasterController(clusterName);
-    doReturn(clusterName).when(config).getPushJobStatusStoreClusterName();
-    doReturn(pushJobStatusStoreName).when(config).getPushJobStatusStoreName();
-    doReturn(Version.composeRealTimeTopic(pushJobStatusStoreName)).when(internalAdmin)
-        .getRealTimeTopic(clusterName, pushJobStatusStoreName);
+    doReturn(Version.composeRealTimeTopic(PUSH_JOB_STATUS_STORE_NAME)).when(internalAdmin)
+        .getRealTimeTopic(clusterName, PUSH_JOB_STATUS_STORE_NAME);
+    doReturn(Version.composeRealTimeTopic(PUSH_JOB_DETAILS_STORE_NAME)).when(internalAdmin)
+        .getRealTimeTopic(clusterName, PUSH_JOB_DETAILS_STORE_NAME);
+    doReturn(Version.composeRealTimeTopic(participantStoreName)).when(internalAdmin)
+        .getRealTimeTopic(clusterName, participantStoreName);
     AsyncSetupMockVeniceParentHelixAdmin mockVeniceParentHelixAdmin =
-        new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, config, store, pushJobStatusStoreName);
+        new AsyncSetupMockVeniceParentHelixAdmin(internalAdmin, config);
     mockVeniceParentHelixAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
     mockVeniceParentHelixAdmin.setTimer(new MockTime());
     try {
       mockVeniceParentHelixAdmin.start(clusterName);
-      TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> !store.getVersions().isEmpty());
-      verify(internalAdmin, times(4)).getStore(clusterName, pushJobStatusStoreName);
-      verify(store, times(2)).isHybrid();
-      verify(store, atLeast(2)).getVersions();
+      String[] systemStoreNames = {PUSH_JOB_STATUS_STORE_NAME, PUSH_JOB_DETAILS_STORE_NAME, participantStoreName};
+      for (String systemStore : systemStoreNames) {
+        TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
+          Store s = mockVeniceParentHelixAdmin.getStore(clusterName, systemStore);
+          return s != null && !s.getVersions().isEmpty();
+        });
+        Store verifyStore = mockVeniceParentHelixAdmin.getStore(clusterName, systemStore);
+        Assert.assertEquals(verifyStore.getName(), systemStore, "Unexpected store name");
+        Assert.assertTrue(verifyStore.isHybrid(), "Store should be configured to be hybrid");
+        Assert.assertEquals(verifyStore.getVersions().size(), 1 , "Store should have one version");
+      }
     } finally {
       mockVeniceParentHelixAdmin.stop(clusterName);
     }
-    Assert.assertEquals(mockVeniceParentHelixAdmin.isAsyncSetupRunning(clusterName), false,
-        "Async setup should be stopped");
+    Assert.assertFalse(mockVeniceParentHelixAdmin.isAsyncSetupRunning(clusterName), "Async setup should be stopped");
   }
 
   @Test
