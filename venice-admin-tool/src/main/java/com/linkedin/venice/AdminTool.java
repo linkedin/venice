@@ -491,19 +491,19 @@ public class AdminTool {
   }
 
   private static void setEnableStoreWrites(CommandLine cmd, boolean enableWrites){
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    String store = getRequiredArgument(cmd, Arg.STORE, enableWrites ? Command.ENABLE_STORE_WRITE : Command.DISABLE_STORE_WRITE);
     ControllerResponse response = controllerClient.enableStoreWrites(store, enableWrites);
     printSuccess(response);
   }
 
   private static void setEnableStoreReads(CommandLine cmd, boolean enableReads) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    String store = getRequiredArgument(cmd, Arg.STORE, enableReads ? Command.ENABLE_STORE_READ : Command.DISABLE_STORE_READ);
     ControllerResponse response = controllerClient.enableStoreReads(store, enableReads);
     printSuccess(response);
   }
 
   private static void setEnableStoreReadWrites(CommandLine cmd, boolean enableReadWrites) {
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    String store = getRequiredArgument(cmd, Arg.STORE, enableReadWrites ? Command.ENABLE_STORE : Command.DISABLE_STORE);
     ControllerResponse response = controllerClient.enableStoreReadWrites(store, enableReadWrites);
     printSuccess(response);
   }
