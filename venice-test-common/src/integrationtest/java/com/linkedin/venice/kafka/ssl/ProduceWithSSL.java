@@ -54,7 +54,7 @@ public class ProduceWithSSL {
   @Test
   public void testVeniceWriterSupportSSL()
       throws ExecutionException, InterruptedException {
-    String storeName = "testVeniceWriterSupportSSL";
+    String storeName = TestUtils.getUniqueString("testVeniceWriterSupportSSL");
     cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, 1000);
     Assert.assertFalse(response.isError());
@@ -82,7 +82,8 @@ public class ProduceWithSSL {
     );
 
     Assert.assertEquals(storeClient.get(testKey).get().toString(), testVal);
-
+    writer.close();
+    controllerClient.close();
   }
   private byte[] readFile(String path)
       throws IOException {
