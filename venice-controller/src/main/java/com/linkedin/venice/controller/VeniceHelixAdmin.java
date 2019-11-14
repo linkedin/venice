@@ -352,7 +352,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     // For testing purpose.
-    void setTopicManager(TopicManager topicManager) { this.topicManager = topicManager; }
+    void setTopicManager(TopicManager topicManager) {
+        this.topicManager = topicManager;
+    }
 
     @Override
     public synchronized void start(String clusterName) {
@@ -2966,7 +2968,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas, boolean isInstanceView) {
         checkControllerMastership(clusterName);
         return InstanceStatusDecider
-            .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, minActiveReplicas);
+            .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, minActiveReplicas, isInstanceView);
     }
 
     @Override
