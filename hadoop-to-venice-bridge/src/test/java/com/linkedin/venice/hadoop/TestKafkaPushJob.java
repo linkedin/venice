@@ -152,7 +152,7 @@ public class TestKafkaPushJob {
    * @throws Exception
    */
   @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceInconsistentSchemaException.class)
+      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to execute checkAvroSchemaConsistency.*")
   public void testRunJobWithInputHavingDifferentSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -222,7 +222,7 @@ public class TestKafkaPushJob {
    */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*should not have sub directory.*")
+      expectedExceptionsMessageRegExp = ".*Failed to execute validateInputDir.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
