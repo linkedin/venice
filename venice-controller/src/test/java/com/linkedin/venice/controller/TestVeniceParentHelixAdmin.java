@@ -1241,6 +1241,30 @@ public class TestVeniceParentHelixAdmin {
     return Schema.parse(schemaStr);
   }
 
+  private Schema generateSuperSetSchema() {
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
+        " \"type\": \"record\",\n" +
+        " \"name\": \"User\",\n" +
+        " \"fields\": [\n" +
+        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      {\n" +
+        "       \"name\": \"value\",\n" +
+        "       \"type\": {\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"ValueRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"},\n" +
+        "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
+
+    schemaStr +=
+        "           ]\n" +
+            "        }\n" +
+            "      }\n" +
+            " ]\n" +
+            "}";
+    return Schema.parse(schemaStr);
+  }
+
   @Test(dataProvider = "isControllerSslEnabled")
   public void testSuperSetSchemaGen(boolean isControllerSslEnabled) throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
@@ -1277,6 +1301,48 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(schemaResponse.getSchemas().length,3);
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
+
+    controllerWrapper.close();
+    childControllerWrapper.close();
+    kafkaBrokerWrapper.close();
+  }
+
+  @Test(dataProvider = "isControllerSslEnabled")
+  public void testSuperSetSchemaGenWithSameUpcomingSchema(boolean isControllerSslEnabled) throws IOException {
+    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    VeniceControllerWrapper childControllerWrapper =
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper controllerWrapper =
+        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+            new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled);
+
+    String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
+    Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
+
+    // Adding store
+    String storeName = "test_store";
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    Schema valueSchema = generateSchema(false);
+
+    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
+    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    params.setReadComputationEnabled(true);
+    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
+    params.setAutoSchemaPushJobEnabled(true);
+    controllerClient.updateStore(storeName, params);
+
+    valueSchema = generateSuperSetSchema();
+    controllerClient.addValueSchema(storeName, valueSchema.toString());
+
+    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
+
+    Assert.assertEquals(schemaResponse.getSchemas().length,2);
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() == -1);
 
     controllerWrapper.close();
     childControllerWrapper.close();

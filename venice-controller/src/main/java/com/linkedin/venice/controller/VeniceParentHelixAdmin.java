@@ -1287,16 +1287,18 @@ public class VeniceParentHelixAdmin implements Admin {
         String newSuperSetSchemaStr = newSuperSetSchema.toString();
 
         // Register super-set schema only if it does not match with existing or upcoming schema
-        if (!newSuperSetSchemaStr.equals(upcomingSchema.toString()) && !newSuperSetSchemaStr.equals(existingSchema.toString())) {
-         // validate compatibility of the new superset schema
+        if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, upcomingSchema) &&
+            !AvroSchemaUtils.compareSchemaIgnoreFieldOrder(newSuperSetSchema, existingSchema)) {
+          // validate compatibility of the new superset schema
           veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
               clusterName, storeName, newSuperSetSchemaStr, expectedCompatibilityType);
-          //if we find new superset schema does not exist, use valueSchemaId + 1 as id for superset schema
-          int supersetSchemaId = veniceHelixAdmin.getValueSchemaId(clusterName, storeName, newSuperSetSchemaStr);
+          // Check if the superset schema already exists or not. If exists use the same ID, else bump the ID by one
+          int supersetSchemaId = veniceHelixAdmin.getValueSchemaIdIgnoreFieldOrder(clusterName, storeName, newSuperSetSchemaStr);
           if (supersetSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
             supersetSchemaId = newValueSchemaId + 1;
           }
-          return addSupersetValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId, newSuperSetSchemaStr, supersetSchemaId);
+          return addSupersetValueSchemaEntry(clusterName, storeName, valueSchemaStr, newValueSchemaId,
+              newSuperSetSchemaStr, supersetSchemaId);
         }
       }
 

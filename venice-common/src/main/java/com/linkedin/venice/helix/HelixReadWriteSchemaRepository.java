@@ -395,6 +395,15 @@ import java.util.Collection;
     return newValueSchemaId;
   }
 
+  public int getValueSchemaIdIgnoreFieldOrder(String storeName, SchemaEntry newSchemaEntry) {
+    for (SchemaEntry schemaEntry : getValueSchemas(storeName)) {
+      if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(schemaEntry.getSchema(), newSchemaEntry.getSchema())) {
+        return schemaEntry.getId();
+      }
+    }
+    return SchemaData.INVALID_VALUE_SCHEMA_ID;
+  }
+
   @Override
   public Pair<Integer, Integer> getDerivedSchemaId(String storeName, String derivedSchemaStr) {
     Schema derivedSchema = Schema.parse(derivedSchemaStr);

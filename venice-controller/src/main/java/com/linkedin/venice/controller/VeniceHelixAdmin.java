@@ -80,6 +80,7 @@ import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
+import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
@@ -2547,7 +2548,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // If the new superset schema does not exist in the schema repo, add it
         SchemaEntry existingSchema = schemaRepository.getValueSchema(storeName, supersetSchemaId);
         if (existingSchema != null) {
-            if (!existingSchema.toString().equals(supersetSchema)) {
+            if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(existingSchema.getSchema(), Schema.parse(supersetSchema))) {
                 throw new VeniceException("Existing schema with id " + existingSchema.getId() + "does not match with new schema " + supersetSchema);
             }
         } else {
@@ -2562,6 +2563,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return schemaRepository.addValueSchema(storeName, valueSchema, valueSchemaId);
     }
 
+    public int getValueSchemaIdIgnoreFieldOrder(String clusterName, String storeName, String valueSchemaStr) {
+        checkControllerMastership(clusterName);
+        SchemaEntry valueSchemaEntry = new SchemaEntry(SchemaData.UNKNOWN_SCHEMA_ID, valueSchemaStr);
+        HelixReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
+
+        return schemaRepository.getValueSchemaIdIgnoreFieldOrder(storeName, valueSchemaEntry);
+    }
     protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
         String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);
