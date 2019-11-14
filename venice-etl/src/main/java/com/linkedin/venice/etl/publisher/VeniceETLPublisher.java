@@ -191,6 +191,8 @@ public class VeniceETLPublisher extends AbstractJob {
 
         // clean up old snapshots in source
         retireOldSnapshots(snapshotQueue, fs);
+        // clean up old snapshots in destination
+        retireDestinationOldSnapshots(storePath, fs);
       }
 
       /**
@@ -223,6 +225,21 @@ public class VeniceETLPublisher extends AbstractJob {
       logger.error("Failed on file operations: ", e);
       throw e;
     }
+  }
+
+  /**
+   * Delete old snapshots in destination.
+   * @param storePath
+   * @param fs
+   * @throws IOException
+   */
+  private void retireDestinationOldSnapshots(Path storePath, FileSystem fs) throws IOException{
+    FileStatus[] fileStatuses = fs.listStatus(storePath, PATH_FILTER);
+    PriorityQueue<Path> snapshotQueue = new PriorityQueue<>(INITIAL_QUEUE_SIZE, SNAPSHOT_COMPARATOR);
+    for (FileStatus fileStatus: fileStatuses) {
+      snapshotQueue.add(fileStatus.getPath());
+    }
+    retireOldSnapshots(snapshotQueue, fs);
   }
 
   /**
