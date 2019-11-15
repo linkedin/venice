@@ -1113,11 +1113,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
 
                 if (sendStartOfPush) {
-                    veniceWriterFactory.getVeniceWriter(version.kafkaTopicName()).broadcastStartOfPush(
-                        sorted,
-                        version.isChunkingEnabled(),
-                        version.getCompressionStrategy(),
-                        new HashMap<>());
+                    try (VeniceWriter veniceWriter = veniceWriterFactory.getVeniceWriter(version.kafkaTopicName())) {
+                        veniceWriter.broadcastStartOfPush(
+                            sorted,
+                            version.isChunkingEnabled(),
+                            version.getCompressionStrategy(),
+                            new HashMap<>());
+                    }
                 }
 
                 if (whetherStartOfflinePush) {
