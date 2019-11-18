@@ -1,6 +1,8 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -37,13 +39,10 @@ public class VeniceVersionFinder {
      */
     Store veniceStore = metadataRepository.getStore(store);
     if (null == veniceStore){
-      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
-          "Store: " + store + " does not exist on this cluster", false);
+      throw new VeniceNoStoreException(store);
     }
     if (!veniceStore.isEnableReads()) {
-      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.FORBIDDEN,
-          HttpResponseStatus.FORBIDDEN.getCode(),
-          "Could not read from store: " + store + ", because it's disabled from reading.", false);
+      throw new VeniceException("Could not read from store: " + store + " because reads are disabled for that store.");
     }
 
     int metadataCurrentVersion = veniceStore.getCurrentVersion();
@@ -53,6 +52,10 @@ public class VeniceVersionFinder {
         /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
         veniceStore = metadataRepository.refreshOneStore(store);
         metadataCurrentVersion = veniceStore.getCurrentVersion();
+        if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
+          throw new VeniceException("Still no available version found for store: " + store + " after refresh. "
+              + "Please make sure the store has completed at lease one successful push.");
+        }
       }
     }
     if (lastCurrentVersion.get(store).equals(metadataCurrentVersion)){
