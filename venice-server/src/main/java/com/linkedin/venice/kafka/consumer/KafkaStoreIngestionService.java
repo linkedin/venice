@@ -351,7 +351,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
   }
 
-  void updateStatsEmission(Map<String, StoreIngestionTask> taskMap, String storeName, int maximumVersion) {
+  /**
+   * Find the task that matches both the storeName and maximumVersion number, enable metrics emission for this task and
+   * update ingestion stats with this task; disable metric emission for all the task that doesn't max version.
+   */
+  protected void updateStatsEmission(Map<String, StoreIngestionTask> taskMap, String storeName, int maximumVersion) {
     taskMap.forEach((topicName, task) -> {
       if (Version.parseStoreFromKafkaTopicName(topicName).equals(storeName)) {
         if (Version.parseVersionFromKafkaTopicName(topicName) < maximumVersion) {
@@ -362,6 +366,29 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         }
       }
     });
+  }
+
+  /**
+   * This function will be invoked when a task is killed; find the task that matches the storeName and has the largest
+   * version number; if the task doesn't enable metric emission, enable it and update store ingestion stats.
+   */
+  protected void updateStatsEmission(Map<String, StoreIngestionTask> taskMap, String storeName) {
+    int maxVersion = -1;
+    StoreIngestionTask latestOngoingIngestionTask = null;
+    for (Map.Entry<String, StoreIngestionTask> entry : taskMap.entrySet()) {
+      String topic = entry.getKey();
+      if (Version.parseStoreFromKafkaTopicName(topic).equals(storeName)) {
+        int version = Version.parseVersionFromKafkaTopicName(topic);
+        if (version > maxVersion) {
+          maxVersion = version;
+          latestOngoingIngestionTask = entry.getValue();
+        }
+      }
+    }
+    if (latestOngoingIngestionTask != null && !latestOngoingIngestionTask.isMetricsEmissionEnabled()) {
+      latestOngoingIngestionTask.enableMetricsEmission();
+      ingestionStats.updateStoreConsumptionTask(storeName, latestOngoingIngestionTask);
+    }
   }
 
   private int getStoreMaximumVersionNumber(String storeName) {
@@ -434,6 +461,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
       // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
+
+      /**
+       * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
+       * metrics, it means the latest ongoing push job is killed. In such case, find the largest version in the task
+       * map and enable metric emission.
+       */
+      if (consumerTask.isMetricsEmissionEnabled()) {
+        consumerTask.disableMetricsEmission();
+        updateStatsEmission(topicNameToIngestionTaskMap, Version.parseStoreFromKafkaTopicName(topicName));
+      }
     }
     return killed;
   }

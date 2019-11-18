@@ -119,6 +119,19 @@ public class KafkaStoreIngestionServiceTest {
        verify(task, never()).disableMetricsEmission();
      }
    });
+
+   /**
+    * Test when the latest push job for mock store is killed; the previous latest ongoing push job should enable
+    * metrics emission.
+    */
+   topicNameToIngestionTaskMap.remove(mostRecentTopic);
+   kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName);
+   String latestOngoingPushJob = mockStoreName + "_v" + (taskNum - 1);
+   topicNameToIngestionTaskMap.forEach((topicName, task) -> {
+     if (topicName.equals(latestOngoingPushJob)) {
+       verify(task).enableMetricsEmission();
+     }
+   });
  }
 
   @Test
