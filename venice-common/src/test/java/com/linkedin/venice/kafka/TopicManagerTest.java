@@ -172,7 +172,7 @@ public class TopicManagerTest {
     Properties properties = new Properties();
     properties.put(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
     VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory(kafka.getAddress());
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topicName);
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topicName);
 
     // Test starting conditions
     assertOffsetsByTime(topicName, 0, LOWEST_OFFSET);

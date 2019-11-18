@@ -79,7 +79,7 @@ public class ReplicaFailoverTest {
     try (
         VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
-        VeniceWriter<Object, Object, byte[]> writer = writerFactory.getVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
+        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
 
       GenericRecord record = new GenericData.Record(new Schema.Parser().parse(valueSchema));
       int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;

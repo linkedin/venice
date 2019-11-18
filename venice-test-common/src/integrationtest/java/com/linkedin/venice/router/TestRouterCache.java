@@ -124,7 +124,7 @@ public abstract class TestRouterCache {
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
 
     VeniceWriter<Object, byte[], byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(topic, keySerializer, valueSerializer);
+        .createVeniceWriter(topic, keySerializer, valueSerializer);
 
 
 

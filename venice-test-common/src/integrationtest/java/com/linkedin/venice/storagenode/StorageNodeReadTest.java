@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -49,7 +48,6 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
-import org.apache.http.StatusLine;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.BasicHttpEntity;
@@ -106,7 +104,7 @@ public class StorageNodeReadTest {
     valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+        .createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
     client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
             .setVeniceURL(veniceCluster.getRandomRouterURL()));
@@ -257,7 +255,7 @@ public class StorageNodeReadTest {
     VersionCreationResponse creationResponse = veniceCluster.getNewVersion(storeName, 1024);
     int pushVersion = Version.parseVersionFromKafkaTopicName(creationResponse.getKafkaTopic());
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
+        .createVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
 
     pushSyntheticData("key_", "value_", 100, veniceCluster, veniceWriter, pushVersion);
 
@@ -271,7 +269,7 @@ public class StorageNodeReadTest {
     creationResponse = veniceCluster.getNewVersion(storeName, 1024);
     pushVersion = Version.parseVersionFromKafkaTopicName(creationResponse.getKafkaTopic());
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
+        .createVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
 
     pushSyntheticData("key_", "value_", 100, veniceCluster, veniceWriter, pushVersion);
 
@@ -285,7 +283,7 @@ public class StorageNodeReadTest {
     creationResponse = veniceCluster.getNewVersion(storeName, 1024);
     int lastVersion = Version.parseVersionFromKafkaTopicName(creationResponse.getKafkaTopic());
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
+        .createVeniceWriter(creationResponse.getKafkaTopic(), keySerializer, valueSerializer);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < 100; ++i) {

@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-import clojure.lang.Obj;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -126,7 +125,7 @@ public class TestStreaming {
     CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
 
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).createVeniceWriter(storeVersionName, keySerializer, new DefaultSerializer());
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 

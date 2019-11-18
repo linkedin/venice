@@ -29,7 +29,7 @@ public class VeniceWriterTest {
       Properties properties = new Properties();
       properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
 
-      try (VeniceWriter veniceWriter = new VeniceWriterFactory(properties).getVeniceWriter(topicName)) {
+      try (VeniceWriter veniceWriter = new VeniceWriterFactory(properties).createVeniceWriter(topicName)) {
         int numberOfThreads = 100;
         executorService = Executors.newFixedThreadPool(numberOfThreads);
         Future[] vwFutures = new Future[numberOfThreads];

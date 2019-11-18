@@ -407,7 +407,7 @@ public class TestHybrid {
     // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, veniceClusterWrapper.getKafka().getAddress());
-    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(storeName + "_v1");
+    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(storeName + "_v1");
     writer.broadcastEndOfPush(new HashMap<>());
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
@@ -506,7 +506,7 @@ public class TestHybrid {
     // Continue to write more records to the version topic
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
-    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber));
+    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber));
 
     // Mock buffer replay message
     if (!isLeaderFollowerModelEnabled) {
@@ -594,7 +594,7 @@ public class TestHybrid {
      */
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, venice.getKafka().getAddress());
-    VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(tmpTopic1);
+    VeniceWriter<byte[], byte[], byte[]> tmpWriter1 = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(tmpTopic1);
     // Write 10 records
     AvroSerializer<String> stringSerializer = new AvroSerializer(Schema.parse(STRING_SCHEMA));
     for (int i = 0; i < 10; ++i) {
@@ -604,7 +604,7 @@ public class TestHybrid {
     /**
      *  Build a producer that writes to {@link tmpTopic2}
      */
-    VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(tmpTopic2);
+    VeniceWriter<byte[], byte[], byte[]> tmpWriter2 = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(tmpTopic2);
     // Write 10 records
     for (int i = 10; i < 20; ++i) {
       tmpWriter2.put(stringSerializer.serialize("key_" + i), stringSerializer.serialize("value_" + i), 1);
@@ -618,7 +618,7 @@ public class TestHybrid {
           Assert.assertEquals(store.getStore().getCurrentVersion(), 1);
         });
     // Build a producer to produce 2 TS messages into RT
-    VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(Version.composeRealTimeTopic(storeName));
+    VeniceWriter<byte[], byte[], byte[]> realTimeTopicWriter = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(Version.composeRealTimeTopic(storeName));
 
     realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic1, rewindStartTime, null);
     realTimeTopicWriter.broadcastTopicSwitch(Arrays.asList(venice.getKafka().getAddress()), tmpTopic2, rewindStartTime, null);

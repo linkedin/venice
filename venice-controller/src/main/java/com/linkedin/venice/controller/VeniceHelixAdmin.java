@@ -686,7 +686,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceWriter pushJobDetailsWriter = jobTrackingVeniceWriterMap.computeIfAbsent(PUSH_JOB_DETAILS_WRITER, k -> {
             pushJobDetailsSchemaId = fetchSystemStoreSchemaId(pushJobStatusStoreClusterName,
                 VeniceSystemStoreUtils.getPushJobDetailsStoreName(), value.getSchema().toString());
-            return getVeniceWriterFactory().getVeniceWriter(pushJobDetailsRTTopic,
+            return getVeniceWriterFactory().createVeniceWriter(pushJobDetailsRTTopic,
                 new VeniceAvroKafkaSerializer(key.getSchema().toString()),
                 new VeniceAvroKafkaSerializer(value.getSchema().toString()));
         });
@@ -723,7 +723,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         VeniceWriter pushJobStatusWriter = jobTrackingVeniceWriterMap.computeIfAbsent(PUSH_JOB_STATUS_WRITER, k -> {
             pushJobStatusValueSchemaId = fetchSystemStoreSchemaId(pushJobStatusStoreClusterName,
                 pushJobStatusStoreName, value.getSchema().toString());
-            return getVeniceWriterFactory().getVeniceWriter(pushJobStatusTopicName,
+            return getVeniceWriterFactory().createVeniceWriter(pushJobStatusTopicName,
                 new VeniceAvroKafkaSerializer(key.getSchema().toString()),
                 new VeniceAvroKafkaSerializer(value.getSchema().toString()));
         });
@@ -750,13 +750,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         //write EOP message
-        try (VeniceWriter writer = getVeniceWriterFactory()
-            .getVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber))) {
-            if (alsoWriteStartOfPush) {
-                writer.broadcastStartOfPush(new HashMap<>());
+        getVeniceWriterFactory().useVeniceWriter(
+            () -> getVeniceWriterFactory().createVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber)),
+            veniceWriter -> {
+                if (alsoWriteStartOfPush) {
+                    veniceWriter.broadcastStartOfPush(new HashMap<>());
+                }
+                veniceWriter.broadcastEndOfPush(new HashMap<>());
             }
-            writer.broadcastEndOfPush(new HashMap<>());
-        }
+            );
     }
 
     @Override
@@ -1114,13 +1116,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
 
                 if (sendStartOfPush) {
-                    try (VeniceWriter veniceWriter = veniceWriterFactory.getVeniceWriter(version.kafkaTopicName())) {
-                        veniceWriter.broadcastStartOfPush(
-                            sorted,
-                            version.isChunkingEnabled(),
-                            version.getCompressionStrategy(),
-                            new HashMap<>());
-                    }
+                    final Version finalVersion = version;
+                    getVeniceWriterFactory().useVeniceWriter(
+                        () -> getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName()),
+                        veniceWriter ->
+                            veniceWriter.broadcastStartOfPush(
+                                sorted,
+                                finalVersion.isChunkingEnabled(),
+                                finalVersion.getCompressionStrategy(),
+                                new HashMap<>())
+                        );
                 }
 
                 if (whetherStartOfflinePush) {
@@ -3071,7 +3076,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             + " for participant message store "
                             + VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName));
                     }
-                    return getVeniceWriterFactory().getVeniceWriter(topic,
+                    return getVeniceWriterFactory().createVeniceWriter(topic,
                         new VeniceAvroKafkaSerializer(ParticipantMessageKey.SCHEMA$.toString()),
                         new VeniceAvroKafkaSerializer(ParticipantMessageValue.SCHEMA$.toString()));
             });

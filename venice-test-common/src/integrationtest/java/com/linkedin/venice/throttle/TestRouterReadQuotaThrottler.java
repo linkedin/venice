@@ -53,7 +53,7 @@ public class TestRouterReadQuotaThrottler {
     try (
         VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
         VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
-        VeniceWriter<Object, Object, Object> writer = writerFactory.getVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
+        VeniceWriter<Object, Object, Object> writer = writerFactory.createVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
 
       String key = TestUtils.getUniqueString("key");
       String value = TestUtils.getUniqueString("value");

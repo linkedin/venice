@@ -317,7 +317,7 @@ public class StoreIngestionTaskTest {
     VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
     VeniceWriterFactory mockWriterFactory = mock(VeniceWriterFactory.class);
-    doReturn(null).when(mockWriterFactory).getBasicVeniceWriter(any());
+    doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {

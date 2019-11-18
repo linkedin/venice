@@ -4,7 +4,6 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -267,7 +266,7 @@ public class TestMultiDataCenterPush {
         parentControllers.stream().filter(c -> c.isMasterController(clusterName)).findAny().get();
     Admin admin = parentController.getVeniceAdmin();
     VeniceWriterFactory veniceWriterFactory = admin.getVeniceWriterFactory();
-    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(CLUSTER_NAMES[1]));
+    VeniceWriter<byte[], byte[], byte[]> veniceWriter = veniceWriterFactory.createBasicVeniceWriter(AdminTopicUtils.getTopicNameFromClusterName(CLUSTER_NAMES[1]));
     AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
     long executionId = parentController.getVeniceAdmin().getLastSucceedExecutionId(clusterName) + 1;
     // send a bad admin message

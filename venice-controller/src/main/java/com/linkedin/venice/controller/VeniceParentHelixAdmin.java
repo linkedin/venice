@@ -258,7 +258,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      return getVeniceWriterFactory().getBasicVeniceWriter(topicName, getTimer());
+      return getVeniceWriterFactory().createBasicVeniceWriter(topicName, getTimer());
     });
 
     if (!multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()

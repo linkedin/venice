@@ -1410,10 +1410,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (null == veniceWriter) {
       Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
       if (storeVersionState.isPresent()) {
-        veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topic, storeVersionState.get().chunked);
+        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(topic, storeVersionState.get().chunked);
       } else {
         throw new IllegalStateException(
-            "Should not attempt to call getVeniceWriter() prior to having received the Start of Push, "
+            "Should not attempt to call createVeniceWriter() prior to having received the Start of Push, "
                 + "specifying whether the store-version is chunked.");
       }
     }
