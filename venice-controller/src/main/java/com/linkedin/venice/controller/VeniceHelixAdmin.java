@@ -2574,6 +2574,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return schemaRepository.getValueSchemaIdIgnoreFieldOrder(storeName, valueSchemaEntry);
     }
+
     protected int checkPreConditionForAddValueSchemaAndGetNewSchemaId(String clusterName, String storeName,
         String valueSchemaStr, DirectionalSchemaCompatibilityType expectedCompatibilityType) {
         checkControllerMastership(clusterName);

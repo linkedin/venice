@@ -1275,10 +1275,12 @@ public class VeniceParentHelixAdmin implements Admin {
       int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(
           clusterName, storeName, valueSchemaStr, expectedCompatibilityType);
 
-      //if we find this is a duplicate schema, return the existing schema id
+      // if we find this is a exactly duplicate schema, return the existing schema id
+      // else add the schema with possible doc field change
       if (newValueSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         return new SchemaEntry(veniceHelixAdmin.getValueSchemaId(clusterName, storeName, valueSchemaStr), valueSchemaStr);
       }
+
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
       Schema existingSchema = veniceHelixAdmin.getLatestValueSchema(clusterName, store);
 
