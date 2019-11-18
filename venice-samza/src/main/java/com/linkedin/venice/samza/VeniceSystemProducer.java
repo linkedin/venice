@@ -24,7 +24,6 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentMap;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -154,7 +153,7 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   protected VeniceWriter<byte[], byte[],byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
-    return new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(store.getKafkaTopic(), time);
+    return new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(store.getKafkaTopic(), time);
   }
 
   @Override

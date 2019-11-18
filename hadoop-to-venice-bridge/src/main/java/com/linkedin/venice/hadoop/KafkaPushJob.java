@@ -952,7 +952,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       // Initialize VeniceWriter
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(getVeniceWriterProperties(versionTopicInfo));
 
-      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(versionTopicInfo.topic);
+      VeniceWriter<KafkaKey, byte[], byte[]> newVeniceWriter = veniceWriterFactory.createVeniceWriter(versionTopicInfo.topic);
       logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       this.veniceWriter = newVeniceWriter;
     }

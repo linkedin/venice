@@ -38,10 +38,10 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     List<CharSequence> sourceClusters = new ArrayList<>();
     // Currently we only have intra-cluster replication, therefore source cluster bootstrap servers equals to destination
     sourceClusters.add(destKafkaBootstrapServers);
-    try (VeniceWriter<byte[], byte[], byte[]> veniceWriter =
-        getVeniceWriterFactory().getBasicVeniceWriter(destinationTopic, getTimer())) {
-      veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, new HashMap<>());
-    }
+    getVeniceWriterFactory().useVeniceWriter(
+        () -> getVeniceWriterFactory().createBasicVeniceWriter(destinationTopic, getTimer()),
+        veniceWriter -> veniceWriter.broadcastTopicSwitch(sourceClusters, sourceTopic, rewindStartTimestamp, new HashMap<>())
+    );
   }
 
   @Override

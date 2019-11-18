@@ -57,7 +57,7 @@ public class LeaderStorageNodeReplicatorTest {
     doReturn(true).when(mockTopicManager).containsTopic(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
-    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).getBasicVeniceWriter(any(), any());
+    doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(any(), any());
 
     leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore);
 

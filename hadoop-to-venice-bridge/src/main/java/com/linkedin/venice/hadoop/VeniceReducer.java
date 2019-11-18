@@ -161,7 +161,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       writerProps.put(ConfigKeys.PUSH_JOB_MAP_REDUCE_JOB_ID, mapReduceJobId.getId());
       VeniceWriterFactory factory = new VeniceWriterFactory(writerProps);
       boolean chunkingEnabled = props.getBoolean(VeniceWriter.ENABLE_CHUNKING);
-      veniceWriter = factory.getBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled);
+      veniceWriter = factory.createBasicVeniceWriter(props.getString(TOPIC_PROP), chunkingEnabled);
     }
     if (null == previousReporter || !previousReporter.equals(reporter)) {
       callback = new KafkaMessageCallback(reporter);

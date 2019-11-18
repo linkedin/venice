@@ -91,7 +91,7 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(topicName, keySerializer, valueSerializer);
+        .createVeniceWriter(topicName, keySerializer, valueSerializer);
     storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
         .setVeniceURL(routerUrl)
         .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
@@ -172,11 +172,11 @@ public class ProducerConsumerReaderIntegrationTest {
       }
       k++;
     }
-    VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.getBasicVeniceWriter(topicName);
+    VeniceWriter<byte[], byte[], byte[]> basicVeniceWriter = writerFactory.createBasicVeniceWriter(topicName);
     VeniceWriter<String, String, byte[]> veniceWriter1 =
-        veniceTestWriterFactory.getVeniceWriter(topicName, keySerializer, valueSerializer);
+        veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
     VeniceWriter<String, String, byte[]> veniceWriter2 =
-        veniceTestWriterFactory.getVeniceWriter(topicName, keySerializer, valueSerializer);
+        veniceTestWriterFactory.createVeniceWriter(topicName, keySerializer, valueSerializer);
     basicVeniceWriter.broadcastStartOfPush(true, new HashMap<>());
     // Two writers with the same Guid that write the same data (same partition) to the kafka topic at different rates.
     // In the end the second writer will have produced only half of the records produced by the first writer.

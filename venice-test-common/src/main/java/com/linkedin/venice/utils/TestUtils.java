@@ -245,8 +245,8 @@ public class TestUtils {
     }
 
 
-    public <K, V> VeniceWriter<K, V, byte[]> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
-      return getVeniceWriter(topic, keySer, valSer, new DefaultSerializer(), Optional.empty(), SystemTime.INSTANCE);
+    public <K, V> VeniceWriter<K, V, byte[]> createVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
+      return createVeniceWriter(topic, keySer, valSer, new DefaultSerializer(), Optional.empty(), SystemTime.INSTANCE);
     }
   }
 
