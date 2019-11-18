@@ -142,7 +142,6 @@ class AbstractTestVeniceHelixAdmin {
     properties.put(DEFAULT_PARTITION_SIZE, 100);
     properties.put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
     properties.put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true);
-    properties.put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false);
     properties.put(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, false);
     properties.put(PARTICIPANT_MESSAGE_STORE_ENABLED, true);
     properties.put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, true);
@@ -207,7 +206,7 @@ class AbstractTestVeniceHelixAdmin {
     queryParams.setHybridRewindSeconds(TimeUnit.DAYS.toMillis(7));
     veniceAdmin.updateStore(clusterName, participantStoreName, queryParams);
     veniceAdmin.incrementVersionIdempotent(clusterName, participantStoreName, Version.guidBasedDummyPushId(),
-        participantStorePartitionCount, veniceAdmin.getReplicationFactor(clusterName, participantStoreName), true);
+        participantStorePartitionCount, veniceAdmin.getReplicationFactor(clusterName, participantStoreName));
     TestUtils.waitForNonDeterministicAssertion(5000, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(veniceAdmin.getStore(clusterName, participantStoreName).getVersions().size(), 1));
     TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS,

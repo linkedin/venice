@@ -3,7 +3,6 @@ package com.linkedin.venice.samza;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -11,6 +10,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -79,12 +79,12 @@ public class VeniceSystemProducer implements SystemProducer {
   private final Time time;
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      ControllerApiConstants.PushType pushType, String samzaJobId) {
+      Version.PushType pushType, String samzaJobId) {
     this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      ControllerApiConstants.PushType pushType, String samzaJobId, Time time) {
+      Version.PushType pushType, String samzaJobId, Time time) {
     this.storeName = storeName;
     this.time = time;
 

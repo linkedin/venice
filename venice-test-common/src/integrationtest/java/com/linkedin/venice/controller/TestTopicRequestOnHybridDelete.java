@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -60,7 +59,7 @@ public class TestTopicRequestOnHybridDelete {
       controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
       //write streaming records
-      veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
+      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
       for (int i=1; i<=10; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
@@ -118,7 +117,7 @@ public class TestTopicRequestOnHybridDelete {
 
 
       //write more streaming records
-      veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
+      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
       for (int i=11; i<=20; i++) {
         sendStreamingRecord(veniceProducer, storeName, i);
       }
@@ -169,7 +168,7 @@ public class TestTopicRequestOnHybridDelete {
 
     //new version, but don't write records
     VersionCreationResponse startedVersion =
-        controllerClient.requestTopicForWrites(storeName, 1L, ControllerApiConstants.PushType.BATCH,
+        controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH,
             TestUtils.getUniqueString("pushId"), false, true);
     Assert.assertFalse(startedVersion.isError(),
         "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());

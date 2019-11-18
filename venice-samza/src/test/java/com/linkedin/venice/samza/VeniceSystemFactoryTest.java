@@ -3,12 +3,12 @@ package com.linkedin.venice.samza;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.ByteBuffer;
@@ -100,7 +100,7 @@ public class VeniceSystemFactoryTest {
 
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
-    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.STREAM, storeName);
+    SystemProducer veniceProducer = getVeniceProducer(Version.PushType.STREAM, storeName);
 
     //Create an AVRO record
     Schema valueRecordSchema = Schema.parse(VALUE_SCHEMA);
@@ -217,7 +217,7 @@ public class VeniceSystemFactoryTest {
   public void testSchemaMismatchError() {
     String storeName = TestUtils.getUniqueString("store");
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
-    SystemProducer veniceProducer = getVeniceProducer(ControllerApiConstants.PushType.BATCH, storeName);
+    SystemProducer veniceProducer = getVeniceProducer(Version.PushType.BATCH, storeName);
     //Create an AVRO record
     GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
     record.put("string", "somestring");
@@ -243,7 +243,7 @@ public class VeniceSystemFactoryTest {
       throws InterruptedException, ExecutionException, TimeoutException {
     String storeName = TestUtils.getUniqueString("schema-test-store");
     client.createNewStore(storeName, "owner", schema, schema);
-    VeniceSystemProducer producer = (VeniceSystemProducer) getVeniceProducer(ControllerApiConstants.PushType.BATCH, storeName);
+    VeniceSystemProducer producer = (VeniceSystemProducer) getVeniceProducer(Version.PushType.BATCH, storeName);
     producer.send(storeName, new OutgoingMessageEnvelope(
         new SystemStream(VENICE_SYSTEM_NAME, storeName),
         writeKey,value));
@@ -262,7 +262,7 @@ public class VeniceSystemFactoryTest {
     testSerializationCast(key, key, value, value, schema);
   }
 
-  private SystemProducer getVeniceProducer(ControllerApiConstants.PushType pushType, String storeName){
+  private SystemProducer getVeniceProducer(Version.PushType pushType, String storeName){
     Map<String, String> samzaConfig = new HashMap<>();
     String configPrefix = SYSTEMS_PREFIX + VENICE_SYSTEM_NAME + DOT;
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, pushType.toString());

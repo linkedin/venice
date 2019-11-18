@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
@@ -11,6 +10,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -69,9 +69,9 @@ public class TestAdminSparkServerWithMultiServers {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void requestTopicIsIdempotent() {
-    HashMap<String, ControllerApiConstants.PushType> storeToType = new HashMap<>(2);
-    storeToType.put(TestUtils.getUniqueString("BatchStore"), ControllerApiConstants.PushType.BATCH);
-    storeToType.put(TestUtils.getUniqueString("StreamStore"), ControllerApiConstants.PushType.STREAM);
+    HashMap<String, Version.PushType> storeToType = new HashMap<>(2);
+    storeToType.put(TestUtils.getUniqueString("BatchStore"), Version.PushType.BATCH);
+    storeToType.put(TestUtils.getUniqueString("StreamStore"), Version.PushType.STREAM);
 
     String pushOne = TestUtils.getUniqueString("pushId");
     String pushTwo = pushOne;
@@ -81,7 +81,7 @@ public class TestAdminSparkServerWithMultiServers {
       cluster.getNewStore(storeName);
 
       // Stream
-      if (storeToType.get(storeName).equals(ControllerApiConstants.PushType.STREAM)) {
+      if (storeToType.get(storeName).equals(Version.PushType.STREAM)) {
         controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(1000).setHybridOffsetLagThreshold(1000));
         controllerClient.emptyPush(storeName, TestUtils.getUniqueString("emptyPushId"), 10000);
       }
@@ -158,7 +158,7 @@ public class TestAdminSparkServerWithMultiServers {
     return new Thread(() -> {
       final VersionCreationResponse vcr = new VersionCreationResponse();
       try {
-        VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId,
+        VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(storeName, 1, Version.PushType.BATCH, pushId,
             false, false);
         vcr.setKafkaTopic(thisVcr.getKafkaTopic());
         vcr.setVersion(thisVcr.getVersion());
@@ -179,7 +179,7 @@ public class TestAdminSparkServerWithMultiServers {
     cluster.getNewStore(storeName);
     StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();
-    VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId,
+    VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, Version.PushType.BATCH, pushId,
         false, true);
     int newVersion = versionResponse.getVersion();
     Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");

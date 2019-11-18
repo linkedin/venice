@@ -29,16 +29,15 @@ import java.nio.charset.StandardCharsets;
 
 import org.apache.log4j.Logger;
 import org.apache.http.client.utils.URLEncodedUtils;
-import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.meta.Version.PushType;
 
 public class ControllerClient implements Closeable {
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
-  private static final ObjectMapper objectMapper = new ObjectMapper();
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final String localHostName;
@@ -142,14 +141,17 @@ public class ControllerClient implements Closeable {
    * @param pushJobId of the original push.
    * @param version of the original push.
    * @param partitionCount of the original push.
+   * @param pushType of the producer.
    * @return
    */
-  public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version, int partitionCount) {
+  public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
+      int partitionCount, Version.PushType pushType) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
         .add(VERSION, version)
-        .add(PARTITION_COUNT, partitionCount);
+        .add(PARTITION_COUNT, partitionCount)
+        .add(PUSH_TYPE, pushType.toString());
     return request(ControllerRoute.ADD_VERSION, params, VersionResponse.class);
   }
 

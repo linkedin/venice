@@ -482,7 +482,7 @@ public class TestAdminSparkServer {
     parentController.getVeniceAdmin().addStore(
         clusterName, storeName, "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersionIdempotent(
-        clusterName, storeName, Version.guidBasedDummyPushId(),1, 1, true);
+        clusterName, storeName, Version.guidBasedDummyPushId(),1, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.enableStoreReads(storeName, false);
@@ -672,8 +672,7 @@ public class TestAdminSparkServer {
     parentController.getVeniceAdmin().addStore(
         clusterName, storeName, "test", "\"string\"", "\"string\"");
 
-    parentController.getVeniceAdmin().incrementVersionIdempotent(
-        clusterName, storeName, "test", 1, 1, true);
+    parentController.getVeniceAdmin().incrementVersionIdempotent(clusterName, storeName, "test", 1, 1);
 
     try (ControllerClient parentControllerClient = new ControllerClient(clusterName, parentController.getControllerUrl())) {
       parentControllerClient.enableStoreReads(storeName, false);
@@ -695,13 +694,13 @@ public class TestAdminSparkServer {
     String pushId = TestUtils.getUniqueString("no-store-push");
 
     VersionCreationResponse vcr =
-        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.BATCH, pushId,
+        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.BATCH, pushId,
             false, true);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));
 
-    vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId,
+    vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.STREAM, pushId,
         false, false);
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()

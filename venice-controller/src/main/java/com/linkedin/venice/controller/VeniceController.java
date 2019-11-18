@@ -1,14 +1,11 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.kafka.TopicCleanupService;
 import com.linkedin.venice.controller.kafka.TopicCleanupServiceForParentController;
-import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
-import com.linkedin.venice.controller.stats.TopicMonitorStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -33,7 +30,6 @@ public class VeniceController {
   VeniceControllerService controllerService;
   AdminSparkServer adminServer;
   AdminSparkServer secureAdminServer;
-  TopicMonitor topicMonitor;
   TopicCleanupService topicCleanupService;
 
   private final boolean sslEnabled;
@@ -89,19 +85,6 @@ public class VeniceController {
           multiClusterConfigs.getSslConfig(),
           accessController);
     }
-    // TODO: disable TopicMonitor in Corp cluster for now.
-    // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
-    if (!multiClusterConfigs.isParent())
-    {
-      if (multiClusterConfigs.getCommonConfig().isAddVersionViaTopicMonitorEnabled()) {
-        topicMonitor = new TopicMonitor(controllerService.getVeniceHelixAdmin(), multiClusterConfigs.getTopicMonitorPollIntervalMs(),
-            controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory(),
-            new TopicMonitorStats(metricsRepository, multiClusterConfigs.getControllerName() + ".topic_monitor"));
-      } else {
-        logger.info("Topic monitor will not be initialized for this controller because it has been disabled by the"
-            + ConfigKeys.CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR + " config");
-      }
-    }
     if (multiClusterConfigs.isParent()) {
       topicCleanupService = new TopicCleanupServiceForParentController(controllerService.getVeniceHelixAdmin(), multiClusterConfigs);
     } else {
@@ -117,9 +100,6 @@ public class VeniceController {
     adminServer.start();
     if (sslEnabled) {
       secureAdminServer.start();
-    }
-    if (null != topicMonitor) {
-      topicMonitor.start();
     }
     topicCleanupService.start();
     // start d2 service at the end
@@ -139,7 +119,6 @@ public class VeniceController {
     });
     //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     AbstractVeniceService.stopIfNotNull(topicCleanupService);
-    AbstractVeniceService.stopIfNotNull(topicMonitor);
     AbstractVeniceService.stopIfNotNull(adminServer);
     AbstractVeniceService.stopIfNotNull(secureAdminServer);
     AbstractVeniceService.stopIfNotNull(controllerService);

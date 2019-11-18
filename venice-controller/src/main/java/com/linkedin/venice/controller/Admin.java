@@ -86,22 +86,12 @@ public interface Admin extends AutoCloseable, Closeable {
     */
     void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber);
 
-    Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
-        int replicationFactor);
-
     /**
-     * A (temporary) wrapper method to keep the underlying {@code addVersion} behaviour but performs additional checks
-     * for feature flags and potential race condition when both {@code TopicMonitor} and add version via admin protocol
-     * are enabled. Second attempt of failed add version admin message will be ignored and succeed if the new version
-     * already exists.
-     * @param clusterName of the store.
-     * @param storeName of the store.
-     * @param pushJobId of the corresponding push.
-     * @param versionNumber of the new version.
-     * @param numberOfPartitions for the new push.
+     * TODO this method should only be in {@link VeniceHelixAdmin}. In the interface only because of store migration.
+     * TODO Remove this method from the interface once store migration is refactored.
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-        int numberOfPartitions);
+        int numberOfPartitions, Version.PushType pushType);
 
     /**
      * The implementation of this method must take no action and return the same Version object if the same parameters
@@ -110,12 +100,12 @@ public interface Admin extends AutoCloseable, Closeable {
      * first task triggers a new Version, all subsequent tasks identify with the same jobPushId, and should be provided
      * with the same Version object.
      */
-    default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush) {
-        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartions, replicationFactor, offlinePush, false, false, false);
+    default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor) {
+        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, Version.PushType.BATCH, false, false);
     }
 
-    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions,
-        int replicationFactor, boolean offlinePush, boolean isIncrementalPush, boolean sendStartOfPush, boolean sorted);
+    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
+        int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

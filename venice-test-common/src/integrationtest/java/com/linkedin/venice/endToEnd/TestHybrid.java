@@ -6,7 +6,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -214,7 +213,7 @@ public class TestHybrid {
     });
 
     //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
+    SystemProducer veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
     for (int i=1; i<=10; i++) {
       // The batch values are small, but the streaming records are "big" (i.e.: not that big, but bigger than
       // the server's max configured chunk size). In the scenario where chunking is disabled, the server's
@@ -248,7 +247,7 @@ public class TestHybrid {
 
     // Write more streaming records
     if (multiDivStream) {
-      veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM); // new producer, new DIV segment.
+      veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM); // new producer, new DIV segment.
     }
     for (int i=10; i<=20; i++) {
       sendCustomSizeStreamingRecord(veniceProducer, storeName, i, STREAMING_RECORD_SIZE);
@@ -396,19 +395,21 @@ public class TestHybrid {
 
 
     // Batch load from Samza
-    SystemProducer veniceBatchProducer = getSamzaProducer(veniceClusterWrapper, storeName, ControllerApiConstants.PushType.BATCH);
-   for (int i=10; i>=1; i--) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
+    Version.PushType pushType = isLeaderFollowerModelEnabled ? Version.PushType.STREAM_REPROCESSING : Version.PushType.BATCH;
+    SystemProducer veniceBatchProducer = getSamzaProducer(veniceClusterWrapper, storeName, pushType);
+    for (int i=10; i>=1; i--) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
       sendStreamingRecord(veniceBatchProducer, storeName, i);
     }
+
     Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
     Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
 
     // Write END_OF_PUSH message
     // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
-    Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, veniceClusterWrapper.getKafka().getAddress());
-    VeniceWriter<byte[], byte[], byte[]> writer = new VeniceWriterFactory(veniceWriterProperties).createBasicVeniceWriter(storeName + "_v1");
-    writer.broadcastEndOfPush(new HashMap<>());
+    // TODO: the SystemProducer interface is currently restricting us from sending end of push deterministically.
+    Utils.sleep(500);
+    veniceClusterWrapper.getControllerClient().writeEndOfPush(storeName, 1);
+
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
       Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
       Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
@@ -424,7 +425,7 @@ public class TestHybrid {
     Assert.assertTrue(client.get(Integer.toString(11)).get() == null, "This record should not be found");
 
     // Switch to stream mode and push more data
-    SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, ControllerApiConstants.PushType.STREAM);
+    SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
     for (int i=11; i<=20; i++) {
       sendStreamingRecord(veniceStreamProducer, storeName, i);
     }

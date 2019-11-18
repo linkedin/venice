@@ -2,7 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -923,8 +922,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private VersionTopicInfo createNewStoreVersion(PushJobSetting setting, long inputFileDataSize, ControllerClient controllerClient, String pushId, VeniceProperties props) {
     VersionTopicInfo versionTopicInfo = new VersionTopicInfo();
-    ControllerApiConstants.PushType pushType = setting.isIncrementalPush ?
-        ControllerApiConstants.PushType.INCREMENTAL : ControllerApiConstants.PushType.BATCH;
+    Version.PushType pushType = setting.isIncrementalPush ?
+        Version.PushType.INCREMENTAL : Version.PushType.BATCH;
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
     boolean sorted = !pushJobSetting.isMapOnly;
     VersionCreationResponse versionCreationResponse =

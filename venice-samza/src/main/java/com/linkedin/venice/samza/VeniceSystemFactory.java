@@ -1,6 +1,6 @@
 package com.linkedin.venice.samza;
 
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.meta.Version;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.stream.Collectors;
@@ -63,7 +63,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      ControllerApiConstants.PushType venicePushType, String samzaJobId, Config config) {
+      Version.PushType venicePushType, String samzaJobId, Config config) {
     return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId);
   }
 
@@ -76,12 +76,12 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
     String samzaJobId = config.get(DEPLOYMENT_ID);
     String prefix = SYSTEMS_PREFIX + systemName + DOT;
-    ControllerApiConstants.PushType venicePushType;
+    Version.PushType venicePushType;
     try {
-      venicePushType = ControllerApiConstants.PushType.valueOf(pushTypeString);
+      venicePushType = Version.PushType.valueOf(pushTypeString);
     } catch (Exception e) {
       throw new SamzaException("Cannot parse venice push type: " + pushTypeString
-          + ".  Must be one of: " + Arrays.stream(ControllerApiConstants.PushType.values())
+          + ".  Must be one of: " + Arrays.stream(Version.PushType.values())
           .map(Enum::toString)
           .collect(Collectors.joining(",")));
     }

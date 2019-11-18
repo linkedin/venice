@@ -542,8 +542,6 @@ public class ConfigKeys {
    * */
   public static final String CONTROLLER_CLUSTER_REPLICA = "controller.cluster.replica";
 
-  /** The interval, in ms, between each polling iteration of the TopicMonitor */
-  public static final String TOPIC_MONITOR_POLL_INTERVAL_MS = "topic.monitor.poll.interval.ms";
   /**
    * The time window in ms used to throttle the Kafka topic creation, during the time window, only 1 topic is allowed to
    * be created.
@@ -742,12 +740,6 @@ public class ConfigKeys {
   public static final String CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL = "controller.add.version.via.admin.protocol";
 
   public static final String CONTROLLER_EARLY_DELETE_BACKUP_ENABLED = "controller.early.delete.backup.enabled";
-
-  /**
-   * Flag to indicate whether to perform add version and start of ingestion via the topic monitor.
-   */
-  public static final String CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR = "controller.add.version.via.topic.monitor";
-
   /**
    * Flag to skip buffer replay for hybrid store.
    * For some scenario, buffer replay might not be necessary since the store version topic has already included all the data.

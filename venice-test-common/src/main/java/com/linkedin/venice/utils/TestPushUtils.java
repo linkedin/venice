@@ -44,7 +44,7 @@ import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
 import org.testng.Assert;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.meta.Version.PushType;
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.DEPLOYMENT_ID;

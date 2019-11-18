@@ -4,6 +4,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -43,8 +44,8 @@ public class LeaderStorageNodeReplicatorTest {
 
   @Test
   public void testPrepareAndStartReplication() {
-    String srcTopic = "srcTestTopic";
-    String destTopic = "destTestTopic";
+    String srcTopic = "testTopic_rt";
+    String destTopic = "testTopic_v1";
     Store mockStore = mock(Store.class);
     HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
     List<PartitionInfo> partitionInfos = new ArrayList<>();
@@ -52,12 +53,15 @@ public class LeaderStorageNodeReplicatorTest {
 
     doReturn(true).when(mockStore).isHybrid();
     doReturn(mockHybridConfig).when(mockStore).getHybridStoreConfig();
+    Version version = new Version(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
+    doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
     doReturn(true).when(mockTopicManager).containsTopic(srcTopic);
     doReturn(true).when(mockTopicManager).containsTopic(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(any(), any());
+
 
     leaderStorageNodeReplicator.prepareAndStartReplication(srcTopic, destTopic, mockStore);
 

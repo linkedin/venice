@@ -30,7 +30,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int controllerClusterReplica;
   private final String controllerClusterName;
   private final String controllerClusterZkAddress;
-  private final int topicMonitorPollIntervalMs;
   private final boolean parent;
   private final boolean enableTopicReplicator;
   private final Map<String, String> childClusterMap;
@@ -53,8 +52,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int parentControllerMaxErroredTopicNumToKeep;
   private final String pushJobStatusStoreName;
   private final String pushJobStatusStoreClusterName;
-  private final boolean addVersionViaAdminProtocol;
-  private final boolean addVersionViaTopicMonitor;
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
   private final int topicDeletionStatusPollIntervalMs;
@@ -73,7 +70,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
-    this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND); // By default, time window used to throttle topic creation is 10sec.
     this.topicCreationThrottlingTimeWindowMs = props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     if (this.parent) {
@@ -121,8 +117,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     this.pushJobStatusStoreName = props.getString(PUSH_JOB_STATUS_STORE_NAME, "");
     this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
-    this.addVersionViaAdminProtocol = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false);
-    this.addVersionViaTopicMonitor = props.getBoolean(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, true);
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
     if (!adminHelixMessagingChannelEnabled && !participantMessageStoreEnabled) {
@@ -161,8 +155,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public String getControllerClusterZkAddress() {
     return controllerClusterZkAddress;
   }
-
-  public int getTopicMonitorPollIntervalMs() { return topicMonitorPollIntervalMs; }
 
   public boolean isParent() {
     return parent;
@@ -251,10 +243,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public String getPushJobStatusStoreName() { return pushJobStatusStoreName; }
 
   public String getPushJobStatusStoreClusterName() { return pushJobStatusStoreClusterName; }
-
-  public boolean isAddVersionViaAdminProtocolEnabled() { return addVersionViaAdminProtocol; }
-
-  public boolean isAddVersionViaTopicMonitorEnabled() { return addVersionViaTopicMonitor; }
 
   public boolean isParticipantMessageStoreEnabled() { return participantMessageStoreEnabled; }
 

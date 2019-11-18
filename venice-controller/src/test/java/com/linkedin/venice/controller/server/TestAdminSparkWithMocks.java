@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.httpclient.HttpClientUtils;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
@@ -59,7 +60,7 @@ public class TestAdminSparkWithMocks {
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, "storename"));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(1L)));
     params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, "pushJobId-1234"));
-    params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, ControllerApiConstants.PushType.STREAM.toString()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, Version.PushType.STREAM.toString()));
     final HttpPost post = new HttpPost("http://localhost:" + port + ControllerRoute.REQUEST_TOPIC.getPath());
     post.setEntity(new UrlEncodedFormEntity(params));
 

@@ -1,6 +1,5 @@
 package com.linkedin.venice.multicluster;
 
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -67,20 +66,20 @@ public class TestMetadataOperationInMultiCluster {
     Assert.assertFalse(storeResponse.isError(), "Should create a new store.");
 
     VersionCreationResponse versionCreationResponse =
-        controllerClient.requestTopicForWrites(storeName, 1000, ControllerApiConstants.PushType.BATCH,
+        controllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
             Version.guidBasedDummyPushId(), false, true);
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
     versionCreationResponse =
-        secondControllerClient.requestTopicForWrites(secondStoreName, 1000, ControllerApiConstants.PushType.BATCH,
+        secondControllerClient.requestTopicForWrites(secondStoreName, 1000, Version.PushType.BATCH,
         Version.guidBasedDummyPushId(), false, true);
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
     // Create version in wrong cluster
     versionCreationResponse =
-        controllerClient.requestTopicForWrites(secondStoreName, 1000, ControllerApiConstants.PushType.BATCH,
+        controllerClient.requestTopicForWrites(secondStoreName, 1000, Version.PushType.BATCH,
         Version.guidBasedDummyPushId(), false, true);
     Assert.assertTrue(versionCreationResponse.isError());
 

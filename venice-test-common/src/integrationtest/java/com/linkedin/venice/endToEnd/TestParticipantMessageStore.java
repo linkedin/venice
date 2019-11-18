@@ -4,7 +4,6 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -169,6 +168,6 @@ public class TestParticipantMessageStore {
     String storeName = TestUtils.getUniqueString("test-kill");
     controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
-        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), true, true);
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true);
   }
 }

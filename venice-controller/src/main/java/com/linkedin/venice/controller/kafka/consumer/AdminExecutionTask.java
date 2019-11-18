@@ -28,10 +28,9 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
-import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Optional;
 import java.util.Queue;
@@ -395,8 +394,7 @@ public class AdminExecutionTask implements Callable<Void> {
        * It will also allow Venice admin to issue delete store command to parent controller,
        * in case something goes wrong during store migration
        *
-       * TODO: revise this logic when remove {@link com.linkedin.venice.controller.VeniceHelixAdmin#addVersion}
-       *       side effect in {@link com.linkedin.venice.controller.kafka.TopicMonitor}
+       * TODO: revise this logic when store migration is redesigned, new design should avoid this edge case altogether.
        */
       admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
     } else {
@@ -437,10 +435,7 @@ public class AdminExecutionTask implements Callable<Void> {
     String pushJobId = message.pushJobId.toString();
     int versionNumber = message.versionNum;
     int numberOfPartitions = message.numberOfPartitions;
-    try {
-      admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions);
-    } catch (VeniceUnsupportedOperationException unsupportedOperationException) {
-      // No op and ignore the add version message since add version via admin protocol is disabled
-    }
+    Version.PushType pushType = Version.PushType.valueOf(message.pushType);
+    admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType);
   }
 }
