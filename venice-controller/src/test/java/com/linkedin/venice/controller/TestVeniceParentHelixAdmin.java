@@ -1377,6 +1377,43 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
+  public void testAddValueSchemaDocUpdate() throws IOException {
+    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    VeniceControllerWrapper childControllerWrapper =
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, false);
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper controllerWrapper =
+        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+            new VeniceControllerWrapper[]{childControllerWrapper}, false);
+
+    String controllerUrl = controllerWrapper.getControllerUrl();
+    Optional<SSLFactory> sslFactory =  Optional.empty();
+
+    // Adding store
+    String storeName = "test_store";
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+    String schemaStrDoc = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field updated\"},{\"name\":\"id1\",\"type\":\"double\"}]}";
+
+    Schema valueSchema = Schema.parse(schemaStr);
+
+    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
+    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+
+    valueSchema = Schema.parse(schemaStrDoc);
+    controllerClient.addValueSchema(storeName, valueSchema.toString());
+
+    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
+
+    Assert.assertEquals(schemaResponse.getSchemas().length,2);
+
+    controllerWrapper.close();
+    childControllerWrapper.close();
+    kafkaBrokerWrapper.close();
+  }
+
+  @Test
   public void testGetIncrementalPushVersion() {
    Version incrementalPushVersion = new Version("testStore", 1);
    Assert.assertEquals(parentAdmin.getIncrementalPushVersion(incrementalPushVersion, ExecutionStatus.COMPLETED), incrementalPushVersion);

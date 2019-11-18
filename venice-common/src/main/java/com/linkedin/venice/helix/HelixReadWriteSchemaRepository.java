@@ -290,7 +290,7 @@ import java.util.Collection;
 
     if (schemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
       int dupSchemaId = getNextAvailableSchemaId(getValueSchemas(storeName), newValueSchemaEntry,
-          DirectionalSchemaCompatibilityType.FULL, true);
+          DirectionalSchemaCompatibilityType.FULL);
       if (dupSchemaId == SchemaData.DUPLICATE_VALUE_SCHEMA_CODE) {
         logger.info("Value schema already exists. Skipping adding it to the schema repository. Schema: " + schemaStr);
       } else { // there is some doc field update
@@ -328,7 +328,7 @@ import java.util.Collection;
           + " please don't use it in the value schema");
     }
 
-    return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType, false);
+    return getNextAvailableSchemaId(getValueSchemas(storeName), valueSchemaEntry, expectedCompatibilityType);
   }
 
   public int preCheckDerivedSchemaAndGetNextAvailableId(String storeName, int valueSchemaId, String derivedSchemaStr) {
@@ -338,7 +338,7 @@ import java.util.Collection;
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, derivedSchemaStr);
 
     return getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId),
-        derivedSchemaEntry, DirectionalSchemaCompatibilityType.BACKWARD, false);
+        derivedSchemaEntry, DirectionalSchemaCompatibilityType.BACKWARD);
   }
 
   @Override
@@ -349,7 +349,7 @@ import java.util.Collection;
         new DerivedSchemaEntry(valueSchemaId, SchemaData.UNKNOWN_SCHEMA_ID, schemaStr);
     return addDerivedSchema(storeName, schemaStr, valueSchemaId,
         getNextAvailableSchemaId(getDerivedSchemaMap(storeName).get(valueSchemaId), newDerivedSchemaEntry,
-            DirectionalSchemaCompatibilityType.BACKWARD, false));
+            DirectionalSchemaCompatibilityType.BACKWARD));
   }
 
   @Override
@@ -367,18 +367,16 @@ import java.util.Collection;
   }
 
   private int getNextAvailableSchemaId(Collection<? extends SchemaEntry> schemaEntries, SchemaEntry newSchemaEntry,
-      DirectionalSchemaCompatibilityType expectedCompatibilityType, boolean allowDuplicateSchema) {
+      DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     int newValueSchemaId;
     try {
       if (schemaEntries == null || schemaEntries.isEmpty()) {
         newValueSchemaId = HelixSchemaAccessor.VALUE_SCHEMA_STARTING_ID;
       } else {
         newValueSchemaId = schemaEntries.stream().map(schemaEntry -> {
-          if (schemaEntry.equals(newSchemaEntry)) {
-            if (!allowDuplicateSchema || !AvroSchemaUtils.hasDocFieldChange(newSchemaEntry.getSchema(),
-                schemaEntry.getSchema())) {
-              throw new SchemaDuplicateException(schemaEntry, newSchemaEntry);
-            }
+          if (schemaEntry.equals(newSchemaEntry)
+              && !AvroSchemaUtils.hasDocFieldChange(newSchemaEntry.getSchema(), schemaEntry.getSchema())) {
+            throw new SchemaDuplicateException(schemaEntry, newSchemaEntry);
           }
           if (!schemaEntry.isNewSchemaCompatible(newSchemaEntry, expectedCompatibilityType)) {
             throw new SchemaIncompatibilityException(schemaEntry, newSchemaEntry);
