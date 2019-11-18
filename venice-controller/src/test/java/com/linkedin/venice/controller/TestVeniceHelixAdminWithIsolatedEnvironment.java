@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -47,7 +46,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     String storeName = TestUtils.getUniqueString("test");
     veniceAdmin.addStore(clusterName, storeName, "dev", KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     int newAdminPort = config.getAdminPort() + 1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
     VeniceProperties newControllerProps = builder.build();
@@ -92,7 +91,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
     startParticipant(true, NODE_ID);
     Thread.sleep(1000l);
     //New master controller create resource and trigger state transition on participant.
-    newMaster.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    newMaster.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Version newVersion = new Version(storeName, 2);
     Assert.assertEquals(newMaster.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
         ExecutionStatus.STARTED, "Can not trigger state transition from new master");
@@ -116,7 +115,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     veniceAdmin.addStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        partitionCount, replicas, true);
+        partitionCount, replicas);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
@@ -177,7 +176,7 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
 
     veniceAdmin.addStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        partitionCount, replicas, true);
+        partitionCount, replicas);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
@@ -242,8 +241,9 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
       TestUtils.waitForNonDeterministicCompletion(MASTER_CHANGE_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> !veniceAdmin.isMasterController(clusterName));
 
-      //There is no master controller, should throw exception here
-      Assert.assertThrows(VeniceException.class, () -> veniceAdmin.getMasterController(clusterName));
+      //The cluster should be leaderless now
+      Assert.assertFalse(veniceAdmin.isMasterController(clusterName));
+      Assert.assertFalse(newMasterAdmin.isMasterController(clusterName));
     }
 
   @Test

@@ -3,6 +3,8 @@ package com.linkedin.venice.meta;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
+import java.util.Arrays;
+import java.util.Optional;
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -16,6 +18,40 @@ import org.codehaus.jackson.annotate.JsonProperty;
 public class Version implements Comparable<Version> {
   private static final String VERSION_SEPARATOR = "_v";
   private static final String REAL_TIME_TOPIC_SUFFIX = "_rt";
+  private static final String STREAM_REPROCESSING_TOPIC_SUFFIX = "_sr";
+
+  /**
+   * Producer type for writing data to Venice
+   */
+  public enum PushType {
+    BATCH(0), //Batch jobs will create a new version topic and write to it in a batch manner.
+    STREAM_REPROCESSING(1), // Grandfathering jobs will create a new version topic and a grandfathering topic.
+    STREAM(2), // Stream jobs will write to a buffer or RT topic.
+    INCREMENTAL(3); // Incremental jobs will re-use an existing version topic and write on top of it.
+
+    private final int value;
+
+    PushType(int value) { this.value = value; }
+
+    public int getValue() { return value; }
+
+    public boolean isIncremental() {
+      return this == INCREMENTAL;
+    }
+
+    public boolean isStreamReprocessing() {
+      return this == STREAM_REPROCESSING;
+    }
+
+    public static PushType valueOf(int value) {
+      Optional<PushType> pushType = Arrays.stream(values()).filter(p -> p.value == value).findFirst();
+      if (!pushType.isPresent()) {
+        throw new VeniceException("Invalid push type with int value: " + value);
+      }
+      return pushType.get();
+    }
+  }
+
   /**
    * Name of the store which this version belong to.
    */
@@ -54,6 +90,11 @@ public class Version implements Comparable<Version> {
    * Whether or not large values are supported (via chunking).
    */
   private boolean chunkingEnabled = false;
+
+  /**
+   * Producer type for this version.
+   */
+  private PushType pushType = PushType.BATCH;
 
   /**
    * Use the constructor that specifies a pushJobId instead
@@ -135,6 +176,14 @@ public class Version implements Comparable<Version> {
     return pushJobId;
   }
 
+  public PushType getPushType() {
+    return pushType;
+  }
+
+  public void setPushType(PushType pushType) {
+    this.pushType = pushType;
+  }
+
   @Override
   public String toString() {
     return "Version{" +
@@ -146,6 +195,7 @@ public class Version implements Comparable<Version> {
         ", compressionStrategy='" + compressionStrategy + "\'" +
         ", leaderFollowerModelEnabled=" + leaderFollowerModelEnabled +
         ", bufferReplayEnabledForHybrid=" + bufferReplayEnabledForHybrid +
+        ", pushType=" + pushType +
         '}';
   }
 
@@ -233,6 +283,7 @@ public class Version implements Comparable<Version> {
     clonedVersion.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
     clonedVersion.setBufferReplayEnabledForHybrid(bufferReplayEnabledForHybrid);
     clonedVersion.setChunkingEnabled(chunkingEnabled);
+    clonedVersion.setPushType(pushType);
     return clonedVersion;
   }
 
@@ -254,7 +305,13 @@ public class Version implements Comparable<Version> {
   }
 
   public static int parseVersionFromKafkaTopicName(@NotNull String kafkaTopic) {
-    return Integer.valueOf(kafkaTopic.substring(getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length()));
+    int versionStartIndex = getLastIndexOfVersionSeparator(kafkaTopic) + VERSION_SEPARATOR.length();
+    if (kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX)) {
+      return Integer.parseInt(kafkaTopic.substring(versionStartIndex, kafkaTopic.lastIndexOf(
+          STREAM_REPROCESSING_TOPIC_SUFFIX)));
+    } else {
+      return Integer.parseInt(kafkaTopic.substring(versionStartIndex));
+    }
   }
 
   private static int getLastIndexOfVersionSeparator(String kafkaTopic) {
@@ -281,6 +338,14 @@ public class Version implements Comparable<Version> {
     return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
+  public static String composeStreamReprocessingTopic(String storeName, int versionNumber) {
+    return composeKafkaTopic(storeName, versionNumber) + STREAM_REPROCESSING_TOPIC_SUFFIX;
+  }
+
+  public static String composeStreamReprocessingTopicFromVersionTopic(String versionTopic) {
+    return versionTopic + STREAM_REPROCESSING_TOPIC_SUFFIX;
+  }
+
   public static String parseStoreFromRealTimeTopic(String kafkaTopic) {
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
@@ -290,6 +355,10 @@ public class Version implements Comparable<Version> {
 
   public static boolean isRealTimeTopic(String kafkaTopic) {
     return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX);
+  }
+
+  public static boolean isStreamReprocessingTopic(String kafkaTopic) {
+    return kafkaTopic.endsWith(STREAM_REPROCESSING_TOPIC_SUFFIX);
   }
 
   public static boolean topicIsValidStoreVersion(String kafkaTopic){

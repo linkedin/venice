@@ -50,10 +50,6 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().isParent();
   }
 
-  public int getTopicMonitorPollIntervalMs() {
-    return getCommonConfig().getTopicMonitorPollIntervalMs();
-  }
-
   public String getControllerName() {
     return getCommonConfig().getControllerName();
   }

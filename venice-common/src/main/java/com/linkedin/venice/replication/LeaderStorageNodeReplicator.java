@@ -1,13 +1,15 @@
 package com.linkedin.venice.replication;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 
@@ -23,13 +25,25 @@ public class LeaderStorageNodeReplicator extends TopicReplicator {
     super(topicManager, veniceWriterFactory, veniceProperties);
   }
 
+  /**
+   * The meaning of destination topic (destTopicName) is slightly different in the leader follower world. The
+   * destination topic is where we send the topic switch message instead of the destination topic for the replication.
+   * TODO Refactor/remove the {@link TopicReplicator} interface to fix this convoluted parameter.
+   */
   @Override
   public void prepareAndStartReplication(String srcTopicName, String destTopicName, Store store) {
     checkPreconditions(srcTopicName, destTopicName, store);
     long bufferReplayStartTime = getRewindStartTime(store);
-    logger.info("Starting buffer replay for version topic: " + destTopicName
+    Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(destTopicName));
+    if (!version.isPresent()) {
+      throw new VeniceException("Corresponding version does not exist for topic: " + destTopicName + " in store: "
+          + store.getName());
+    }
+    String finalDestTopicName = version.get().getPushType().isStreamReprocessing() ?
+        Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()) : destTopicName;
+    logger.info("Starting buffer replay for topic: " + finalDestTopicName
         + " with buffer replay start timestamp: " + bufferReplayStartTime);
-    beginReplication(srcTopicName, destTopicName, bufferReplayStartTime);
+    beginReplication(srcTopicName, finalDestTopicName, bufferReplayStartTime);
   }
 
   @Override

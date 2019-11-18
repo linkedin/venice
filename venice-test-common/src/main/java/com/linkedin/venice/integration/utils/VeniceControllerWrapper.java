@@ -79,7 +79,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
              */
             .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
             .put(DEFAULT_PARTITION_SIZE, partitionSize)
-            .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
             .put(CONTROLLER_PARENT_MODE, isParent)
             .put(DELAY_TO_REBALANCE_MS, delayToReblanceMS)
             .put(MIN_ACTIVE_REPLICA, minActiveReplica)
@@ -98,7 +97,6 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(PERSISTENCE_TYPE, PersistenceType.BDB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
-            .put(CONTROLLER_ADD_VERSION_VIA_TOPIC_MONITOR, false)
             // The first cluster will always be the one to host system schemas...
             .put(CONTROLLER_SYSTEM_SCHEMA_CLUSTER_NAME, clusterNames[0])
             .put(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false)

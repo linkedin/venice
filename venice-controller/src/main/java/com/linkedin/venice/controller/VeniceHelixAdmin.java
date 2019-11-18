@@ -744,14 +744,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
         }
 
-        if (!store.containsVersion(versionNumber)){
+        Optional<Version> version = store.getVersion(versionNumber);
+        if (!version.isPresent()){
             throw new VeniceHttpException(HttpStatus.SC_NOT_FOUND, "Version " + versionNumber + " was not found for Store " + storeName
                 + ".  Cannot end push for version that does not exist");
         }
 
+        String topicToReceiveEndOfPush = version.get().getPushType().isStreamReprocessing() ?
+            Version.composeStreamReprocessingTopic(storeName, versionNumber) :
+            Version.composeKafkaTopic(storeName, versionNumber);
         //write EOP message
         getVeniceWriterFactory().useVeniceWriter(
-            () -> getVeniceWriterFactory().createVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber)),
+            () -> getVeniceWriterFactory().createVeniceWriter(topicToReceiveEndOfPush),
             veniceWriter -> {
                 if (alsoWriteStartOfPush) {
                     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -786,22 +790,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Decrease the largestUsedVersionNumber to trigger bootstrap in destination cluster
         params.setLargestUsedVersionNumber(0);
         this.updateStore(destClusterName, storeName, params);   // update cloned store in destination cluster
-        if (multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled()) {
-            List<Version> sourceOnlineVersions = srcStore
-                .getVersions()
-                .stream()
-                .sorted(Comparator.comparingInt(Version::getNumber))
-                .filter(version -> Arrays.asList(STARTED, PUSHED, ONLINE).contains(version.getStatus()))
-                .collect(Collectors.toList());
-            for (Version version : sourceOnlineVersions) {
-                try {
-                    int partitionCount = topicManager.getPartitions(version.kafkaTopicName()).size();
-                    addVersionAndStartIngestion(destClusterName, storeName, version.getPushJobId(), version.getNumber(),
-                        partitionCount);
-                } catch (Exception e) {
-                    logger.warn("An exception was thrown when attempting to add version and start ingestion for store "
-                    + storeName + " and version " + version.getNumber(), e);
-                }
+        List<Version> sourceOnlineVersions = srcStore
+            .getVersions()
+            .stream()
+            .sorted(Comparator.comparingInt(Version::getNumber))
+            .filter(version -> Arrays.asList(STARTED, PUSHED, ONLINE).contains(version.getStatus()))
+            .collect(Collectors.toList());
+        for (Version version : sourceOnlineVersions) {
+            try {
+                int partitionCount = topicManager.getPartitions(version.kafkaTopicName()).size();
+                addVersionAndStartIngestion(destClusterName, storeName, version.getPushJobId(), version.getNumber(),
+                    partitionCount, version.getPushType());
+            } catch (Exception e) {
+                logger.warn("An exception was thrown when attempting to add version and start ingestion for store "
+                + storeName + " and version " + version.getNumber(), e);
             }
         }
          // Set store migration flag for the original store. Possible race condition where we miss a new push while we
@@ -945,41 +947,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     protected final static int VERSION_ID_UNSET = -1;
 
     /**
-     * This method is used when {@code addVersion} is invoked from the parent controller or directly by the endpoint on
-     * the child controller. These invocations expect the topic creation for the new version to be synchronized or
-     * blocking. Therefore, the internal {@code addVersion} is called with {@code useFastKafkaOperationTimeout} = false.
-     * @param clusterName of the store.
-     * @param storeName of the store.
-     * @param versionNumber of the corresponding push.
-     * @param numberOfPartition of the new version.
-     * @param replicationFactor for the new push.
-     * @return
-     */
-    @Override
-    public synchronized Version addVersion(String clusterName, String storeName, int versionNumber,
-        int numberOfPartition, int replicationFactor) {
-        return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition,
-            replicationFactor, true, false, false, false);
-    }
-
-    /**
-     * This is a wrapper method for {@code addVersion} but performs additional feature flag check and operations for add
-     * version via the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an
-     * add version message. Other invocations of this method is for store migration and only when add version via admin
-     * protocol is enabled.
-     * @param clusterName of the store.
-     * @param storeName of the store.
-     * @param pushJobId of the corresponding push.
-     * @param versionNumber of the new version.
-     * @param numberOfPartitions for the new push.
+     * This is a wrapper for VeniceHelixAdmin#addVersion but performs additional operations needed for add version invoked
+     * from the admin channel or child controller's endpoint. Therefore, this method is mainly invoked from the admin
+     * task upon processing an add version message and for store migration.
      */
     @Override
     public void addVersionAndStartIngestion(
-        String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions) {
-        if (!multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled()) {
-            // No op, add version via admin protocol is disabled.
-            throw new VeniceUnsupportedOperationException(ConfigKeys.CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL + "");
-        }
+        String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
+        Version.PushType pushType) {
         Store store = getStore(clusterName, storeName);
         if (null == store) {
             throw new VeniceNoStoreException(storeName, clusterName);
@@ -990,7 +965,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " for store " + storeName + " in cluster " + clusterName);
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-                getReplicationFactor(clusterName, storeName), true, false, false, true);
+                getReplicationFactor(clusterName, storeName), true, false, false, true, pushType);
             if (store.isMigrating()) {
                 try {
                     StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
@@ -1003,7 +978,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             ControllerClient sourceClusterControllerClient =
                                 new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false), sslFactory);
                             VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
-                                pushJobId, versionNumber, numberOfPartitions);
+                                pushJobId, versionNumber, numberOfPartitions, pushType);
                             if (response.isError()) {
                                 logger.warn("Replicate add version endpoint call to source cluster: " + sourceCluster
                                     + " failed for store " + storeName + " and version " + versionNumber + " Error: "
@@ -1014,7 +989,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         ControllerClient destClusterControllerClient =
                             new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false), sslFactory);
                         VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
-                            pushJobId, versionNumber, numberOfPartitions);
+                            pushJobId, versionNumber, numberOfPartitions, pushType);
                         if (response.isError()) {
                             logger.warn("Replicate add version endpoint call to destination cluster: " + destinationCluster
                                 + " failed for store " + storeName + " and version " + versionNumber + " Error: "
@@ -1030,16 +1005,30 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * TODO: refactor this method, currently it's overloaded with behaviors of the parent and child controller.
-     * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
-     * Add version is a multi step process and the order of execution and behavior for some of these steps are made
-     * different on purpose depending on how it's invoked. Parent controller's add version will update the store's
-     * versions before creating the topic. Child controller on the other hand will create the topic first before
-     * updating the store's versions.
+     * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
+     * without starting ingestion.
      */
-    protected Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
-        int numberOfPartitions, int replicationFactor, boolean whetherStartOfflinePush, boolean sendStartOfPush,
-        boolean sorted, boolean useFastKafkaOperationTimeout) {
+    public Version addVersionOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
+        int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType) {
+        Store store = getStore(clusterName, storeName);
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        }
+        Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
+        return existingVersionToUse.orElseGet(
+            () -> addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
+                false, sendStartOfPush, sorted, false, pushType));
+    }
+
+    /**
+     * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for.
+     * Add version is a multi step process that can be broken down to three main steps:
+     * 1. topic creation or verification, 2. version creation or addition, 3. start ingestion. The execution for some of
+     * these steps are different depending on how it's invoked.
+     */
+    private Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
+        int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
+        boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1063,22 +1052,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         throwStoreDoesNotExist(clusterName, storeName);
                     }
                     // Update default partition count if it have not been assigned.
-                    //TODO: persist numberOfPartitions at the version level
+                    // TODO: persist numberOfPartitions at the version level
                     if (store.getPartitionCount() == 0) {
                         store.setPartitionCount(numberOfPartitions);
+                        repository.updateStore(store);
                     }
                     backupStrategy = store.getBackupStrategy();
                     if (versionNumber == VERSION_ID_UNSET) {
                         // No version supplied, generate a new version. This could happen either in the parent
                         // controller or local Samza jobs.
-                        version = store.increaseVersion(pushJobId);
+                        version = new Version(storeName, store.peekNextVersion().getNumber(), pushJobId);
                     } else {
                         if (store.containsVersion(versionNumber)) {
                             throwVersionAlreadyExists(storeName, versionNumber);
                         }
                         version = new Version(storeName, versionNumber, pushJobId);
                     }
-                    repository.updateStore(store);
                 } finally {
                     repository.unLock();
                 }
@@ -1092,12 +1081,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     clusterConfig.getMinIsr(),
                     useFastKafkaOperationTimeout
                 );
+                if (pushType.isStreamReprocessing()) {
+                    topicManager.createTopic(
+                        Version.composeStreamReprocessingTopic(storeName, version.getNumber()),
+                        numberOfPartitions,
+                        clusterConfig.getKafkaReplicationFactor(),
+                        true,
+                        false,
+                        clusterConfig.getMinIsr(),
+                        useFastKafkaOperationTimeout
+                    );
+                }
 
                 repository.lock();
                 try {
                     Store store = repository.getStore(storeName);
                     strategy = store.getOffLinePushStrategy();
                     if (!store.containsVersion(version.getNumber())) {
+                        version.setPushType(pushType);
                         store.addVersion(version);
                     }
                     if (version.isLeaderFollowerModelEnabled()) {
@@ -1117,18 +1118,25 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
                 if (sendStartOfPush) {
                     final Version finalVersion = version;
-                    getVeniceWriterFactory().useVeniceWriter(
-                        () -> getVeniceWriterFactory().createVeniceWriter(finalVersion.kafkaTopicName()),
-                        veniceWriter ->
-                            veniceWriter.broadcastStartOfPush(
-                                sorted,
-                                finalVersion.isChunkingEnabled(),
-                                finalVersion.getCompressionStrategy(),
-                                new HashMap<>())
-                        );
+                    try (VeniceWriter veniceWriter = getVeniceWriterFactory().createVeniceWriter(
+                        finalVersion.kafkaTopicName())) {
+                        veniceWriter.broadcastStartOfPush(
+                            sorted,
+                            finalVersion.isChunkingEnabled(),
+                            finalVersion.getCompressionStrategy(),
+                            new HashMap<>());
+                        if (pushType.isStreamReprocessing()) {
+                            // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
+                            veniceWriter.broadcastTopicSwitch(
+                                Arrays.asList(getKafkaBootstrapServers(isSslToKafka())),
+                                Version.composeStreamReprocessingTopic(finalVersion.getStoreName(), finalVersion.getNumber()),
+                                0L,
+                                new HashMap<>());
+                        }
+                    }
                 }
 
-                if (whetherStartOfflinePush) {
+                if (startIngestion) {
                     // We need to prepare to monitor before creating helix resource.
                     startMonitorOfflinePush(
                         clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, strategy);
@@ -1190,32 +1198,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /**
      * Note: this doesn't currently use the pushID to guarantee idempotence, unexpected behavior may result if multiple
      * batch jobs push to the same store at the same time.
-     * TODO: refactor so that this method and the counterpart in {@link VeniceParentHelixAdmin} should have same behavior
      */
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
-        int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
-        boolean sendStartOfPush, boolean sorted) {
-
+        int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
-            if (store == null) {
-                throwStoreDoesNotExist(clusterName, storeName);
+        Store store = getStore(clusterName, storeName);
+        if (store != null) {
+            Optional<Version> existingVersionWithSamePushId = getVersionWithPushId(store, pushJobId);
+            if (existingVersionWithSamePushId.isPresent()) {
+                return existingVersionWithSamePushId.get();
             }
-            Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
-            if (existingVersionToUse.isPresent()) {
-                return existingVersionToUse.get();
-            }
-        } finally {
-            repository.unLock();
+        } else {
+            throwStoreDoesNotExist(clusterName, storeName);
         }
 
-        return isIncrementalPush ? getIncrementalPushVersion(clusterName, storeName)
+        return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                offlinePush, sendStartOfPush, sorted, false);
+                true, sendStartOfPush, sorted, false, pushType);
     }
 
     /**
@@ -1482,6 +1482,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // In such case, the topic will be deleted after store migration, triggered by a new push job
                 if (!store.isMigrating()) {
                     truncateKafkaTopic(deletedVersion.get().kafkaTopicName());
+                    if (deletedVersion.get().getPushType().isStreamReprocessing()) {
+                        truncateKafkaTopic(Version.composeStreamReprocessingTopic(storeName, versionNumber));
+                    }
                 }
             }
         } finally {
@@ -1684,8 +1687,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
              * the version belonging to is smaller than the largest used version of current store.
              *
              * The reason to check whether the to-be-deleted version is smaller than the largest used version of current store or not:
-             * 1. Topic could be created either by Kafka MM or addVersion function call (triggered by either
-             * {@link com.linkedin.venice.controller.kafka.TopicMonitor} or
+             * 1. Topic could be created either by Kafka MM or addVersion function call (triggered by
              * {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask};
              * 2. If the topic is created by Kafka MM and the actual version creation gets delayed for some reason, the following
              * scenario could happen (assuming the current version is n):
@@ -3016,6 +3018,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void checkPreConditionForKillOfflinePush(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
+        if (!Version.topicIsValidStoreVersion(kafkaTopic)) {
+            throw new VeniceException("Topic: " + kafkaTopic + " is not a valid Venice version topic.");
+        }
     }
 
     @Override

@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -57,7 +56,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
     //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice, storeName, ControllerApiConstants.PushType.STREAM);
+    SystemProducer veniceProducer = getSamzaProducer(venice, storeName, Version.PushType.STREAM);
     for (int i=1; i<=10; i++) {
       sendStreamingRecord(veniceProducer, storeName, i);
     }

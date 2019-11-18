@@ -1,6 +1,5 @@
 package com.linkedin.venice.restart;
 
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -51,7 +50,7 @@ public class TestRestartRouter {
     cluster.stopVeniceRouter(routerWrapper.getPort());
 
     VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, 100,
-        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false, true);
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), false, true);
     Assert.assertTrue(versionCreationResponse.isError(),
         "Router has already been shutdown, should not handle the request.");
 
@@ -73,7 +72,7 @@ public class TestRestartRouter {
     });
 
     // The restarted router could continue to handle request.
-    response = controllerClient.requestTopicForWrites(storeName, 100, ControllerApiConstants.PushType.BATCH,
+    response = controllerClient.requestTopicForWrites(storeName, 100, Version.PushType.BATCH,
         Version.guidBasedDummyPushId(), false, true);
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum +1);

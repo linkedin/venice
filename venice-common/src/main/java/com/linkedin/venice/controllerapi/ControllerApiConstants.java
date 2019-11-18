@@ -80,24 +80,4 @@ public class ControllerApiConstants {
 
 
   public static final String SKIP_DIV = "skip_div";
-
-  private ControllerApiConstants(){}
-
-  /**
-   * Producer type for pushing data
-   */
-  public enum PushType {
-    BATCH, //This is a batch push that will create a new version
-    INCREMENTAL, //This is a batch push that will re-use current version's topic
-    STREAM //This is a stream job that writes into a buffer topic (or possibly the current version topic depending on store-level configs)
-  }
-
-  /**
-   * Possible push job status at the end of its lifecycle.
-
-  public enum PushJobStatus {
-    SUCCESS, // The job succeeded
-    ERROR, // Some error has occurred during the job
-    KILLED // The job was terminated by user
-  }*/
 }

@@ -136,7 +136,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Lock lock = new ReentrantLock();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
-  private final boolean addVersionViaAdminProtocol;
   private long lastTopicCreationTime = -1;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
   // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
@@ -215,7 +214,6 @@ public class VeniceParentHelixAdmin implements Admin {
     this.maxErroredTopicNumToKeep = multiClusterConfigs.getParentControllerMaxErroredTopicNumToKeep();
     this.offlinePushAccessor =
         new ParentHelixOfflinePushAccessor(veniceHelixAdmin.getZkClient(), veniceHelixAdmin.getAdapterSerializer());
-    this.addVersionViaAdminProtocol = multiClusterConfigs.getCommonConfig().isAddVersionViaAdminProtocolEnabled();
     // Start store migration monitor background thread
     startStoreMigrationMonitor();
   }
@@ -365,7 +363,7 @@ public class VeniceParentHelixAdmin implements Admin {
         int replicationFactor = getReplicationFactor(clusterName, storeName);
         Version version =
             incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-                store.getPartitionCount(), replicationFactor, true);
+                store.getPartitionCount(), replicationFactor);
         writeEndOfPush(clusterName, storeName, version.getNumber(), true);
         store = getStore(clusterName, storeName);
         if (store.getVersions().isEmpty()) {
@@ -537,17 +535,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Version addVersion(String clusterName,
-                            String storeName,
-                            int versionNumber,
-                            int numberOfPartition,
-                            int replicationFactor) {
-    throw new VeniceUnsupportedOperationException("addVersion");
-  }
-
-  @Override
-  public void addVersionAndStartIngestion(
-      String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions) {
+  public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
+      int numberOfPartitions, Version.PushType pushType) {
     throw new VeniceUnsupportedOperationException("addVersionAndStartIngestion");
   }
 
@@ -735,32 +724,37 @@ public class VeniceParentHelixAdmin implements Admin {
       int v2 = Version.parseVersionFromKafkaTopicName(t2);
       return v1 - v2;
     }).collect(Collectors.toList());
-    if (sortedNonTruncatedTopics.size() <= maxErroredTopicNumToKeep) {
-      logger.info("Non-truncated topics size: " + sortedNonTruncatedTopics.size() +
+    Set<String> grandfatheringTopics = sortedNonTruncatedTopics.stream().filter(Version::isStreamReprocessingTopic)
+        .collect(Collectors.toSet());
+    List<String> sortedNonTruncatedVersionTopics = sortedNonTruncatedTopics.stream().filter(topic ->
+        !Version.isStreamReprocessingTopic(topic)).collect(Collectors.toList());
+    if (sortedNonTruncatedVersionTopics.size() <= maxErroredTopicNumToKeep) {
+      logger.info("Non-truncated version topics size: " + sortedNonTruncatedVersionTopics.size() +
           " isn't bigger than maxErroredTopicNumToKeep: " + maxErroredTopicNumToKeep + ", so no topic will be truncated this time");
       return;
     }
-    int topicNumToTruncate = sortedNonTruncatedTopics.size() - maxErroredTopicNumToKeep;
+    int topicNumToTruncate = sortedNonTruncatedVersionTopics.size() - maxErroredTopicNumToKeep;
     int truncatedTopicCnt = 0;
-    for (String topic: sortedNonTruncatedTopics) {
+    for (String topic: sortedNonTruncatedVersionTopics) {
       if (++truncatedTopicCnt > topicNumToTruncate) {
         break;
       }
       truncateKafkaTopic(topic);
       logger.info("Errored topic: " + topic + " got truncated");
+      String correspondingStreamReprocessingTopic = Version.composeStreamReprocessingTopicFromVersionTopic(topic);
+      if (grandfatheringTopics.contains(correspondingStreamReprocessingTopic)) {
+        truncateKafkaTopic(correspondingStreamReprocessingTopic);
+        logger.info("Corresponding grandfathering topic: " + correspondingStreamReprocessingTopic + " also got truncated.");
+      }
     }
   }
 
-  /**
-   * TODO: Remove the old behavior and refactor once add version via the admin protocol is stable.
-   * TODO: refactor so that this method and the counterpart in {@link VeniceHelixAdmin} should have same behavior
-   */
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
-      int numberOfPartitions, int replicationFactor, boolean offlinePush, boolean isIncrementalPush,
-      boolean sendStartOfPush, boolean sorted) {
+      int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
+      boolean sorted) {
 
-    Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, isIncrementalPush);
+    Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
     if (currentPushTopic.isPresent()) {
       int currentPushVersion = Version.parseVersionFromKafkaTopicName(currentPushTopic.get());
       Store store = getStore(clusterName, storeName);
@@ -777,18 +771,20 @@ public class VeniceParentHelixAdmin implements Admin {
               + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
           killOfflinePush(clusterName, currentPushTopic.get());
         } else {
-          throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
+          throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
+              + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic
               + " is found and it must be terminated before another push can be started.");
         }
       }
     }
-    // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
-    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions,
-        replicationFactor, false, isIncrementalPush, sendStartOfPush, sorted);
-    if (addVersionViaAdminProtocol && !isIncrementalPush) {
+    Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
+        : veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
+            sendStartOfPush, sorted, pushType);
+    if (!pushType.isIncremental()) {
       acquireLock(clusterName);
       try {
-        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion.getNumber(), numberOfPartitions);
+        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion.getNumber(), numberOfPartitions,
+            pushType);
       } finally {
         releaseLock();
       }
@@ -799,13 +795,14 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   protected void sendAddVersionAdminMessage(String clusterName, String storeName, String pushJobId, int versionNum,
-      int numberOfPartitions) {
+      int numberOfPartitions, Version.PushType pushType) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
     addVersion.pushJobId = pushJobId;
     addVersion.versionNum = versionNum;
     addVersion.numberOfPartitions = numberOfPartitions;
+    addVersion.pushType = pushType.getValue();
 
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();
@@ -1570,12 +1567,15 @@ public class VeniceParentHelixAdmin implements Admin {
             + "some Kafka related issue");
       } else {
         //truncate the topic if this is not an incremental push enabled store or this is a failed batch push
+        Store store = veniceHelixAdmin.getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
         if ((!incrementalPushVersion.isPresent() && currentReturnStatus == ExecutionStatus.ERROR) ||
-            !veniceHelixAdmin.getVeniceHelixResource(clusterName).
-            getMetadataRepository().
-            getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic)).isIncrementalPushEnabled()) {
+            !store.isIncrementalPushEnabled()) {
             logger.info("Truncating kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
             truncateKafkaTopic(kafkaTopic);
+            Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(kafkaTopic));
+            if (version.isPresent() && version.get().getPushType().isStreamReprocessing()) {
+              truncateKafkaTopic(Version.composeStreamReprocessingTopic(store.getName(), version.get().getNumber()));
+            }
             currentReturnStatusDetails = Optional.of(currentReturnStatusDetails.orElse("") + "Parent Kafka topic truncated");
           }
         }
@@ -1711,6 +1711,10 @@ public class VeniceParentHelixAdmin implements Admin {
         // Truncate Kafka topic
         logger.info("Truncating topic when kill offline push job, topic: " + kafkaTopic);
         truncateKafkaTopic(kafkaTopic);
+        String correspondingStreamReprocessingTopic = Version.composeStreamReprocessingTopicFromVersionTopic(kafkaTopic);
+        if (getTopicManager().containsTopicInKafkaZK(correspondingStreamReprocessingTopic)) {
+          truncateKafkaTopic(correspondingStreamReprocessingTopic);
+        }
       }
 
       // TODO: Set parent controller's version status (to ERROR, most likely?)

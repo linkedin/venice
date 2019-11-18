@@ -76,7 +76,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       String topicName = Version.composeKafkaTopic(storeName, 1);
       Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, topicName).getExecutionStatus(),
           ExecutionStatus.NOT_CREATED, "Offline job status should not already exist.");
-      veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+      veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
       Assert.assertNotEquals(veniceAdmin.getOffLinePushStatus(clusterName, topicName).getExecutionStatus(),
           ExecutionStatus.NOT_CREATED, "Can not get offline job status correctly.");
     } catch (VeniceException e) {
@@ -178,7 +178,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     store.setPartitionCount(numberOfParition);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
     Version v = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        numberOfParition, 1, true);
+        numberOfParition, 1);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, v.getNumber());
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, v.getNumber());
     storeSize = partitionSize * (maxPartitionNumber - 2);
@@ -199,7 +199,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(true);
 
     Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),1, 1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),1, 1);
     int versionNumber = version.getNumber();
 
     Admin.OfflinePushStatusInfo offlinePushStatus = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber));
@@ -228,7 +228,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Version version = null;
     for (int i = 0; i < 3; i++) {
       version =
-          veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+          veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
       int versionNumber = version.getNumber();
 
       TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
@@ -257,7 +257,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = "testDeleteResource";
     veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     // Ensure the the replica has became BOOTSTRAP
     TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
       RoutingDataRepository routingDataRepository =
@@ -318,7 +318,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     startParticipant(true, additionalNode);
     veniceAdmin.addStore(clusterName, storeName, owner, KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        partitionCount, 2, true); // 2 replicas puts a replica on the blocking participant
+        partitionCount, 2); // 2 replicas puts a replica on the blocking participant
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
@@ -392,11 +392,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     for (int i = 0; i < 5; i ++) {
       // Mimic the retry behavior by the admin consumption task.
       Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class,
-          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1));
+          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH));
     }
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     reset(mockedTopicManager);
-    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1);
+    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         "There should only be exactly one version added to the test-store");
@@ -410,7 +410,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = TestUtils.getUniqueString("test");
 
     veniceAdmin.addStore(clusterName, storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
-    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
 
     // enable maintenance mode
@@ -418,7 +418,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     //HelixClusterMaintenanceModeException is expected since cluster is in maintenance mode
     Assert.assertThrows(HelixClusterMaintenanceModeException.class, () ->
-        veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1));
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
 
     Admin.OfflinePushStatusInfo
         statusInfo = veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 101));
@@ -428,7 +428,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // disable maintenance mode
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
     // try to add same version again
-    veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
 
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
@@ -455,7 +455,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
 
     int partitions = 2; //TODO verify partition count for RT topic.
-    veniceAdmin.addVersion(clusterName, storeName, 1, partitions, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitions, 1);
 
     String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
     Assert.assertEquals(rtTopic, storeName + "_rt");
@@ -471,7 +471,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     startParticipant(true, newNodeId);
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        partitionCount, replicaCount, true);
+        partitionCount, replicaCount);
 
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment =
@@ -530,20 +530,21 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Store store = veniceAdmin.getStore(clusterName, storeName);
 
     //Store has been disabled, can not accept a new version
-    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1));
+    Assert.assertThrows(VeniceException.class, () -> veniceAdmin.incrementVersionIdempotent(clusterName, storeName,
+        Version.guidBasedDummyPushId(), 1, 1));
 
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     //Store has been disabled, can not accept a new version
     Assert.assertThrows(VeniceException.class, () ->
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true));
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1));
 
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions(), store.getVersions());
 
     veniceAdmin.setStoreWriteability(clusterName, storeName, true);
 
-    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
     store = veniceAdmin.getStore(clusterName, storeName);
     // version 1 and version 2 are added to this store.
@@ -563,7 +564,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     String storeName = TestUtils.getUniqueString("testDisableStoreRead");
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", KEY_SCHEMA, VALUE_SCHEMA);
     Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
 
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
@@ -627,7 +628,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Start a new version with 2 partition and 1 replica
     veniceAdmin.addStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
     Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-        partitionCount, replicaFactor, true);
+        partitionCount, replicaFactor);
     Map<String, Integer> nodesToPartitionMap = new HashMap<>();
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       try {
@@ -690,7 +691,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
       Version lastVersion = null;
       for (int i = 0; i < versionCount; i++) {
         lastVersion =
-            veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+            veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
         if (i < versionCount - 1) {
           // Hang the state transition of the last version only. Otherwise, retiring would be triggered.
           stateModelFactory.makeTransitionCompleted(lastVersion.kafkaTopicName(), 0);
@@ -753,8 +754,8 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
     veniceAdmin.addStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
     // Add two versions.
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 2);
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
@@ -784,9 +785,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     veniceAdmin.addStore(clusterName, storeName, "testOwner", KEY_SCHEMA, VALUE_SCHEMA);
     // Add three versions.
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST, TimeUnit.MILLISECONDS,
         () -> {
@@ -810,7 +811,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
     Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1,1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1,1);
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
     Assert.assertTrue(
@@ -844,7 +845,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
       veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
       Version version =
-          veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+          veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
       TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
           () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
       Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())),
@@ -874,7 +875,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     //Re-create store with incompatible schema
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"long\"", "\"long\"");
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.getKeySchema(clusterName, storeName).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getLargestUsedVersionNumber(),
@@ -898,7 +899,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
     //Re-create store with incompatible schema
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"long\"", "\"long\"");
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Assert.assertEquals(veniceAdmin.getKeySchema(clusterName, storeName).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getLargestUsedVersionNumber(),
@@ -924,7 +925,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     delayParticipantJobCompletion(true);
     String storeName = TestUtils.getUniqueString("test_store");
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 1), 0);
     // Wait version 1 become online.
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
@@ -932,7 +933,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     // Restart participant
     stopParticipants();
     startParticipant(true, NODE_ID);
-    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+    veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     Thread.sleep(1000l);
     Map<String, String> result = veniceAdmin.findAllBootstrappingVersions(clusterName);
     Assert.assertEquals(result.size(), 2, "We should have 2 versions which have bootstrapping replicas.");
@@ -1102,7 +1103,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
 
     Version version =
-        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1, true);
+        veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(version.getNumber() > 0);
     Assert.assertEquals(store.getLargestUsedVersionNumber(), version.getNumber());

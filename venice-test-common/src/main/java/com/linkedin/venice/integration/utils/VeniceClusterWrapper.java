@@ -2,7 +2,6 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -489,7 +488,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       }
       // Create new version
       VersionCreationResponse newVersion =
-          controllerClient.requestTopicForWrites(storeName, storeSize, ControllerApiConstants.PushType.BATCH,
+          controllerClient.requestTopicForWrites(storeName, storeSize, Version.PushType.BATCH,
               Version.guidBasedDummyPushId(), false, false);
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
@@ -576,7 +575,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           controllerClient.requestTopicForWrites(
               storeName,
               dataSize,
-              ControllerApiConstants.PushType.BATCH,
+              Version.PushType.BATCH,
               Version.guidBasedDummyPushId(),
               false,
               // This function is expected to be called by tests that bypass the push job and write data directly,

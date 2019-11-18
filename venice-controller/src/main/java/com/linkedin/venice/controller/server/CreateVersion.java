@@ -4,7 +4,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,6 +22,7 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.meta.Version.PushType;
 
 
 /**
@@ -105,15 +105,18 @@ public class CreateVersion extends AbstractRoute {
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:
+          case STREAM_REPROCESSING:
             if (! admin.whetherEnableBatchPushFromAdmin()) {
               throw new VeniceUnsupportedOperationException(pushTypeString, "Please push data to Venice Parent Colo instead");
             }
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                    true, (pushType == PushType.INCREMENTAL), sendStartOfPush, sorted);
+                   pushType, sendStartOfPush, sorted);
+            String responseTopic = version.getPushType().isStreamReprocessing()
+                ? Version.composeStreamReprocessingTopic(storeName, version.getNumber()) : version.kafkaTopicName();
 
             responseObject.setVersion(version.getNumber());
-            responseObject.setKafkaTopic(version.kafkaTopicName());
+            responseObject.setKafkaTopic(responseTopic);
             responseObject.setCompressionStrategy(version.getCompressionStrategy());
             break;
           case STREAM:
@@ -134,8 +137,6 @@ public class CreateVersion extends AbstractRoute {
 
   /**
    * This function is only being used by store migration, so it is fine to create version directly in Child Controller.
-   * @param admin
-   * @return
    */
   public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {
@@ -153,13 +154,20 @@ public class CreateVersion extends AbstractRoute {
         String pushJobId = request.queryParams(PUSH_JOB_ID);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         int partitionCount = Utils.parseIntFromString(request.queryParams(PARTITION_COUNT), PARTITION_COUNT);
+        PushType pushType;
+        try {
+          pushType = PushType.valueOf(request.queryParams(PUSH_TYPE));
+        } catch (RuntimeException parseException) {
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, request.queryParams(PUSH_TYPE) + " is an invalid "
+              + PUSH_TYPE, parseException);
+        }
 
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
         if (!admin.getTopicManager().containsTopic(topicName)) {
           throw new VeniceException("Expected topic " + topicName + " cannot be found. Unable to add version and start "
           + "ingestion for store " + storeName + " and version " + versionNumber + " in cluster " + clusterName);
         }
-        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount);
+        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);
@@ -255,7 +263,7 @@ public class CreateVersion extends AbstractRoute {
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
         Version version =
-            admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor, true);
+            admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor);
         int versionNumber = version.getNumber();
 
         responseObject.setCluster(clusterName);

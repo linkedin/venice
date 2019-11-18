@@ -1300,7 +1300,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * The {@param topicName} maybe different from the store version topic, since in {@link LeaderFollowerStoreIngestionTask},
-   * the topic could be other topics, such as RT topic or GF topic.
+   * the topic could be other topics, such as RT topic or stream reprocessing topic.
    **/
   private Optional<OffsetRecordTransformer> validateMessage(String topicName, int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
