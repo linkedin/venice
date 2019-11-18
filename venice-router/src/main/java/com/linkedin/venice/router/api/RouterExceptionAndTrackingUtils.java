@@ -39,10 +39,14 @@ public class RouterExceptionAndTrackingUtils {
   public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg, FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
-    RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, true);
+    RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!filter.isRedundantException(name, e)) {
-      logger.error("Got an exception for store:" + name, e);
+      if (responseStatus == BAD_REQUEST) {
+        logger.debug(BAD_REQUEST.toString() + " for store: " + name, e);
+      } else {
+        logger.error("Got an exception for store: " + name, e);
+      }
     }
     return e;
   }

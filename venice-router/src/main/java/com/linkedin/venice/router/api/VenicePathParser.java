@@ -5,6 +5,8 @@ import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -28,7 +30,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.annotation.Nonnull;
 import org.apache.log4j.Logger;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
 import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
@@ -159,8 +160,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       if (decompressOnClient) {
         Store store = storeRepository.getStore(storeName);
         if (store == null){
-          throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
-              "Store: " + store + " does not exist on this cluster", false);
+          throw new VeniceNoStoreException(storeName);
         }
         decompressOnClient = store.getClientDecompressionEnabled();
       }
@@ -186,7 +186,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
-    } catch (RouterException e) {
+    } catch (VeniceException e) {
       // log the store/version not exist error and add track it in the unhealthy request metric
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
           BAD_REQUEST, e.getMessage());
