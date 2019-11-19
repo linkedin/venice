@@ -1,6 +1,8 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
@@ -14,7 +16,6 @@ import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.LinkedList;
 import java.util.List;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
@@ -31,9 +32,10 @@ public class TestVeniceVersionFinder {
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(), stats);
     try{
       versionFinder.getVersion("");
-      Assert.fail("versionFinder.getVersion() on previous line should throw a RouterException");
-    } catch (RouterException e) {
-      Assert.assertEquals(e.code(), 400);
+      Assert.fail("versionFinder.getVersion() on previous line should throw a "
+          + VeniceNoStoreException.class.getSimpleName());
+    } catch (VeniceNoStoreException e) {
+      // Expected
     }
   }
 
@@ -53,8 +55,8 @@ public class TestVeniceVersionFinder {
     try {
       versionFinder.getVersion(storeName);
       Assert.fail("Store should be disabled and forbidden to read.");
-    } catch (RouterException e) {
-      Assert.assertEquals(e.status(), HttpResponseStatus.FORBIDDEN, "Store should be disabled and forbidden to read.");
+    } catch (StoreDisabledException e) {
+      // Expected
     }
     // enable store, should return the correct current version.
     store.setEnableReads(true);
