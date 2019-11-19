@@ -1,6 +1,6 @@
 package com.linkedin.venice.router.api;
 
-import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
 public class VeniceVersionFinder {
   private static final Logger logger = Logger.getLogger(VeniceVersionFinder.class);
@@ -32,7 +31,7 @@ public class VeniceVersionFinder {
     this.stats = stats;
   }
 
-  public int getVersion(String store) throws RouterException {
+  public int getVersion(String store) throws VeniceException {
     /**
      * TODO: clone a store object is too expensive, and we could choose to expose the necessary methods
      * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
@@ -42,7 +41,7 @@ public class VeniceVersionFinder {
       throw new VeniceNoStoreException(store);
     }
     if (!veniceStore.isEnableReads()) {
-      throw new VeniceException("Could not read from store: " + store + " because reads are disabled for that store.");
+      throw new StoreDisabledException(store, "read");
     }
 
     int metadataCurrentVersion = veniceStore.getCurrentVersion();
@@ -52,10 +51,6 @@ public class VeniceVersionFinder {
         /** This should happen at most once per store, since we are adding the mapping to {@link lastCurrentVersion} */
         veniceStore = metadataRepository.refreshOneStore(store);
         metadataCurrentVersion = veniceStore.getCurrentVersion();
-        if (metadataCurrentVersion == Store.NON_EXISTING_VERSION) {
-          throw new VeniceException("Still no available version found for store: " + store + " after refresh. "
-              + "Please make sure the store has completed at lease one successful push.");
-        }
       }
     }
     if (lastCurrentVersion.get(store).equals(metadataCurrentVersion)){
