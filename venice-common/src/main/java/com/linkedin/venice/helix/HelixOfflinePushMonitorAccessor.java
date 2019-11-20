@@ -10,6 +10,7 @@ import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 
@@ -255,34 +256,45 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   /**
    * Get all partition status ZNodes under offline push of given topic from ZK.
+   * The partition statuses paths for a topic are created in ZK one by one; Helix doesn't guarantee that all the paths
+   * are created atomically; therefore, it's possible that a partial list is returned. This function would take cover of
+   * all edges cases -- empty response as well as partial response by filling the missing partitions.
    *
-   * Warning: the returned partition status list is not ordered by partition Id.
+   * The returned partition status list is ordered by partition Id.
    */
   protected List<PartitionStatus> getPartitionStatuses(String topic, int partitionCount) {
     logger.debug("Start reading partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
-    List<PartitionStatus> result =
+    List<PartitionStatus> zkResult =
         HelixUtils.getChildren(partitionStatusAccessor, getOfflinePushStatusPath(topic), refreshAttemptsForZkReconnect,
             refreshIntervalForZkReconnectInMs);
-    logger.debug("Read " + result.size() + " partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
+    logger.debug("Read " + zkResult.size() + " partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
 
-    if (result.size() != partitionCount) {
-      logger.error("Number of partition status found in Zk does not match expected count" +
-          ", cluster=" + clusterName +
-          ", topic=" + topic +
-          ", foundPartitionCount=" + result.size() +
-          ", expectedPartitionCount=" + partitionCount);
-
-      if (result.isEmpty()) {
-        // Partition status list is empty means that partition status node hasn't been fully created yet.
-        // In this case, create placeholder statuses based on the partition count from OfflinePushStatus.
-        result = new ArrayList<>(partitionCount);
-        for (int i = 0; i < partitionCount; ++i) {
-          result.add(new PartitionStatus(i));
-        }
+    if (zkResult.isEmpty()) {
+      // Partition status list is empty means that partition status node hasn't been fully created yet.
+      // In this case, create placeholder statuses based on the partition count from OfflinePushStatus.
+      zkResult = new ArrayList<>(partitionCount);
+      for (int i = 0; i < partitionCount; ++i) {
+        zkResult.add(new PartitionStatus(i));
       }
+      return zkResult;
     }
 
-    return result;
+    // Sort the partition statues list by partition Id
+    Collections.sort(zkResult);
+    if (zkResult.size() == partitionCount) {
+      return zkResult;
+    } else {
+      List<PartitionStatus> fullResult = new ArrayList<>(partitionCount);
+      int zkListIndex = 0;
+      for (int resultIndex = 0; resultIndex < partitionCount; resultIndex++) {
+        if (zkListIndex < zkResult.size() && resultIndex == zkResult.get(zkListIndex).getPartitionId()) {
+          fullResult.add(zkResult.get(zkListIndex++));
+        } else {
+          fullResult.add(new PartitionStatus(resultIndex));
+        }
+      }
+      return fullResult;
+    }
   }
 
   private String getOfflinePushStatuesParentPath() {
@@ -325,7 +337,11 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       String topic = parseTopicFromPartitionStatusPath(dataPath);
       ReadOnlyPartitionStatus partitionStatus = ReadOnlyPartitionStatus.fromPartitionStatus((PartitionStatus) data);
       listenerManager.trigger(topic, listener -> {
-        listener.onPartitionStatusChange(topic, partitionStatus);
+        try {
+          listener.onPartitionStatusChange(topic, partitionStatus);
+        } catch (Exception e) {
+          logger.error("Error when invoking callback function for partition status change", e);
+        }
         return null;
       });
     }

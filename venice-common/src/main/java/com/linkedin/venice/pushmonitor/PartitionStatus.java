@@ -13,7 +13,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 /**
  * Class stores the status of one partition including all the replicas statuses in this partition.
  */
-public class PartitionStatus {
+public class PartitionStatus implements Comparable<PartitionStatus> {
   private final int partitionId;
 
   private Map<String, ReplicaStatus> replicaStatusMap;
@@ -108,5 +108,10 @@ public class PartitionStatus {
     int result = partitionId;
     result = 31 * result + replicaStatusMap.hashCode();
     return result;
+  }
+
+  @Override
+  public int compareTo(PartitionStatus o) {
+    return this.partitionId - o.partitionId;
   }
 }
