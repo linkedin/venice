@@ -3,6 +3,7 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -65,6 +66,20 @@ public class OfflinePushStatusTest {
       Assert.fail("Partition 1000 dose not exist.");
     } catch (IllegalArgumentException e) {
       //expected
+    }
+  }
+
+  @Test
+  public void testOfflinePushStatusIsComparable() {
+    final int partitionNum = 20;
+    List<PartitionStatus> partitionStatusList = new ArrayList<>(partitionNum);
+    // The initial list is not ordered by partitionId
+    for (int i = partitionNum - 1; i >= 0; i--) {
+      partitionStatusList.add(new PartitionStatus(i));
+    }
+    Collections.sort(partitionStatusList);
+    for (int i = 0; i < partitionNum; i++) {
+      Assert.assertEquals(partitionStatusList.get(i).getPartitionId(), i);
     }
   }
 

@@ -7,16 +7,22 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+
+import static com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor.*;
 
 
 public class HelixOfflinePushMonitorAccessorTest {
@@ -115,6 +121,39 @@ public class HelixOfflinePushMonitorAccessorTest {
     Assert.assertEquals(loadedPushes.size(), offlinePushCount);
     for (OfflinePushStatus loadedPush : loadedPushes) {
       Assert.assertEquals(loadedPush, pushesMap.get(loadedPush.getKafkaTopic()));
+    }
+  }
+
+  @Test
+  public void testGetPartitionStatusesWouldReturnCompletedSortedPartitionList() {
+    final int partitionNum = 20;
+    final int replicationFactor = 3;
+    final String topicName = "test_store_v1";
+    final String offlinePushStatusPath = HelixUtils.getHelixClusterZkPath(clusterName) + "/" + OFFLINE_PUSH_SUB_PATH + "/" + topicName;
+
+    ZkBaseDataAccessor<OfflinePushStatus> offlinePushStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
+    ZkBaseDataAccessor<PartitionStatus> partitionStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
+    // build the offline push status ZK path for the test topic
+    OfflinePushStatus completeOfflinePushStatus = new OfflinePushStatus(topicName, partitionNum, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    HelixUtils.create(offlinePushStatusAccessor, offlinePushStatusPath, completeOfflinePushStatus);
+
+    // build only part of the partitions: [0, 10, 2, 18]
+    int[] partialPartitionIds = {0, 10, 2, 18};
+    List<String> partitionPaths = new ArrayList<>(4);
+    List<PartitionStatus> partitionStatuses = new ArrayList<>(4);
+
+    for (int partitionId : partialPartitionIds) {
+      partitionPaths.add(offlinePushStatusPath + "/" + partitionId);
+      partitionStatuses.add(new PartitionStatus(partitionId));
+    }
+    HelixUtils.updateChildren(partitionStatusAccessor, partitionPaths, partitionStatuses);
+
+    // Try to get the partition status with the complete partition number
+    List<PartitionStatus> fullPartitionStatusList = accessor.getPartitionStatuses(topicName, partitionNum);
+    // Verify the partition status list contains all partitions and is ordered by partition Id
+    for (int i = 0; i < partitionNum; i++) {
+      Assert.assertEquals(fullPartitionStatusList.get(i).getPartitionId(), i);
     }
   }
 }

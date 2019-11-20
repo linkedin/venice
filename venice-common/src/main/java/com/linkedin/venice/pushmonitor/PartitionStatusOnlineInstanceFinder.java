@@ -68,7 +68,7 @@ public class PartitionStatusOnlineInstanceFinder
       logger.warn("Instance finder received partition status notification for topic unknown to RoutingDataRepository." +
           " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId());
     }
-    OfflinePushStatus.setPartitionStatusMap(statusMap, partitionStatus, kafkaTopic);
+    OfflinePushStatus.setPartitionStatusMap(statusMap, partitionStatus, kafkaTopic, routingDataRepository.getNumberOfPartitions(kafkaTopic));
   }
 
   /**
@@ -85,10 +85,10 @@ public class PartitionStatusOnlineInstanceFinder
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     String kafkaTopic = partitionAssignment.getTopic();
     Map<Integer, PartitionStatus> statusMap = topicToPartitionStatusMap.get(kafkaTopic);
-    if (statusMap == null || partitionId >= statusMap.size()) {
+    if (statusMap == null || partitionId >= partitionAssignment.getExpectedNumberOfPartitions()) {
       // have not received partition info related to this topic. Return empty list
       logger.warn("Unknown partition id, partitionId=" + partitionId +
-          ", partitionStatusCount=" + (statusMap == null ? 0 : statusMap.size()) +
+          ", partitionStatusCount=" + (statusMap == null ? 0 : partitionAssignment.getExpectedNumberOfPartitions()) +
           ", partitionCount=" + routingDataRepository.getNumberOfPartitions(kafkaTopic));
       return Collections.emptyList();
     }
@@ -105,7 +105,7 @@ public class PartitionStatusOnlineInstanceFinder
   @Override
   public List<ReplicaState> getReplicaStates(String kafkaTopic, int partitionId) {
     Map<Integer, PartitionStatus> partitionStatusMap = topicToPartitionStatusMap.get(kafkaTopic);
-    if (partitionStatusMap == null || partitionId >= partitionStatusMap.size()) {
+    if (partitionStatusMap == null || partitionId >= routingDataRepository.getNumberOfPartitions(kafkaTopic)) {
       logger.warn("Unable to find resource: " + kafkaTopic + " in the partition status list");
       throw new VeniceNoHelixResourceException(kafkaTopic);
     }

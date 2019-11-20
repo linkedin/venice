@@ -136,8 +136,8 @@ public class OfflinePushStatus {
    * @param partitionStatusMap a map from partition ID to partition status
    * @param newPartitionStatus the new partition status
    */
-  public static void setPartitionStatusMap(Map<Integer, PartitionStatus> partitionStatusMap, PartitionStatus newPartitionStatus, String kafkaTopic) {
-    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= partitionStatusMap.size()) {
+  public static void setPartitionStatusMap(Map<Integer, PartitionStatus> partitionStatusMap, PartitionStatus newPartitionStatus, String kafkaTopic, int numOfPartition) {
+    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= numOfPartition) {
       throw new IllegalArgumentException(
           "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
     }
