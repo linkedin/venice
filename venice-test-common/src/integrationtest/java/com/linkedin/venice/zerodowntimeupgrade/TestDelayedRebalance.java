@@ -9,15 +9,17 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-import java.util.HashMap;
-import java.util.concurrent.TimeUnit;
+
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.HashMap;
+import java.util.concurrent.TimeUnit;
 
-@Test(groups = "flaky")
+
+@Test
 public class TestDelayedRebalance {
   private VeniceClusterWrapper cluster;
   int partitionSize = 1000;
