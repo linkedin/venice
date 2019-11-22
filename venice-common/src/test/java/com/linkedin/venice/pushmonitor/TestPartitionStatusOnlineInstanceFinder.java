@@ -26,6 +26,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
 
   private String testTopic = "testTopic_v1";
   private int testPartition = 0;
+  private int partitionCount = 1;
 
   @Test
   public void testCanGetReadyToServeInstances() {
@@ -83,11 +84,12 @@ public class TestPartitionStatusOnlineInstanceFinder {
         new PartitionStatusOnlineInstanceFinder(metaDataRepo, offlinePushAccessor, routingDataRepo);
 
     Map<String, List<Instance>> instances = getMockInstances();
-    PartitionAssignment partitionAssignment = new PartitionAssignment(testTopic, 1);
+    PartitionAssignment partitionAssignment = new PartitionAssignment(testTopic, partitionCount);
     partitionAssignment.addPartition(new Partition(0, instances));
     Mockito.doReturn(partitionAssignment).when(routingDataRepo).getPartitionAssignments(testTopic);
     Mockito.doReturn(instances).when(routingDataRepo).getAllInstances(testTopic, 0);
     Mockito.doReturn(getMockPushStatus()).when(offlinePushAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    Mockito.doReturn(partitionCount).when(routingDataRepo).getNumberOfPartitions(testTopic);
 
     finder.refresh();
 
@@ -105,7 +107,7 @@ public class TestPartitionStatusOnlineInstanceFinder {
 
   private List<OfflinePushStatus> getMockPushStatus() {
     OfflinePushStatus offlinePushStatus = new OfflinePushStatus(testTopic,
-        1, 2, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+        partitionCount, 2, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     PartitionStatus partitionStatus = new PartitionStatus(0);
     ReplicaStatus host0 = new ReplicaStatus("host0_1");
     ReplicaStatus host1 = new ReplicaStatus("host1_1");
