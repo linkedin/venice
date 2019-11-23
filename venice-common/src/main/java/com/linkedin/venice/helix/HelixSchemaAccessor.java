@@ -94,21 +94,6 @@ public class HelixSchemaAccessor {
         refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
-  public void createKeySchemaPath(String storeName) {
-    HelixUtils.create(schemaAccessor, getKeySchemaParentPath(storeName), null);
-    logger.info("Set up key-schema path in ZK for store: " + storeName);
-  }
-
-  public void createValueSchemaPath(String storeName) {
-    HelixUtils.create(schemaAccessor, getValueSchemaParentPath(storeName), null);
-    logger.info("Set up value-schema path in ZK for store: " + storeName);
-  }
-
-  public void createDerivedSchemaPath(String storeName) {
-    HelixUtils.create(schemaAccessor, getDerivedSchemaParentPath(storeName), null);
-    logger.info("Set up derived-schema path in ZK for store: " + storeName);
-  }
-
   public void createKeySchema(String storeName, SchemaEntry schemaEntry) {
     HelixUtils.create(schemaAccessor, getKeySchemaPath(storeName), schemaEntry);
     logger.info("Set up key schema: " + schemaEntry.toString() + " for store: " + storeName);
@@ -123,10 +108,6 @@ public class HelixSchemaAccessor {
     HelixUtils.create(schemaAccessor, getDerivedSchemaPath(storeName,
         String.valueOf(derivedSchemaEntry.getValueSchemaId()), String.valueOf(derivedSchemaEntry.getId())), derivedSchemaEntry);
     logger.info("Added derived schema: " + derivedSchemaEntry.toString() + "for store: " + storeName);
-  }
-
-  public boolean isDerivedSchemaParentPathExisting(String storeName) {
-    return schemaAccessor.exists(getDerivedSchemaParentPath(storeName), AccessOption.PERSISTENT);
   }
 
   public void subscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {

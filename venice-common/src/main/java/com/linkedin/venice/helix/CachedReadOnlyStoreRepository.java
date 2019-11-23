@@ -221,8 +221,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     for (StoreDataChangedListener listener : listeners) {
       try {
         listener.handleStoreCreated(store);
-      } catch (Exception e) {
-        // Catch exception here to avoid interrupting the execution of subsequent listeners
+      } catch (Throwable e) {
         logger.error("Could not handle store creation event for store: " + store.getName(), e);
       }
     }
@@ -232,8 +231,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     for (StoreDataChangedListener listener : listeners) {
       try {
         listener.handleStoreDeleted(storeName);
-      } catch (Exception e) {
-        // Catch exception here to avoid interrupting the execution of subsequent listeners
+      } catch (Throwable e) {
         logger.error("Could not handle store deletion event for store: " + storeName, e);
       }
     }
@@ -243,8 +241,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     for (StoreDataChangedListener listener : listeners) {
       try {
         listener.handleStoreChanged(store);
-      } catch (Exception e) {
-        // Catch exception here to avoid interrupting the execution of subsequent listeners
+      } catch (Throwable e) {
         logger.error("Could not handle store updating event for store: " + store.getName(), e);
       }
     }
