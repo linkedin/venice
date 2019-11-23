@@ -70,20 +70,6 @@ import java.util.Collection;
       HelixAdapterSerializer adapter, String clusterName) {
     this.storeRepository = storeRepository;
     this.accessor = new HelixSchemaAccessor(zkClient, adapter, clusterName);
-
-    storeRepository.registerStoreDataChangedListener(this);
-  }
-
-  /**
-   * Create derived schema parent path if it's not existing. This is a migration
-   * method that converts all existing store to be "write-computable". We only
-   * need to create once and the method can be removed later when all of the stores
-   * are all migrated.
-   */
-  private void createDerivedSchemaParentPathIfNotExisting(String storeName) {
-    if (!accessor.isDerivedSchemaParentPathExisting(storeName)) {
-      accessor.createDerivedSchemaPath(storeName);
-    }
   }
 
   /**
@@ -426,37 +412,8 @@ import java.util.Collection;
     return derivedSchemaEntryMap;
   }
 
-  /**
-   * Create schema parent node when store node is firstly created in Zookeeper.
-   */
-  @Override
-  public void handleStoreCreated(Store store) {
-    // Create key-schema, value-schema and derived-schema parent path
-    String storeName = store.getName();
-    accessor.createKeySchemaPath(storeName);
-    accessor.createValueSchemaPath(storeName);
-    accessor.createDerivedSchemaPath(storeName);
-  }
-
-  /**
-   * Do nothing for store deletion, since it will recursively remove all the related schema.
-   */
-  @Override
-  public void handleStoreDeleted(String storeName) {
-  }
-
-  @Override
-  public void handleStoreChanged(Store store) {
-  }
-
   @Override
   public void refresh() {
-    //Check and create derived schema parent path for all existing stores
-    //Notice: We should make sure that store metadata repo is refreshed
-    //prior to schema repo. Otherwise, there woould be a chance to lose
-    //some of stores.
-    //TODO: this is more like a migration method. Remove this method after all stores have derived schema path.
-    storeRepository.getAllStores().forEach(store -> createDerivedSchemaParentPathIfNotExisting(store.getName()));
   }
 
   @Override

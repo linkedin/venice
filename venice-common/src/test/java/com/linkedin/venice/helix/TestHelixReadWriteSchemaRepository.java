@@ -68,10 +68,6 @@ public class TestHelixReadWriteSchemaRepository {
     // Create store first
     String storeName = "test_store1";
     createStore(storeName);
-    String keySchemaFolderPath = accessor.getKeySchemaParentPath(storeName);
-    String valueSchemaFolderPath = accessor.getValueSchemaParentPath(storeName);
-    Assert.assertTrue(zkClient.exists(keySchemaFolderPath));
-    Assert.assertTrue(zkClient.exists(valueSchemaFolderPath));
     // Set key schema
     String keySchemaStr = "\"string\"";
     SchemaEntry keySchema = schemaRepo.initKeySchema(storeName, keySchemaStr);

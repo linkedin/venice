@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -37,7 +38,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  * We need to reach out Helix team for this issue since it will impact Helix cache as well.
  *
  */
-public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
+public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, StoreDataChangedListener {
   private final Logger logger = Logger.getLogger(HelixReadOnlySchemaRepository.class);
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;

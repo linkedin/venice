@@ -8,7 +8,7 @@ import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 
 
-public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChangedListener {
+public interface ReadOnlySchemaRepository extends VeniceResource {
   /**
    * Get key schema for the given store.
    */
