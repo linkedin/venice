@@ -16,6 +16,7 @@ public class SecurityStats extends AbstractVeniceStats {
   private final Sensor sslErrorCount;
   private final Sensor sslSuccessCount;
   private final Sensor sslLiveConnectionCount;
+  private final Sensor nonSslConnectionCount;
 
   public SecurityStats(MetricsRepository repository, String name, Supplier<Integer> secureConnectionCountSupplier) {
     super(repository, name);
@@ -23,6 +24,7 @@ public class SecurityStats extends AbstractVeniceStats {
     this.sslErrorCount = registerSensor("ssl_error", new Count());
     this.sslSuccessCount = registerSensor("ssl_success", new Count());
     this.sslLiveConnectionCount = registerSensor("ssl_connection_count", new Avg(), new Max(), new Min());
+    this.nonSslConnectionCount = registerSensor("non_ssl_request_count", new Avg(), new Max());
   }
 
   public void recordSslError() {
@@ -33,6 +35,13 @@ public class SecurityStats extends AbstractVeniceStats {
   public void recordSslSuccess() {
     this.sslSuccessCount.record();
     recordLiveConnectionCount();
+  }
+
+  /**
+   * Record all HTTP requests received in routers.
+   */
+  public void recordNonSslRequest() {
+    this.nonSslConnectionCount.record();
   }
 
   /**
