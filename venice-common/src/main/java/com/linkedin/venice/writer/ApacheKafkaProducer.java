@@ -27,6 +27,7 @@ import org.apache.kafka.common.Metric;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.config.SslConfigs;
+import org.apache.kafka.common.metrics.Measurable;
 import org.apache.log4j.Logger;
 
 
@@ -193,10 +194,18 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, Double> getProducerMetrics() {
+  public Map<String, Double> getMeasurableProducerMetrics() {
     Map<String, Double> extractedMetrics = new HashMap<>();
     for (Map.Entry<MetricName, ? extends Metric> entry : producer.metrics().entrySet()) {
-      extractedMetrics.put(entry.getKey().name(), entry.getValue().value());
+      try {
+        Object value = entry.getValue().metricValue();
+        if (value instanceof Double) {
+          extractedMetrics.put(entry.getKey().name(), (Double) value);
+        }
+      } catch (Exception e) {
+        LOGGER.info("Caught exception: " + e.getMessage() + " when attempting to get producer metrics. "
+            + "Incomplete metrics might be returned.");
+      }
     }
     return extractedMetrics;
   }

@@ -14,6 +14,6 @@ public interface KafkaProducerWrapper {
   Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback);
   void flush();
   void close(int closeTimeOutMs);
-  Map<String, Double> getProducerMetrics();
+  Map<String, Double> getMeasurableProducerMetrics();
   String getBrokerLeaderHostname(String topic, int partition);
 }

@@ -356,8 +356,8 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   }
 
   @Override
-  public Map<String, Double> getProducerMetrics() {
-    return producer.getProducerMetrics();
+  public Map<String, Double> getMeasurableProducerMetrics() {
+    return producer.getMeasurableProducerMetrics();
   }
 
   @Override

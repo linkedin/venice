@@ -78,7 +78,7 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, Double> getProducerMetrics() {
+  public Map<String, Double> getMeasurableProducerMetrics() {
     return Collections.emptyMap();
   }
 
