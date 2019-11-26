@@ -305,7 +305,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   }
 
   private String getProducerMetricsPrettyPrint() {
-    return getProducerMetricsPrettyPrint(veniceWriter.getProducerMetrics());
+    return getProducerMetricsPrettyPrint(veniceWriter.getMeasurableProducerMetrics());
   }
 
   private String getProducerMetricsPrettyPrint(Map<String, Double> producerMetrics) {
@@ -390,7 +390,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       return;
     }
 
-    Map<String, Double> producerMetrics = veniceWriter.getProducerMetrics();
+    Map<String, Double> producerMetrics = veniceWriter.getMeasurableProducerMetrics();
 
     // We already checked that we're dealing with only one partition, so this is safe
     int partition = partitionLeaderMap.keySet().iterator().next();
@@ -419,10 +419,15 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     // Other producer metrics, as configured
     kafkaMetricsToReportAsMrCounters.forEach(metricName -> {
       if (producerMetrics.containsKey(metricName)) {
-        double value = producerMetrics.get(metricName);
-        long longValue = Math.round(value);
-        kafkaBrokerCounter(reporter, metricName, newLeader, longValue);
-        kafkaBrokerCounter(reporter, metricName, "all brokers", longValue);
+        try {
+          Double value = producerMetrics.get(metricName);
+          long longValue = Math.round(value);
+          kafkaBrokerCounter(reporter, metricName, newLeader, longValue);
+          kafkaBrokerCounter(reporter, metricName, "all brokers", longValue);
+        } catch (Exception e) {
+          LOGGER.warn("Failed to report kafka metric: " + metricName + " as MR counters because of exception: "
+              + e.getMessage());
+        }
       }
     });
 

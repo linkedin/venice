@@ -40,7 +40,7 @@ public abstract class AbstractVeniceWriter <K, V, U> implements Closeable {
 
   public abstract void flush();
 
-  public Map<String, Double> getProducerMetrics() {
+  public Map<String, Double> getMeasurableProducerMetrics() {
     return Collections.emptyMap();
   }
 

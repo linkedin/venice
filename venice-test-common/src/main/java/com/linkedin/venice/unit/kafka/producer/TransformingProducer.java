@@ -1,6 +1,5 @@
 package com.linkedin.venice.unit.kafka.producer;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
@@ -48,8 +47,8 @@ public class TransformingProducer implements KafkaProducerWrapper {
   }
 
   @Override
-  public Map<String, Double> getProducerMetrics() {
-    return baseProducer.getProducerMetrics();
+  public Map<String, Double> getMeasurableProducerMetrics() {
+    return baseProducer.getMeasurableProducerMetrics();
   }
 
   @Override
