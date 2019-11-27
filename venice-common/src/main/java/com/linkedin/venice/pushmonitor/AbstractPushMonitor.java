@@ -27,7 +27,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
-import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.log4j.Logger;
 
@@ -98,6 +97,19 @@ public abstract class AbstractPushMonitor
   public void loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) {
     pushMonitorWriteLock.lock();
     try {
+
+      // Subscribe to changes first
+      List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
+      for(OfflinePushStatus offlinePushStatus : offlinePushStatusList) {
+        routingDataRepository.subscribeRoutingDataChange(offlinePushStatus.getKafkaTopic(), this);
+
+        // Now that we're subscribed, update the view of this data.  Once we move to L/F, we'll move this logic into the parameterless
+        // version of this function above.  But until then we put it here.  We refresh this data after subscribing to be sure that we're
+        // going to get ALL the change events and not lose any in between reading the data and subscribing to changes in the data.
+        refreshedOfflinePushStatusList.add(offlinePushAccessor.getOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus.getKafkaTopic()));
+      }
+      offlinePushStatusList = refreshedOfflinePushStatusList;
+
       logger.info("Start loading pushes for cluster: " + clusterName);
       for (OfflinePushStatus offlinePushStatus : offlinePushStatusList) {
         getTopicToPushMap().put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
@@ -108,7 +120,6 @@ public abstract class AbstractPushMonitor
         if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
           String topic = offlinePushStatus.getKafkaTopic();
           if (routingDataRepository.containsKafkaTopic(topic)) {
-            routingDataRepository.subscribeRoutingDataChange(topic, this);
             Pair<ExecutionStatus, Optional<String>> status = checkPushStatus(offlinePushStatus, routingDataRepository.getPartitionAssignments(topic));
             if (status.getFirst().isTerminal()) {
               logger.info(
@@ -117,14 +128,8 @@ public abstract class AbstractPushMonitor
             }
           } else {
             // In any case, we found the offline push status is STARTED, but the related version could not be found.
-            // We should collect this legacy offline push status.
-            logger.info("Found a legacy offline pushes: " + offlinePushStatus.getKafkaTopic());
-            try {
-              getTopicToPushMap().remove(topic);
-              getOfflinePushAccessor().deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
-            } catch (Exception e) {
-              logger.warn("Could not delete legacy push status: " + offlinePushStatus.getKafkaTopic(), e);
-            }
+            // We only log it as cleaning up here was found to prematurely delete push jobs during controller failover
+            logger.info("Found legacy offline push: " + offlinePushStatus.getKafkaTopic());
           }
         }
       }

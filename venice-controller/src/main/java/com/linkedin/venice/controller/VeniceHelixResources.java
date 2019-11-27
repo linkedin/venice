@@ -130,7 +130,6 @@ public class VeniceHelixResources implements VeniceResource {
     routingDataRepository.refresh();
     pushMonitor.loadAllPushes();
     routersClusterManager.refresh();
-    repairStoreConfigs();
   }
 
   @Override
@@ -200,24 +199,6 @@ public class VeniceHelixResources implements VeniceResource {
 
   public void unlockForShutdown() {
     veniceHelixResourceWriteLock.unlock();
-  }
-
-  /**
-   * As the old store has not been added into store config map. So we repair the mapping here.
-   * // TODO this code should be removed after we do a successful deployment and repair all stores.
-   */
-  private void repairStoreConfigs() {
-    metadataRepository.lock();
-    try {
-      metadataRepository.getAllStores()
-          .stream()
-          .filter(store -> !storeConfigAccessor.containsConfig(store.getName()))
-          .forEach(store -> {
-            storeConfigAccessor.createConfig(store.getName(), config.getClusterName());
-          });
-    } finally {
-      metadataRepository.unLock();
-    }
   }
 
   private SafeHelixManager getSpectatorManager(String clusterName, String zkAddress) {
