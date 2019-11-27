@@ -140,7 +140,7 @@ public class ControllerTransport implements AutoCloseable {
     ContentType contentType = ContentType.getOrDefault(response.getEntity());
     if (!contentType.getMimeType().equals(ContentType.APPLICATION_JSON.getMimeType())) {
       logger.warn("Bad controller response, request=" + request + ", response=" + response + ", content=" + content);
-      throw new VeniceHttpException(statusCode, "Controller returned unsupported content-type: " + contentType);
+      throw new VeniceHttpException(statusCode, "Controller returned unsupported content-type: " + contentType + " with content: " + content);
     }
 
     T result;

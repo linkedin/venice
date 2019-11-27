@@ -107,7 +107,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
 
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming leader from standby for " + clusterName);
-      if (controller == null) {
+      if (controller == null || !controller.isConnected()) {
         controller = new SafeHelixManager(
             HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers()));
         controller.connect();
@@ -117,6 +117,9 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
         resources.refresh();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {
+        // TODO: It seems like this should throw an exception.  Otherwise the case would be you'd have an instance be leader
+        // in Helix that hadn't subscribed to any resource.  This could happen if a state transition thread timed out and ERROR'd
+        // and the partition was 'reset' instead of bouncing the process.
         logger.error("controller already exists:" + controller.getInstanceName() + " for " + clusterName);
       }
     });

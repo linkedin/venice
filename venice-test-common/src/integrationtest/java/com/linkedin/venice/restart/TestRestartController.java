@@ -10,10 +10,13 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
@@ -52,7 +55,7 @@ public class TestRestartController {
     int versionNum = response.getVersion();
 
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
-    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getRandomRouterURL());
+    ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
     Assert.assertEquals(
         controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
 
@@ -68,15 +71,7 @@ public class TestRestartController {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // After stopping origin master, the new master could handle the push status report correctly.
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
-      JobStatusQueryResponse jobStatusQueryResponse =
-          controllerClient.queryJobStatus(topicName);
-      if (jobStatusQueryResponse.getError() != null) {
-        return false;
-      }
-      return jobStatusQueryResponse.getStatus().equals(ExecutionStatus.COMPLETED.toString());
-    });
-
+    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, testTimeOutMS, TimeUnit.MILLISECONDS, Optional.empty());
     response = createNewVersionWithRetry(storeName, dataSize);
 
     String newTopicName = response.getKafkaTopic();
@@ -88,6 +83,20 @@ public class TestRestartController {
 
     // restart controller
     cluster.restartVeniceController(port);
+
+    newTopicName = response.getKafkaTopic();
+    // As we have not push any data, the job status should be hanged on STARTED.
+    Assert.assertEquals(
+        controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
+    Assert.assertFalse(response.isError());
+    Assert.assertEquals(response.getVersion(), versionNum + 1);
+
+    // Finish the push and verify that it completes under the newly elected controller.
+    veniceWriter = cluster.getVeniceWriter(newTopicName);
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    TestUtils.waitForNonDeterministicPushCompletion(newTopicName, controllerClient, testTimeOutMS, TimeUnit.MILLISECONDS, Optional.empty());
+
+    // Check it one more time for good measure with a third and final push
     response = createNewVersionWithRetry(storeName, dataSize);
 
     newTopicName = response.getKafkaTopic();
@@ -96,6 +105,11 @@ public class TestRestartController {
         controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum + 2);
+
+    // Broadcast end of push and verify it completes
+    veniceWriter = cluster.getVeniceWriter(newTopicName);
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    TestUtils.waitForNonDeterministicPushCompletion(newTopicName, controllerClient, testTimeOutMS, TimeUnit.MILLISECONDS, Optional.empty());
   }
 
   private VersionCreationResponse createNewVersionWithRetry(String storeName, int dataSize) {
