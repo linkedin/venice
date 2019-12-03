@@ -20,7 +20,6 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Time;
@@ -28,7 +27,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -36,6 +34,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -53,9 +53,15 @@ import org.apache.log4j.Logger;
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
+
+  private static class AdminErrorInfo {
+    long offset;
+    Exception exception;
+  }
+
   private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " [Topic: %s] ";
   private static final long UNASSIGNED_VALUE = -1L;
-  public static int READ_CYCLE_DELAY_MS = 1000;
+  private static final int READ_CYCLE_DELAY_MS = 1000;
   public static int IGNORED_CURRENT_VERSION = -1;
 
   private final Logger logger;
@@ -85,8 +91,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * A {@link Map} of stores to admin operations belonging to each store. The corresponding kafka offset of each admin
    * operation is also attached as the first element of the {@link Pair}.
    */
-  private Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
-  private Map<String, Long> problematicStores;
+  private final Map<String, Queue<AdminOperationWrapper>> storeAdminOperationsMapWithOffset;
+  /**
+   * Map of store names that have encountered some sort of exception during consumption to {@link AdminErrorInfo}
+   * that has the details about the exception and the offset of the problematic admin message.
+   */
+  private final ConcurrentHashMap<String, AdminErrorInfo> problematicStores;
   private Queue<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> undelegatedRecords;
 
 
@@ -111,7 +121,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * The corresponding offset to {@code lastDelegatedExecutionId}
    */
   private long lastOffset = UNASSIGNED_VALUE;
-  private Map<String, Long> lastSucceededExecutionIdMap;
+  /**
+   * Map of store names to their last succeeded execution id
+   */
+  private volatile ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
 
   public AdminConsumptionTask(String clusterName,
       KafkaConsumerWrapper consumer,
@@ -142,8 +155,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.executionIdAccessor = executionIdAccessor;
     this.processingCycleTimeoutInMs = processingCycleTimeoutInMs;
 
-    this.storeAdminOperationsMapWithOffset = new HashMap<>();
-    this.problematicStores = new HashMap<>();
+    this.storeAdminOperationsMapWithOffset = new ConcurrentHashMap<>();
+    this.problematicStores = new ConcurrentHashMap<>();
     this.executorService = new ThreadPoolExecutor(1, maxWorkerThreadPoolSize, 60, TimeUnit.SECONDS,
         new LinkedBlockingQueue<>(), new DaemonThreadFactory("Venice-Admin-Execution-Task"));
     this.undelegatedRecords = new LinkedList<>();
@@ -282,7 +295,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @throws InterruptedException
    */
   private void executeMessagesAndCollectResults() throws InterruptedException {
-    lastSucceededExecutionIdMap = executionIdAccessor.getLastSucceededExecutionIdMap(clusterName);
+    lastSucceededExecutionIdMap = new ConcurrentHashMap<>(executionIdAccessor.getLastSucceededExecutionIdMap(clusterName));
     List<Callable<Void>> tasks = new ArrayList<>();
     List<String> stores = new ArrayList<>();
     // Create a task for each store that has admin messages pending to be processed.
@@ -291,9 +304,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         if (checkOffsetToSkip(entry.getValue().peek().getOffset())) {
           entry.getValue().poll();
         }
-        tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(),
-            lastSucceededExecutionIdMap.getOrDefault(entry.getKey(), lastPersistedExecutionId), entry.getValue(), admin,
-            executionIdAccessor, isParentController, stats));
+        tasks.add(new AdminExecutionTask(logger, clusterName, entry.getKey(), lastSucceededExecutionIdMap,
+            lastPersistedExecutionId, entry.getValue(), admin, executionIdAccessor, isParentController, stats));
         stores.add(entry.getKey());
       }
     }
@@ -309,22 +321,28 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         for (int i = 0; i < results.size(); i++) {
           String storeName = stores.get(i);
           Future<Void> result = results.get(i);
-          if (result.isCancelled()) {
-            if (lastSucceededExecutionIdMap.get(storeName).equals(newLastSucceededExecutionIdMap.get(storeName))) {
-              // only mark the store problematic if it didn't make any progress.
-              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset());
-              logger.warn("Could not finish processing admin operations for store " + storeName + " in time");
-              pendingAdminMessagesCount += storeAdminOperationsMapWithOffset.get(storeName).size();
-              storesWithPendingAdminMessagesCount++;
-            }
-          } else {
-            try {
-              result.get();
-              problematicStores.remove(storeName);
-            } catch (ExecutionException e) {
-              problematicStores.put(storeName, storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset());
-              pendingAdminMessagesCount += storeAdminOperationsMapWithOffset.get(storeName).size();
-              storesWithPendingAdminMessagesCount++;
+          try {
+            result.get();
+            problematicStores.remove(storeName);
+          } catch (ExecutionException | CancellationException e) {
+            AdminErrorInfo errorInfo = new AdminErrorInfo();
+            int perStorePendingMessagesCount = storeAdminOperationsMapWithOffset.get(storeName).size();
+            pendingAdminMessagesCount += perStorePendingMessagesCount;
+            storesWithPendingAdminMessagesCount += perStorePendingMessagesCount > 0 ? 1 : 0;
+            if (e instanceof CancellationException) {
+              if (lastSucceededExecutionIdMap.get(storeName).equals(newLastSucceededExecutionIdMap.get(storeName)) &&
+                  perStorePendingMessagesCount > 0) {
+                // only mark the store problematic if no progress is made and there are still message(s) in the queue.
+                errorInfo.exception =
+                    new VeniceException("Could not finish processing admin message for store " + storeName + " in time");
+                errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
+                problematicStores.put(storeName, errorInfo);
+                logger.warn(errorInfo.exception.getMessage());
+              }
+            } else {
+              errorInfo.exception = e;
+              errorInfo.offset = storeAdminOperationsMapWithOffset.get(storeName).peek().getOffset();
+              problematicStores.put(storeName, errorInfo);
             }
           }
         }
@@ -344,9 +362,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           // 2. Find and set the smallest failing offset amongst the problematic stores.
           long smallestOffset = UNASSIGNED_VALUE;
 
-          for (Map.Entry<String, Long> problematicStore : problematicStores.entrySet()) {
-            if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue() < smallestOffset) {
-              smallestOffset = problematicStore.getValue();
+          for (Map.Entry<String, AdminErrorInfo> problematicStore : problematicStores.entrySet()) {
+            if (smallestOffset == UNASSIGNED_VALUE || problematicStore.getValue().offset < smallestOffset) {
+              smallestOffset = problematicStore.getValue().offset;
             }
           }
           // Ensure failingOffset from the delegateMessage is not overwritten.
@@ -534,8 +552,24 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return skip;
   }
 
-  long getLastSucceededExecutionId() {
+  Long getLastSucceededExecutionId() {
     return lastPersistedExecutionId;
+  }
+
+  Long getLastSucceededExecutionId(String storeName) {
+    if (lastSucceededExecutionIdMap != null) {
+      return lastSucceededExecutionIdMap.get(storeName);
+    } else {
+      return null;
+    }
+  }
+
+  Exception getLastExceptionForStore(String storeName) {
+    if (problematicStores.containsKey(storeName)) {
+      return problematicStores.get(storeName).exception;
+    } else {
+      return null;
+    }
   }
 
   long getFailingOffset() {

@@ -91,13 +91,21 @@ public class AdminConsumerService extends AbstractVeniceService {
     }
   }
 
-  public long getLastSucceedExecutionId(String clusterName) {
+  public Long getLastSucceedExecutionId(String clusterName) {
     if (clusterName.equals(config.getClusterName())) {
       return consumerTask.getLastSucceededExecutionId();
     } else {
-      throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
-          + ".  Cannot get the last succeed execution Id for cluster " + clusterName);
+      throw new VeniceException("This AdminConsumptionService is for cluster: " + config.getClusterName()
+          + ".  Cannot get the last succeed execution Id for cluster: " + clusterName);
     }
+  }
+
+  public Long getLastSucceededExecutionId(String storeName) {
+    return consumerTask == null ? null : consumerTask.getLastSucceededExecutionId(storeName);
+  }
+
+  public Exception getLastExceptionForStore(String storeName) {
+    return consumerTask == null ? null : consumerTask.getLastExceptionForStore(storeName);
   }
 
   public long getFailingOffset() {
