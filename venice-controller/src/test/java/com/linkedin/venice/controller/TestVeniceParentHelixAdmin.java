@@ -1292,6 +1292,31 @@ public class TestVeniceParentHelixAdmin {
     return Schema.parse(schemaStr);
   }
 
+  private Schema generateSuperSetSchemaNewField() {
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
+        " \"type\": \"record\",\n" +
+        " \"name\": \"User\",\n" +
+        " \"fields\": [\n" +
+        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      {\n" +
+        "       \"name\": \"value\",\n" +
+        "       \"type\": {\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"ValueRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"},\n" +
+        "{\"name\": \"favorite_company\", \"type\": \"string\", \"default\": \"linkedin\"},\n" +
+        "{\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
+
+    schemaStr +=
+        "           ]\n" +
+            "        }\n" +
+            "      }\n" +
+            " ]\n" +
+            "}";
+    return Schema.parse(schemaStr);
+  }
+
   @Test(dataProvider = "isControllerSslEnabled")
   public void testSuperSetSchemaGen(boolean isControllerSslEnabled) throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
@@ -1328,6 +1353,12 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(schemaResponse.getSchemas().length,3);
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
+
+    valueSchema = generateSuperSetSchemaNewField();
+    controllerClient.addValueSchema(storeName, valueSchema.toString());
+
+    schemaResponse = controllerClient.getAllValueSchema(storeName);
+    Assert.assertEquals(schemaResponse.getSchemas().length,4);
 
     controllerWrapper.close();
     childControllerWrapper.close();
