@@ -13,7 +13,7 @@ import org.apache.log4j.Logger;
  */
 public class VeniceLock {
   protected static final Logger LOGGER = Logger.getLogger(VeniceLock.class);
-  private static final long DEFAULT_LOCK_OPERATION_REPORTING_THRESHOLD_MS = 15;
+  private static final long DEFAULT_LOCK_OPERATION_REPORTING_THRESHOLD_MS = 1000;
   private final Lock lock;
   private final String lockDescription;
   private final long reportingThresholdMs;

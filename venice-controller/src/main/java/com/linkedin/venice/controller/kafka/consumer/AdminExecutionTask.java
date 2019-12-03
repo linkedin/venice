@@ -35,6 +35,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask.*;
@@ -57,14 +58,15 @@ public class AdminExecutionTask implements Callable<Void> {
   private final ExecutionIdAccessor executionIdAccessor;
   private final boolean isParentController;
   private final AdminConsumptionStats stats;
-
-  private long lastSucceededExecutionId;
+  private final ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap;
+  private final long lastPersistedExecutionId;
 
   AdminExecutionTask(
       Logger logger,
       String clusterName,
       String storeName,
-      long lastSucceededExecutionId,
+      ConcurrentHashMap<String, Long> lastSucceededExecutionIdMap,
+      long lastPersistedExecutionId,
       Queue<AdminOperationWrapper> internalTopic,
       VeniceHelixAdmin admin,
       ExecutionIdAccessor executionIdAccessor,
@@ -73,7 +75,8 @@ public class AdminExecutionTask implements Callable<Void> {
     this.logger = logger;
     this.clusterName = clusterName;
     this.storeName = storeName;
-    this.lastSucceededExecutionId = lastSucceededExecutionId;
+    this.lastSucceededExecutionIdMap = lastSucceededExecutionIdMap;
+    this.lastPersistedExecutionId = lastPersistedExecutionId;
     this.internalTopic = internalTopic;
     this.admin = admin;
     this.executionIdAccessor = executionIdAccessor;
@@ -122,6 +125,7 @@ public class AdminExecutionTask implements Callable<Void> {
   }
 
   private void processMessage(AdminOperation adminOperation) {
+    long lastSucceededExecutionId = lastSucceededExecutionIdMap.getOrDefault(storeName, lastPersistedExecutionId);
     if (adminOperation.executionId <= lastSucceededExecutionId) {
       /**
        * Since {@link AdminOffsetManager} will only keep the latest several
@@ -195,8 +199,8 @@ public class AdminExecutionTask implements Callable<Void> {
       default:
         throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
     }
-    lastSucceededExecutionId = adminOperation.executionId;
-    executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, lastSucceededExecutionId);
+    executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
+    lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
   }
 
   private void handleStoreCreation(StoreCreation message) {

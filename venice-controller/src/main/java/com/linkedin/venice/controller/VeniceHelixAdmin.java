@@ -104,6 +104,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.I0Itec.zkclient.serialize.ZkSerializer;
@@ -156,9 +157,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String controllerName;
     private final String kafkaBootstrapServers;
     private final String kafkaSSLBootstrapServers;
-    private final Map<String, AdminConsumerService> adminConsumerServices = new HashMap<>();
-    // Track last exception when necessary
-    private Map<String, Exception> lastExceptionMap = new VeniceConcurrentHashMap<>();
+    private final Map<String, AdminConsumerService> adminConsumerServices = new ConcurrentHashMap<>();
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     public static final long CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS = 1000*300l; // 5min
@@ -865,6 +864,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
+        if (!Store.isValidStoreName(storeName)) {
+            throw new VeniceException("Invalid store name " + storeName + ". Only letters, numbers, underscore or dash");
+        }
         checkControllerMastership(clusterName);
         checkStoreNameConflict(storeName);
 
@@ -3163,7 +3165,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public long getLastSucceedExecutionId(String clusterName) {
+    public Long getLastSucceedExecutionId(String clusterName) {
         if (adminConsumerServices.containsKey(clusterName)) {
             return adminConsumerServices.get(clusterName).getLastSucceedExecutionId(clusterName);
         } else {
@@ -3173,14 +3175,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    @Override
-    public synchronized void setLastException(String clusterName, Exception e) {
-        lastExceptionMap.put(clusterName, e);
+    /**
+     * Get last succeeded execution id for a given store.
+     * @param clusterName
+     * @param storeName
+     * @return the last succeeded execution id or null if the cluster/store is invalid or the admin consumer service
+     *         for the given cluster is not up and running yet.
+     */
+    public Long getLastSucceededExecutionId(String clusterName, String storeName) {
+        return adminConsumerServices.containsKey(clusterName)
+            ? adminConsumerServices.get(clusterName).getLastSucceededExecutionId(storeName) : null;
     }
 
-    @Override
-    public synchronized Exception getLastException(String clusterName) {
-        return lastExceptionMap.get(clusterName);
+    public Exception getLastExceptionForStore(String clusterName, String storeName) {
+        return adminConsumerServices.containsKey(clusterName)
+            ? adminConsumerServices.get(clusterName).getLastExceptionForStore(storeName) : null;
     }
 
     @Override
