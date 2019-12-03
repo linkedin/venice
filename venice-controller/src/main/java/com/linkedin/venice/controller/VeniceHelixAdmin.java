@@ -2618,13 +2618,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public Schema getLatestValueSchema(String clusterName, Store store) {
         ReadWriteSchemaRepository schemaRepository = getVeniceHelixResource(clusterName).getSchemaRepository();
-        SchemaEntry existingSchema;
         // If already a superset schema exists, try to generate the new superset from that and the input value schema
-        if (store.getLatestSuperSetValueSchemaId() != -1) {
-            existingSchema = schemaRepository.getValueSchema(store.getName(), store.getLatestSuperSetValueSchemaId());
-        } else {
-            existingSchema = schemaRepository.getLatestValueSchema(store.getName());
-        }
+        SchemaEntry existingSchema = schemaRepository.getLatestValueSchema(store.getName());
+
         return existingSchema == null ? null : existingSchema.getSchema();
     }
 

@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -238,6 +239,7 @@ public class SchemaRoutes extends AbstractRoute {
                 .stream()
                 .sorted(Comparator.comparingInt(SchemaEntry::getId))
                 .collect(Collectors.toList());
+        Store store = admin.getStore(responseObject.getCluster(), responseObject.getName());
 
         int schemaNum = valueSchemaEntries.size();
         MultiSchemaResponse.Schema[] schemas = new MultiSchemaResponse.Schema[schemaNum];
@@ -248,6 +250,7 @@ public class SchemaRoutes extends AbstractRoute {
           schemas[cur].setSchemaStr(entry.getSchema().toString());
           ++cur;
         }
+        responseObject.setSuperSetSchemaId(store.getLatestSuperSetValueSchemaId());
         responseObject.setSchemas(schemas);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());

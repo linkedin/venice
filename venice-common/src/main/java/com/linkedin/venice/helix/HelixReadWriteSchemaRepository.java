@@ -196,6 +196,14 @@ import java.util.Collection;
   @Override
   public SchemaEntry getLatestValueSchema(String storeName) {
     Collection<SchemaEntry>  valueSchemas = getValueSchemas(storeName);
+
+    Store store = storeRepository.getStore(storeName);
+
+    if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {
+      int latestValueSchemaId = store.getLatestSuperSetValueSchemaId();
+      return accessor.getValueSchema(storeName, String.valueOf(latestValueSchemaId));
+    }
+
     int maxValueSchemaId = -1;
     SchemaEntry latestSchema = null;
     for (SchemaEntry schema : valueSchemas) {
