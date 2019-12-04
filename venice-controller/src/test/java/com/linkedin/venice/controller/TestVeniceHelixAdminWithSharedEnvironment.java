@@ -905,24 +905,6 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         largestUsedVersionNumber + 1);
   }
 
-  // Test the scenario that some old store exists before we introduce the store config mapping feature.
-  // So they do not exist in the mapping, but once we refresh the helix resources, this issue should be repaired.
-  @Test
-  public void testRepairStoreConfigMapping() {
-    HelixReadWriteStoreRepository repo = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
-    int storeCount = 3;
-    for (int i = 0; i < storeCount; i++) {
-      repo.addStore(TestUtils.createTestStore("testRepair" + i, "test", System.currentTimeMillis()));
-      Assert.assertFalse(veniceAdmin.getStoreConfigAccessor().containsConfig("testRepair" + i), "Store should not exist in the mapping.");
-    }
-
-    veniceAdmin.getVeniceHelixResource(clusterName).clear();
-    veniceAdmin.getVeniceHelixResource(clusterName).refresh();
-    for (int i = 0; i < storeCount; i++) {
-      Assert.assertEquals(veniceAdmin.getStoreConfigAccessor().getStoreConfig("testRepair"+i).getCluster(), clusterName, "Mapping should be repaired by refresh.");
-    }
-  }
-
   @Test
   public void testChunkingEnabled() {
     String storeName = TestUtils.getUniqueString("test_store");

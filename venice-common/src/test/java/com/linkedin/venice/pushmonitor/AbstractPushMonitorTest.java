@@ -15,6 +15,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -100,25 +101,6 @@ public abstract class AbstractPushMonitorTest {
   }
 
   @Test
-  public void testLoadLegacyPushes() {
-    String topic = getTopic();
-    List<OfflinePushStatus> statusList = new ArrayList<>();
-    OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFactor,
-        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
-    pushStatus.setCurrentStatus(ExecutionStatus.STARTED);
-    statusList.add(pushStatus);
-    doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
-    doReturn(false).when(mockRoutingDataRepo).containsKafkaTopic(eq(topic));
-    monitor.loadAllPushes();
-    try {
-      monitor.getOfflinePush(topic);
-      Assert.fail("An exception should be thrown, because we did NOT load this push status.");
-    } catch (VeniceException e) {
-      //expected
-    }
-  }
-
-  @Test
   public void testStopMonitorOfflinePush() {
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -178,6 +160,16 @@ public abstract class AbstractPushMonitorTest {
       statusList.add(pushStatus);
     }
     doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation ->
+    {
+      String kafkaTopic = invocation.getArgument(0);
+      for(OfflinePushStatus status : statusList) {
+        if(status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
     monitor.loadAllPushes();
     for (int i = 0; i < statusCount; i++) {
       Assert.assertEquals(monitor.getOfflinePush("testLoadAllPushes_v" + i).getCurrentStatus(),
@@ -204,6 +196,18 @@ public abstract class AbstractPushMonitorTest {
       statusList.add(pushStatus);
     }
     doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+
+    when(mockAccessor.getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation ->
+    {
+      String kafkaTopic = invocation.getArgument(0);
+      for(OfflinePushStatus status : statusList) {
+        if(status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
+
     monitor.loadAllPushes();
     // Make sure we delete old error pushes from accessor.
     verify(mockAccessor, times(statusCount - OfflinePushMonitor.MAX_PUSH_TO_KEEP))
