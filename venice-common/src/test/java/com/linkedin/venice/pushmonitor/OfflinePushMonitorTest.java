@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -39,7 +40,16 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(ExecutionStatus.COMPLETED, Optional.empty());
     doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
-
+    when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation ->
+    {
+      String kafkaTopic = invocation.getArgument(0);
+      for(OfflinePushStatus status : statusList) {
+        if(status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
     getMonitor().loadAllPushes();
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
@@ -50,6 +60,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
 
     //set the push status decider back
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
+    Mockito.reset(getMockAccessor());
   }
 
   @Test
@@ -71,6 +82,17 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     doThrow(new VeniceException("Could not delete.")).when(getMockStoreCleaner())
         .deleteOneStoreVersion(anyString(), anyString(), anyInt());
 
+    when(getMockAccessor().getOfflinePushStatusAndItsPartitionStatuses(Mockito.anyString())).thenAnswer(invocation ->
+    {
+      String kafkaTopic = invocation.getArgument(0);
+      for(OfflinePushStatus status : statusList) {
+        if(status.getKafkaTopic().equals(kafkaTopic)) {
+          return status;
+        }
+      }
+      return null;
+    });
+
     getMonitor().loadAllPushes();
     verify(getMockStoreRepo(), atLeastOnce()).updateStore(store);
     verify(getMockStoreCleaner(), atLeastOnce())
@@ -79,6 +101,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
 
     //set the push status decider back
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, new WaitNMinusOnePushStatusDecider());
+    Mockito.reset(getMockAccessor());
   }
 
   @DataProvider(name = "pushStatues")
