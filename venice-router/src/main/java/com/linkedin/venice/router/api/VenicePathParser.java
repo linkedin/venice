@@ -68,6 +68,7 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   public static final String TYPE_CLUSTER_DISCOVERY = "discover_cluster";
   public static final String TYPE_HEALTH_CHECK = "admin";
   public static final String TYPE_RESOURCE_STATE = "resource_state";
+  public static final String TYPE_PUSH_STATUS = "push_status";
 
   private final VeniceVersionFinder versionFinder;
   private final VenicePartitionFinder partitionFinder;

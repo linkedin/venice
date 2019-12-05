@@ -7,6 +7,13 @@ package com.linkedin.venice.pushmonitor;
  * This is used as part of StoreStatusMessage. When adding states,
  * backward compat needs to be fixed, after things are in production at least.
  *
+ * Whenever a new status is introduced, we should follow the correct deployment
+ * order:
+ * The consumers of the execution status should be deployed with the latest code
+ * before anyone reports the new status; the consumers include controllers, routers,
+ * servers at this moment; in future, there could also be Samza users that depend
+ * on ExecutionStatus.
+ *
  * TODO: Break this up in JobExecutionStatus and TaskExecutionStatus. It's pretty confusing to mix them ): ...
  */
 public enum ExecutionStatus {

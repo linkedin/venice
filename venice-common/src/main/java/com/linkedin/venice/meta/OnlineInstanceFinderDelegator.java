@@ -50,7 +50,7 @@ public class OnlineInstanceFinderDelegator implements OnlineInstanceFinder {
     return getInstanceFinder(kafkaTopic).getNumberOfPartitions(kafkaTopic);
   }
 
-  private OnlineInstanceFinder getInstanceFinder(String kafkaTopic) {
+  public OnlineInstanceFinder getInstanceFinder(String kafkaTopic) {
     return topicToInstanceFinderMap.computeIfAbsent(kafkaTopic, topic -> {
       Store store = metadataRepo.getStore(Version.parseStoreFromKafkaTopicName(kafkaTopic));
       if (store == null) {

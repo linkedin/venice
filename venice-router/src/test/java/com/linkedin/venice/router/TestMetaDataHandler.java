@@ -18,6 +18,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
+import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -52,7 +55,7 @@ public class TestMetaDataHandler {
 
   public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing,
       ReadOnlySchemaRepository schemaRepo, HelixReadOnlyStoreConfigRepository storeConfigRepository,
-      Map<String,String> clusterToD2ServiceMap, OnlineInstanceFinder onlineInstanceFinder)
+      Map<String,String> clusterToD2ServiceMap, OnlineInstanceFinderDelegator onlineInstanceFinder)
       throws IOException {
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
     Store store = TestUtils.createTestStore("testStore", "test", System.currentTimeMillis());
@@ -269,7 +272,7 @@ public class TestMetaDataHandler {
   @Test
   public void testResourceStateLookup() throws IOException {
     String resourceName = "test-store_v1";
-    OnlineInstanceFinder mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
+    OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
         .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
@@ -316,7 +319,7 @@ public class TestMetaDataHandler {
   @Test
   public void testResourceStateLookupWithErrors() throws IOException {
     String resourceName = "test-store_v1";
-    OnlineInstanceFinder mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
+    OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
     Mockito.doReturn(Optional.empty())
         .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
@@ -339,6 +342,46 @@ public class TestMetaDataHandler {
     ResourceStateResponse resourceStateResponse = mapper.readValue(response.content().array(), ResourceStateResponse.class);
     Assert.assertTrue(resourceStateResponse.isError());
     Assert.assertEquals(resourceStateResponse.getUnretrievablePartitions().iterator().next().intValue(), 1);
+  }
+
+  @Test
+  public void testPushStatusLookupInRouter() throws IOException {
+    String resourceName = "test-store_v1";
+    OnlineInstanceFinderDelegator mockOnlineInstanceFinder = Mockito.mock(OnlineInstanceFinderDelegator.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    Mockito.doReturn(Optional.of(new StoreConfig(Version.parseStoreFromKafkaTopicName(resourceName))))
+        .when(storeConfigRepository).getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName));
+    Mockito.doReturn(2).when(mockOnlineInstanceFinder).getNumberOfPartitions(resourceName);
+
+    PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder = Mockito.mock(PartitionStatusOnlineInstanceFinder.class);
+    Mockito.doReturn(partitionStatusOnlineInstanceFinder).when(mockOnlineInstanceFinder).getInstanceFinder(resourceName);
+
+    // Router returns COMPLETED state
+    Mockito.doReturn(ExecutionStatus.COMPLETED).when(partitionStatusOnlineInstanceFinder).getPushJobStatus(resourceName);
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + VenicePathParser.TYPE_PUSH_STATUS + "/" + resourceName,
+            null, null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
+    Assert.assertEquals(response.status().code(), 200);
+    PushStatusResponse pushStatusResponse = mapper.readValue(response.content().array(), PushStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getExecutionStatus(), ExecutionStatus.COMPLETED);
+
+    // Router returns ERROR state
+    Mockito.doReturn(ExecutionStatus.ERROR).when(partitionStatusOnlineInstanceFinder).getPushJobStatus(resourceName);
+    response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + VenicePathParser.TYPE_PUSH_STATUS + "/" + resourceName,
+            null, null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
+    Assert.assertEquals(response.status().code(), 200);
+    pushStatusResponse = mapper.readValue(response.content().array(), PushStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getExecutionStatus(), ExecutionStatus.ERROR);
+
+    // Router returns STARTED state
+    Mockito.doReturn(ExecutionStatus.STARTED).when(partitionStatusOnlineInstanceFinder).getPushJobStatus(resourceName);
+    response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + VenicePathParser.TYPE_PUSH_STATUS + "/" + resourceName,
+            null, null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
+    Assert.assertEquals(response.status().code(), 200);
+    pushStatusResponse = mapper.readValue(response.content().array(), PushStatusResponse.class);
+    Assert.assertEquals(pushStatusResponse.getExecutionStatus(), ExecutionStatus.STARTED);
   }
 
   @Test
