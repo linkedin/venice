@@ -8,14 +8,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
+import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
+import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -64,7 +68,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final String clusterName;
   private final Map<String, String> clusterToD2Map;
-  private final OnlineInstanceFinder onlineInstanceFinder;
+  private final OnlineInstanceFinderDelegator onlineInstanceFinder;
   private final HelixReadOnlyStoreRepository storeRepository;
 
 
@@ -72,7 +76,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
-      OnlineInstanceFinder onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository){
+      OnlineInstanceFinderDelegator onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository){
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
@@ -105,6 +109,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else if (VenicePathParser.TYPE_RESOURCE_STATE.equals(resourceType)) {
       // URI: /resource_state
       handleResourceStateLookup(ctx, helper);
+    } else if (VenicePathParser.TYPE_PUSH_STATUS.equals(resourceType)) {
+      // URI: /push_status
+      handlePushStatusLookUp(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
       // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -255,6 +262,35 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     response.setReplicaStates(replicaStates);
     response.setReadyToServe(isResourceReadyToServe);
     setupResponseAndFlush(OK, mapper.writeValueAsBytes(response), true, ctx);
+  }
+
+  /**
+   * Get push status from {@link PartitionStatusOnlineInstanceFinder} for stores running in L/F mode.
+   */
+  private void handlePushStatusLookUp(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
+    String resourceName = helper.getResourceName();
+    checkResourceName(resourceName, "/" + VenicePathParser.TYPE_PUSH_STATUS + "/${resourceName}");
+
+    if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
+      byte[] errBody =
+          ("Cannot fetch the push status for resource: " + resourceName + " because the store: "
+              + Version.parseStoreFromKafkaTopicName(resourceName) + " cannot be found").getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+
+    PushStatusResponse pushStatusResponse = new PushStatusResponse();
+    pushStatusResponse.setName(resourceName);
+    OnlineInstanceFinder instanceFinder = onlineInstanceFinder.getInstanceFinder(resourceName);
+    if (!(instanceFinder instanceof PartitionStatusOnlineInstanceFinder)) {
+      pushStatusResponse.setError("Only support getting push status for stores running in Leader/Follower mode");
+      setupResponseAndFlush(BAD_REQUEST, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
+      return;
+    }
+
+    PartitionStatusOnlineInstanceFinder onlineInstanceFinder = (PartitionStatusOnlineInstanceFinder) instanceFinder;
+    pushStatusResponse.setExecutionStatus(onlineInstanceFinder.getPushJobStatus(resourceName));
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(pushStatusResponse), true, ctx);
   }
 
   private String getD2ServiceByClusterName(String clusterName) {

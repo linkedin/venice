@@ -364,7 +364,7 @@ public class RouterServer extends AbstractVeniceService {
      * so there is no way to distinguish compute request from multi-get; all read compute metrics in host finder will
      * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
      */
-    OnlineInstanceFinder onlineInstanceFinder =
+    OnlineInstanceFinderDelegator onlineInstanceFinder =
         new OnlineInstanceFinderDelegator(metadataRepository,
             routingDataRepository,
             new PartitionStatusOnlineInstanceFinder(metadataRepository, new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter), routingDataRepository));
