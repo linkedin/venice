@@ -2976,6 +2976,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public Instance getMasterController(String clusterName) {
+        if (!multiClusterConfigs.getClusters().contains(clusterName)) {
+            throw new VeniceNoClusterException(clusterName);
+        }
+
         final int maxAttempts = 10;
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
 
