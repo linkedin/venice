@@ -105,7 +105,7 @@ ext.libraries = [ // Groovy map literal
                   restliDocgen: 'com.linkedin.pegasus:restli-docgen:15.1.10',
 
                   // RocksDB
-                  rocksdbjni: 'org.rocksdb:rocksdbjni:6.4.6',
+                  rocksdbjni: 'org.rocksdb:rocksdbjni:5.14.2',
 
                   // avro-fastserde
                   linkedinAvroFastserde: 'com.linkedin.linkedin-avro-fastserde:linkedin-avro-fastserde-impl:0.0.13'

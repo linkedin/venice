@@ -18,9 +18,7 @@ import org.rocksdb.Cache;
 import org.rocksdb.Env;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
-import org.rocksdb.Priority;
 import org.rocksdb.RocksDB;
-import org.rocksdb.WriteBufferManager;
 
 import static org.rocksdb.Env.*;
 
@@ -49,11 +47,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   private final Map<String, RocksDBStorageEngine> storageEngineMap = new HashMap<>();
   private final Map<String, Options> storageEngineOptions = new HashMap<>();
 
-  /**
-   * https://github.com/facebook/rocksdb/wiki/Write-Buffer-Manager
-   * Setup write buffer manager to limit the total memtable usages to block cache
-   */
-  private final WriteBufferManager writeBufferManager;
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
@@ -63,21 +56,14 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
      * Shared {@link Env} allows us to share the flush thread pool and compaction thread pool.
      */
     this.env = Env.getDefault();
-    /**
-     * https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide
-     * Flush threads are in the HIGH priority pool, while compaction threads are in the LOW priority pool
-      */
-    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), Priority.HIGH);
-    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), Priority.LOW);
+    // Make them configurable
+    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), FLUSH_POOL);
+    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), COMPACTION_POOL);
 
     // Shared cache across all the RocksDB databases
-    this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+    sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
                                rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
                                rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
-
-    // Write buffer manager across all the RocksDB databases
-    // The memory usage of all the memtables will cost to the shared block cache
-    this.writeBufferManager = new WriteBufferManager(rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes(), this.sharedCache);
   }
 
   private synchronized Options getOptionsForStore(String storeName) {
@@ -93,8 +79,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Inherit Direct IO for read settings from globals
     newOptions.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
-
-    newOptions.setWriteBufferManager(writeBufferManager);
 
     // Cache index and bloom filter in block cache
     // and share the same cache across all the RocksDB databases
@@ -163,8 +147,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     });
     storageEngineMap.clear();
     storageEngineOptions.clear();
-    sharedCache.close();
-    writeBufferManager.close();
     this.env.close();
     LOGGER.info("Closed RocksDBStorageEngineFactory");
   }
