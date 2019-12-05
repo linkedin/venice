@@ -1,7 +1,6 @@
 package com.linkedin.venice.restart;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -9,20 +8,20 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
+
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
 import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
 
 @Test(singleThreaded = true)
 public class TestRestartController {
+  private static final int OPERATION_TIMEOUT_MS = 3000;
   private VeniceClusterWrapper cluster;
-  int testTimeOutMS = 3000;
 
   @BeforeClass
   public void setup() {
@@ -46,7 +45,6 @@ public class TestRestartController {
   public void testMasterControllerFailover() {
     String storeName = TestUtils.getUniqueString("testMasterControllerFailover");
     int dataSize = 1000;
-
     cluster.getNewStore(storeName);
 
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
@@ -56,8 +54,7 @@ public class TestRestartController {
 
     VeniceWriter<String, String, byte[]> veniceWriter = cluster.getVeniceWriter(topicName);
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), cluster.getAllControllersURLs());
-    Assert.assertEquals(
-        controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
+    Assert.assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
 
     // push some data
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -71,45 +68,40 @@ public class TestRestartController {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // After stopping origin master, the new master could handle the push status report correctly.
-    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, testTimeOutMS, TimeUnit.MILLISECONDS, Optional.empty());
-    response = createNewVersionWithRetry(storeName, dataSize);
+    TestUtils.waitForNonDeterministicPushCompletion(topicName, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
+    VersionCreationResponse responseV2 = createNewVersionWithRetry(storeName, dataSize);
+    Assert.assertFalse(responseV2.isError());
+    Assert.assertEquals(responseV2.getVersion(), versionNum + 1);
 
-    String newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
-    Assert.assertEquals(
-        controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
-    Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getVersion(), versionNum + 1);
+    String topicNameV2 = responseV2.getKafkaTopic();
+    Assert.assertEquals(controllerClient.queryJobStatus(topicNameV2).getStatus(), ExecutionStatus.STARTED.toString());
 
     // restart controller
     cluster.restartVeniceController(port);
 
-    newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
-    Assert.assertEquals(
-        controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
-    Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getVersion(), versionNum + 1);
+    TestUtils.waitForNonDeterministicAssertion(OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, () ->
+      Assert.assertEquals(controllerClient.queryJobStatus(topicNameV2).getStatus(), ExecutionStatus.STARTED.toString()));
 
     // Finish the push and verify that it completes under the newly elected controller.
-    veniceWriter = cluster.getVeniceWriter(newTopicName);
+    veniceWriter = cluster.getVeniceWriter(topicNameV2);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-    TestUtils.waitForNonDeterministicPushCompletion(newTopicName, controllerClient, testTimeOutMS, TimeUnit.MILLISECONDS, Optional.empty());
+    TestUtils.waitForNonDeterministicPushCompletion(topicNameV2, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
 
     // Check it one more time for good measure with a third and final push
-    response = createNewVersionWithRetry(storeName, dataSize);
+    VersionCreationResponse responseV3 = createNewVersionWithRetry(storeName, dataSize);
+    Assert.assertFalse(responseV3.isError());
+    Assert.assertEquals(responseV3.getVersion(), versionNum + 2);
 
-    newTopicName = response.getKafkaTopic();
     // As we have not push any data, the job status should be hanged on STARTED.
-    Assert.assertEquals(
-        controllerClient.queryJobStatus(newTopicName).getStatus(), ExecutionStatus.STARTED.toString());
-    Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getVersion(), versionNum + 2);
+    String topicNameV3 = responseV3.getKafkaTopic();
+    Assert.assertEquals(controllerClient.queryJobStatus(topicNameV3).getStatus(), ExecutionStatus.STARTED.toString());
 
     // Broadcast end of push and verify it completes
-    veniceWriter = cluster.getVeniceWriter(newTopicName);
+    veniceWriter = cluster.getVeniceWriter(topicNameV3);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
-    TestUtils.waitForNonDeterministicPushCompletion(newTopicName, controllerClient, testTimeOutMS, TimeUnit.MILLISECONDS, Optional.empty());
+    TestUtils.waitForNonDeterministicPushCompletion(topicNameV3, controllerClient, OPERATION_TIMEOUT_MS, TimeUnit.MILLISECONDS, Optional.empty());
   }
 
   private VersionCreationResponse createNewVersionWithRetry(String storeName, int dataSize) {
