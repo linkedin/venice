@@ -17,7 +17,6 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
@@ -96,9 +95,10 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          veniceResponse.setError("ACL failed for request " + request.url());
+          return;
         }
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
         veniceResponse.setCluster(request.queryParams(CLUSTER));
@@ -119,7 +119,11 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
         String srcClusterName = request.queryParams(CLUSTER_SRC);
         String destClusterName = request.queryParams(CLUSTER);
@@ -159,7 +163,11 @@ public class StoresRoutes extends AbstractRoute {
       @Override
       public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
         try {
-          // TODO: Only allow whitelist users to run this command
+          // Only allow whitelist users to run this command
+          if (!isWhitelistUsers(request)) {
+            veniceResponse.setError("Only admin users are allowed to run " + request.url());
+            return;
+          }
           AdminSparkServer.validateParams(request, ABORT_MIGRATION.getParams(), admin);
           String srcClusterName = request.queryParams(CLUSTER);
           String destClusterName = request.queryParams(CLUSTER_DEST);
@@ -191,7 +199,11 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
       @Override
       public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -219,7 +231,11 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
         //TODO: we may want to have a specific response for store updating
         String clusterName = request.queryParams(CLUSTER);
@@ -257,9 +273,10 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, OwnerResponse veniceResponse) {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          veniceResponse.setError("ACL failed for request " + request.url());
+          return;
         }
         AdminSparkServer.validateParams(request, SET_OWNER.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
@@ -288,7 +305,11 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -310,7 +331,11 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -337,7 +362,11 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<MultiVersionResponse>(MultiVersionResponse.class) {
       @Override
       public void internalHandle(Request request, MultiVersionResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -369,7 +398,11 @@ public class StoresRoutes extends AbstractRoute {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
@@ -387,9 +420,10 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, StorageEngineOverheadRatioResponse veniceResponse) {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          veniceResponse.setError("ACL failed for request " + request.url());
+          return;
         }
         AdminSparkServer.validateParams(request, STORAGE_ENGINE_OVERHEAD_RATIO.getParams(), admin);
 

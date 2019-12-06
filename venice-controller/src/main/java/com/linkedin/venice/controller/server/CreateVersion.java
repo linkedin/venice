@@ -7,7 +7,6 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -47,10 +46,12 @@ public class CreateVersion extends AbstractRoute {
   public Route requestTopicForPushing(Admin admin) {
     return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);
 
@@ -127,7 +128,6 @@ public class CreateVersion extends AbstractRoute {
         AdminSparkServer.handleError(e, request, response);
       }
 
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -140,10 +140,12 @@ public class CreateVersion extends AbstractRoute {
   public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {
       VersionResponse responseObject = new VersionResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VERSION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
@@ -165,7 +167,6 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -174,10 +175,12 @@ public class CreateVersion extends AbstractRoute {
   public Route uploadPushInfo(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, OFFLINE_PUSH_INFO.getParams(), admin);
 
@@ -191,7 +194,6 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
 
     };
@@ -200,10 +202,12 @@ public class CreateVersion extends AbstractRoute {
   public Route writeEndOfPush(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
 
@@ -222,7 +226,6 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -230,8 +233,13 @@ public class CreateVersion extends AbstractRoute {
   public Route emptyPush(Admin admin) {
     return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         if (!admin.whetherEnableBatchPushFromAdmin()) {
           throw new VeniceUnsupportedOperationException("EMPTY PUSH",
               "Please push data to Venice Parent Colo instead or use Aggregate mode if you are running Samza GF Job.");
@@ -265,7 +273,6 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }

@@ -20,7 +20,11 @@ public class CreateStore extends AbstractRoute {
     return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
       @Override
       public void internalHandle(Request request, NewStoreResponse veniceRepsonse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceRepsonse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);

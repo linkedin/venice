@@ -33,19 +33,13 @@ public class AbstractRoute {
    * the request.
    */
   protected boolean hasAccess(Request request) {
-    if (!accessController.isPresent()) {
+    if (!isAclEnabled()) {
       /**
        * Grant access if it's not required to check ACL.
-       * {@link accessController} will be empty if ACL is not enabled.
        */
       return true;
     }
-    HttpServletRequest rawRequest = request.raw();
-    Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
-    if (null == certificateObject) {
-      throw new VeniceException("Client request doesn't contain certificate for store: " + request.queryParams(NAME));
-    }
-    X509Certificate certificate = ((X509Certificate[])certificateObject)[0];
+    X509Certificate certificate = getCertificate(request);
 
     String storeName = request.queryParams(NAME);
     /**
@@ -66,5 +60,44 @@ public class AbstractRoute {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Check whether the user is within the admin users whitelist.
+   */
+  protected boolean isWhitelistUsers(Request request) {
+    if (!isAclEnabled()) {
+      /**
+       * Grant access if it's not required to check ACL.
+       * {@link accessController} will be empty if ACL is not enabled.
+       */
+      return true;
+    }
+    X509Certificate certificate = getCertificate(request);
+
+    String storeName = request.queryParams(NAME);
+    return accessController.get().isWhitelistUsers(certificate, storeName, "GET");
+  }
+
+  /**
+   * @return whether ACL check is enabled.
+   */
+  protected boolean isAclEnabled() {
+    /**
+     * {@link accessController} will be empty if ACL is not enabled.
+     */
+    return accessController.isPresent();
+  }
+
+  /**
+   * Helper function to get certificate out of Spark request
+   */
+  private static X509Certificate getCertificate(Request request) {
+    HttpServletRequest rawRequest = request.raw();
+    Object certificateObject = rawRequest.getAttribute(CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME);
+    if (null == certificateObject) {
+      throw new VeniceException("Client request doesn't contain certificate for store: " + request.queryParams(NAME));
+    }
+    return ((X509Certificate[])certificateObject)[0];
   }
 }

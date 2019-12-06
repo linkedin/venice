@@ -19,8 +19,13 @@ public class SkipAdminRoute extends AbstractRoute {
   public Route getRoute(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, SKIP_ADMIN.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         long offset = Utils.parseLongFromString(request.queryParams(OFFSET), OFFSET);
@@ -30,7 +35,6 @@ public class SkipAdminRoute extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }

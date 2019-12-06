@@ -22,7 +22,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, ENABLE_THROTTLING.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
@@ -37,7 +41,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, ENABLE_MAX_CAPACITY_PROTECTION.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
@@ -52,7 +60,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, ENABLE_QUOTA_REBALANCED.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);
@@ -69,7 +81,11 @@ public class RoutersClusterConfigRoutes extends AbstractRoute {
     return new VeniceRouteHandler<RoutersClusterConfigResponse>(RoutersClusterConfigResponse.class) {
       @Override
       public void internalHandle(Request request, RoutersClusterConfigResponse veniceResponse) {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, GET_ROUTERS_CLUSTER_CONFIG.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         veniceResponse.setCluster(clusterName);

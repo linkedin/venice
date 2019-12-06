@@ -20,13 +20,17 @@ public class MigrationRoutes extends AbstractRoute {
   public Route getAllMigrationPushStrategies(Admin admin) {
     return (request, response) -> {
       MigrationPushStrategyResponse strategyResponse = new MigrationPushStrategyResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          strategyResponse.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(strategyResponse);
+        }
         strategyResponse.setStrategies(admin.getAllStorePushStrategyForMigration());
       } catch (Throwable e) {
         strategyResponse.setError(e.getMessage());
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(strategyResponse);
     };
   }
@@ -34,8 +38,13 @@ public class MigrationRoutes extends AbstractRoute {
   public Route setMigrationPushStrategy(Admin admin) {
     return (request, response) -> {
       ControllerResponse updateResponse = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          updateResponse.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(updateResponse);
+        }
         AdminSparkServer.validateParams(request, SET_MIGRATION_PUSH_STRATEGY.getParams(), admin);
         String voldemortStoreName = request.queryParams(VOLDEMORT_STORE_NAME);
         String pushStrategy = request.queryParams(PUSH_STRATEGY);

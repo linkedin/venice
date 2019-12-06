@@ -27,14 +27,27 @@ public class Instance {
   */
   private final int port;
 
-  public Instance( // TODO: generate nodeId from host and port, should be "host_port", or generate host and port from id.
-      @JsonProperty("nodeId") @NotNull String nodeId,
-      @JsonProperty("host") @NotNull String host,
-      @JsonProperty("port") int port) {
+  /**
+   * sslPort will be the same as the HTTP port number by default, unless the sslPort number is configured intentionally.
+   */
+  private final int sslPort;
+
+  // TODO: generate nodeId from host and port, should be "host_port", or generate host and port from id.
+  public Instance(String nodeId,
+                  String host,
+                  int port) {
+    this(nodeId, host, port, port);
+  }
+
+  public Instance(@JsonProperty("nodeId") @NotNull String nodeId,
+                  @JsonProperty("host") @NotNull String host,
+                  @JsonProperty("port") int port,
+                  @JsonProperty("sslPort") int sslPort) {
     this.nodeId = nodeId;
     this.host = host;
     validatePort("port", port);
     this.port = port;
+    this.sslPort = sslPort;
   }
 
   public static Instance fromNodeId(String nodeId){
@@ -72,9 +85,10 @@ public class Instance {
   @JsonIgnore
   public String getUrl(boolean https){
     String scheme = https ? HttpConstants.HTTPS : HttpConstants.HTTP;
+    int portNumber = https ? sslPort : port;
     return host.contains(":") ? /* for IPv6 support per https://www.ietf.org/rfc/rfc2732.txt */
-      scheme + "://[" + host + "]:" + port :
-      scheme + "://" + host + ":" + port;
+      scheme + "://[" + host + "]:" + portNumber :
+      scheme + "://" + host + ":" + portNumber;
   }
 
   @JsonIgnore
