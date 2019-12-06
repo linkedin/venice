@@ -18,16 +18,11 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
-import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -47,12 +42,10 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
@@ -60,18 +53,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -85,26 +67,38 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
 import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.*;
 
 
 public class TestVeniceParentHelixAdmin {
   private static final Logger logger = Logger.getLogger(TestVeniceParentHelixAdmin.class);
   private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
-  private static long STORAGE_QUOTA = 100l;
   private static final String PUSH_JOB_STATUS_STORE_NAME = "push-job-status-store";
   private static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   private final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
   private final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
   private final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
-
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   private TopicManager topicManager;
@@ -118,7 +112,7 @@ public class TestVeniceParentHelixAdmin {
   private ParentHelixOfflinePushAccessor accessor;
 
   @BeforeMethod
-  public void init() {
+  public void setupTestCase() {
     topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>(Arrays.asList(topicName)))
         .when(topicManager)
@@ -156,6 +150,11 @@ public class TestVeniceParentHelixAdmin {
     veniceWriter = mock(VeniceWriter.class);
     // Need to bypass VeniceWriter initialization
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+  }
+
+  @DataProvider(name = "isControllerSslEnabled")
+  public static Object[][] isControllerSslEnabled() {
+    return new Object[][]{{false}, {true}};
   }
 
   private VeniceControllerConfig mockConfig(String clusterName) {
@@ -986,246 +985,6 @@ public class TestVeniceParentHelixAdmin {
     for (int i = 6; i <= 10; ++i) {
       Assert.assertTrue(capturedStore.containsVersion(i));
     }
-  }
-
-  @DataProvider(name = "isControllerSslEnabled")
-  public static Object[][] controllerSslEnabled() {
-    return new Object[][]{{false}, {true}};
-  }
-
-  @Test(dataProvider = "isControllerSslEnabled")
-  public void testEnd2End(boolean isControllerSslEnabled) throws IOException {
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    VeniceControllerWrapper childControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled);
-
-    String controllerUrl = isControllerSslEnabled
-                           ? controllerWrapper.getSecureControllerUrl()
-                           : controllerWrapper.getControllerUrl();
-    String childControllerUrl = isControllerSslEnabled
-                                ? childControllerWrapper.getSecureControllerUrl()
-                                : childControllerWrapper.getControllerUrl();
-    Optional<SSLFactory> sslFactory = isControllerSslEnabled
-                                                     ? Optional.of(SslUtils.getVeniceLocalSslFactory())
-                                                     : Optional.empty();
-
-    // Adding store
-    String storeName = "test_store";
-    String owner = "test_owner";
-    String keySchemaStr = "\"long\"";
-    String valueSchemaStr = "\"string\"";
-
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
-    ControllerClient childControllerClient = new ControllerClient(clusterName, childControllerUrl, sslFactory);
-    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
-    StoreResponse response = controllerClient.getStore(storeName);
-    Assert.assertFalse(response.isError());
-    Assert.assertEquals(response.getStore().getName(), storeName);
-
-    // Adding key schema
-    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(storeName);
-    Assert.assertEquals(keySchemaResponse.getSchemaStr(), keySchemaStr);
-
-    // Adding value schema
-    controllerClient.addValueSchema(storeName, valueSchemaStr);
-    MultiSchemaResponse valueSchemaResponse = controllerClient.getAllValueSchema(storeName);
-    MultiSchemaResponse.Schema[] schemas = valueSchemaResponse.getSchemas();
-    Assert.assertEquals(schemas.length, 1);
-    Assert.assertEquals(schemas[0].getId(), 1);
-    Assert.assertEquals(schemas[0].getSchemaStr(), valueSchemaStr);
-
-    // Disable store write
-    controllerClient.enableStoreWrites(storeName, false);
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.getStore().isEnableStoreWrites());
-
-    // Enable store write
-    controllerClient.enableStoreWrites(storeName, true);
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isEnableStoreWrites());
-
-    // Add version
-    VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, 10 * 1024 * 1024,
-        ControllerApiConstants.PushType.BATCH, Version.guidBasedDummyPushId(), false, true);
-    Assert.assertFalse(versionCreationResponse.isError());
-
-    // Set up migration push strategy
-    String voldemortStoreName = TestUtils.getUniqueString("voldemort_store_name");
-    String pushStrategy = MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name();
-    controllerClient.setMigrationPushStrategy(voldemortStoreName, pushStrategy);
-    // Retrieve migration push strategy
-    MigrationPushStrategyResponse pushStrategyResponse = controllerClient.getMigrationPushStrategies();
-    Assert.assertEquals(pushStrategyResponse.getStrategies().get(voldemortStoreName), pushStrategy);
-
-    // Update backup strategy
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBackupStrategy(BackupStrategy.DELETE_ON_NEW_PUSH_START));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getBackupStrategy(), BackupStrategy.DELETE_ON_NEW_PUSH_START);
-
-    // Update auto-schema-register for pushjob
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSchemaPushJobEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isSchemaAutoRegisterFromPushJobEnabled());
-
-    // Update storage quota
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setStorageQuotaInByte(100l));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(STORAGE_QUOTA, storeResponse.getStore().getStorageQuotaInByte());
-
-    // Update hybrid store storage quota feature flag
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreDiskQuotaEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isHybridStoreDiskQuotaEnabled());
-
-    // Update hybrid store overhead bypass
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridStoreOverheadBypass(false)
-                                                                        .setStorageQuotaInByte(STORAGE_QUOTA)
-                                                                        .setHybridRewindSeconds(10)
-                                                                        .setHybridOffsetLagThreshold(10));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertNotEquals(STORAGE_QUOTA, storeResponse.getStore().getStorageQuotaInByte());
-
-    // revert the store back to batch-only store for the following tests
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(-10)
-                                                                        .setHybridOffsetLagThreshold(-10));
-    // Update computationEnabled
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.getStore().isReadComputationEnabled());
-
-    // Update auto-schema-register for non read compute store.
-    try {
-      controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSupersetSchemaEnabledFromReadComputeStore(true));
-      Assert.assertFalse(controllerClient.getStore(storeName).getStore().isSuperSetSchemaAutoGenerationForReadComputeEnabled());
-    } catch (VeniceException e) {
-    }
-
-    // Update chunking
-    long updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setChunkingEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isChunkingEnabled());
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS * 2, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isChunkingEnabled());
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-    // Update singleGetRouterCacheEnabled
-    Assert.assertFalse(storeResponse.getStore().isSingleGetRouterCacheEnabled());
-    updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setSingleGetRouterCacheEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isSingleGetRouterCacheEnabled());
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isSingleGetRouterCacheEnabled());
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-    // Update batchGetRouterCacheEnabled
-    Assert.assertFalse(storeResponse.getStore().isBatchGetRouterCacheEnabled());
-    updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetRouterCacheEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isBatchGetRouterCacheEnabled());
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isBatchGetRouterCacheEnabled());
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-    // Update batchGetLimit
-    Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), -1);
-    updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), 100);
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertEquals(childStoreResponse.getStore().getBatchGetLimit(), 100);
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-    // Disable router cache to test hybrid store
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-        .setSingleGetRouterCacheEnabled(false)
-        .setBatchGetRouterCacheEnabled(false));
-    // Config the store to be hybrid
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(100).setHybridOffsetLagThreshold(100));
-    // This command should not fail
-    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAccessControlled(true));
-    Assert.assertFalse(controllerResponse.isError());
-
-    // Update writeComputationEnabled
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.getStore().isWriteComputationEnabled());
-    updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setWriteComputationEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isWriteComputationEnabled());
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isWriteComputationEnabled());
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-
-    updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setReadComputationEnabled(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isReadComputationEnabled());
-
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setAutoSupersetSchemaEnabledFromReadComputeStore(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isSuperSetSchemaAutoGenerationForReadComputeEnabled());
-
-    // Update bootstrapToOnlineTimeout
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getBootstrapToOnlineTimeoutInHours(), 24,
-        "Default bootstrapToOnlineTimeoutInHours should be 24");
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBootstrapToOnlineTimeoutInHours(48));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertEquals(storeResponse.getStore().getBootstrapToOnlineTimeoutInHours(), 48);
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isReadComputationEnabled());
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-    // Update store leader follower state model
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertFalse(storeResponse.getStore().isLeaderFollowerModelEnabled());
-    updateStartTimeInNS = System.nanoTime();
-    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
-    storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().isLeaderFollowerModelEnabled());
-    // Child controller will be updated asynchronously
-    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
-      StoreResponse childStoreResponse = childControllerClient.getStore(storeName);
-      Assert.assertTrue(childStoreResponse.getStore().isLeaderFollowerModelEnabled());
-    });
-    logger.info("Took " + TimeUnit.MILLISECONDS.toSeconds((long)LatencyUtils.getLatencyInMS(updateStartTimeInNS))
-        + " seconds to reflect store update in child controller");
-
-    controllerWrapper.close();
-    childControllerWrapper.close();
-    kafkaBrokerWrapper.close();
   }
 
   //get a map of mock client that can return vairable execution status
