@@ -20,12 +20,16 @@ public class VersionRoute extends AbstractRoute {
     return new VeniceRouteHandler<MultiVersionStatusResponse>(MultiVersionStatusResponse.class) {
 
       @Override
-      public void internalHandle(Request request, MultiVersionStatusResponse veniceRepsonse) {
-        // TODO: Only allow whitelist users to run this command
+      public void internalHandle(Request request, MultiVersionStatusResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
         AdminSparkServer.validateParams(request, LIST_BOOTSTRAPPING_VERSIONS.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-        veniceRepsonse.setCluster(cluster);
-        veniceRepsonse.setVersionStatusMap(admin.findAllBootstrappingVersions(cluster));
+        veniceResponse.setCluster(cluster);
+        veniceResponse.setVersionStatusMap(admin.findAllBootstrappingVersions(cluster));
       }
     };
   }

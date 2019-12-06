@@ -31,8 +31,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route listAllNodes(Admin admin) {
     return (request, response) -> {
       MultiNodeResponse responseObject = new MultiNodeResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, LIST_NODES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         List<String> nodeList = admin.getStorageNodes(responseObject.getCluster());
@@ -45,7 +50,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -53,8 +57,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route listAllNodesStatus(Admin admin) {
     return (request, response) -> {
       MultiNodesStatusResponse responseObject = new MultiNodesStatusResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, ClUSTER_HEALTH_INSTANCES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         Map<String, String> nodesStatusesMap = admin.getStorageNodesStatus(responseObject.getCluster());
@@ -63,7 +72,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -71,8 +79,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route listReplicasForStore(Admin admin) {
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, LIST_REPLICAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
@@ -87,7 +100,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -95,8 +107,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route listReplicasForStorageNode(Admin admin){
     return (request, response) -> {
       MultiReplicaResponse responseObject = new MultiReplicaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, NODE_REPLICAS.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
@@ -110,7 +127,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -118,8 +134,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route isNodeRemovable(Admin admin){
     return (request, response) -> {
       NodeStatusResponse responseObject = new NodeStatusResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
@@ -142,7 +163,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -150,8 +170,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route removeNodeFromCluster(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
@@ -161,7 +186,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -169,8 +193,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route addNodeIntoWhiteList(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, WHITE_LIST_ADD_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
@@ -180,7 +209,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -188,8 +216,13 @@ public class NodesAndReplicas extends AbstractRoute {
   public Route removeNodeFromWhiteList(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, WHITE_LIST_REMOVE_NODE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         responseObject.setCluster(cluster);
@@ -199,7 +232,6 @@ public class NodesAndReplicas extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }

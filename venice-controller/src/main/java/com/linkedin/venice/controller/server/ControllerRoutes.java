@@ -1,11 +1,13 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import java.util.List;
+import java.util.Optional;
 import spark.Request;
 import spark.Route;
 
@@ -13,19 +15,23 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
-public class ControllerRoutes {
+public class ControllerRoutes extends AbstractRoute {
+
+  public ControllerRoutes(Optional<DynamicAccessController> accessController) {
+    super(accessController);
+  }
+
   /**
    * No ACL check; any user is allowed to check master controller.
    */
-  public static Route getMasterController(Admin admin) {
+  public Route getMasterController(Admin admin) {
     return (request, response) -> {
       MasterControllerResponse responseObject = new MasterControllerResponse();
       try {
         AdminSparkServer.validateParams(request, MASTER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
-
         responseObject.setCluster(cluster);
-        responseObject.setUrl(admin.getMasterController(cluster).getUrl());
+        responseObject.setUrl(admin.getMasterController(cluster).getUrl(isAclEnabled()));
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
@@ -35,7 +41,7 @@ public class ControllerRoutes {
     };
   }
 
-  public static Route getChildControllers(Admin admin) {
+  public Route getChildControllers(Admin admin) {
     return new VeniceRouteHandler<ChildAwareResponse>(ChildAwareResponse.class) {
       @Override
       public void internalHandle(Request request, ChildAwareResponse veniceResponse) {

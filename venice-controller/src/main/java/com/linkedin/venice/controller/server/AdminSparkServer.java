@@ -116,6 +116,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Build all different routes
+    ControllerRoutes controllerRoutes = new ControllerRoutes(accessController);
     StoresRoutes storesRoutes = new StoresRoutes(accessController);
     JobRoutes jobRoutes = new JobRoutes(accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(accessController);
@@ -133,7 +134,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       return writeMenu("Set Active Version", SET_VERSION.getPath(), SET_VERSION.getParams());
     });
 
-    httpService.get(LIST_CHILD_CLUSTERS.getPath(), ControllerRoutes.getChildControllers(admin));
+    httpService.get(LIST_CHILD_CLUSTERS.getPath(), controllerRoutes.getChildControllers(admin));
     httpService.get(LIST_STORES.getPath(), storesRoutes.getAllStores(admin));
     httpService.get(CLUSTER_HEALTH_STORES.getPath(), storesRoutes.getAllStoresStatuses(admin));
     httpService.get(STORE.getPath(), storesRoutes.getStore(admin));
@@ -184,7 +185,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
-    httpService.get(MASTER_CONTROLLER.getPath(), ControllerRoutes.getMasterController(admin));
+    httpService.get(MASTER_CONTROLLER.getPath(), controllerRoutes.getMasterController(admin));
 
     httpService.get(EXECUTION.getPath(), adminCommandExecutionRoutes.getExecution(admin));
     httpService.get(LAST_SUCCEED_EXECUTION_ID.getPath(), adminCommandExecutionRoutes.getLastSucceedExecutionId(admin));

@@ -2981,7 +2981,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
           LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
           if (instance != null) {
             String id = instance.getId();
-            return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id), Utils.parsePortFromHelixNodeIdentifier(id));
+            return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id),
+                Utils.parsePortFromHelixNodeIdentifier(id), multiClusterConfigs.getAdminSecurePort());
           }
 
           if (attempt < maxAttempts) {

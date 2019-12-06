@@ -6,7 +6,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
@@ -35,10 +34,12 @@ public class SchemaRoutes extends AbstractRoute {
   public Route getKeySchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
@@ -54,7 +55,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -63,8 +63,13 @@ public class SchemaRoutes extends AbstractRoute {
   public Route addValueSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -81,7 +86,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -89,8 +93,13 @@ public class SchemaRoutes extends AbstractRoute {
   public Route addDerivedSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Only allow whitelist users to run this command
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
         AdminSparkServer.validateParams(request, ADD_DERIVED_SCHEMA.getParams(), admin);
         String clusterName = request.queryParams(ControllerApiConstants.CLUSTER);
         String storeName = request.queryParams(ControllerApiConstants.NAME);
@@ -109,7 +118,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -118,10 +126,12 @@ public class SchemaRoutes extends AbstractRoute {
   public Route getValueSchema(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
@@ -140,7 +150,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -149,10 +158,12 @@ public class SchemaRoutes extends AbstractRoute {
   public Route getValueSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA_ID.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
@@ -175,7 +186,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -183,10 +193,12 @@ public class SchemaRoutes extends AbstractRoute {
   public Route getDerivedSchemaID(Admin admin) {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, GET_VALUE_OR_DERIVED_SCHEMA_ID.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
@@ -216,7 +228,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -226,10 +237,12 @@ public class SchemaRoutes extends AbstractRoute {
   public Route getAllValueSchema(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
@@ -256,7 +269,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -264,10 +276,12 @@ public class SchemaRoutes extends AbstractRoute {
   public Route getAllValueAndDerivedSchema(Admin admin) {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
@@ -300,7 +314,6 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }

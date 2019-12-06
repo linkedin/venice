@@ -6,7 +6,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
-import com.linkedin.venice.exceptions.UnauthorizedException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
@@ -36,10 +35,12 @@ public class JobRoutes extends AbstractRoute {
   public Route jobStatus(Admin admin) {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, JOB.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
@@ -52,7 +53,6 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -97,10 +97,12 @@ public class JobRoutes extends AbstractRoute {
   public Route killOfflinePushJob(Admin admin) {
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
@@ -114,7 +116,6 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -122,10 +123,12 @@ public class JobRoutes extends AbstractRoute {
   public Route uploadPushJobStatus(Admin admin) {
     return (request, response) -> {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          responseObject.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
         responseObject.setName(request.queryParams(NAME));
@@ -148,7 +151,6 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
@@ -156,10 +158,12 @@ public class JobRoutes extends AbstractRoute {
   public Route sendPushJobDetails(Admin admin) {
     return ((request, response) -> {
       ControllerResponse controllerResponse = new ControllerResponse();
+      response.type(HttpConstants.JSON);
       try {
-        // TODO: Also allow whitelist users to run this command
-        if (!hasAccess(request)) {
-          throw new UnauthorizedException("ACL failed for request " + request.url());
+        // Also allow whitelist users to run this command
+        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+          controllerResponse.setError("ACL failed for request " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
         }
         AdminSparkServer.validateParams(request, SEND_PUSH_JOB_DETAILS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
@@ -180,7 +184,6 @@ public class JobRoutes extends AbstractRoute {
         controllerResponse.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
-      response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
     });
   }
