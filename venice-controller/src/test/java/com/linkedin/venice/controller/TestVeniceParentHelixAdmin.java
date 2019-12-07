@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
@@ -60,11 +61,9 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
-import org.testng.annotations.Ignore;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -76,14 +75,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.anyInt;
-import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.*;
 
 
@@ -114,41 +110,43 @@ public class TestVeniceParentHelixAdmin {
   @BeforeMethod
   public void setupTestCase() {
     topicManager = mock(TopicManager.class);
-    doReturn(new HashSet<String>(Arrays.asList(topicName)))
-        .when(topicManager)
-        .listTopics();
+    doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
     doReturn(true).when(topicManager).containsTopic(topicName);
+
     internalAdmin = mock(VeniceHelixAdmin.class);
     doReturn(topicManager).when(internalAdmin).getTopicManager();
-    zkClient = mock(ZkClient.class);
 
+    zkClient = mock(ZkClient.class);
     doReturn(zkClient).when(internalAdmin).getZkClient();
     doReturn(new HelixAdapterSerializer()).when(internalAdmin).getAdapterSerializer();
 
-    ExecutionIdAccessor executionIdAccessor = Mockito.mock(ExecutionIdAccessor.class);
+    ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
     doReturn(executionIdAccessor).when(internalAdmin).getExecutionIdAccessor();
     doReturn(0L).when(executionIdAccessor).getLastSucceededExecutionId(any());
 
-    config = mockConfig(clusterName);
-
-    accessor = Mockito.mock(ParentHelixOfflinePushAccessor.class);
-    resources = mockResources(config, clusterName);
-
     store = mock(Store.class);
     doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
-    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
-    doReturn(store).when(storeRepo).getStore(any());
-    // Please override this default mock implementation if you need special store repo logic for your test
-    doReturn(storeRepo).when(resources).getMetadataRepository();
+
+    HelixReadWriteStoreRepository storeRepository = mock(HelixReadWriteStoreRepository.class);
+    doReturn(store).when(storeRepository).getStore(any());
+
+    config = mockConfig(clusterName);
+    doReturn(1).when(config).getParentControllerWaitingTimeForConsumptionMs();
+
+    resources = mockResources(config, clusterName);
+    doReturn(storeRepository).when(resources).getMetadataRepository();
 
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
-    parentAdmin.setOfflinePushAccessor(accessor);
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
-        .put("test-fabric", Mockito.mock(ControllerClient.class));
-    veniceWriter = mock(VeniceWriter.class);
+        .put("test-fabric", mock(ControllerClient.class));
+
+    accessor = mock(ParentHelixOfflinePushAccessor.class);
+    parentAdmin.setOfflinePushAccessor(accessor);
+
     // Need to bypass VeniceWriter initialization
+    veniceWriter = mock(VeniceWriter.class);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
   }
 
@@ -181,7 +179,6 @@ public class TestVeniceParentHelixAdmin {
   @Test
   public void testStartWithTopicExists() {
     parentAdmin.start(clusterName);
-
     verify(internalAdmin).getTopicManager();
     verify(topicManager, never()).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC,
         KAFKA_REPLICA_FACTOR);
@@ -317,18 +314,14 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testAddStore() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+  public void testAddStore() {
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.start(clusterName);
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -337,22 +330,26 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
-    .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
+        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.getValue());
+
     StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
     Assert.assertEquals(storeCreationMessage.clusterName.toString(), clusterName);
     Assert.assertEquals(storeCreationMessage.storeName.toString(), storeName);
@@ -362,8 +359,7 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testAddStoreForMultiCluster()
-      throws ExecutionException, InterruptedException {
+  public void testAddStoreForMultiCluster() {
     String secondCluster = "testAddStoreForMultiCluster";
     VeniceControllerConfig configForSecondCluster = mockConfig(secondCluster);
     mockResources(configForSecondCluster, secondCluster);
@@ -374,7 +370,7 @@ public class TestVeniceParentHelixAdmin {
     Map<String, VeniceWriter> writerMap = new HashMap<>();
     for(String cluster:configMap.keySet()) {
       parentAdmin.getAdminCommandExecutionTracker(cluster).get().getFabricToControllerClientsMap()
-          .put("test-fabric", Mockito.mock(ControllerClient.class));
+          .put("test-fabric", mock(ControllerClient.class));
       VeniceWriter veniceWriter = mock(VeniceWriter.class);
       // Need to bypass VeniceWriter initialization
       parentAdmin.setVeniceWriterForCluster(cluster, veniceWriter);
@@ -435,80 +431,64 @@ public class TestVeniceParentHelixAdmin {
 
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".* already exists.*")
-  public void testAddStoreWhenExists() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null);
-
+  @Test
+  public void testAddStoreWhenExists() {
     String storeName = "test-store";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    doThrow(new VeniceException("Store: " + storeName + " already exists. ..."))
-        .when(internalAdmin)
-        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
+    doThrow(new VeniceStoreAlreadyExistsException(storeName, clusterName))
+        .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
 
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
-  }
-
-  // This test forces a timeout in the admin consumption task which takes 10 seconds.
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*waiting for admin consumption to catch up.*")
-  public void testAddStoreWhenLastOffsetHasntBeenConsumed() throws ExecutionException, InterruptedException {
+    when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null);
     parentAdmin.start(clusterName);
 
-    Future future = mock(Future.class);
+    Assert.assertThrows(VeniceStoreAlreadyExistsException.class, () -> parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+  }
+
+  @Test
+  public void testAddStoreWhenLastOffsetHasNotBeenConsumed() {
     doReturn(new VeniceException("mock exception"))
-        .when(internalAdmin)
-        .getLastException(clusterName);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+        .when(internalAdmin).getLastException(clusterName);
+
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(0, 0))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(0, 0));
+    parentAdmin.start(clusterName);
 
     String storeName = "test-store";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
-
-    // Add store again with smaller consumed offset
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    Assert.assertThrows(VeniceException.class, () -> parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
   }
 
   @Test
-  public void testAddValueSchema() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
+  public void testAddValueSchema() {
     String storeName = "test-store";
-    String valueSchemaStr = "\"string\"";
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin)
+        .getStore(clusterName, storeName);
 
     int valueSchemaId = 10;
+    String valueSchemaStr = "\"string\"";
     doReturn(valueSchemaId).when(internalAdmin)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
     doReturn(valueSchemaId).when(internalAdmin)
         .getValueSchemaId(clusterName, storeName, valueSchemaStr);
-    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
 
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+    parentAdmin.start(clusterName);
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr, DirectionalSchemaCompatibilityType.FULL);
 
     verify(internalAdmin)
@@ -517,19 +497,22 @@ public class TestVeniceParentHelixAdmin {
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.VALUE_SCHEMA_CREATION.getValue());
-    ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
 
+    ValueSchemaCreation valueSchemaCreationMessage = (ValueSchemaCreation) adminMessage.payloadUnion;
     Assert.assertEquals(valueSchemaCreationMessage.clusterName.toString(), clusterName);
     Assert.assertEquals(valueSchemaCreationMessage.storeName.toString(), storeName);
     Assert.assertEquals(valueSchemaCreationMessage.schema.definition.toString(), valueSchemaStr);
@@ -537,9 +520,7 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testAddDerivedSchema() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
+  public void testAddDerivedSchema() {
     String storeName = "test-store";
     String derivedSchemaStr = "\"string\"";
     int valueSchemaId = 10;
@@ -547,20 +528,18 @@ public class TestVeniceParentHelixAdmin {
 
     doReturn(derivedSchemaId).when(internalAdmin)
         .checkPreConditionForAddDerivedSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaId, derivedSchemaStr);
+
     doReturn(new Pair<>(valueSchemaId, derivedSchemaId))
         .when(internalAdmin).getDerivedSchemaId(clusterName, storeName, derivedSchemaStr);
 
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+    parentAdmin.start(clusterName);
     parentAdmin.addDerivedSchema(clusterName, storeName, valueSchemaId, derivedSchemaStr);
 
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
@@ -568,7 +547,6 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter).put(any(), valueCaptor.capture(), schemaCaptor.capture());
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueCaptor.getValue(), schemaCaptor.getValue());
-
     DerivedSchemaCreation derivedSchemaCreation = (DerivedSchemaCreation) adminMessage.payloadUnion;
 
     Assert.assertEquals(derivedSchemaCreation.clusterName.toString(), clusterName);
@@ -579,63 +557,56 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testDisableStoreRead()
-      throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
-    String storeName = "test-store";
-
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+  public void testDisableStoreRead() {
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+
+    String storeName = "test-store";
+    parentAdmin.start(clusterName);
     parentAdmin.setStoreReadability(clusterName, storeName, false);
+
     verify(internalAdmin)
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_READ.getValue());
-    DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
 
+    DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
     Assert.assertEquals(disableStoreRead.clusterName.toString(), clusterName);
     Assert.assertEquals(disableStoreRead.storeName.toString(), storeName);
   }
+
   @Test
-  public void testDisableStoreWrite() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
-    String storeName = "test-store";
-
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+  public void testDisableStoreWrite() {
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+    String storeName = "test-store";
+    parentAdmin.start(clusterName);
     parentAdmin.setStoreWriteability(clusterName, storeName, false);
 
     verify(internalAdmin)
@@ -644,103 +615,92 @@ public class TestVeniceParentHelixAdmin {
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_WRITE.getValue());
-    PauseStore pauseStore = (PauseStore) adminMessage.payloadUnion;
 
+    PauseStore pauseStore = (PauseStore) adminMessage.payloadUnion;
     Assert.assertEquals(pauseStore.clusterName.toString(), clusterName);
     Assert.assertEquals(pauseStore.storeName.toString(), storeName);
   }
 
-  @Test (expectedExceptions = VeniceNoStoreException.class)
-  public void testDisableStoreWriteWhenStoreDoesntExist() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
+  @Test
+  public void testDisableStoreWriteWhenStoreDoesNotExist() {
     String storeName = "test-store";
+    doThrow(new VeniceNoStoreException(storeName)).when(internalAdmin).checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(new OffsetRecord())
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
-    when(internalAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName))
-        .thenThrow(new VeniceNoStoreException(storeName));
-
-    parentAdmin.setStoreWriteability(clusterName, storeName, false);
+    parentAdmin.start(clusterName);
+    Assert.assertThrows(VeniceNoStoreException.class, () -> parentAdmin.setStoreWriteability(clusterName, storeName, false));
   }
 
   @Test
-  public void testEnableStoreRead() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
-    String storeName = "test-store";
-
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+  public void testEnableStoreRead() {
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+    String storeName = "test-store";
+    parentAdmin.start(clusterName);
     parentAdmin.setStoreReadability(clusterName, storeName, true);
+
     verify(internalAdmin)
         .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_READ.getValue());
+
     EnableStoreRead enableStoreRead = (EnableStoreRead) adminMessage.payloadUnion;
     Assert.assertEquals(enableStoreRead.clusterName.toString(), clusterName);
     Assert.assertEquals(enableStoreRead.storeName.toString(), storeName);
   }
 
   @Test
-  public void testEnableStoreWrite() throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
-    String storeName = "test-store";
-
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+  public void testEnableStoreWrite() {
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+    String storeName = "test-store";
+    parentAdmin.start(clusterName);
     parentAdmin.setStoreWriteability(clusterName, storeName, true);
 
     verify(internalAdmin)
@@ -749,41 +709,40 @@ public class TestVeniceParentHelixAdmin {
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_WRITE.getValue());
+
     ResumeStore resumeStore = (ResumeStore) adminMessage.payloadUnion;
     Assert.assertEquals(resumeStore.clusterName.toString(), clusterName);
     Assert.assertEquals(resumeStore.storeName.toString(), storeName);
   }
 
   @Test
-  public void testKillOfflinePushJob() throws ExecutionException, InterruptedException {
+  public void testKillOfflinePushJob() {
     String kafkaTopic = "test_store_v1";
-    parentAdmin.start(clusterName);
+    doReturn(new HashSet<>(Arrays.asList(kafkaTopic)))
+        .when(topicManager).listTopics();
 
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
-    doReturn(new HashSet<>(Arrays.asList(kafkaTopic)))
-        .when(topicManager).listTopics();
-
+    parentAdmin.start(clusterName);
     parentAdmin.killOfflinePush(clusterName, kafkaTopic);
 
     verify(internalAdmin)
@@ -794,17 +753,21 @@ public class TestVeniceParentHelixAdmin {
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue());
+
     KillOfflinePushJob killJob = (KillOfflinePushJob) adminMessage.payloadUnion;
     Assert.assertEquals(killJob.clusterName.toString(), clusterName);
     Assert.assertEquals(killJob.kafkaTopic.toString(), kafkaTopic);
@@ -851,24 +814,25 @@ public class TestVeniceParentHelixAdmin {
     }
   }
 
-  @Test (expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*must be terminated before another push can be started.")
+  @Test
   public void testIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsStillRunning() {
     String storeName = TestUtils.getUniqueString("test_store");
     String previousKafkaTopic = storeName + "_v1";
     String unknownTopic = "1unknown_topic_v1";
     doReturn(new HashSet<>(Arrays.asList(unknownTopic, previousKafkaTopic)))
-        .when(topicManager)
-        .listTopics();
+        .when(topicManager).listTopics();
+
     Store store = new Store(storeName, "test_owner", 1, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     String pushJobId = "test_push_id";
     String pushJobId2 = "test_push_id2";
     store.addVersion(new Version(storeName, 1, pushJobId));
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
-    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId2, 1, 1, true);
+
+    Assert.assertThrows(VeniceException.class, () -> partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId2, 1, 1, true));
   }
 
   /**
@@ -1406,77 +1370,20 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(tenProgress.get("cluster2_task2"), new Long(10L));
   }
 
-  // throttle for topic creation may no longer be needed.
-  @Test@Ignore
-  public void testCreateTopicConcurrently()
-      throws InterruptedException, ExecutionException {
-    long timeWindowMs = 1000;
-    String storeName = "testCreateTopicConcurrently";
-    Time timer = new MockTime();
-    doReturn(timeWindowMs).when(config).getTopicCreationThrottlingTimeWindowMs();
-    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
-    throttledParentAdmin.setTimer(timer);
-    throttledParentAdmin.getAdminCommandExecutionTracker(clusterName)
-        .get()
-        .getFabricToControllerClientsMap()
-        .put("test-fabric", Mockito.mock(ControllerClient.class));
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
-
-    throttledParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-    throttledParentAdmin.start(clusterName);
-    throttledParentAdmin.addStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
-
-    // Create 3 thread to increment version concurrently, we expected admin will sleep a while to avoid creating topic
-    // too frequently.
-    int threadCount = 3;
-    Thread[] threads = new Thread[threadCount];
-    for(int i =0;i<threadCount;i++){
-      threads[i] = new Thread(() -> {
-        throttledParentAdmin.incrementVersionIdempotent(clusterName,storeName, Version.guidBasedDummyPushId(),
-            1,1, true);
-      });
-    }
-    long start = timer.getMilliseconds();
-    for(Thread thread:threads){
-      thread.start();
-      thread.join();
-    }
-    Assert.assertTrue(timer.getMilliseconds() - start == 3000l,
-        "We created 3 topic, at least cost 3s to prevent creating topic too frequently.");
-  }
-
   @Test
-  public void testUpdateStore()
-      throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
-
+  public void testUpdateStore() {
     String storeName = TestUtils.getUniqueString("testUpdateStore");
-
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
-
-    when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(null)
-        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
-    long readQuota = 100l;
-    boolean readability = true;
-    boolean accessControlled = true;
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
 
-    //test incremental push
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkMetadataNodePath, null))
+        .thenReturn(null)
+        .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
+
+    parentAdmin.start(clusterName);
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
 
     verify(zkClient, times(3)).readData(zkMetadataNodePath, null);
@@ -1493,9 +1400,13 @@ public class TestVeniceParentHelixAdmin {
 
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.getValue());
+
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.incrementalPushEnabled, true);
 
+    long readQuota = 100L;
+    boolean readability = true;
+    boolean accessControlled = true;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
         .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
@@ -1509,9 +1420,7 @@ public class TestVeniceParentHelixAdmin {
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
-
     adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
-
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
@@ -1530,6 +1439,7 @@ public class TestVeniceParentHelixAdmin {
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
+
     verify(veniceWriter, times(3)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
@@ -1539,46 +1449,46 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testDeleteStore()
-      throws ExecutionException, InterruptedException {
-    parentAdmin.start(clusterName);
+  public void testDeleteStore() {
     String storeName = "test-testReCreateStore";
     String owner = "unittest";
     Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
-    Mockito.doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
-    Mockito.doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
+    doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
+
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
+    parentAdmin.start(clusterName);
     parentAdmin.deleteStore(clusterName, storeName, 0);
+
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(3))
         .readData(zkMetadataNodePath, null);
+
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
     verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
+
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.DELETE_STORE.getValue());
+
     DeleteStore deleteStore = (DeleteStore) adminMessage.payloadUnion;
     Assert.assertEquals(deleteStore.clusterName.toString(), clusterName);
     Assert.assertEquals(deleteStore.storeName.toString(), storeName);
     Assert.assertEquals(deleteStore.largestUsedVersionNumber, 0);
-
   }
 
   @Test
@@ -1592,15 +1502,14 @@ public class TestVeniceParentHelixAdmin {
     }
   }
 
-
   @Test
   public void testGetCurrentVersionForMultiColosWithError() {
     int coloCount = 4;
     Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(coloCount - 1);
-    ControllerClient errorClient = Mockito.mock(ControllerClient.class);
+    ControllerClient errorClient = mock(ControllerClient.class);
     StoreResponse errorResponse = new StoreResponse();
     errorResponse.setError("Error getting store for testing.");
-    Mockito.doReturn(errorResponse).when(errorClient).getStore(Mockito.anyString());
+    doReturn(errorResponse).when(errorClient).getStore(anyString());
     controllerClientMap.put("colo4", errorClient);
 
     Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
@@ -1616,12 +1525,12 @@ public class TestVeniceParentHelixAdmin {
     Map<String, ControllerClient> controllerClientMap = new HashMap<>();
 
     for (int i = 0; i < coloCount; i++) {
-      ControllerClient client = Mockito.mock(ControllerClient.class);
+      ControllerClient client = mock(ControllerClient.class);
       StoreResponse storeResponse = new StoreResponse();
       Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
       s.setCurrentVersion(i);
       storeResponse.setStore(StoreInfo.fromStore(s));
-      Mockito.doReturn(storeResponse).when(client).getStore(Mockito.anyString());
+      doReturn(storeResponse).when(client).getStore(anyString());
       controllerClientMap.put("colo" + i, client);
     }
     return controllerClientMap;
@@ -1796,8 +1705,7 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testAdminCanKillLingeringVersion() throws ExecutionException, InterruptedException {
-    boolean expectedExceptionThrown = false;
+  public void testAdminCanKillLingeringVersion() {
     long startTime = System.currentTimeMillis();
     MockTime mockTime = new MockTime(startTime);
     parentAdmin.setTimer(mockTime);
@@ -1816,12 +1724,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(newVersion).when(internalAdmin).incrementVersionIdempotent(clusterName, storeName, newPushJobId,
         3, 3, false, false, false, true);
 
-    Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1))
-        .when(future).get();
-    doReturn(future)
-        .when(veniceWriter)
-        .put(any(), any(), anyInt());
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
         .thenReturn(null)
