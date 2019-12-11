@@ -858,4 +858,10 @@ public class ConfigKeys {
    * be cautious when turning it on.
    */
   public static final String KEY_VALUE_PROFILING_ENABLED = "key.value.profiling.enabled";
+
+  /*
+   * Flag to indicate if venice clusters' leader will be amongst one of the local Helix as a library controllers
+   * or a Helix as a service controller running remotely.
+   */
+  public static final String VENICE_STORAGE_CLUSTER_LEADER_HAAS = "venice.cluster.leader.haas.enabled";
 }

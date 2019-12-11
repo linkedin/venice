@@ -57,6 +57,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int topicDeletionStatusPollIntervalMs;
   private final boolean adminHelixMessagingChannelEnabled;
   private final boolean isControllerClusterLeaderHAAS;
+  private final boolean isVeniceClusterLeaderHAAS;
   private final String controllerHAASSuperClusterName;
   private final boolean earlyDeleteBackUpEnabled;
   private final boolean sendConcurrentTopicDeleteRequestsEnabled;
@@ -127,10 +128,11 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.earlyDeleteBackUpEnabled = props.getBoolean(CONTROLLER_EARLY_DELETE_BACKUP_ENABLED, false);
     this.topicDeletionStatusPollIntervalMs = props.getInt(TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS); // 2s
     this.isControllerClusterLeaderHAAS = props.getBoolean(CONTROLLER_CLUSTER_LEADER_HAAS, false);
+    this.isVeniceClusterLeaderHAAS = props.getBoolean(VENICE_STORAGE_CLUSTER_LEADER_HAAS, false);
     this.controllerHAASSuperClusterName = props.getString(CONTROLLER_HAAS_SUPER_CLUSTER_NAME, "");
-    if (isControllerClusterLeaderHAAS && controllerHAASSuperClusterName.isEmpty()) {
-      throw new VeniceException(CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required if "
-          + CONTROLLER_CLUSTER_LEADER_HAAS + " is set to true");
+    if ((isControllerClusterLeaderHAAS || isVeniceClusterLeaderHAAS) && controllerHAASSuperClusterName.isEmpty()) {
+      throw new VeniceException(CONTROLLER_HAAS_SUPER_CLUSTER_NAME + " is required for "
+          + CONTROLLER_CLUSTER_LEADER_HAAS + " or " + VENICE_STORAGE_CLUSTER_LEADER_HAAS + " to be set to true");
     }
     this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
     this.enableBatchPushFromAdminInChildController = props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
@@ -255,6 +257,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public boolean isAdminHelixMessagingChannelEnabled() { return  adminHelixMessagingChannelEnabled; }
 
   public boolean isControllerClusterLeaderHAAS() { return isControllerClusterLeaderHAAS; }
+
+  public boolean isVeniceClusterLeaderHAAS() { return isVeniceClusterLeaderHAAS; }
 
   public String getControllerHAASSuperClusterName() { return controllerHAASSuperClusterName; }
 

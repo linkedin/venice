@@ -87,8 +87,15 @@ public class VeniceHelixResources implements VeniceResource {
         config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.schemaRepository =
         new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName);
-    // Use the separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
-    SafeHelixManager spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
+    SafeHelixManager spectatorManager;
+    if (controller.getInstanceType() == InstanceType.SPECTATOR) {
+      // HAAS is enabled for storage clusters therefore the helix manager is connected as a spectator and it can be
+      // used directly for external view purposes.
+      spectatorManager = controller;
+    } else {
+      // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
+      spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
+    }
     this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
