@@ -82,9 +82,11 @@ public class AdminSparkServer extends AbstractVeniceService {
       SSLConfig config = sslConfig.get();
       httpService.secure(config.getSslKeyStoreLocation(),
                          config.getSslKeyStorePassword(),
+                         null,
                          config.getSslTrustStoreLocation(),
                          config.getSslTrustStorePassword(),
-                         config.isSslNeedsClientCert());
+                         config.isSslNeedsClientCert(),
+                         null);
     }
 
     httpService.before((request, response) -> {
