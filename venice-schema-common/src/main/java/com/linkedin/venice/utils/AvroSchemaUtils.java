@@ -303,16 +303,19 @@ public class AvroSchemaUtils {
       return true;
     }
 
-    for (Schema.Field f1 : s1.getFields()) {
-      Schema.Field f2 = s2.getField(f1.name());
-      if (f2 == null) {
-        throw new VeniceException("Schemas dont match!");
-      }
-      if (!StringUtils.equals(f1.doc(), f2.doc())) {
-        return true;
-      }
-      if (hasDocFieldChange(f1.schema(), f2.schema())) {
-        return true;
+    // Recurse down for RECORD type schemas only. s1 and s2 have same schema type.
+    if (s1.getType() == Schema.Type.RECORD) {
+      for (Schema.Field f1 : s1.getFields()) {
+        Schema.Field f2 = s2.getField(f1.name());
+        if (f2 == null) {
+          throw new VeniceException("Schemas dont match!");
+        }
+        if (!StringUtils.equals(f1.doc(), f2.doc())) {
+          return true;
+        }
+        if (hasDocFieldChange(f1.schema(), f2.schema())) {
+          return true;
+        }
       }
     }
     return false;
