@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import io.tehuti.metrics.MetricsRepository;
@@ -50,11 +51,13 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
 
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
+  private final boolean isStorageClusterHAAS;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       VeniceControllerClusterConfig clusterConfig, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
+      boolean isStorageClusterHAAS) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
@@ -66,6 +69,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
+    this.isStorageClusterHAAS = isStorageClusterHAAS;
   }
 
   /**
@@ -108,12 +112,14 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming leader from standby for " + clusterName);
       if (controller == null || !controller.isConnected()) {
+        InstanceType instanceType = isStorageClusterHAAS ? InstanceType.SPECTATOR : InstanceType.CONTROLLER;
         controller = new SafeHelixManager(
-            HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers()));
+            HelixManagerFactory.getZKHelixManager(clusterName, controllerName, instanceType, zkClient.getServers()));
         controller.connect();
         controller.startTimerTasks();
-        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
-            clusterConfig, storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController);
+        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterConfig,
+            storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
+            accessController);
         resources.refresh();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {

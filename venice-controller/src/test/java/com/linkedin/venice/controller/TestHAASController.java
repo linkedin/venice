@@ -22,28 +22,30 @@ import static org.testng.Assert.*;
 
 
 public class TestHAASController {
-  private Properties enableHAASProperties;
+  private Properties enableControllerClusterHAASProperties;
+  private Properties enableControllerAndStorageClusterHAASProperties;
 
   @BeforeClass
   public void setup() {
-    enableHAASProperties = new Properties();
-    enableHAASProperties.put(ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS, String.valueOf(true));
-    enableHAASProperties.put(ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME, HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME);
+    enableControllerClusterHAASProperties = new Properties();
+    enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_CLUSTER_LEADER_HAAS, String.valueOf(true));
+    enableControllerClusterHAASProperties.put(ConfigKeys.CONTROLLER_HAAS_SUPER_CLUSTER_NAME,
+        HelixAsAServiceWrapper.HELIX_SUPER_CLUSTER_NAME);
+    enableControllerAndStorageClusterHAASProperties = (Properties) enableControllerClusterHAASProperties.clone();
+    enableControllerAndStorageClusterHAASProperties.put(ConfigKeys.VENICE_STORAGE_CLUSTER_LEADER_HAAS,
+        String.valueOf(true));
   }
 
   @Test
   public void testStartHAASHelixControllerAsControllerClusterLeader() {
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
-    HelixAsAServiceWrapper helixAsAServiceWrapper = ServiceFactory.getHelixController(venice.getZk().getAddress());
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
-        () -> assertNotNull(helixAsAServiceWrapper.getSuperClusterLeader(),
-            "Helix super cluster doesn't have a leader yet"));
-    VeniceControllerWrapper controllerWrapper = venice.addVeniceController(enableHAASProperties);
+    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
+    VeniceControllerWrapper controllerWrapper = venice.addVeniceController(enableControllerClusterHAASProperties);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
         () -> assertTrue(controllerWrapper.isMasterControllerOfControllerCluster(),
             "The only Venice controller should be appointed the colo master"));
     assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
-        "The only Venice controller should be the leader of cluster " + venice.getClusterName());
+        "The only Venice controller should be the leader of Venice cluster " + venice.getClusterName());
     venice.addVeniceServer(new Properties(), new Properties());
     VersionCreationResponse response = venice.getNewStoreVersion();
     assertFalse(response.isError());
@@ -52,7 +54,6 @@ public class TestHAASController {
     TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
         () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
             ExecutionStatus.COMPLETED.toString()));
-    String zk = helixAsAServiceWrapper.getZkAddress();
     helixAsAServiceWrapper.close();
     venice.close();
   }
@@ -60,10 +61,7 @@ public class TestHAASController {
   @Test
   public void testTransitionToHAASControllerAsControllerClusterLeader() {
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(3, 1, 0, 1);
-    HelixAsAServiceWrapper helixAsAServiceWrapper = ServiceFactory.getHelixController(venice.getZk().getAddress());
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
-        () -> assertNotNull(helixAsAServiceWrapper.getSuperClusterLeader(),
-            "Helix super cluster doesn't have a leader yet"));
+    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
     VersionCreationResponse response = venice.getNewStoreVersion();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
         () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
@@ -74,14 +72,14 @@ public class TestHAASController {
     for (VeniceControllerWrapper oldController : oldControllers) {
       venice.stopVeniceController(oldController.getPort());
       oldController.close();
-      newControllers.add(venice.addVeniceController(enableHAASProperties));
+      newControllers.add(venice.addVeniceController(enableControllerClusterHAASProperties));
     }
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS,
         () -> {
           for (VeniceControllerWrapper newController : newControllers) {
             if (newController.isMasterController(venice.getClusterName())) {
               assertTrue(newController.isMasterControllerOfControllerCluster(),
-                  "The colo master should be the leader of the only cluster");
+                  "The colo master Venice controller should be the leader of the only Venice cluster");
               return true;
             }
           }
@@ -90,10 +88,42 @@ public class TestHAASController {
     // Make sure the previous ongoing push can be completed.
     venice.getControllerClient().writeEndOfPush(response.getName(),
         Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
-    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
         () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
             ExecutionStatus.COMPLETED.toString()));
     helixAsAServiceWrapper.close();
     venice.close();
+  }
+
+  @Test
+  public void testStartHAASControllerAsStorageClusterLeader() {
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(0, 0, 0, 1);
+    HelixAsAServiceWrapper helixAsAServiceWrapper = startAndWaitForHAASToBeAvailable(venice.getZk().getAddress());
+    VeniceControllerWrapper controllerWrapper =
+        venice.addVeniceController(enableControllerAndStorageClusterHAASProperties);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+        () -> assertTrue(controllerWrapper.isMasterController(venice.getClusterName()),
+            "The only Venice controller should become the leader of the only Venice cluster"));
+    venice.addVeniceServer(new Properties(), new Properties());
+    venice.addVeniceServer(new Properties(), new Properties());
+    VersionCreationResponse response = venice.getNewStoreVersion();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
+            ExecutionStatus.STARTED.toString()));
+    venice.getControllerClient().writeEndOfPush(response.getName(),
+        Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
+        () -> assertEquals(venice.getControllerClient().queryJobStatus(response.getKafkaTopic()).getStatus(),
+            ExecutionStatus.COMPLETED.toString()));
+    helixAsAServiceWrapper.close();
+    venice.close();
+  }
+
+  private HelixAsAServiceWrapper startAndWaitForHAASToBeAvailable(String zkAddress) {
+    HelixAsAServiceWrapper helixAsAServiceWrapper = ServiceFactory.getHelixController(zkAddress);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true,
+        () -> assertNotNull(helixAsAServiceWrapper.getSuperClusterLeader(),
+            "Helix super cluster doesn't have a leader yet"));
+    return helixAsAServiceWrapper;
   }
 }

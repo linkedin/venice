@@ -62,6 +62,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getControllerClusterName();
   }
 
+  public String getControllerHAASSuperClusterName() {
+    return getCommonConfig().getControllerHAASSuperClusterName();
+  }
+
   public int getControllerClusterReplica() {
     return getCommonConfig().getControllerClusterReplica();
   }

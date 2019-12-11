@@ -29,6 +29,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
@@ -168,7 +169,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private static final long INTERNAL_STORE_RTT_RETRY_BACKOFF_MS = 5000;
     private static final int PARTICIPANT_MESSAGE_STORE_SCHEMA_ID = 1;
 
+    // TODO remove this field and all invocations once we are fully on HaaS. Use the helixAdminClient instead.
     private final HelixAdmin admin;
+    /**
+     * Client/wrapper used for performing Helix operations in Venice.
+     */
+    private final HelixAdminClient helixAdminClient;
     private TopicManager topicManager;
     private final ZkClient zkClient;
     private final HelixAdapterSerializer adapterSerializer;
@@ -188,8 +194,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, String> participantMessageStoreRTTMap;
     private final Map<String, VeniceWriter> participantMessageWriterMap;
     private final VeniceHelixAdminStats veniceHelixAdminStats;
-    private final boolean isParticipantOnlyInControllerCluster;
-    private final String controllerHAASSuperClusterName;
+    private final boolean isControllerClusterHAAS;
     private final String coloMasterClusterName;
     private final Optional<SSLFactory> sslFactory;
     private final String pushJobStatusStoreClusterName;
@@ -267,6 +272,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Failed to connect to ZK within " + ZkClient.DEFAULT_CONNECTION_TIMEOUT + " ms!");
         }
         this.admin = new ZKHelixAdmin(zkClientForHelixAdmin);
+        helixAdminClient = new ZkHelixAdminClient(multiClusterConfigs, metricsRepository);
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         this.zkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
         this.zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "controller-zk-client"));
@@ -292,8 +298,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.participantMessageStoreRTTMap = new VeniceConcurrentHashMap<>();
         this.participantMessageWriterMap = new VeniceConcurrentHashMap<>();
         this.veniceHelixAdminStats = new VeniceHelixAdminStats(metricsRepository, "venice_helix_admin");
-        isParticipantOnlyInControllerCluster = commonConfig.isControllerClusterLeaderHAAS();
-        controllerHAASSuperClusterName = commonConfig.getControllerHAASSuperClusterName();
+        isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
         coloMasterClusterName = commonConfig.getClusterName();
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
         pushJobStatusStoreName = commonConfig.getPushJobStatusStoreName();
@@ -304,15 +309,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
         // Create the controller cluster if required.
-        createControllerClusterIfRequired();
-        addControllerClusterResourceIfRequired();
+        if (isControllerClusterHAAS) {
+            if (!helixAdminClient.isVeniceControllerClusterCreated())
+                helixAdminClient.createVeniceControllerCluster();
+        } else {
+            createControllerClusterIfRequired();
+        }
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
             zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
             onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController);
 
         // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
         // HaaS then level1 controllers should be only in participant mode.
-        initLevel1Controller(isParticipantOnlyInControllerCluster);
+        initLevel1Controller(isControllerClusterHAAS);
 
         // Start store migration monitor background thread
         storeConfigRepo.refresh();
@@ -361,11 +370,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (clusterName.startsWith("/") || clusterName.endsWith("/") || clusterName.indexOf(' ') >= 0) {
             throw new IllegalArgumentException("Invalid cluster name:" + clusterName);
         }
-        createClusterIfRequired(clusterName);
+        if (multiClusterConfigs.getCommonConfig().isVeniceClusterLeaderHAAS()) {
+            setupStorageClusterAsNeeded(clusterName);
+        } else {
+            createClusterIfRequired(clusterName);
+        }
         // The resource and partition may be disabled for this controller before, we need to enable again at first. Then the state transition will be triggered.
         List<String> partitionNames = new ArrayList<>();
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
-        admin.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
+        helixAdminClient.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
         if (multiClusterConfigs.getConfigForCluster(clusterName).isParticipantMessageStoreEnabled()) {
             participantMessageStoreRTTMap.put(clusterName,
                 Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
@@ -1142,8 +1155,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     // We need to prepare to monitor before creating helix resource.
                     startMonitorOfflinePush(
                         clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, strategy);
-                    createHelixResources(
-                        clusterName, version.kafkaTopicName(), numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
+                    helixAdminClient.createVeniceStorageClusterResources(clusterName, version.kafkaTopicName(),
+                        numberOfPartitions, replicationFactor, isLeaderFollowerStateModel);
                     waitUntilNodesAreAssignedForResource(clusterName, version.kafkaTopicName(), strategy,
                         clusterConfig.getOffLineJobWaitTimeInMilliseconds(), replicationFactor);
 
@@ -2401,28 +2414,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return multiClusterConfigs.getConfigForCluster(clusterName).getStorageEngineOverheadRatio();
     }
 
-    private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor, boolean isLeaderFollowerStateModel) {
-        if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
-            admin.addResource(clusterName, kafkaTopic, numberOfPartition,
-                isLeaderFollowerStateModel ? LeaderStandbySMD.name : VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-                IdealState.RebalanceMode.FULL_AUTO.toString(),
-                AutoRebalanceStrategy.class.getName());
-            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-            IdealState idealState = admin.getResourceIdealState(clusterName, kafkaTopic);
-            // We don't set the delayed time per resource, we will use the cluster level helix config to decide
-            // the delayed rebalance time
-            idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
-            idealState.setMinActiveReplicas(config.getMinActiveReplica());
-            idealState.setRebalanceStrategy(config.getHelixRebalanceAlg());
-            admin.setResourceIdealState(clusterName, kafkaTopic, idealState);
-            logger.info("Enabled delayed re-balance for resource:" + kafkaTopic);
-            admin.rebalance(clusterName, kafkaTopic, replicationFactor);
-            logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
-        } else {
-            throwResourceAlreadyExists(kafkaTopic);
-        }
-    }
-
   private void waitUntilNodesAreAssignedForResource(
       String clusterName,
       String topic,
@@ -2466,7 +2457,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void deleteHelixResource(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
-        admin.dropResource(clusterName, kafkaTopic);
+        helixAdminClient.dropResource(clusterName, kafkaTopic);
         logger.info("Successfully dropped the resource " + kafkaTopic + " for cluster " + clusterName);
     }
 
@@ -2612,13 +2603,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public List<String> getStorageNodes(String clusterName){
         checkControllerMastership(clusterName);
-        return admin.getInstancesInCluster(clusterName);
+        return helixAdminClient.getInstancesInCluster(clusterName);
     }
 
     @Override
     public Map<String, String> getStorageNodesStatus(String clusterName) {
         checkControllerMastership(clusterName);
-        List<String> instances = admin.getInstancesInCluster(clusterName);
+        List<String> instances = helixAdminClient.getInstancesInCluster(clusterName);
         RoutingDataRepository routingDataRepository = getVeniceHelixResource(clusterName).getRoutingDataRepository();
         Set<String> liveInstances = routingDataRepository.getLiveInstancesMap().keySet();
         Map<String, String> instancesStatusesMap = new HashMap<>();
@@ -2653,8 +2644,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Remove storage node from both whitelist and helix instances list.
         removeInstanceFromWhiteList(clusterName, instanceId);
-        InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, instanceId);
-        admin.dropInstance(clusterName, instanceConfig);
+        helixAdminClient.dropStorageInstance(clusterName, instanceId);
         logger.info("Removed storage node: " + instanceId + " from cluster: " + clusterName);
     }
 
@@ -2664,7 +2654,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // then the LEADER->STANDBY and STANDBY->OFFLINE will be triggered, our handler will handle the resource collection.
         List<String> partitionNames = new ArrayList<>();
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
-        admin.enablePartition(false, controllerClusterName, controllerName, clusterName, partitionNames);
+        helixAdminClient.enablePartition(false, controllerClusterName, controllerName, clusterName, partitionNames);
     }
 
     @Override
@@ -2674,6 +2664,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             topicManager.close();
             zkClient.close();
             admin.close();
+            helixAdminClient.close();
         } catch (Exception e) {
             throw new VeniceException("Can not stop controller correctly.", e);
         }
@@ -2716,6 +2707,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return monitor.getOfflinePushProgress(kafkaTopic);
     }
 
+    // TODO remove this method once we are fully on HaaS
     // Create the controller cluster for venice cluster assignment if required.
     private void createControllerClusterIfRequired() {
         if(admin.getClusters().contains(controllerClusterName)) {
@@ -2775,18 +2767,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
     }
 
-    // Add the controller cluster resource to HAAS super cluster. Only needed if HAAS is enabled for controller cluster.
-    // This is needed for HAAS to assign a helix controller to manage the controller cluster which is just a resource in
-    // HAAS's super cluster.
-    private void addControllerClusterResourceIfRequired() {
-        if (!isParticipantOnlyInControllerCluster) {
-            return;
+    private void setupStorageClusterAsNeeded(String clusterName) {
+        Map<String, String> helixClusterProperties = new HashMap<>();
+        helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+        long delayRebalanceTimeMs = multiClusterConfigs.getConfigForCluster(clusterName).getDelayToRebalanceMS();
+        if (delayRebalanceTimeMs > 0)
+            helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(),
+                String.valueOf(delayRebalanceTimeMs));
+        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
+        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
+        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
+        if (helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
+            // Cluster configs might have changed.
+            helixAdminClient.updateClusterConfigs(clusterName, helixClusterProperties);
+        } else {
+            helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties);
         }
-        if (!admin.getResourcesInCluster(controllerHAASSuperClusterName).contains(controllerClusterName)) {
-            admin.addClusterToGrandCluster(controllerClusterName, controllerHAASSuperClusterName);
-        }
+
     }
 
+    // TODO remove this method once we are fully on HaaS
     private void createClusterIfRequired(String clusterName) {
         if(admin.getClusters().contains(clusterName)) {
             logger.info("Cluster  " + clusterName + " already exists. ");
@@ -2843,11 +2843,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
         logger.error(errorMessage);
         throw new VeniceNoStoreException(storeName, clusterName);
-    }
-
-    private void throwResourceAlreadyExists(String resourceName) {
-        String errorMessage = "Resource:" + resourceName + " already exists, Can not add it to Helix.";
-        logAndThrow(errorMessage);
     }
 
     private void throwVersionAlreadyExists(String storeName, int version) {
@@ -2921,7 +2916,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public boolean isMasterController(String clusterName) {
-        VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
+            VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
         if (model == null ) {
             return false;
         }
@@ -2990,28 +2985,74 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public Instance getMasterController(String clusterName) {
+        if (multiClusterConfigs.getCommonConfig().isVeniceClusterLeaderHAAS()) {
+            return getVeniceControllerLeader(clusterName);
+        } else {
+            if (!multiClusterConfigs.getClusters().contains(clusterName)) {
+                throw new VeniceNoClusterException(clusterName);
+            }
+
+            final int maxAttempts = 10;
+            PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+
+            for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
+                LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
+                if (instance != null) {
+                    String id = instance.getId();
+                    return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id), Utils.parsePortFromHelixNodeIdentifier(id), multiClusterConfigs.getAdminSecurePort());
+                }
+
+                if (attempt < maxAttempts) {
+                    logger.warn(
+                        "Master controller does not exist, cluster=" + clusterName + ", attempt=" + attempt + "/" + maxAttempts);
+                    Utils.sleep(5 * Time.MS_PER_SECOND);
+                }
+            }
+
+            String message = "Master controller does not exist, cluster=" + clusterName;
+            logger.error(message);
+            throw new VeniceException(message);
+        }
+    }
+
+    /**
+     * Get the Venice controller leader for a given Venice cluster when running Helix as a Service. We need to look at
+     * the external view of the controller cluster to find the Venice logic leader for a Venice cluster. In HaaS the
+     * controller leader property will be a HaaS controller and is not the Venice controller that we want.
+     * TODO replace the implementation of Admin#getMasterController with this method once we are fully on HaaS
+     * @param clusterName of the Venice cluster
+     * @return
+     */
+    private Instance getVeniceControllerLeader(String clusterName) {
         if (!multiClusterConfigs.getClusters().contains(clusterName)) {
             throw new VeniceNoClusterException(clusterName);
         }
-
         final int maxAttempts = 10;
-        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-
+        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
+        String partitionName = HelixUtils.getPartitionName(clusterName, 0);
         for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
-          LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-          if (instance != null) {
-            String id = instance.getId();
-            return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id),
-                Utils.parsePortFromHelixNodeIdentifier(id), multiClusterConfigs.getAdminSecurePort());
-          }
-
-          if (attempt < maxAttempts) {
-            logger.warn("Master controller does not exist, cluster=" + clusterName + ", attempt=" + attempt + "/" + maxAttempts);
-            Utils.sleep(5 * Time.MS_PER_SECOND);
-          }
+            ExternalView externalView = manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+            if (externalView == null || externalView.getStateMap(partitionName) == null) {
+                // Assignment is incomplete, try again later
+                continue;
+            }
+            Map<String, String> veniceClusterStateMap = externalView.getStateMap(partitionName);
+            for (Map.Entry<String, String> instanceNameAndState : veniceClusterStateMap.entrySet()) {
+                if (instanceNameAndState.getValue().equals(HelixState.LEADER_STATE)) {
+                    // Found the Venice controller leader
+                    String id = instanceNameAndState.getKey();
+                    return new Instance(id, Utils.parseHostFromHelixNodeIdentifier(id),
+                        Utils.parsePortFromHelixNodeIdentifier(id), multiClusterConfigs.getAdminSecurePort());
+                }
+            }
+            if (attempt < maxAttempts) {
+                logger.warn("Venice controller leader does not exist for cluster: " + clusterName + ", attempt="
+                    + attempt + "/" + maxAttempts);
+                Utils.sleep(5 * Time.MS_PER_SECOND);
+            }
         }
-
-        String message = "Master controller does not exist, cluster=" + clusterName;
+        String message = "Unable to find Venice controller leader for cluster: " + clusterName + " after "
+            + maxAttempts + " attempts";
         logger.error(message);
         throw new VeniceException(message);
     }
@@ -3428,7 +3469,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public boolean isMasterControllerOfControllerCluster() {
-        if (isParticipantOnlyInControllerCluster) {
+        if (isControllerClusterHAAS) {
           return isMasterController(coloMasterClusterName);
         }
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(level1KeyBuilder.controllerLeader());
