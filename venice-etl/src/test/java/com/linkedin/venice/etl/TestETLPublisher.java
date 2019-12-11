@@ -20,7 +20,7 @@ public class TestETLPublisher {
     /**
      * Properties is missing ETL_SNAPSHOT_SOURCE_DIR and ETL_SNAPSHOT_DESTINATION_DIR.
      */
-    properties.setProperty(VENICE_CHILD_CONTROLLER_URLS, "http://localhost:1736");
+    properties.setProperty(VENICE_CONTROLLER_URLS, "http://localhost:1736");
     properties.setProperty(FABRIC_NAME, "ei-ltx1");
     VeniceETLPublisher publisher = new VeniceETLPublisher("testJobId", properties);
     publisher.run();
