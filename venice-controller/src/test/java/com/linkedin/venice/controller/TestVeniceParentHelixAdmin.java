@@ -447,8 +447,6 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testAddStoreWhenLastExceptionIsNotNull() {
-    parentAdmin.start(clusterName);
-
     String storeName = "test-store";
     when(internalAdmin.getLastExceptionForStore(clusterName, storeName))
         .thenReturn(null)
@@ -459,6 +457,7 @@ public class TestVeniceParentHelixAdmin {
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
+    parentAdmin.start(clusterName);
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     // Add store again now with an existing exception
