@@ -54,9 +54,9 @@ public class HDFSSchemaSource implements SchemaSource {
    * @param state
    */
   public void load(SourceState state) {
-    String veniceControllerUrls = state.getProp(VENICE_CHILD_CONTROLLER_URLS);
+    String veniceControllerUrls = state.getProp(VENICE_CONTROLLER_URLS);
     loadSchemas(veniceControllerUrls, state.getProp(VENICE_STORE_NAME));
-    loadSchemas(veniceControllerUrls,state.getProp(FUTURE_ETL_ENABLED_STORES));
+    loadSchemas(veniceControllerUrls, state.getProp(FUTURE_ETL_ENABLED_STORES));
   }
 
   private void getStoreSchemaFromVenice(String veniceControllerUrls, Set<String> veniceStoreNames) {
@@ -191,14 +191,14 @@ public class HDFSSchemaSource implements SchemaSource {
     return storeSchemaDir;
   }
 
-  private void loadSchemas(String veniceChildControllerUrls, String storeNamesList) {
+  private void loadSchemas(String veniceControllerUrls, String storeNamesList) {
     // for current version etl
     Set<String> veniceStoreNames = new HashSet<>();
     String[] tokens = storeNamesList.split(VENICE_STORE_NAME_SEPARATOR);
     for (String token : tokens) {
       veniceStoreNames.add(token.trim());
     }
-    getStoreSchemaFromVenice(veniceChildControllerUrls, veniceStoreNames);
+    getStoreSchemaFromVenice(veniceControllerUrls, veniceStoreNames);
     for (String storeName : veniceStoreNames) {
       setKeySchema(storeName);
       putValueSchemas(storeName);

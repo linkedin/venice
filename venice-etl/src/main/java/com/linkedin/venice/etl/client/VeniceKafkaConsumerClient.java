@@ -97,7 +97,8 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
 
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
-  private String veniceChildControllerUrls;
+  private String fabricName;
+  private String veniceControllerUrls;
   private Set<String> veniceStoreNames;
   private Set<String> futureETLEnabledStores;
 
@@ -106,9 +107,8 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
 
   public VeniceKafkaConsumerClient(Config baseConfig) {
     super(baseConfig);
-    // This needs to be child controller urls as we directly talk to local controller to get local topic info.
-    String veniceChildControllerUrls = baseConfig.getString(VENICE_CHILD_CONTROLLER_URLS);
-    this.veniceChildControllerUrls = veniceChildControllerUrls;
+    this.fabricName = baseConfig.getString(FABRIC_NAME);
+    this.veniceControllerUrls = baseConfig.getString(VENICE_CONTROLLER_URLS);
     this.storeToControllerClient = new HashMap<>();
     this.veniceStoreNames = new HashSet<>();
     String veniceStoreNamesList = baseConfig.getString(VENICE_STORE_NAME);
@@ -210,7 +210,7 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   }
 
   private synchronized void createControllersList(Set<String> storeNames) {
-    Map<String, ControllerClient> storeToControllers = getControllerClients(storeNames, veniceChildControllerUrls);
+    Map<String, ControllerClient> storeToControllers = getControllerClients(storeNames, veniceControllerUrls);
     storeToControllerClient.putAll(storeToControllers);
   }
 
@@ -222,12 +222,12 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
      */
     // get the topic names from Venice controllers for current version etl stores
     createControllersList(veniceStoreNames);
-    Set<String> topicNames = new HashSet<String>();
+    Set<String> topicNames = new HashSet<>();
     for (String storeName: veniceStoreNames) {
       StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
       // append current version topic
-      String topicName = Version.composeKafkaTopic(storeName, storeInfo.getCurrentVersion());
+      String topicName = Version.composeKafkaTopic(storeName, storeInfo.getColoToCurrentVersions().get(fabricName));
       topicNames.add(topicName);
       logger.info("Topic name in this ETL pipeline is: " + topicName);
     }
@@ -237,17 +237,21 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     for (String storeName : futureETLEnabledStores) {
       StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
-      // append future version topic if the the largest used version number is larger than current version number
+      // This largest version is across all colos.
       int futureVersion = storeInfo.getLargestUsedVersionNumber();
-      if (futureVersion > storeInfo.getCurrentVersion()) {
+      int currentVersion = storeInfo.getColoToCurrentVersions().get(fabricName);
+      if (futureVersion > currentVersion) {
         String futureTopicName = Version.composeKafkaTopic(storeName, futureVersion);
         topicNames.add(futureTopicName);
-        logger.info("Future version topic name in this ETL pipeline is: " + futureTopicName);
+        logger.info("Future version topic in this ETL pipeline is: " + futureTopicName);
       } else {
         logger.info("Store " + storeName + " doesn't have a future version running yet. Skipped.");
       }
     }
 
+    /**
+     * Filters out topic names which don't exist in kafka topic list
+     */
     Map<String, List<PartitionInfo>> topicList = this.veniceKafkaConsumer.listTopics();
     List<KafkaTopic> filteredTopics = new ArrayList<>();
     for (Map.Entry<String, List<PartitionInfo>> topicEntry : topicList.entrySet()) {
