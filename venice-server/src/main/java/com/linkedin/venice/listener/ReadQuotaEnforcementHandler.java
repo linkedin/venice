@@ -37,9 +37,9 @@ import org.apache.log4j.Logger;
 import static java.util.concurrent.TimeUnit.*;
 
 @ChannelHandler.Sharable
-public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest> implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
+public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<RouterRequest> implements RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
 
-  private static final Logger logger = Logger.getLogger(StorageQuotaEnforcementHandler.class);
+  private static final Logger logger = Logger.getLogger(ReadQuotaEnforcementHandler.class);
   private final ConcurrentMap<String, TokenBucket> storeVersionBuckets = new VeniceConcurrentHashMap<>();
   private final TokenBucket storageNodeBucket;
   private final ReadOnlyStoreRepository storeRepository;
@@ -58,18 +58,18 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
   private final int enforcementCapacityMultiple = 5; // Token bucket capacity is refill amount times this multiplier
 
 
-  public StorageQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, CompletableFuture<RoutingDataRepository> routingRepository, String nodeId, AggServerQuotaUsageStats stats){
+  public ReadQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, CompletableFuture<RoutingDataRepository> routingRepository, String nodeId, AggServerQuotaUsageStats stats){
     this(storageNodeRcuCapacity, storeRepository, routingRepository, nodeId, stats, Clock.systemUTC());
   }
 
-  public  StorageQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, CompletableFuture<RoutingDataRepository> routingRepositoryFuture, String nodeId, AggServerQuotaUsageStats stats, Clock clock){
+  public ReadQuotaEnforcementHandler(long storageNodeRcuCapacity, ReadOnlyStoreRepository storeRepository, CompletableFuture<RoutingDataRepository> routingRepositoryFuture, String nodeId, AggServerQuotaUsageStats stats, Clock clock){
     this.clock = clock;
     this.storageNodeBucket = tokenBucketfromRcuPerSecond(storageNodeRcuCapacity, 1);
     this.storeRepository = storeRepository;
     this.thisNodeId = nodeId;
     this.stats = stats;
     routingRepositoryFuture.thenAccept(routing -> {
-      logger.info("Initializing StorageQuotaEnforcementHandler with completed RoutingDataRepository");
+      logger.info("Initializing ReadQuotaEnforcementHandler with completed RoutingDataRepository");
       this.routingRepository = routing;
       init();
     });
@@ -82,7 +82,7 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
     storeRepository.registerStoreDataChangedListener(this);
     ResourceAssignment resourceAssignment = routingRepository.getResourceAssignment();
     if (null == resourceAssignment) {
-      logger.error("Null resource assignment from RoutingDataRepository in StorageQuotaEnforcementHandler");
+      logger.error("Null resource assignment from RoutingDataRepository in ReadQuotaEnforcementHandler");
     } else {
       for (String resource : routingRepository.getResourceAssignment().getAssignedResources()) {
         this.onRoutingDataChanged(routingRepository.getPartitionAssignments(resource));
@@ -286,13 +286,18 @@ public class StorageQuotaEnforcementHandler extends SimpleChannelInboundHandler<
 
     List<String> topics = store.getVersions().stream().map((version) -> version.kafkaTopicName()).collect(Collectors.toList());
     for (String topic : topics) {
+      int topicVersion = Version.parseVersionFromKafkaTopicName(topic);
+      // No need to subscribe StorageQuotaHandler on versions other than current version.
+      if (store.getCurrentVersion() != topicVersion) {
+        continue;
+      }
       routingRepository.subscribeRoutingDataChange(topic, this);
       try {
         /**
          * make sure we're up-to-date after registering as a listener
          *
          * During a new push, a new version is added to the version list of the Store metadata before the push actually
-         * starts, so this function (StorageQuotaEnforcementHandler#handleStoreChanged()) is invoked before the new
+         * starts, so this function (ReadQuotaEnforcementHandler#handleStoreChanged()) is invoked before the new
          * resource assignment shows up in the external view, so calling routingRepository.getPartitionAssignments() for
          * a the future version will fail in most cases, because the new topic is not in the external view at all.
          *

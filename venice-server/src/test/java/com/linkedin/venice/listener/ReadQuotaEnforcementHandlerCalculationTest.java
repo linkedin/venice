@@ -12,26 +12,26 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 
-public class StorageQuotaEnforcementHandlerCalculationTest {
+public class ReadQuotaEnforcementHandlerCalculationTest {
   private String nodeId = "thisNodeId";
 
   @Test
   public void onePartitionFourReplicas(){
     //one partition, four replicas, one replica on this host.  Portion should be 1/4
     PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[]{4}, new int[]{1});
-    double portion = StorageQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
+    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
     Assert.assertEquals(portion, 0.25d);
   }
 
   @Test void twoPartitionsTwoAndThreeReplicas(){
     PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[]{2,3}, new int[]{1,1});
-    double portion = StorageQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
+    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
     Assert.assertEquals(portion, 0.41666666666666663d); // (1/2 + 1/3)/2
   }
 
   @Test void twoPartitionsTwoAndThreeReplicasOnlyTwoReplicasLocally(){
     PartitionAssignment pa = getPartitionAssignment("topic", nodeId, new int[]{2,3,3}, new int[]{1,1,0});
-    double portion = StorageQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
+    double portion = ReadQuotaEnforcementHandler.getNodeResponsibilityForQuota(pa, nodeId);
     Assert.assertEquals(portion, 0.27777777777777773d); //(1/2 + 1/3 + 0/3)/3
   }
 

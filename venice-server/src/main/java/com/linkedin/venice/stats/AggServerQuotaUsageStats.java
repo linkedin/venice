@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.listener.StorageQuotaEnforcementHandler;
 import io.tehuti.metrics.MetricsRepository;
 
 

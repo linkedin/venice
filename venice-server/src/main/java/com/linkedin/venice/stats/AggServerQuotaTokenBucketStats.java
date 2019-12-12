@@ -1,13 +1,13 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.listener.StorageQuotaEnforcementHandler;
+import com.linkedin.venice.listener.ReadQuotaEnforcementHandler;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import io.tehuti.metrics.MetricsRepository;
 
 
 public class AggServerQuotaTokenBucketStats extends AbstractVeniceAggStats<ServerQuotaTokenBucketStats> implements StoreDataChangedListener {
-  public AggServerQuotaTokenBucketStats(MetricsRepository metricsRepository, StorageQuotaEnforcementHandler quotaEnforcer) {
+  public AggServerQuotaTokenBucketStats(MetricsRepository metricsRepository, ReadQuotaEnforcementHandler quotaEnforcer) {
     super(metricsRepository,
         (metrics, storeName) -> new ServerQuotaTokenBucketStats(metrics, storeName,
             () -> quotaEnforcer.getBucketForStore(storeName))
