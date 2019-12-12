@@ -34,7 +34,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final Optional<ServerAclHandler> aclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
   private final VeniceServerConfig serverConfig;
-  private final StorageQuotaEnforcementHandler quotaEnforcer;
+  private final ReadQuotaEnforcementHandler quotaEnforcer;
   AggServerQuotaUsageStats quotaUsageStats;
   AggServerQuotaTokenBucketStats quotaTokenBucketStats;
 
@@ -63,7 +63,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     String nodeId = Utils.getHelixNodeIdentifier(serverConfig.getListenerPort());
     this.quotaUsageStats = new AggServerQuotaUsageStats(metricsRepository);
-    this.quotaEnforcer = new StorageQuotaEnforcementHandler(
+    this.quotaEnforcer = new ReadQuotaEnforcementHandler(
         serverConfig.getNodeCapacityInRcu(), storeMetadataRepository, routingRepository, nodeId, quotaUsageStats);
     if (serverConfig.isQuotaEnforcementDisabled()) {
       this.quotaEnforcer.disableEnforcement();

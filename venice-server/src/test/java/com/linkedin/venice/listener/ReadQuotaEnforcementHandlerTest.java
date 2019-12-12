@@ -26,9 +26,9 @@ import static org.testng.Assert.*;
 
 
 /**
- * This test ensures that the StorageQuotaEnforcementHandler will throttle over-quota requests
+ * This test ensures that the ReadQuotaEnforcementHandler will throttle over-quota requests
  */
-public class StorageQuotaEnforcementHandlerTest {
+public class ReadQuotaEnforcementHandlerTest {
 
   long nodeCapacity;
   String thisNodeId;
@@ -36,7 +36,7 @@ public class StorageQuotaEnforcementHandlerTest {
   long currentTime;
   ReadOnlyStoreRepository storeRepository;
   RoutingDataRepository routingRepository;
-  StorageQuotaEnforcementHandler quotaEnforcer;
+  ReadQuotaEnforcementHandler quotaEnforcer;
   AggServerQuotaUsageStats stats;
 
   @BeforeMethod
@@ -49,7 +49,7 @@ public class StorageQuotaEnforcementHandlerTest {
     storeRepository = mock(ReadOnlyStoreRepository.class);
     routingRepository = mock(RoutingDataRepository.class);
     stats = mock(AggServerQuotaUsageStats.class);
-    quotaEnforcer = new StorageQuotaEnforcementHandler(
+    quotaEnforcer = new ReadQuotaEnforcementHandler(
         nodeCapacity, storeRepository, CompletableFuture.completedFuture(routingRepository), thisNodeId, stats, clock);
 
   }
