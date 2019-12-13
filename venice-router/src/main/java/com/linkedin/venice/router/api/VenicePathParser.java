@@ -28,8 +28,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.annotation.Nonnull;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
@@ -48,9 +46,7 @@ import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
  */
 public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     implements ExtendedResourcePathParser<VenicePath, RouterKey, HTTP_REQUEST> {
-  private static final Logger LOGGER = Logger.getLogger(VenicePathParser.class);
 
-  public static final String STORE_VERSION_SEP = "_v";
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
   public static final int STORE_MAX_LENGTH = 128;
   public static final String SEP = "/";
@@ -112,16 +108,19 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       int version = versionFinder.getVersion(storeName);
       String resourceName = Version.composeKafkaTopic(storeName, version);
 
+      Optional<RouterStats<AggRouterHttpRequestStats>> statsOptional = routerConfig.isKeyValueProfilingEnabled() ?
+          Optional.of(routerStats) : Optional.empty();
+
       String method = fullHttpRequest.method().name();
       int keyNum = 1;
       if (VeniceRouterUtils.isHttpGet(method)) {
         // single-get request
-        path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
+        path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder, statsOptional);
       } else if (VeniceRouterUtils.isHttpPost(method)) {
         if (resourceType.equals(TYPE_STORAGE)) {
           // multi-get request
           path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs());
+              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(), statsOptional);
         } else if (resourceType.equals(TYPE_COMPUTE)) {
           // read compute request
           path = new VeniceComputePath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
@@ -196,22 +195,19 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     return path;
   }
 
-  @Nonnull
   @Override
-  public VenicePath parseResourceUri(@Nonnull String uri) throws RouterException {
+  public VenicePath parseResourceUri(String uri) throws RouterException {
     throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
         BAD_REQUEST, "parseResourceUri without param: request should not be invoked");
   }
 
-  @Nonnull
   @Override
-  public VenicePath substitutePartitionKey(@Nonnull VenicePath path, RouterKey s) {
+  public VenicePath substitutePartitionKey(VenicePath path, RouterKey s) {
     return path.substitutePartitionKey(s);
   }
 
-  @Nonnull
   @Override
-  public VenicePath substitutePartitionKey(@Nonnull VenicePath path, @Nonnull Collection<RouterKey> s) {
+  public VenicePath substitutePartitionKey(VenicePath path, Collection<RouterKey> s) {
     return path.substitutePartitionKey(s);
   }
 

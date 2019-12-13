@@ -12,6 +12,8 @@ import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
+import java.util.List;
+import java.util.Optional;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
@@ -29,6 +31,10 @@ public class StatsHandler extends ChannelDuplexHandler {
   private double readComputeLatency = -1;
   private double readComputeDeserializationLatency = -1;
   private double readComputeSerializationLatency = -1;
+
+  private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
+  private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
+
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final AggServerHttpRequestStats computeStats;
@@ -145,6 +151,14 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.multiChunkLargeValueCount = multiChunkLargeValueCount;
   }
 
+  public void setOptionalKeySizeList(Optional<List<Integer>> optionalKeySizeList) {
+    this.optionalKeySizeList = optionalKeySizeList;
+  }
+
+  public void setOptionalValueSizeList(Optional<List<Integer>> optionalValueSizeList) {
+    this.optionalValueSizeList = optionalValueSizeList;
+  }
+
   public StatsHandler(AggServerHttpRequestStats singleGetStats, AggServerHttpRequestStats multiGetStats, AggServerHttpRequestStats computeStats) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
@@ -174,6 +188,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       readComputeLatency = -1;
       readComputeDeserializationLatency = -1;
       readComputeSerializationLatency = -1;
+
+      optionalKeySizeList = Optional.empty();
+      optionalValueSizeList = Optional.empty();
 
       /**
        * For a single 'channelRead' invocation, Netty will guarantee all the following 'channelRead' functions
@@ -211,6 +228,11 @@ public class StatsHandler extends ChannelDuplexHandler {
        */
       if (!statCallbackExecuted) {
         recordBasicMetrics();
+
+        optionalKeySizeList.ifPresent(keySizeList ->
+            keySizeList.forEach(keySize -> currentStats.recordKeySizeInByte(storeName, keySize)));
+        optionalValueSizeList.ifPresent(valueSizeList ->
+            valueSizeList.forEach(valueSize -> currentStats.recordValueSizeInByte(storeName, valueSize)));
 
         double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         //if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,

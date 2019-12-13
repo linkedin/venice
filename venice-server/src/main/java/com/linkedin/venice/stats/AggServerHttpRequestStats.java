@@ -10,6 +10,11 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
           (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType));
   }
 
+  public AggServerHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType, boolean isKeyValueProfilingEnabled) {
+    super(metricsRepository,
+        (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType, isKeyValueProfilingEnabled));
+  }
+
   public void recordSuccessRequest(String storeName) {
     totalStats.recordSuccessRequest();
     getStoreStats(storeName).recordSuccessRequest();
@@ -100,5 +105,15 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
   public void recordReadComputeSerializationLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
     totalStats.recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
     getStoreStats(storeName).recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
+  }
+
+  public void recordKeySizeInByte(String storeName, long keySize) {
+    totalStats.recordKeySizeInByte(keySize);
+    getStoreStats(storeName).recordKeySizeInByte(keySize);
+  }
+
+  public void recordValueSizeInByte(String storeName, long valueSize) {
+    totalStats.recordValueSizeInByte(valueSize);
+    getStoreStats(storeName).recordValueSizeInByte(valueSize);
   }
 }

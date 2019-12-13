@@ -21,12 +21,15 @@ public class RouterKey implements Comparable<RouterKey> {
    */
   private int partitionId = UNKNOWN_PARTITION_ID;
 
+  private int keySize;
+
   public RouterKey(byte[] key){
     this(ByteBuffer.wrap(key));
   }
   public RouterKey(ByteBuffer key) {
     this.keyBuffer = key;
     this.hashCode = this.keyBuffer.hashCode();
+    this.keySize = key.remaining();
   }
   public static RouterKey fromString(String s){
     return new RouterKey(s.getBytes(StandardCharsets.UTF_8));
@@ -41,6 +44,10 @@ public class RouterKey implements Comparable<RouterKey> {
 
   public ByteBuffer getKeyBuffer() {
     return keyBuffer;
+  }
+
+  public int getKeySize() {
+    return keySize;
   }
 
   @Override

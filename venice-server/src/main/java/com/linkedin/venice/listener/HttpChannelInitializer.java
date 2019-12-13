@@ -48,9 +48,11 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     this.serverConfig = serverConfig;
     this.requestHandler = requestHandler;
 
-    this.singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
-    this.multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
-    this.computeStats = new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE);
+    boolean isKeyValueProfilingEnabled = serverConfig.isKeyValueProfilingEnabled();
+
+    this.singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET, isKeyValueProfilingEnabled);
+    this.multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET, isKeyValueProfilingEnabled);
+    this.computeStats = new AggServerHttpRequestStats(metricsRepository, RequestType.COMPUTE, isKeyValueProfilingEnabled);
 
     if (serverConfig.isComputeFastAvroEnabled()) {
       LOGGER.info("Fast avro for compute is enabled");
@@ -78,7 +80,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   }
 
   @Override
-  public void initChannel(SocketChannel ch) throws Exception {
+  public void initChannel(SocketChannel ch) {
     if (sslFactory.isPresent()){
       ch.pipeline()
           .addLast(new SSLInitializer(sslFactory.get()));

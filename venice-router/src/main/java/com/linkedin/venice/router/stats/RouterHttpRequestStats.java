@@ -3,6 +3,7 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
+import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -63,11 +64,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor nettyClientAcquireChannelFutureLatencySensor;
   private final Sensor readQuotaUsageSensor;
   private final Sensor inFlightRequestSensor;
+  private Sensor keySizeSensor;
   private final AtomicInteger currentInFlightRequest;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
       ScatterGatherStats scatterGatherStats) {
+    this(metricsRepository, storeName, requestType, scatterGatherStats, false);
+  }
+
+  //QPS metrics
+  public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
+      ScatterGatherStats scatterGatherStats, boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
 
     Rate requestRate = new OccurrenceRate();
@@ -93,8 +101,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
     requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")), new Avg());
     compressedResponseSizeSensor = registerSensor("compressed_response_size",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")), new Avg());
-    responseSizeSensor = registerSensor("response_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_size")), new Avg());
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")), new Avg(), new Max());
+
     decompressionTimeSensor = registerSensor("decompression_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")), new Avg());
     quotaSensor = registerSensor("read_quota_per_router", new Gauge());
@@ -163,6 +171,21 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     readQuotaUsageSensor = registerSensor("read_quota_usage_kps", new Total());
 
     inFlightRequestSensor = registerSensor("in_flight_request_count", new Min(), new Max(0), new Avg());
+
+    String responseSizeSensorName = "response_size";
+    if (isKeyValueProfilingEnabled) {
+      String keySizeSensorName = "key_size_in_byte";
+      keySizeSensor = registerSensor(keySizeSensorName, new Avg(), new Max(),
+          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(keySizeSensorName)));
+
+      responseSizeSensor = registerSensor(responseSizeSensorName, new Avg(), new Max(),
+          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
+    } else {
+      responseSizeSensor = registerSensor(responseSizeSensorName, new Avg(), new Max(),
+          TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
+    }
+
+
     currentInFlightRequest = new AtomicInteger();
   }
 
@@ -352,6 +375,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordSlowRouteAbortedRetryRequest() {
     slowRouteAbortedRetryRequest.record();
+  }
+
+  public void recordKeySizeInByte(long keySize) {
+    keySizeSensor.record(keySize);
   }
 
   public void recordResponse() {

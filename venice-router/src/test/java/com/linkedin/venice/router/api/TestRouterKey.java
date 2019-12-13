@@ -1,12 +1,9 @@
 package com.linkedin.venice.router.api;
 
+import java.nio.ByteBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-
-/**
- * Created by mwise on 3/4/16.
- */
 public class TestRouterKey {
   @Test
   public void encodesBase64(){

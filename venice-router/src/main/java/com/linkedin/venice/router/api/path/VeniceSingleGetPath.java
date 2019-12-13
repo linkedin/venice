@@ -5,11 +5,14 @@ import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.ByteBuf;
@@ -35,6 +38,11 @@ public class VeniceSingleGetPath extends VenicePath {
 
   public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder)
       throws RouterException {
+    this(resourceName, key, uri, partitionFinder, Optional.empty());
+  }
+
+  public VeniceSingleGetPath(String resourceName, String key, String uri, VenicePartitionFinder partitionFinder,
+      Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
     super(resourceName, false, -1);
     if (Utils.isNullOrEmpty(key)) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(), BAD_REQUEST,
@@ -46,6 +54,12 @@ public class VeniceSingleGetPath extends VenicePath {
     } else {
       routerKey = RouterKey.fromString(key);
     }
+
+    if (stats.isPresent()) {
+      stats.get().getStatsByType(RequestType.SINGLE_GET)
+          .recordKeySize(Version.parseStoreFromKafkaTopicName(resourceName), routerKey.getKeySize());
+    }
+
     try {
       int partitionId = partitionFinder.findPartitionNumber(resourceName, routerKey);
       routerKey.setPartitionId(partitionId);
@@ -68,8 +82,6 @@ public class VeniceSingleGetPath extends VenicePath {
 
   /**
    * For single-get request, the substituted request is same as the original request.
-   * @param s
-   * @return
    */
   @Override
   public VenicePath substitutePartitionKey(RouterKey s) {

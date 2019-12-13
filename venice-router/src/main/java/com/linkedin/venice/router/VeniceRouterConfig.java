@@ -81,6 +81,7 @@ public class VeniceRouterConfig {
   private int routerUnhealthyPendingConnThresholdPerRoute;
   private boolean perNodeClientAllocationEnabled;
   private int perNodeClientThreadCount;
+  private boolean keyValueProfilingEnabled;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -184,6 +185,8 @@ public class VeniceRouterConfig {
 
     perNodeClientAllocationEnabled = props.getBoolean(ROUTER_PER_NODE_CLIENT_ENABLED, false);
     perNodeClientThreadCount = props.getInt(ROUTER_PER_NODE_CLIENT_THREAD_COUNT, 2);
+
+    keyValueProfilingEnabled = props.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -424,6 +427,10 @@ public class VeniceRouterConfig {
 
   public int getPerNodeClientThreadCount() {
     return perNodeClientThreadCount;
+  }
+
+  public boolean isKeyValueProfilingEnabled() {
+    return keyValueProfilingEnabled;
   }
 
   /**

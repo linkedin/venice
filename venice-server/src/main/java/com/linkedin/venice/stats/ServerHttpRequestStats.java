@@ -14,6 +14,7 @@ import java.util.List;
 
 
 public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
+
   private final Sensor successRequestSensor;
   private final Sensor errorRequestSensor;
   private final Sensor successRequestLatencySensor;
@@ -42,13 +43,20 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor readComputeSerializationLatencyForSmallValueSensor;
   private final Sensor readComputeSerializationLatencyForLargeValueSensor;
 
+  private Sensor requestKeySizeSensor;
+  private Sensor requestValueSizeSensor;
+
   // Ratio sensors are not directly written to, but they still get their state updated indirectly
   @SuppressWarnings("unused")
   private final Sensor successRequestKeyRatioSensor, successRequestRatioSensor;
 
+  public ServerHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
+    this(metricsRepository, storeName, requestType, false);
+  }
 
-  public ServerHttpRequestStats(MetricsRepository metricsRepository,
-                                String storeName, RequestType requestType) {
+
+  public ServerHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
+      boolean isKeyValueProfilingEnabled) {
     super(metricsRepository, storeName, requestType);
 
     /**
@@ -134,6 +142,15 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     readComputeSerializationLatencySensor = getPercentileStatSensor("storage_engine_read_compute_serialization_latency");
     readComputeSerializationLatencyForSmallValueSensor = getPercentileStatSensor("storage_engine_read_compute_serialization_latency_for_small_value");
     readComputeSerializationLatencyForLargeValueSensor = getPercentileStatSensor("storage_engine_read_compute_serialization_latency_for_large_value");
+
+    if (isKeyValueProfilingEnabled) {
+      String requestValueSizeSensorName = "request_value_size";
+      requestValueSizeSensor = registerSensor(requestValueSizeSensorName, new Avg(), new Max(),
+          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(requestValueSizeSensorName)));
+      String requestKeySizeSensorName = "request_key_size";
+      requestKeySizeSensor = registerSensor(requestKeySizeSensorName, new Avg(), new Max(),
+          TehutiUtils.getFineGrainedPercentileStat(getName(), getFullMetricName(requestKeySizeSensorName)));
+    }
   }
 
   public void recordSuccessRequest() {
@@ -222,6 +239,14 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     } else {
       readComputeSerializationLatencyForSmallValueSensor.record(latency);
     }
+  }
+
+  public void recordKeySizeInByte(long keySize) {
+    requestKeySizeSensor.record(keySize);
+  }
+
+  public void recordValueSizeInByte(long valueSize) {
+    requestValueSizeSensor.record(valueSize);
   }
 
   private Sensor getPercentileStatSensor(String name) {

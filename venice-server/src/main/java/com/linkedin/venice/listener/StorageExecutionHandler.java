@@ -52,6 +52,7 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -61,7 +62,6 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.locks.ReentrantLock;
-import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -100,6 +100,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final boolean fastAvroEnabled;
   private final boolean parallelBatchGetEnabled;
   private final int parallelBatchGetChunkSize;
+  private final boolean keyValueProfilingEnabled;
 
 
   private final Map<Integer, ReadComputeOperator> computeOperators = new HashMap<Integer, ReadComputeOperator>() {
@@ -110,10 +111,10 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     }
   };
 
-  public StorageExecutionHandler(@NotNull ExecutorService executor, @NotNull ExecutorService computeExecutor,
-      @NotNull StoreRepository storeRepository, @NotNull ReadOnlySchemaRepository schemaRepository,
-      @NotNull MetadataRetriever metadataRetriever, @NotNull DiskHealthCheckService healthCheckService,
-      boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize) {
+  public StorageExecutionHandler(ExecutorService executor, ExecutorService computeExecutor,
+      StoreRepository storeRepository, ReadOnlySchemaRepository schemaRepository,
+      MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
+      boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, boolean keyValueProfilingEnabled) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
     this.storeRepository = storeRepository;
@@ -124,6 +125,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     this.computeResultSchemaCache = new VeniceConcurrentHashMap<>();
     this.parallelBatchGetEnabled = parallelBatchGetEnabled;
     this.parallelBatchGetChunkSize = parallelBatchGetChunkSize;
+    this.keyValueProfilingEnabled = keyValueProfilingEnabled;
   }
 
   @Override
@@ -241,6 +243,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     ValueRecord valueRecord = SingleGetChunkingAdapter.get(store, partition, key, isChunked, response);
     response.setValueRecord(valueRecord);
     response.setOffset(offset);
+
+    if (keyValueProfilingEnabled) {
+      response.setOptionalKeySizeList(Optional.of(Arrays.asList(key.length)));
+      response.setOptionalValueSizeList(Optional.of(Arrays.asList(valueRecord.getDataSize())));
+    }
+
     return response;
   }
 
@@ -265,6 +273,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     ReentrantLock requestLock = new ReentrantLock();
     CompletableFuture[] chunkFutures = new CompletableFuture[splitSize];
 
+    Optional<List<Integer>> optionalKeyList =  keyValueProfilingEnabled
+        ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
+    Optional<List<Integer>> optionalValueList = keyValueProfilingEnabled
+        ? Optional.of(new ArrayList<>(totalKeyNum)) : Optional.empty();
+
+
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
       chunkFutures[cur] = CompletableFuture.runAsync(() -> {
@@ -272,6 +286,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         int endPos = Math.min((finalCur + 1) * parallelChunkSize, totalKeyNum);
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {
           final MultiGetRouterRequestKeyV1 key = keyList.get(subChunkCur);
+          optionalKeyList.ifPresent(list -> list.add(key.keyBytes.remaining()));
           MultiGetResponseRecordV1 record =
               BatchGetChunkingAdapter.get(store, key.partitionId, key.keyBytes, isChunked, responseWrapper);
           if (null == record) {
@@ -293,6 +308,11 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
             requestLock.lock();
             try {
               responseWrapper.addRecord(record);
+
+              if (optionalValueList.isPresent()) {
+                optionalValueList.get().add(record.value.remaining());
+              }
+
             } finally {
               requestLock.unlock();
             }
@@ -310,6 +330,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       if (e != null) {
         throw new VeniceException(e);
       }
+      responseWrapper.setOptionalKeySizeList(optionalKeyList);
+      responseWrapper.setOptionalValueSizeList(optionalValueList);
       return responseWrapper;
     });
   }
