@@ -33,7 +33,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
   }
 
   @Override
-  public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+  public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) {
     ByteBuf body;
     String contentType = HttpConstants.AVRO_BINARY;
     HttpResponseStatus responseStatus = OK;
@@ -51,6 +51,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         statsHandler.setReadComputeLatency(obj.getReadComputeLatency());
         statsHandler.setReadComputeDeserializationLatency(obj.getReadComputeDeserializationLatency());
         statsHandler.setReadComputeSerializationLatency(obj.getReadComputeSerializationLatency());
+        statsHandler.setOptionalKeySizeList(obj.getOptionalKeySizeList());
+        statsHandler.setOptionalValueSizeList(obj.getOptionalValueSizeList());
         compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();

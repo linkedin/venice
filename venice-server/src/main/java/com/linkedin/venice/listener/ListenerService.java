@@ -128,6 +128,6 @@ public class ListenerService extends AbstractVeniceService {
       int parallelBatchGetChunkSize) {
     return new StorageExecutionHandler(
         executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
-        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize);
+        fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig.isKeyValueProfilingEnabled());
   }
 }

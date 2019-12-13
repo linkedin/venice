@@ -2,10 +2,13 @@ package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
@@ -52,10 +55,13 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
    * @param maxKeyCount
    * @throws RouterException
    */
-  public void initialize(String resourceName, Iterable<ByteBuffer> keys, VenicePartitionFinder partitionFinder, int maxKeyCount) throws RouterException {
+  public void initialize(String resourceName, Iterable<ByteBuffer> keys, VenicePartitionFinder partitionFinder,
+      int maxKeyCount, Optional<RouterStats<AggRouterHttpRequestStats>> stats) throws RouterException {
     keyNum = 0;
     int keyIdx = 0;
     int partitionNum = -1;
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+
     try {
       partitionNum = partitionFinder.getNumPartitions(resourceName);
     } catch (VeniceNoHelixResourceException e){
@@ -65,11 +71,16 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
           e.getHttpResponseStatus(),
           e.getMessage());
     }
+
     for (ByteBuffer key : keys) {
       RouterKey routerKey = new RouterKey(key);
 
       keyNum++;
       this.keyIdxToRouterKey.put(keyIdx, routerKey);
+
+      if (stats.isPresent()) {
+        stats.get().getStatsByType(RequestType.MULTI_GET).recordKeySize(storeName, routerKey.getKeySize());
+      }
 
       // partition lookup
       int partitionId;

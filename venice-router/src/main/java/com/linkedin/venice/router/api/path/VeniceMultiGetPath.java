@@ -9,6 +9,8 @@ import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -30,7 +32,13 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   protected static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
 
   public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
-      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs)
+      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) throws RouterException {
+    this(resourceName, request, partitionFinder, maxKeyCount, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, Optional.empty());
+  }
+
+      public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
+      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
+      Optional<RouterStats<AggRouterHttpRequestStats>> stats)
       throws RouterException {
     super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
 
@@ -46,8 +54,9 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
     request.content().readBytes(content);
     keys = deserialize(content);
 
-    initialize(resourceName, keys, partitionFinder, maxKeyCount);
+    initialize(resourceName, keys, partitionFinder, maxKeyCount, stats);
   }
+
 
   private VeniceMultiGetPath(String resourceName, Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
       Map<Integer, RouterKey> keyIdxToRouterKey, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {

@@ -3,6 +3,9 @@ package com.linkedin.venice.listener.response;
 import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 
 /**
@@ -17,6 +20,8 @@ public abstract class ReadResponse {
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
   private boolean isStreamingResponse = false;
+  private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
+  private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
@@ -66,6 +71,14 @@ public abstract class ReadResponse {
     this.readComputeDeserializationLatency += latency;
   }
 
+  public void setOptionalKeySizeList(Optional<List<Integer>> optionalKeySizeList) {
+    this.optionalKeySizeList = optionalKeySizeList;
+  }
+
+  public void setOptionalValueSizeList(Optional<List<Integer>> optionalValueSizeList) {
+    this.optionalValueSizeList = optionalValueSizeList;
+  }
+
   public double getReadComputeDeserializationLatency() {
     return this.readComputeDeserializationLatency;
   }
@@ -100,6 +113,14 @@ public abstract class ReadResponse {
 
   public boolean isFound() {
     return true;
+  }
+
+  public Optional<List<Integer>> getOptionalKeySizeList() {
+    return optionalKeySizeList;
+  }
+
+  public Optional<List<Integer>> getOptionalValueSizeList() {
+    return optionalValueSizeList;
   }
 
   public abstract int getRecordCount();

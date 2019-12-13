@@ -28,6 +28,7 @@ public class ValueRecord {
 
   private final int schemaId;
   private final ByteBuf data;
+  private final int dataSize;
   private byte[] serializedArr;
 
   private ValueRecord(int schemaId, byte[] data) {
@@ -37,6 +38,7 @@ public class ValueRecord {
   private ValueRecord(int schemaId, ByteBuf data) {
     this.schemaId = schemaId;
     this.data = data;
+    this.dataSize = data.readableBytes();
   }
 
   private ValueRecord(byte[] combinedData) {
@@ -44,6 +46,7 @@ public class ValueRecord {
     if (dataLen < SCHEMA_HEADER_LENGTH) {
       throw new VeniceException("Invalid combined data array, the length should be bigger than " + SCHEMA_HEADER_LENGTH);
     }
+    this.dataSize = combinedData.length - SCHEMA_HEADER_LENGTH;
     this.schemaId = parseSchemaId(combinedData);
     this.data = parseDataAsByteBuf(combinedData);
     this.serializedArr = combinedData;
@@ -82,14 +85,8 @@ public class ValueRecord {
     return data;
   }
 
-  public ByteBuffer getDataNIOByteBuf() {
-    return data.nioBuffer();
-//    try {
-//      return ByteBuffer.wrap(data.array(), data.arrayOffset(), data.readableBytes());
-//    } catch (UnsupportedOperationException e) {
-//      /** Then {@link data} is a {@link io.netty.buffer.CompositeByteBuf}... */
-//      return data.nioBuffer();
-//    }
+  public int getDataSize() {
+    return dataSize;
   }
 
   // This function normally should only be used in testing,

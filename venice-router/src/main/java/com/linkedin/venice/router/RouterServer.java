@@ -246,7 +246,9 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     this.metricsRepository = metricsRepository;
-    this.routerStats = new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType) );
+    this.routerStats =
+        new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType,
+            config.isKeyValueProfilingEnabled()));
 
     this.d2ServerList = d2ServerList;
     this.accessController = accessController;

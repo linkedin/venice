@@ -163,6 +163,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int parallelBatchGetChunkSize;
 
+  private final boolean keyValueProfilingEnabled;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -218,6 +220,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     enableParallelBatchGet = serverProperties.getBoolean(SERVER_ENABLE_PARALLEL_BATCH_GET, false);
     parallelBatchGetChunkSize = serverProperties.getInt(SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 5);
+
+    keyValueProfilingEnabled = serverProperties.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -383,5 +387,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getParallelBatchGetChunkSize() {
     return parallelBatchGetChunkSize;
+  }
+
+  public boolean isKeyValueProfilingEnabled() {
+    return keyValueProfilingEnabled;
   }
 }

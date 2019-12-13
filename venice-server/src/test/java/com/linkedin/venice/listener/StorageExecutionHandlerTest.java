@@ -71,7 +71,7 @@ public class StorageExecutionHandlerTest {
 
     //Actual test
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
-        mockMetadataRetriever, null, false, false, 10);
+        mockMetadataRetriever, null, false, false, 10, false);
     testHandler.channelRead(mockCtx, testRequest);
 
     waitUntilStorageExecutionHandlerRespond(outputArray);
@@ -100,7 +100,7 @@ public class StorageExecutionHandlerTest {
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
 
     StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, threadPoolExecutor, testRepository, schemaRepo,
-        mockMetadataRetriever, healthCheckService, false, false, 10);
+        mockMetadataRetriever, healthCheckService, false, false, 10, false);
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();

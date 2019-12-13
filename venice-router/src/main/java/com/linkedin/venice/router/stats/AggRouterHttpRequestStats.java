@@ -13,6 +13,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new VeniceConcurrentHashMap<>();
 
   public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
+    this(metricsRepository, requestType, false);
+  }
+
+  public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType,
+    boolean isKeyValueProfilingEnabled) {
     super(metricsRepository);
     /**
      * Use a setter function to bypass the restriction that the supertype constructor could not
@@ -280,5 +285,10 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   public void recordSlowRouteAbortedRetryRequest(String storeName) {
     totalStats.recordSlowRouteAbortedRetryRequest();
     getStoreStats(storeName).recordSlowRouteAbortedRetryRequest();
+  }
+
+  public void recordKeySize(String storeName, long keySize) {
+    totalStats.recordKeySizeInByte(keySize);
+    getStoreStats(storeName).recordKeySizeInByte(keySize);
   }
 }

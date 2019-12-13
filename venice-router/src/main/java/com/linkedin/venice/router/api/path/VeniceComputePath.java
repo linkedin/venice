@@ -70,7 +70,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
         ReadAvroProtocolDefinition.COMPUTE_REQUEST_CLIENT_KEY_V1.getSchema());
     keys = keyDeserializer.deserializeObjects(decoder);
 
-    initialize(resourceName, keys, partitionFinder, maxKeyCount);
+    initialize(resourceName, keys, partitionFinder, maxKeyCount, Optional.empty());
   }
 
   private VeniceComputePath(String resourceName, Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,

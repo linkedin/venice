@@ -850,4 +850,12 @@ public class ConfigKeys {
    * So the current strategy is to enable it by default, but disable it in EI and PROD.
    */
   public static final String CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD = "controller.enable.batch.push.from.admin.in.child";
+
+  /**
+   * A config that turns the key/value profiling stats on and off. This config can be placed in both Router and SNs and it
+   * is off by default. When switching it on, We will emit a fine grained histogram that reflects the distribution of
+   * key and value size. Since this will be run in the critical read path and it will emit additional ~20 stats, please
+   * be cautious when turning it on.
+   */
+  public static final String KEY_VALUE_PROFILING_ENABLED = "key.value.profiling.enabled";
 }
