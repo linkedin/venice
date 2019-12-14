@@ -1140,4 +1140,59 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isReadComputationEnabled());
   }
+
+  @Test
+  public void testStoreLevelConfigUpdateShouldNotModifyExistingVersionLevelConfig() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+    /**
+     * Create a version with default version level setting:
+     * chunkingEnabled = false
+     * leaderFollowerModelEnabled = false
+     * compressionStrategy = CompressionStrategy.NO_OP
+     */
+    Version existingVersion = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    // Check all default setting in store level config
+    Assert.assertFalse(store.isChunkingEnabled());
+    Assert.assertFalse(store.isLeaderFollowerModelEnabled());
+    Assert.assertEquals(store.getCompressionStrategy(), CompressionStrategy.NO_OP);
+    // Check all setting in the existing version
+    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isChunkingEnabled());
+    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isLeaderFollowerModelEnabled());
+    Assert.assertEquals(store.getVersion(existingVersion.getNumber()).get().getCompressionStrategy(), CompressionStrategy.NO_OP);
+
+    /**
+     * Enable chunking for the store; it should only modify the store level config; the existing version metadata
+     * should remain the same!
+     */
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setChunkingEnabled(true));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    // Store level config should be updated
+    Assert.assertTrue(store.isChunkingEnabled());
+    // Existing version config should not be updated!
+    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isChunkingEnabled());
+
+    /**
+     * Enable leader/follower for the store.
+     */
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    // Store level config should be updated
+    Assert.assertTrue(store.isLeaderFollowerModelEnabled());
+    // Existing version config should not be updated!
+    Assert.assertFalse(store.getVersion(existingVersion.getNumber()).get().isLeaderFollowerModelEnabled());
+
+    /**
+     * Enable compression.
+     */
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    // Store level config should be updated
+    Assert.assertEquals(store.getCompressionStrategy(), CompressionStrategy.GZIP);
+    // Existing version config should not be updated!
+    Assert.assertEquals(store.getVersion(existingVersion.getNumber()).get().getCompressionStrategy(), CompressionStrategy.NO_OP);
+  }
 }

@@ -585,10 +585,10 @@ public class Store {
    * @param version
    */
   public void addVersion(Version version){
-    addVersion(version, true);
+    addVersion(version, true, false);
   }
-  private void forceAddVersion(Version version){
-    addVersion(version, false);
+  private void forceAddVersion(Version version, boolean isClonedVersion){
+    addVersion(version, false, isClonedVersion);
   }
 
   /**
@@ -596,8 +596,11 @@ public class Store {
    * @param version
    * @param checkDisableWrite if checkDisableWrite is true, and the store is disabled to write, then this will throw a StoreDisabledException.
    *                    Setting to false will ignore the enableWrites status of the store (for example for cloning a store).
+   * @param isClonedVersion if true, the version being added is cloned from an existing version instance, so don't apply
+   *                        any store level config on it; if false, the version being added is new version, so the new version
+   *                        config should be the same as store config.
    */
-  private void addVersion(Version version, boolean checkDisableWrite) {
+  private void addVersion(Version version, boolean checkDisableWrite, boolean isClonedVersion) {
     if (checkDisableWrite) {
       checkDisableStoreWrite("add", version.getNumber());
     }
@@ -614,13 +617,16 @@ public class Store {
       }
     }
 
-    //update version compression type
-    version.setCompressionStrategy(compressionStrategy);
+    if (!isClonedVersion) {
+      // For new version, apply store level config on it.
+      //update version compression type
+      version.setCompressionStrategy(compressionStrategy);
 
-    //update version Helix state model
-    version.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
+      //update version Helix state model
+      version.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
 
-    version.setChunkingEnabled(chunkingEnabled);
+      version.setChunkingEnabled(chunkingEnabled);
+    }
 
     versions.add(index, version);
     if (version.getNumber() > largestUsedVersionNumber) {
@@ -896,7 +902,7 @@ public class Store {
     clonedStore.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
     clonedStore.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
     for (Version v : this.versions) {
-      clonedStore.forceAddVersion(v.cloneVersion());
+      clonedStore.forceAddVersion(v.cloneVersion(), true);
     }
 
     /**
