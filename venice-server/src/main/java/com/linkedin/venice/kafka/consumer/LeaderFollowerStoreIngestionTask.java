@@ -488,9 +488,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       throw new VeniceException("More than one Kafka server urls in TopicSwitch control message, "
           + "TopicSwitch.sourceKafkaServers: " + kafkaServerUrls);
     }
-    if (!serverConfig.getKafkaBootstrapServers().equals(kafkaServerUrls.get(0).toString())) {
-      throw new VeniceException("Kafka server url in TopicSwitch control message is different from the url in consumer");
-    }
+     if (!serverConfig.getKafkaBootstrapServers().equals(kafkaServerUrls.get(0).toString())) {
+       logger.warn("Kafka server url in TopicSwitch control message is different from the url in consumer");
+       /**
+        * Kafka is migrating the vip servers; we should stop comparing the kafka url used by controller with the url used by servers;
+        * otherwise, we require a synchronized deployment between controllers and servers, which is almost infeasible.
+        *
+        * TODO: start checking the url after the Kafka VIP migration; or maybe don't check the url until Actice/Active replication.
+        */
+       // throw new VeniceException("Kafka server url in TopicSwitch control message is different from the url in consumer");
+     }
     notificationDispatcher.reportTopicSwitchReceived(partitionConsumptionState);
 
     // Calculate the start offset based on start timestamp
