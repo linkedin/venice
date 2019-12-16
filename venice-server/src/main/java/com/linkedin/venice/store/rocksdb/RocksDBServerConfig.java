@@ -75,6 +75,13 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_MAX_BYTES_FOR_LEVEL_BASE = "rocksdb.max.bytes.for.level.base";
 
+  public static String ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED = "rocksdb.plain.table.format.enabled";
+  public static String ROCKSDB_STORE_INDEX_IN_FILE = "rocksdb.store.index.in.file";
+  public static String ROCKSDB_HUGE_PAGE_TLB_SIZE = "rocksdb.huge.page.tlb.size";
+  public static String ROCKSDB_BLOOM_BITS_PER_KEY = "rocksdb.bloom.bits.per.key";
+  public static String ROCKSDB_HASH_TABLE_RATIO = "rocksdb.hash.table.ratio";
+
+
   /**
    * Comments from rocksdb c++ code:
    *
@@ -119,6 +126,12 @@ public class RocksDBServerConfig {
 
 
   private final boolean rocksDBStatisticsEnabled;
+
+  private final boolean rocksDBPlainTableFormatEnabled;
+  private final boolean rocksDBStoreIndexInFile;
+  private final int rocksDBHugePageTlbSize;
+  private final int rocksDBBloomBitsPerKey;
+
 
   public RocksDBServerConfig(VeniceProperties props) {
 
@@ -172,7 +185,14 @@ public class RocksDBServerConfig {
 
     // control whether to emit RocksDB metrics or not
     this.rocksDBStatisticsEnabled = props.getBoolean(ROCKSDB_STATISTICS_ENABLED, false);
+
+    // DO NOT ENABLE except for new stores. https://github.com/facebook/rocksdb/wiki/PlainTable-Format
+    this.rocksDBPlainTableFormatEnabled = props.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    this.rocksDBStoreIndexInFile = props.getBoolean(ROCKSDB_STORE_INDEX_IN_FILE, true);
+    this.rocksDBHugePageTlbSize = props.getInt(ROCKSDB_HUGE_PAGE_TLB_SIZE, 0);
+    this.rocksDBBloomBitsPerKey = props.getInt(ROCKSDB_BLOOM_BITS_PER_KEY, 10);
   }
+
   public boolean getRocksDBUseDirectReads() {
     return rocksDBUseDirectReads;
   }
@@ -235,5 +255,24 @@ public class RocksDBServerConfig {
 
   public boolean isRocksDBStatisticsEnabled() {
     return rocksDBStatisticsEnabled;
+  }
+
+  /**
+   *  DO NOT ENABLE! This is still experimental. PlainTable gives ultra low latency
+   *  on smaller DB partition (< 2GB), but its not backward compatible so enabling would require
+   *  storing the format type into metadata and enable based on the format or some similar approach.
+   *  For details about PlainTable https://github.com/facebook/rocksdb/wiki/PlainTable-Format
+   */
+  public boolean isRocksDBPlainTableFormatEnabled() {
+    return rocksDBPlainTableFormatEnabled;
+  }
+  public boolean isRocksDBStoreIndexInFile() {
+    return rocksDBStoreIndexInFile;
+  }
+  public int getRocksDBHugePageTlbSize() {
+    return rocksDBHugePageTlbSize;
+  }
+  public int getRocksDBBloomBitsPerKey() {
+    return rocksDBBloomBitsPerKey;
   }
 }

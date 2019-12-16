@@ -21,6 +21,7 @@ import org.rocksdb.Env;
 import org.rocksdb.HistogramType;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
+import org.rocksdb.PlainTableConfig;
 import org.rocksdb.RocksDB;
 import org.rocksdb.Statistics;
 
@@ -99,21 +100,29 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     aggStatistics.ifPresent(stat -> newOptions.setStatistics(stat));
 
-    // Cache index and bloom filter in block cache
-    // and share the same cache across all the RocksDB databases
-    BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
-    tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
-    tableConfig.setBlockCache(sharedCache);
-    tableConfig.setCacheIndexAndFilterBlocks(true);
+    if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
+      PlainTableConfig tableConfig = new PlainTableConfig();
+      tableConfig.setStoreIndexInFile(rocksDBServerConfig.isRocksDBStoreIndexInFile());
+      tableConfig.setHugePageTlbSize(rocksDBServerConfig.getRocksDBHugePageTlbSize());
+      tableConfig.setBloomBitsPerKey(rocksDBServerConfig.getRocksDBBloomBitsPerKey());
+      newOptions.setTableFormatConfig(tableConfig);
+      newOptions.setAllowMmapReads(true);
+    } else {
+      // Cache index and bloom filter in block cache
+      // and share the same cache across all the RocksDB databases
+      BlockBasedTableConfig tableConfig = new BlockBasedTableConfig();
+      tableConfig.setBlockSize(rocksDBServerConfig.getRocksDBSSTFileBlockSizeInBytes());
+      tableConfig.setBlockCache(sharedCache);
+      tableConfig.setCacheIndexAndFilterBlocks(true);
 
-    // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
-    // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
-    // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
+      // TODO Consider Adding "cache_index_and_filter_blocks_with_high_priority" to allow for preservation of indexes in memory.
+      // https://github.com/facebook/rocksdb/wiki/Block-Cache#caching-index-and-filter-blocks
+      // https://github.com/facebook/rocksdb/wiki/Block-Cache#lru-cache
 
-    tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
-    tableConfig.setFormatVersion(2); // Latest version
-
-    newOptions.setTableFormatConfig(tableConfig);
+      tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
+      tableConfig.setFormatVersion(2); // Latest version
+      newOptions.setTableFormatConfig(tableConfig);
+    }
 
     // Memtable options
     newOptions.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
