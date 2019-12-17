@@ -27,6 +27,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.DiskHealthStats;
@@ -154,6 +155,9 @@ public class VeniceServer {
     storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
         bdbStorageEngineStats, storageEngineStats);
     services.add(storageService);
+
+    // Create stats for RocksDB
+    storageService.getRocksDBAggregatedStatistics().ifPresent( stat -> new AggRocksDBStats(metricsRepository, stat));
 
     Optional<SchemaReader> schemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE))));
