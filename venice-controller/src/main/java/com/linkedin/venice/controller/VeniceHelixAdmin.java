@@ -2564,6 +2564,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 throw new VeniceException("Existing schema with id " + existingSchema.getId() + "does not match with new schema " + supersetSchema);
             }
         } else {
+            logger.info("Adding superset schema: " + supersetSchema + " for store: " + storeName);
             schemaRepository.addValueSchema(storeName, supersetSchema, supersetSchemaId);
         }
 
