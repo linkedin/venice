@@ -8,17 +8,21 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import java.io.File;
 import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.apache.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
 import org.rocksdb.Cache;
 import org.rocksdb.Env;
+import org.rocksdb.HistogramType;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.RocksDB;
+import org.rocksdb.Statistics;
 
 import static org.rocksdb.Env.*;
 
@@ -48,6 +52,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   private final Map<String, Options> storageEngineOptions = new HashMap<>();
 
 
+  private final Optional<Statistics> aggStatistics;
+
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
@@ -64,6 +70,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
                                rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
                                rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
+
+    if (rocksDBServerConfig.isRocksDBStatisticsEnabled()) {
+      // Ignore all the histogram types for performance concern.
+      this.aggStatistics = Optional.of(new Statistics(EnumSet.allOf(HistogramType.class)));
+    } else {
+      this.aggStatistics = Optional.empty();
+    }
+  }
+
+  public Optional<Statistics> getAggStatistics() {
+    return aggStatistics;
   }
 
   private synchronized Options getOptionsForStore(String storeName) {
@@ -79,6 +96,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Inherit Direct IO for read settings from globals
     newOptions.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+
+    aggStatistics.ifPresent(stat -> newOptions.setStatistics(stat));
 
     // Cache index and bloom filter in block cache
     // and share the same cache across all the RocksDB databases

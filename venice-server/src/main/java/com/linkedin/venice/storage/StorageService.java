@@ -24,6 +24,7 @@ import org.apache.log4j.Logger;
 
 import java.util.Map;
 import java.util.function.Consumer;
+import org.rocksdb.Statistics;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
 
@@ -124,6 +125,13 @@ public class StorageService extends AbstractVeniceService {
     }
 
     throw new VeniceException("Unrecognized persistence type " + persistenceType);
+  }
+
+  public Optional<Statistics> getRocksDBAggregatedStatistics() {
+    if (persistenceTypeToStorageEngineFactoryMap.containsKey(ROCKS_DB)) {
+      return ((RocksDBStorageEngineFactory)persistenceTypeToStorageEngineFactoryMap.get(ROCKS_DB)).getAggStatistics();
+    }
+    return Optional.empty();
   }
 
 

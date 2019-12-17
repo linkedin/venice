@@ -87,6 +87,13 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_BYTES_PER_SYNC = "rocksdb.bytes.per.sync";
 
+  /**
+   * Whether to enable rocksdb statistics.
+   * The reason to make it configurable is that there is about 5%-10% overhead by enabling statistics.
+   * https://github.com/facebook/rocksdb/wiki/Statistics
+   */
+  public static final String ROCKSDB_STATISTICS_ENABLED = "rocksdb.statistics.enabled";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -109,6 +116,9 @@ public class RocksDBServerConfig {
   private final long rocksDBMaxBytesForLevelBase;
 
   private final long rocksDBBytesPerSync;
+
+
+  private final boolean rocksDBStatisticsEnabled;
 
   public RocksDBServerConfig(VeniceProperties props) {
 
@@ -159,6 +169,9 @@ public class RocksDBServerConfig {
 
     // https://github.com/facebook/rocksdb/wiki/Set-Up-Options
     this.rocksDBBytesPerSync = props.getSizeInBytes(ROCKSDB_BYTES_PER_SYNC, 1024 * 1024); // 1MB
+
+    // control whether to emit RocksDB metrics or not
+    this.rocksDBStatisticsEnabled = props.getBoolean(ROCKSDB_STATISTICS_ENABLED, false);
   }
   public boolean getRocksDBUseDirectReads() {
     return rocksDBUseDirectReads;
@@ -218,5 +231,9 @@ public class RocksDBServerConfig {
 
   public long getRocksDBBytesPerSync() {
     return rocksDBBytesPerSync;
+  }
+
+  public boolean isRocksDBStatisticsEnabled() {
+    return rocksDBStatisticsEnabled;
   }
 }
