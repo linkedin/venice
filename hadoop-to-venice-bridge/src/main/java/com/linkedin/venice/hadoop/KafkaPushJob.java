@@ -867,6 +867,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    */
   private void validateValueSchema(ControllerClient controllerClient, PushJobSetting setting, SchemaInfo schemaInfo,
       boolean schemaAutoRegisteFromPushJobEnabled) {
+    logger.info("Registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
     SchemaResponse valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
         c.getValueSchemaID(setting.storeName, schemaInfo.valueSchemaString));
     if (valueSchemaResponse.isError() && !schemaAutoRegisteFromPushJobEnabled) {
@@ -876,7 +877,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       );
     }
     if (schemaAutoRegisteFromPushJobEnabled) {
-      logger.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " of store: " + setting.storeName);
+      logger.info("Auto registering value schema: " + schemaInfo.valueSchemaString + " for store: " + setting.storeName);
       if (valueSchemaResponse.isError()) {
         valueSchemaResponse = controllerClient.retryableRequest(setting.controllerRetries, c ->
             c.addValueSchema(setting.storeName, schemaInfo.valueSchemaString));
