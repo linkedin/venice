@@ -56,7 +56,13 @@ public class HDFSSchemaSource implements SchemaSource {
   public void load(SourceState state) {
     String veniceControllerUrls = state.getProp(VENICE_CONTROLLER_URLS);
     loadSchemas(veniceControllerUrls, state.getProp(VENICE_STORE_NAME));
-    loadSchemas(veniceControllerUrls, state.getProp(FUTURE_ETL_ENABLED_STORES));
+    // load schemas for future version etl enabled stores
+    String futureETLEnabledStores = state.getProp(FUTURE_ETL_ENABLED_STORES);
+    if (futureETLEnabledStores != null) {
+      loadSchemas(veniceControllerUrls, state.getProp(FUTURE_ETL_ENABLED_STORES));
+    } else {
+      logger.warn("The config for future-etl-enabled-stores doesn't exist.");
+    }
   }
 
   private void getStoreSchemaFromVenice(String veniceControllerUrls, Set<String> veniceStoreNames) {
@@ -192,7 +198,6 @@ public class HDFSSchemaSource implements SchemaSource {
   }
 
   private void loadSchemas(String veniceControllerUrls, String storeNamesList) {
-    // for current version etl
     Set<String> veniceStoreNames = new HashSet<>();
     String[] tokens = storeNamesList.split(VENICE_STORE_NAME_SEPARATOR);
     for (String token : tokens) {
