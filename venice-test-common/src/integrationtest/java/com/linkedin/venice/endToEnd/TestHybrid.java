@@ -20,6 +20,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PersistenceType;
@@ -96,6 +97,7 @@ public class TestHybrid {
             .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
     );
 
+    HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(streamingRewindSeconds, streamingMessageLag);
     // There should be no version on the store yet
     assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
         0, "The newly created store must have a current version of 0");
@@ -115,8 +117,16 @@ public class TestHybrid {
     TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
         DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    assertEquals(topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
+        hybridStoreConfig.getRetentionTimeInMs(), "RT retention not configured properly");
+    // Make sure RT retention is updated when the rewind time is updated
+    long newStreamingRewindSeconds = 600;
+    hybridStoreConfig.setRewindTimeInSeconds(newStreamingRewindSeconds);
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(newStreamingRewindSeconds));
+    assertEquals(topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
+        hybridStoreConfig.getRetentionTimeInMs(), "RT retention not updated properly");
     IOUtils.closeQuietly(topicManager);
-
     parentController.close();
     parentZk.close();
     venice.close();
