@@ -3,9 +3,11 @@ package com.linkedin.venice.pushmonitor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -33,7 +35,8 @@ public class OfflinePushStatus {
   private Optional<String> statusDetails = Optional.of("Helix Resource not created.");
   private List<StatusSnapshot> statusHistory;
   private String incrementalPushVersion = "";
-  private List<PartitionStatus> partitionStatuses;
+  // Key is Partition Id (0 to n-1); value is the corresponding partition status.
+  private Map<Integer, PartitionStatus> partitionIdToStatus;
 
   private Map<String, String> pushProperties;
 
@@ -46,11 +49,10 @@ public class OfflinePushStatus {
     this.pushProperties = new HashMap<>();
     statusHistory = new ArrayList<>();
     addHistoricStatus(currentStatus, incrementalPushVersion);
-    //initialize partition status for each partition.
-    partitionStatuses = new ArrayList<>(numberOfPartition);
+    partitionIdToStatus = new VeniceConcurrentHashMap<>();
     for (int i = 0; i < numberOfPartition; i++) {
       ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(i, Collections.emptyList());
-      partitionStatuses.add(partitionStatus);
+      partitionIdToStatus.put(i, partitionStatus);
     }
  }
 
@@ -116,45 +118,23 @@ public class OfflinePushStatus {
     return isValid;
   }
 
-  /**
-   * @param partitionStatusList a list of partitions ordered by partition id
-   * @param newPartitionStatus the new partition status
-   */
-  public static void setPartitionStatus(List<PartitionStatus> partitionStatusList, PartitionStatus newPartitionStatus, String kafkaTopic) {
-    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= partitionStatusList.size()) {
-      throw new IllegalArgumentException(
-          "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
-    }
-    if (newPartitionStatus instanceof ReadOnlyPartitionStatus) {
-      partitionStatusList.set(newPartitionStatus.getPartitionId(), newPartitionStatus);
-    } else {
-      partitionStatusList.set(newPartitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(newPartitionStatus));
-    }
-  }
-
-  /**
-   * @param partitionStatusMap a map from partition ID to partition status
-   * @param newPartitionStatus the new partition status
-   */
-  public static void setPartitionStatusMap(Map<Integer, PartitionStatus> partitionStatusMap, PartitionStatus newPartitionStatus, String kafkaTopic, int numOfPartition) {
-    if (newPartitionStatus.getPartitionId() < 0 || newPartitionStatus.getPartitionId() >= numOfPartition) {
-      throw new IllegalArgumentException(
-          "Received an invalid partition:" + newPartitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
-    }
-    if (newPartitionStatus instanceof ReadOnlyPartitionStatus) {
-      partitionStatusMap.put(newPartitionStatus.getPartitionId(), newPartitionStatus);
-    } else {
-      partitionStatusMap.put(newPartitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(newPartitionStatus));
-    }
-  }
-
   public void setPartitionStatus(PartitionStatus partitionStatus) {
+    setPartitionStatus(partitionStatus, true);
+  }
+
+  public void setPartitionStatus(PartitionStatus partitionStatus, boolean updateDetails) {
     if (partitionStatus.getPartitionId() < 0 || partitionStatus.getPartitionId() >= numberOfPartition) {
-      throw new VeniceException(
+      throw new IllegalArgumentException(
           "Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
     }
-    setPartitionStatus(partitionStatuses, partitionStatus, kafkaTopic);
-    updateStatusDetails();
+    if (partitionStatus instanceof ReadOnlyPartitionStatus) {
+      partitionIdToStatus.put(partitionStatus.getPartitionId(), partitionStatus);
+    } else {
+      partitionIdToStatus.put(partitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
+    }
+    if (updateDetails) {
+      updateStatusDetails();
+    }
   }
 
   private void updateStatusDetails() {
@@ -269,12 +249,12 @@ public class OfflinePushStatus {
 
   // Only used by accessor while loading data from Zookeeper.
   public void setPartitionStatuses(List<PartitionStatus> partitionStatuses) {
-    this.partitionStatuses.clear();
+    this.partitionIdToStatus.clear();
     for (PartitionStatus partitionStatus : partitionStatuses) {
       if (partitionStatus instanceof ReadOnlyPartitionStatus) {
-        this.partitionStatuses.add(partitionStatus);
+        this.partitionIdToStatus.put(partitionStatus.getPartitionId(), partitionStatus);
       } else {
-        this.partitionStatuses.add(ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
+        this.partitionIdToStatus.put(partitionStatus.getPartitionId(), ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
       }
     }
     updateStatusDetails();
@@ -297,7 +277,7 @@ public class OfflinePushStatus {
     clonePushStatus.setStatusHistory(new ArrayList<>(statusHistory));
     // As same as status history, there is no way update properties inside Partition status object. So only
     // copy list is enough here.
-    clonePushStatus.setPartitionStatuses(new ArrayList<>(partitionStatuses));
+    clonePushStatus.setPartitionStatuses(new ArrayList<>(partitionIdToStatus.values()));
     clonePushStatus.setPushProperties(new HashMap<>(pushProperties));
     clonePushStatus.setIncrementalPushVersion(incrementalPushVersion);
     return clonePushStatus;
@@ -324,12 +304,12 @@ public class OfflinePushStatus {
     return progress;
   }
 
-  protected List<PartitionStatus> getPartitionStatuses() {
-    return Collections.unmodifiableList(partitionStatuses);
+  protected Collection<PartitionStatus> getPartitionStatuses() {
+    return Collections.unmodifiableCollection(partitionIdToStatus.values());
   }
 
   protected PartitionStatus getPartitionStatus(int partitionId) {
-    return partitionStatuses.get(partitionId);
+    return partitionIdToStatus.get(partitionId);
   }
 
   private void addHistoricStatus(ExecutionStatus status, String incrementalPushVersion) {
@@ -409,7 +389,7 @@ public class OfflinePushStatus {
     if (!incrementalPushVersion.equals(that.incrementalPushVersion)) {
       return false;
     }
-    return partitionStatuses.equals(that.partitionStatuses);
+    return partitionIdToStatus.equals(that.partitionIdToStatus);
   }
 
   @Override
@@ -421,7 +401,7 @@ public class OfflinePushStatus {
     result = 31 * result + currentStatus.hashCode();
     result = 31 * result + statusDetails.hashCode();
     result = 31 * result + statusHistory.hashCode();
-    result = 31 * result + partitionStatuses.hashCode();
+    result = 31 * result + partitionIdToStatus.hashCode();
     result = 31 * result + pushProperties.hashCode();
     result = 31 * result + incrementalPushVersion.hashCode();
     return result;
