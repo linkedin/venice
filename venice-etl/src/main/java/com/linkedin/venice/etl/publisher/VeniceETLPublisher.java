@@ -412,7 +412,7 @@ public class VeniceETLPublisher extends AbstractJob {
     try {
       futureETLEnabledStores = props.getString(FUTURE_ETL_ENABLED_STORES);
     } catch (UndefinedPropertyException e) {
-      logger.error("The config for future-etl-enabled-stores doesn't exist.");
+      logger.warn("The config for future-etl-enabled-stores doesn't exist.");
       return;
     }
     String[] tokens = futureETLEnabledStores.split(",");
