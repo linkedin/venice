@@ -2235,6 +2235,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                     } else {
                         store.setHybridStoreConfig(finalHybridConfig);
+                        if (topicManager.containsTopic(Version.composeRealTimeTopic(storeName))) {
+                            // RT already exists, ensure the retention is correct
+                            topicManager.updateTopicRetention(Version.composeRealTimeTopic(storeName),
+                                finalHybridConfig.getRetentionTimeInMs());
+                        }
                     }
                     return store;
                 });
@@ -2318,6 +2323,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + "'. Will attempt to rollback changes.", e);
             //rollback to original store
             storeMetadataUpdate(clusterName, storeName, store -> originalStore);
+            if (originalStore.isHybrid() && hybridStoreConfig.isPresent()
+                && topicManager.containsTopic(Version.composeRealTimeTopic(storeName))) {
+                // Ensure the topic retention is rolled back too
+                topicManager.updateTopicRetention(Version.composeRealTimeTopic(storeName),
+                    originalStore.getHybridStoreConfig().getRetentionTimeInMs());
+            }
             logger.error("Successfully rolled back changes to store '" + storeName + "' in cluster: '" + clusterName
                 + "'. Will now throw the original exception (" + e.getClass().getSimpleName() + ").");
             throw e;
