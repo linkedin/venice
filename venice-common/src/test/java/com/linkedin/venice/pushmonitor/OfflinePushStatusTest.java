@@ -39,13 +39,13 @@ public class OfflinePushStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
     offlinePushStatus.setPartitionStatus(partitionStatus);
-    Assert.assertEquals(offlinePushStatus.getPartitionStatuses().get(1),
+    Assert.assertEquals(offlinePushStatus.getPartitionStatus(1),
         ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
 
     try {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
       Assert.fail("Partition 1000 dose not exist.");
-    } catch (VeniceException e) {
+    } catch (IllegalArgumentException e) {
       //expected
     }
   }
@@ -57,12 +57,12 @@ public class OfflinePushStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
     offlinePushStatus.setPartitionStatus(partitionStatus);
-    Assert.assertEquals(offlinePushStatus.getPartitionStatuses().get(1),
+    Assert.assertEquals(offlinePushStatus.getPartitionStatus(1),
         ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
     List<PartitionStatus> partitionStatuses = new ArrayList<>();
 
     try {
-      OfflinePushStatus.setPartitionStatus(partitionStatuses, new PartitionStatus(1000), "topic_1");
+      offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));
       Assert.fail("Partition 1000 dose not exist.");
     } catch (IllegalArgumentException e) {
       //expected

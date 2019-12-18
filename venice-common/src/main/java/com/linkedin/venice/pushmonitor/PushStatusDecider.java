@@ -97,29 +97,42 @@ public abstract class PushStatusDecider {
     }
 
     boolean isAllPartitionCompleted = true;
+    boolean isAllPartitionEndOfPushReceived = true;
 
-    for (PartitionStatus partitionStatus : pushStatus.getPartitionStatuses()) {
-      int partitionId = partitionStatus.getPartitionId();
-      Partition partition = partitionAssignment.getPartition(partitionId);
-      if (null == partition) {
-        // Defensive coding. Should never happen if the sanity check above works.
-        throw new IllegalStateException("partition " + partitionId + " is null.");
-      }
-      ExecutionStatus executionStatus = getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(),
-          partition.getInstanceToStateMap());
+    if (pushStatus.getPartitionStatuses().size() != pushStatus.getNumberOfPartition()) {
+      isAllPartitionCompleted = false;
+      isAllPartitionEndOfPushReceived = false;
+    } else {
+      for (PartitionStatus partitionStatus : pushStatus.getPartitionStatuses()) {
+        int partitionId = partitionStatus.getPartitionId();
+        Partition partition = partitionAssignment.getPartition(partitionId);
+        if (null == partition) {
+          // Defensive coding. Should never happen if the sanity check above works.
+          throw new IllegalStateException("partition " + partitionId + " is null.");
+        }
+        ExecutionStatus executionStatus =
+            getPartitionStatus(partitionStatus, pushStatus.getReplicationFactor(), partition.getInstanceToStateMap());
 
-      if (executionStatus == ERROR) {
-        return new Pair<>(executionStatus, Optional.of("too many ERROR replicas in partition: " + partitionStatus.getPartitionId()
-            + " for offlinePushStrategy: " + getStrategy().name()));
-      }
+        if (executionStatus == ERROR) {
+          return new Pair<>(executionStatus, Optional.of(
+              "too many ERROR replicas in partition: " + partitionStatus.getPartitionId() + " for offlinePushStrategy: "
+                  + getStrategy().name()));
+        }
 
-      if (!executionStatus.equals(COMPLETED)) {
-        isAllPartitionCompleted = false;
+        if (!executionStatus.equals(COMPLETED)) {
+          isAllPartitionCompleted = false;
+        }
+
+        if (!executionStatus.equals(END_OF_PUSH_RECEIVED) && !executionStatus.equals(COMPLETED)) {
+          isAllPartitionEndOfPushReceived = false;
+        }
       }
     }
 
     if (isAllPartitionCompleted) {
       return new Pair<>(COMPLETED, Optional.empty());
+    } if (isAllPartitionEndOfPushReceived) {
+      return new Pair<>(END_OF_PUSH_RECEIVED, Optional.empty());
     } else {
       return new Pair<>(STARTED, Optional.empty());
     }
@@ -224,9 +237,21 @@ public abstract class PushStatusDecider {
       return ERROR;
     }
 
+    /**
+     * Report EOP if at least one replica has consumed an EOP control message
+     */
+    if (executionStatusMap.containsKey(END_OF_PUSH_RECEIVED) &&
+        executionStatusMap.get(END_OF_PUSH_RECEIVED) > 0) {
+      return END_OF_PUSH_RECEIVED;
+    }
+
     return STARTED;
   }
 
+  /**
+   * The helper function is used by both controller and router (leader/follower stores); please be cautious when modifying
+   * it because it would affect both components.
+   */
   public static ExecutionStatus getReplicaCurrentStatus(List<StatusSnapshot> historicStatusList) {
     List<ExecutionStatus> statusList = historicStatusList.stream()
         .map(statusSnapshot -> statusSnapshot.getStatus())

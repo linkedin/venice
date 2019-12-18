@@ -92,7 +92,7 @@ public enum ExecutionStatus {
    * and whether a host is ready to serve read requests.
    */
   public static boolean isDeterminedStatus(ExecutionStatus status) {
-    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED;
+    return status == STARTED || status == COMPLETED || status == ERROR || status == DROPPED || status == END_OF_PUSH_RECEIVED;
   }
 
   public boolean isJobStatus() {
