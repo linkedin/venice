@@ -62,7 +62,7 @@ public class VeniceETLPublisher extends AbstractJob {
   private static final String FUTURE_ETL_SUFFIX = "_future";
 
   /**
-   * Daily ETL snapshot format is "timestamp-PT-recordNumber-versionNumber"
+   * Daily ETL snapshot format is "timestamp-PT-recordNumber"
    */
   private static final String SNAPSHOT_SEPARATOR = "-PT-";
   /**
@@ -126,7 +126,7 @@ public class VeniceETLPublisher extends AbstractJob {
 
     // builds the map from etl store name to venice etl user name
     this.ETLStoreToUserName = new HashMap<>();
-    setupETLStoreToUserName(props, ETLStoreToUserName);
+    setUpETLStoreToUserName(props, ETLStoreToUserName);
 
     // builds the set for future version etl enabled stores
     this.futureETLEnabledStores = new HashSet<>();
@@ -379,7 +379,7 @@ public class VeniceETLPublisher extends AbstractJob {
   /**
    * Helper function that builds the map from etl store name to user proxy name.
    */
-  private static void setupETLStoreToUserName(VeniceProperties props, Map<String, String> ETLStoreToUserName) {
+  private static void setUpETLStoreToUserName(VeniceProperties props, Map<String, String> ETLStoreToUserName) {
     try {
       /**
        * In the format of:
