@@ -346,6 +346,13 @@ public class Version implements Comparable<Version> {
     return versionTopic + STREAM_REPROCESSING_TOPIC_SUFFIX;
   }
 
+  public static String composeVersionTopicFromStreamReprocessingTopic(@NotNull String kafkaTopic) {
+    if (!isStreamReprocessingTopic(kafkaTopic)) {
+      throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a stream-reprocessing topic");
+    }
+    return kafkaTopic.substring(0, kafkaTopic.lastIndexOf(STREAM_REPROCESSING_TOPIC_SUFFIX));
+  }
+
   public static String parseStoreFromRealTimeTopic(String kafkaTopic) {
     if (!isRealTimeTopic(kafkaTopic)) {
       throw new VeniceException("Kafka topic: " + kafkaTopic + " is not a real-time topic");
