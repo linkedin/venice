@@ -1,8 +1,12 @@
 package com.linkedin.venice.samza;
 
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import org.apache.samza.SamzaException;
@@ -51,6 +55,31 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   // D2 service name for parent cluster
   public static final String VENICE_PARENT_D2_SERVICE = "VeniceParentController";
 
+  /**
+   * A global static counter to track how many factory one process would create.
+   * In general, one factory is enough for one application; otherwise, if there are
+   * multiple factory built in the same process, log this information for debugging purpose.
+   */
+  private static AtomicInteger FACTORY_INSTANCE_NUMBER = new AtomicInteger(0);
+
+  /**
+   * Key: VeniceSystemProducer instance;
+   * Value: a pair of boolean: <isActive, isStreamReprocessingJobSucceeded>
+   *
+   * For each SystemProducer created through this factory, keep track of its status in
+   * the below Map. {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update
+   * the status of the SystemProducer.
+   */
+  private Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
+
+  public VeniceSystemFactory() {
+    systemProducerStatues = new VeniceConcurrentHashMap<>();
+    int totalNumberOfFactory = FACTORY_INSTANCE_NUMBER.incrementAndGet();
+    if (totalNumberOfFactory > 1) {
+      LOGGER.warn("There are " + totalNumberOfFactory + " VeniceSystemProducer factory instances in one process.");
+    }
+  }
+
   @Override
   public SystemAdmin getAdmin(String systemName, Config config) {
     return new SinglePartitionWithoutOffsetsSystemAdmin();
@@ -64,7 +93,7 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
       Version.PushType venicePushType, String samzaJobId, Config config) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId);
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, this);
   }
 
   // Overload this function to simplify Samza Table API.
@@ -112,7 +141,9 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       veniceD2Service = VENICE_LOCAL_D2_SERVICE;
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
-    return createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config);
+    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config);
+    this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
+    return systemProducer;
   }
 
   @Override
@@ -122,6 +153,49 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
     final boolean veniceAggregate = config.getBoolean(prefix + VENICE_AGGREGATE, false);
     final String pushTypeString = config.get(prefix + VENICE_PUSH_TYPE);
     return getProducer(systemName, storeName, veniceAggregate, pushTypeString, config);
+  }
+
+  /**
+   * Get the total number of active SystemProducer.
+   *
+   * The SystemProducer for push type: STREAM and BATCH will always be at active state; so if there is any
+   * real-time SystemProducer in the Samza task, the task will not be stopped even though all the stream reprocessing
+   * jobs have completed. Besides, a Samza task can not have a mix of BATCH push type and STREAM_REPROCESSING push type;
+   * otherwise, the Samza task can not be automatically stopped.
+   */
+  public int getNumberOfActiveSystemProducers() {
+    int count = 0;
+    for (Map.Entry<SystemProducer, Pair<Boolean, Boolean>> entry: systemProducerStatues.entrySet()) {
+      boolean isActive = entry.getValue().getFirst();
+      count += isActive ? 1 : 0;
+    }
+    return count;
+  }
+
+  /**
+   * Check whether all the stream reprocessing jobs have succeeded; return false if any of them fail.
+   */
+  public boolean getOverallExecutionStatus() {
+    for (Map.Entry<SystemProducer, Pair<Boolean, Boolean>> entry: systemProducerStatues.entrySet()) {
+      boolean jobSucceed = entry.getValue().getSecond();
+      if (!jobSucceed) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * {@link com.linkedin.venice.pushmonitor.RouterBasedPushMonitor} will update the status of a SystemProducer with
+   * push type STREAM_REPROCESSING:
+   * END_OF_PUSH_RECEIVED: isActive -> false; isStreamReprocessingJobSucceeded -> true
+   * COMPLETED: isActive -> false; isStreamReprocessingJobSucceeded -> true
+   * ERROR: isActive -> false; isStreamReprocessingJobSucceeded -> false
+   *
+   * For all the other push job status, SystemProducer status will not be updated.
+   */
+  public void endStreamReprocessingSystemProducer(SystemProducer systemProducer, boolean jobSucceed) {
+    systemProducerStatues.put(systemProducer, Pair.create(false, jobSucceed));
   }
 
   private static boolean isEmpty(String input) {

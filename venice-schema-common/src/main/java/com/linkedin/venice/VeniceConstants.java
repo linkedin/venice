@@ -30,4 +30,13 @@ public class VeniceConstants {
    * In a {@link HttpServletRequest}, we can get the client certificate by retrieving the following attribute.
    */
   public static String CONTROLLER_SSL_CERTIFICATE_ATTRIBUTE_NAME = "javax.servlet.request.X509Certificate";
+
+  /**
+   * Beginning of router request path; it would used by router and client modules
+   */
+
+  // URI: /push_status/storeName
+  public static final String TYPE_PUSH_STATUS = "push_status";
+
+  // End of router request path
 }

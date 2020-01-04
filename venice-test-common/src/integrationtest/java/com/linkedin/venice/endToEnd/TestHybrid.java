@@ -27,6 +27,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.samza.SamzaExitMode;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.samza.VeniceSystemProducer;
 import com.linkedin.venice.serializer.AvroSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -36,6 +39,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
+import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -395,14 +399,22 @@ public class TestHybrid {
 
 
     // Batch load from Samza
+    VeniceSystemFactory factory = new VeniceSystemFactory();
     Version.PushType pushType = isLeaderFollowerModelEnabled ? Version.PushType.STREAM_REPROCESSING : Version.PushType.BATCH;
-    SystemProducer veniceBatchProducer = getSamzaProducer(veniceClusterWrapper, storeName, pushType);
+    Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
+    SystemProducer veniceBatchProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    if (veniceBatchProducer instanceof VeniceSystemProducer) {
+      // The default behavior would exit the process
+      ((VeniceSystemProducer) veniceBatchProducer).setExitMode(SamzaExitMode.NO_OP);
+    }
     for (int i=10; i>=1; i--) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
       sendStreamingRecord(veniceBatchProducer, storeName, i);
     }
 
     Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
     Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+    // Before EOP, the Samza batch producer should still be in active state
+    Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 1);
 
     // Write END_OF_PUSH message
     // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
@@ -410,9 +422,13 @@ public class TestHybrid {
     Utils.sleep(500);
     veniceClusterWrapper.getControllerClient().writeEndOfPush(storeName, 1);
 
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
       Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 1);
+      if (isLeaderFollowerModelEnabled) {
+        // After EOP, the push monitor inside the system producer would mark the producer as inactive in the factory
+        Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 0);
+      }
     });
 
     // Verify data, note only 1-10 have been pushed so far
@@ -452,18 +468,80 @@ public class TestHybrid {
     veniceClusterWrapper.close();
   }
 
-  /**
-   * Blocking, waits for new version to go online
-   */
-  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
-    long h2vStart = System.currentTimeMillis();
-    String jobName = TestUtils.getUniqueString("hybrid-job-" + expectedVersionNumber);
-    KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);
-    job.run();
-    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-        () -> controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
-            .getStore().getCurrentVersion() == expectedVersionNumber);
-    logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
+  @Test
+  public void testMultiStreamReprocessingSystemProducers() {
+    Properties extraProperties = new Properties();
+    extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties);
+    Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
+    String clusterName = veniceClusterWrapper.getClusterName();
+    String storeName1 = "test-store1";
+    String storeName2 = "test-store2";
+    long streamingRewindSeconds = 25L;
+    long streamingMessageLag = 2L;
+
+    // create 2 stores
+    // Create empty store
+    admin.addStore(clusterName, storeName1, "tester", "\"string\"", "\"string\"");
+    admin.addStore(clusterName, storeName2, "tester", "\"string\"", "\"string\"");
+    admin.updateStore(clusterName, storeName1, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(streamingRewindSeconds)
+        .setHybridOffsetLagThreshold(streamingMessageLag)
+        .setLeaderFollowerModel(true)
+    );
+    admin.updateStore(clusterName, storeName2, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(streamingRewindSeconds)
+        .setHybridOffsetLagThreshold(streamingMessageLag)
+        .setLeaderFollowerModel(true)
+    );
+    Assert.assertFalse(admin.getStore(clusterName, storeName1).containsVersion(1));
+    Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 0);
+    Assert.assertFalse(admin.getStore(clusterName, storeName2).containsVersion(1));
+    Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 0);
+
+    // Batch load from Samza to both stores
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    Map<String, String> samzaConfig1 = getSamzaProducerConfig(veniceClusterWrapper, storeName1, Version.PushType.STREAM_REPROCESSING);
+    SystemProducer veniceBatchProducer1 = factory.getProducer("venice", new MapConfig(samzaConfig1), null);
+    Map<String, String> samzaConfig2 = getSamzaProducerConfig(veniceClusterWrapper, storeName2, Version.PushType.STREAM_REPROCESSING);
+    SystemProducer veniceBatchProducer2 = factory.getProducer("venice", new MapConfig(samzaConfig2), null);
+    if (veniceBatchProducer1 instanceof VeniceSystemProducer) {
+      // The default behavior would exit the process
+      ((VeniceSystemProducer) veniceBatchProducer1).setExitMode(SamzaExitMode.NO_OP);
+    }
+    if (veniceBatchProducer2 instanceof VeniceSystemProducer) {
+      // The default behavior would exit the process
+      ((VeniceSystemProducer) veniceBatchProducer2).setExitMode(SamzaExitMode.NO_OP);
+    }
+
+    for (int i=10; i>=1; i--) {
+      sendStreamingRecord(veniceBatchProducer1, storeName1, i);
+      sendStreamingRecord(veniceBatchProducer2, storeName2, i);
+    }
+
+    // Before EOP, there should be 2 active producers
+    Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 2);
+    /**
+     * Send EOP to the first store, eventually the first SystemProducer will be marked as inactive
+     * after push monitor poll the latest push job status from router.
+     */
+    Utils.sleep(500);
+    veniceClusterWrapper.getControllerClient().writeEndOfPush(storeName1, 1);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(admin.getStore(clusterName, storeName1).containsVersion(1));
+      Assert.assertEquals(admin.getStore(clusterName, storeName1).getCurrentVersion(), 1);
+      // The second SystemProducer should still be active
+      Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 1);
+    });
+
+    veniceClusterWrapper.getControllerClient().writeEndOfPush(storeName2, 1);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      Assert.assertTrue(admin.getStore(clusterName, storeName2).containsVersion(1));
+      Assert.assertEquals(admin.getStore(clusterName, storeName2).getCurrentVersion(), 1);
+      // There should be no active SystemProducer any more.
+      Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 0);
+    });
   }
 
   @Test(dataProvider = "isLeaderFollowerModelEnabled")
@@ -655,5 +733,19 @@ public class TestHybrid {
     });
 
     venice.close();
+  }
+
+  /**
+   * Blocking, waits for new version to go online
+   */
+  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient) throws Exception {
+    long h2vStart = System.currentTimeMillis();
+    String jobName = TestUtils.getUniqueString("hybrid-job-" + expectedVersionNumber);
+    KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);
+    job.run();
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
+        () -> controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
+            .getStore().getCurrentVersion() == expectedVersionNumber);
+    logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
   }
 }

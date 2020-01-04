@@ -11,10 +11,13 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -22,7 +25,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
@@ -76,16 +81,22 @@ public class VeniceSystemProducer implements SystemProducer {
   private final D2Client d2Client;
   private final D2ControllerClient controllerClient;
   private final String storeName;
+  // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
+  private final String topicName;
+  private final Version.PushType pushType;
   private final Time time;
 
+  private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
+
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, SystemTime.INSTANCE);
+      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory) {
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory, SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, Time time) {
+      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Time time) {
     this.storeName = storeName;
+    this.pushType = pushType;
     this.time = time;
 
     this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost).build();
@@ -111,6 +122,7 @@ public class VeniceSystemProducer implements SystemProducer {
         )
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
+    this.topicName = versionCreationResponse.getKafkaTopic();
     this.veniceWriter = getVeniceWriter(this.versionCreationResponse);
 
     SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
@@ -125,6 +137,12 @@ public class VeniceSystemProducer implements SystemProducer {
     LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
     for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
       valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
+    }
+
+    if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
+      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+      pushMonitor = Optional.of(new RouterBasedPushMonitor(veniceD2ZKHost, versionTopic, factory, this));
+      pushMonitor.get().start();
     }
   }
 
@@ -158,12 +176,45 @@ public class VeniceSystemProducer implements SystemProducer {
 
   @Override
   public void start() {
-
+    if (pushMonitor.isPresent()) {
+      /**
+       * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
+       */
+      ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
+      if (ExecutionStatus.ERROR.equals(currentStatus)) {
+        throw new VeniceException("Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
+      }
+    }
   }
 
   @Override
   public void stop() {
     veniceWriter.close();
+    if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
+      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+      switch (pushMonitor.get().getCurrentStatus()) {
+        case COMPLETED:
+          LOGGER.info("Push job for " + topicName + " is COMPLETED.");
+          break;
+        case END_OF_PUSH_RECEIVED:
+          LOGGER.info("Batch load for " + topicName + " has finished.");
+          break;
+        case ERROR:
+          LOGGER.info("Push job for " + topicName + " encountered error.");
+          break;
+        default:
+          LOGGER.warn("Push job in Venice backend is still in progress... Will clean up resources in Venice");
+          /**
+           * Consider there could be hundreds of Samza containers for stream reprocessing job, we shouldn't let all
+           * the containers send kill requests to controller at the same time to avoid hammering on controller.
+           */
+          Random random = new Random(System.currentTimeMillis());
+          Utils.sleep(random.nextInt(30000));
+          controllerClient.retryableRequest(3, c -> c.killOfflinePushJob(versionTopic));
+          LOGGER.info("Offline push job has been killed, topic: " + versionTopic);
+      }
+      pushMonitor.get().close();
+    }
     controllerClient.close();
     D2ClientUtils.shutdownClient(d2Client);
   }
@@ -179,6 +230,24 @@ public class VeniceSystemProducer implements SystemProducer {
     if (! storeOfIncomingMessage.equals(storeName)) {
       throw new SamzaException("The store of the incoming message: " + storeOfIncomingMessage +
           " is unexpected, and it should be " + storeName);
+    }
+
+    if (pushMonitor.isPresent() && Version.PushType.STREAM_REPROCESSING.equals(pushType)) {
+      ExecutionStatus currentStatus = pushMonitor.get().getCurrentStatus();
+      switch (currentStatus) {
+        case ERROR:
+          /**
+           * If there are multiple stream reprocessing SystemProducer in one Samza job, one failed push will
+           * also affect other push jobs.
+           */
+          throw new VeniceException("Push job for resource " + topicName + " is in error state; please reach out to Venice team.");
+        case END_OF_PUSH_RECEIVED:
+        case COMPLETED:
+          LOGGER.info("Stream reprocessing for resource " + topicName + " has finished. No message will be sent.");
+          return;
+        default:
+          // no-op
+      }
     }
 
     send(outgoingMessageEnvelope.getKey(), outgoingMessageEnvelope.getMessage());
@@ -314,5 +383,11 @@ public class VeniceSystemProducer implements SystemProducer {
       throw new RuntimeException("Failed to write intput: " + input + " to binary encoder", e);
     }
     return out.toByteArray();
+  }
+
+  public void setExitMode(SamzaExitMode exitMode) {
+    if (pushMonitor.isPresent()) {
+      pushMonitor.get().setStreamReprocessingExitMode(exitMode);
+    }
   }
 }

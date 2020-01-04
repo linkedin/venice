@@ -1,6 +1,5 @@
 package com.linkedin.venice.integration.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.common.callback.Callback;
 import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
@@ -28,10 +27,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.client.store.ClientConfig.*;
+
 
 public class D2TestUtils {
   public static final String DEFAULT_TEST_CLUSTER_NAME = "VeniceStorageService";
-  public static final String DEFAULT_TEST_SERVICE_NAME = "venice-service";
+  public static final String DEFAULT_TEST_SERVICE_NAME = DEFAULT_D2_SERVICE_NAME;
 
   public static final String CONTROLLER_CLUSTER_NAME = "VeniceController";
   public static final String CONTROLLER_SERVICE_NAME = "VeniceController";

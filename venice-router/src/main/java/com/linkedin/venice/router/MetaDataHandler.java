@@ -43,6 +43,7 @@ import java.util.Optional;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
+import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -109,7 +110,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     } else if (VenicePathParser.TYPE_RESOURCE_STATE.equals(resourceType)) {
       // URI: /resource_state
       handleResourceStateLookup(ctx, helper);
-    } else if (VenicePathParser.TYPE_PUSH_STATUS.equals(resourceType)) {
+    } else if (TYPE_PUSH_STATUS.equals(resourceType)) {
       // URI: /push_status
       handlePushStatusLookUp(ctx, helper);
     } else {
@@ -269,7 +270,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
    */
   private void handlePushStatusLookUp(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String resourceName = helper.getResourceName();
-    checkResourceName(resourceName, "/" + VenicePathParser.TYPE_PUSH_STATUS + "/${resourceName}");
+    checkResourceName(resourceName, "/" + TYPE_PUSH_STATUS + "/${resourceName}");
 
     if (!storeConfigRepo.getStoreConfig(Version.parseStoreFromKafkaTopicName(resourceName)).isPresent()) {
       byte[] errBody =

@@ -13,10 +13,10 @@ import org.apache.avro.specific.SpecificRecord;
 
 
 public class ClientConfig<T extends SpecificRecord> {
-  private static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
   private static final String HTTPS = "https";
   public static final int DEFAULT_ZK_TIMEOUT_MS = 5000;
   public static final String DEFAULT_D2_SERVICE_NAME = "venice-discovery";
+  public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
 
 
   // Basic settings

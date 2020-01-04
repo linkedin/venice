@@ -42,6 +42,7 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.VeniceConstants.*;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
 
 public class TestMetaDataHandler {
@@ -359,7 +360,7 @@ public class TestMetaDataHandler {
     // Router returns COMPLETED state
     Mockito.doReturn(ExecutionStatus.COMPLETED).when(partitionStatusOnlineInstanceFinder).getPushJobStatus(resourceName);
     FullHttpResponse response =
-        passRequestToMetadataHandler("http://myRouterHost:4567/" + VenicePathParser.TYPE_PUSH_STATUS + "/" + resourceName,
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_PUSH_STATUS + "/" + resourceName,
             null, null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
     Assert.assertEquals(response.status().code(), 200);
     PushStatusResponse pushStatusResponse = mapper.readValue(response.content().array(), PushStatusResponse.class);
@@ -368,7 +369,7 @@ public class TestMetaDataHandler {
     // Router returns ERROR state
     Mockito.doReturn(ExecutionStatus.ERROR).when(partitionStatusOnlineInstanceFinder).getPushJobStatus(resourceName);
     response =
-        passRequestToMetadataHandler("http://myRouterHost:4567/" + VenicePathParser.TYPE_PUSH_STATUS + "/" + resourceName,
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_PUSH_STATUS + "/" + resourceName,
             null, null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = mapper.readValue(response.content().array(), PushStatusResponse.class);
@@ -377,7 +378,7 @@ public class TestMetaDataHandler {
     // Router returns STARTED state
     Mockito.doReturn(ExecutionStatus.STARTED).when(partitionStatusOnlineInstanceFinder).getPushJobStatus(resourceName);
     response =
-        passRequestToMetadataHandler("http://myRouterHost:4567/" + VenicePathParser.TYPE_PUSH_STATUS + "/" + resourceName,
+        passRequestToMetadataHandler("http://myRouterHost:4567/" + TYPE_PUSH_STATUS + "/" + resourceName,
             null, null, storeConfigRepository, Collections.emptyMap(), mockOnlineInstanceFinder);
     Assert.assertEquals(response.status().code(), 200);
     pushStatusResponse = mapper.readValue(response.content().array(), PushStatusResponse.class);

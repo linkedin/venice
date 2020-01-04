@@ -1,0 +1,177 @@
+package com.linkedin.venice.pushmonitor;
+
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.routerapi.PushStatusResponse;
+import com.linkedin.venice.samza.SamzaExitMode;
+import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
+import java.io.Closeable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.log4j.Logger;
+import org.apache.samza.system.SystemProducer;
+import org.codehaus.jackson.map.DeserializationConfig;
+import org.codehaus.jackson.map.ObjectMapper;
+
+import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.client.store.ClientConfig.*;
+
+
+/**
+ * This push monitor is able to query push job status from routers; it only works for
+ * stores running in Leader/Follower mode and it will be built for STREAM_REPROCESSING job.
+ */
+public class RouterBasedPushMonitor implements Closeable {
+  private static final Logger logger = Logger.getLogger(RouterBasedPushMonitor.class);
+
+  private static final int POLL_CYCLE_DELAY_MS = 10000;
+  private static final long POLL_TIMEOUT_MS = 10000l;
+
+  private final String d2ZkConnection;
+  private final String topicName;
+  private final ExecutorService executor;
+
+  private PushMonitorTask pushMonitorTask;
+  private ExecutionStatus currentStatus = ExecutionStatus.UNKNOWN;
+
+  public RouterBasedPushMonitor(String veniceD2ZKHost, String resourceName, VeniceSystemFactory factory, SystemProducer producer) {
+    this.d2ZkConnection = veniceD2ZKHost;
+    this.topicName = resourceName;
+    executor = Executors.newSingleThreadExecutor(new DaemonThreadFactory("RouterBasedPushMonitor"));
+    D2TransportClient transportClient = new D2TransportClient(veniceD2ZKHost, DEFAULT_D2_SERVICE_NAME,
+        ClientConfig.DEFAULT_D2_ZK_BASE_PATH, ClientConfig.DEFAULT_ZK_TIMEOUT_MS);
+    pushMonitorTask = new PushMonitorTask(transportClient, topicName, this, factory, producer);
+  }
+
+  public void start() {
+    executor.submit(pushMonitorTask);
+  }
+
+  @Override
+  public void close() {
+    pushMonitorTask.close();
+  }
+
+  public void setCurrentStatus(ExecutionStatus currentStatus) {
+    this.currentStatus = currentStatus;
+  }
+
+  public ExecutionStatus getCurrentStatus() {
+    return this.currentStatus;
+  }
+
+  public void setStreamReprocessingExitMode(SamzaExitMode exitMode) {
+    this.pushMonitorTask.exitMode = exitMode;
+  }
+
+  private static class PushMonitorTask implements Runnable, Closeable {
+    private static ObjectMapper mapper = new ObjectMapper().disable(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES);
+
+    private final AtomicBoolean isRunning;
+    private final String topicName;
+    private final D2TransportClient transportClient;
+    private final String requestPath;
+    private final RouterBasedPushMonitor pushMonitorService;
+    private final VeniceSystemFactory factory;
+    private final SystemProducer producer;
+
+    private SamzaExitMode exitMode = SamzaExitMode.SUCCESS_EXIT;
+
+    public PushMonitorTask(D2TransportClient transportClient, String topicName, RouterBasedPushMonitor pushMonitorService,
+        VeniceSystemFactory factory, SystemProducer producer) {
+      this.transportClient = transportClient;
+      this.topicName = topicName;
+      this.requestPath = buildPushStatusRequestPath(topicName);
+      this.pushMonitorService = pushMonitorService;
+      this.factory = factory;
+      this.producer = producer;
+      this.isRunning = new AtomicBoolean(true);
+    }
+
+    @Override
+    public void run() {
+      logger.info("Running " + this.getClass().getSimpleName());
+      while (isRunning.get()) {
+        try {
+          // Get push status
+          CompletableFuture<TransportClientResponse> responseFuture = transportClient.get(requestPath);
+          TransportClientResponse response = responseFuture.get(POLL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+          PushStatusResponse pushStatusResponse = mapper.readValue(response.getBody(), PushStatusResponse.class);
+          if (pushStatusResponse.isError()) {
+            logger.error("Router was not able to get push status: " + pushStatusResponse.getError());
+            continue;
+          }
+          pushMonitorService.setCurrentStatus(pushStatusResponse.getExecutionStatus());
+          switch (pushStatusResponse.getExecutionStatus()) {
+            case END_OF_PUSH_RECEIVED:
+            case COMPLETED:
+              logger.info("Samza stream reprocessing has finished successfully for store version: " + topicName);
+              factory.endStreamReprocessingSystemProducer(producer, true);
+              /**
+               * If there is no more active samza producer, check whether all the stream reprocessing jobs succeed;
+               * if so, exit the Samza task; otherwise, let user knows some jobs have failed.
+               *
+               * If there is any real-time Samza producer created in the factory, the number of active producers would
+               * never be 0, so a COMPLETED stream reprocessing job will not accidentally stop the real-time job.
+               *
+               * TODO: there is a potential edge case that needs to be fixed:
+               * 1. User's application start stream reprocessing jobs a number of stores at the beginning;
+               * 2. User send EOP to all the stores in #1 through admin-tool or Nuage to end all the jobs;
+               * 3. All the jobs complete successfully, so the active number of producers drop to 0 and the Samza job exits;
+               * 4. However.. user's application has some special logic to sleep a few hours and start new stream reprocessing
+               *    jobs for stores that are not included in #1; in this case, Samza already exit and these new jobs will
+               *    never start.
+               * Unfortunately there is no solution to the above edge case at the moment; we can only pause the exit process
+               * a bit and then check whether the active number of producers is still 0.
+               */
+              if (0 == factory.getNumberOfActiveSystemProducers()) {
+                // Pause a bit just in case user suddenly create new producers from the factory
+                logger.info("Pause 30 seconds before exiting the Samza process.");
+                Utils.sleep(30000);
+                if (0 != factory.getNumberOfActiveSystemProducers()) {
+                  break;
+                }
+                if (factory.getOverallExecutionStatus()) {
+                  /**
+                   * All stream reprocessing jobs succeed; exit the task based on the selected exit mode
+                   */
+                  logger.info("Exiting Samza process after all stream reprocessing jobs succeeded.");
+                  exitMode.exit();
+                } else {
+                  throw new VeniceException("Not all stream reprocessing jobs succeeded.");
+                }
+              }
+              return;
+            case ERROR:
+              logger.info("Stream reprocessing job failed for store version: " + topicName);
+              factory.endStreamReprocessingSystemProducer(producer, false);
+              // Stop polling
+              return;
+            default:
+              logger.info("Current stream reprocessing job state: " + pushStatusResponse.getExecutionStatus() + " for store version: " + topicName);
+          }
+
+          Utils.sleep(POLL_CYCLE_DELAY_MS);
+        } catch (Exception e) {
+          logger.error("Error when polling push status from router for store version: " + topicName, e);
+        }
+      }
+    }
+
+    @Override
+    public void close() {
+      isRunning.getAndSet(false);
+    }
+
+    private static String buildPushStatusRequestPath(String topicName) {
+      return TYPE_PUSH_STATUS + "/" + topicName;
+    }
+  }
+}
