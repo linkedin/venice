@@ -82,4 +82,8 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     totalStats.recordWriteComputeUpdateLatency(latency);
     getStoreStats(storeName).recordWriteComputeUpdateLatency(latency);
   }
+
+  public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {
+    totalStats.recordBytesReadFromKafkaAsUncompressedSize(bytes);
+  }
 }

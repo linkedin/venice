@@ -16,7 +16,13 @@ import static com.linkedin.venice.stats.StatsErrorCode.*;
 public class StoreIngestionStats extends AbstractVeniceStats{
   private StoreIngestionTask storeIngestionTask;
 
+  // Bytes processed by the store ingestion task as a rate
   private final Sensor bytesConsumedSensor;
+  /*
+   * Bytes read from Kafka by store ingestion task as a total. This metric includes bytes read for all store versions
+   * allocated in a storage node reported with its uncompressed data size.
+   */
+  private final Sensor bytesReadFromKafkaAsUncompressedSizeSensor;
   private final Sensor recordsConsumedSensor;
   private final Sensor storageQuotaUsedSensor;
 
@@ -50,6 +56,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     this.storeIngestionTask = null;
 
     bytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
+    bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Total());
     recordsConsumedSensor = registerSensor("records_consumed", new Rate());
 
     // Measure latency of Kafka consumer poll request and processing returned consumer records
@@ -100,6 +107,10 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordBytesConsumed(long bytes) {
     bytesConsumedSensor.record(bytes);
+  }
+
+  public void recordBytesReadFromKafkaAsUncompressedSize(long bytes) {
+    bytesReadFromKafkaAsUncompressedSizeSensor.record(bytes);
   }
 
   public void recordRecordsConsumed(int count) {

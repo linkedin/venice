@@ -36,6 +36,8 @@ public class AggStoreIngestionStatsTest {
 
     stats.recordStorageQuotaUsed(STORE_FOO, 0.6);
     stats.recordStorageQuotaUsed(STORE_FOO, 1);
+    stats.recordTotalBytesReadFromKafkaAsUncompressedSize(100);
+    stats.recordTotalBytesReadFromKafkaAsUncompressedSize(200);
   }
 
   @AfterTest
@@ -49,5 +51,6 @@ public class AggStoreIngestionStatsTest {
     Assert.assertEquals(reporter.query("." + STORE_BAR + "--kafka_poll_result_num.Total").value(), 2d);
     Assert.assertEquals(reporter.query(".total--kafka_poll_result_num.Avg").value(), 1.5d);
     Assert.assertEquals(reporter.query("." + STORE_FOO + "--storage_quota_used.Avg").value(), 0.8);
+    Assert.assertEquals(reporter.query(".total--bytes_read_from_kafka_as_uncompressed_size.Total").value(), 300d);
   }
 }
