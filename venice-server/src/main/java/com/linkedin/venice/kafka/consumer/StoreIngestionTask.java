@@ -516,7 +516,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         checkSchemaIdAvail(record);
         // blocking call
         storeBufferService.putConsumerRecord(record, this);
-        totalRecordSize += record.serializedKeySize() + record.serializedValueSize();
+        if (record.serializedKeySize() > 0) {
+          totalRecordSize += record.serializedKeySize();
+        }
+        if (record.serializedValueSize() > 0) {
+          totalRecordSize += record.serializedValueSize();
+        }
+      }
+      if (totalRecordSize > 0) {
+        storeIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalRecordSize);
       }
       if (recordsPolled) {
         /**
