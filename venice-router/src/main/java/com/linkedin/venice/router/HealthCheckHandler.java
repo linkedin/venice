@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
@@ -63,5 +62,7 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
     if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
       logger.error("Got exception while handling health check request from " + remoteAddr + ": ", e);
     }
+    setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
+    ctx.close();
   }
 }
