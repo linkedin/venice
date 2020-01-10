@@ -222,7 +222,7 @@ public class TestKafkaPushJob {
    */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*Failed to execute validateInputDir.*")
+      expectedExceptionsMessageRegExp = ".*should not have sub directory.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
