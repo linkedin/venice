@@ -48,7 +48,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -277,7 +277,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
 
   // Thread pool for Hadoop File System operations.
-  private final Executor hdfsExecutor;
+  private ExecutorService hdfsExecutorService;
 
   protected class SchemaInfo {
     boolean isAvro = true;
@@ -432,9 +432,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (!pushJobSetting.enablePush && !pushJobSetting.enablePBNJ) {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
-
-    int hdfsOperationThreadNum = props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20);
-    hdfsExecutor = Executors.newFixedThreadPool(hdfsOperationThreadNum);
   }
 
   /**
@@ -453,6 +450,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     try {
       jobStartTime = System.currentTimeMillis();
       logGreeting();
+      int hdfsOperationThreadNum = props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20);
+      hdfsExecutorService = Executors.newFixedThreadPool(hdfsOperationThreadNum);
       // Discover the cluster based on the store name and re-initialized controller client.
       this.clusterName = discoverCluster(pushJobSetting);
       Optional<SSLFactory> sslFactory = Optional.empty();
@@ -466,9 +465,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       // Check data size
       // TODO: do we actually need this information?
-      this.inputFileDataSize = calculateInputDataSize(this.inputDirectory);
+      Pair<SchemaInfo, Long> inputInfoPair = validateInputAndGetSchema(this.inputDirectory, this.props);
       // Get input schema
-      this.schemaInfo = getInputSchema(this.inputDirectory, this.props);
+      this.schemaInfo = inputInfoPair.getFirst();
+      this.inputFileDataSize = inputInfoPair.getSecond();
       StoreSetting storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
 
       validateKeySchema(controllerClient, pushJobSetting, schemaInfo);
@@ -573,6 +573,18 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         e = new VeniceException("Exception or error caught during Hadoop to Venice Bridge!", e);
       }
       throw (VeniceException) e;
+    } finally {
+      if (hdfsExecutorService != null) {
+        hdfsExecutorService.shutdownNow();
+        try {
+          if (!hdfsExecutorService.awaitTermination(30, TimeUnit.SECONDS)) {
+            logger.warn("Unable to shutdown the executor service used for HDFS operations. "
+                + "The job may hang with leaked resources.");
+          }
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
     }
   }
 
@@ -593,12 +605,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   /**
-   * Calculate total data size of input directory
+   * 1. Check whether it's Vson input or Avro input
+   * 2. Check schema consistency;
+   * 3. Populate key schema, value schema;
    * @param inputUri
-   * @return total input data files size
+   * @param props push job properties
+   * @return a pair containing schema related information and input file size
    * @throws Exception
    */
-  protected long calculateInputDataSize(String inputUri) throws Exception {
+  protected Pair<SchemaInfo, Long> validateInputAndGetSchema(String inputUri, VeniceProperties props) throws Exception {
     Configuration conf = new Configuration();
     FileSystem fs = FileSystem.get(conf);
     Path srcPath = new Path(inputUri);
@@ -608,28 +623,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       throw new RuntimeException("No data found at source path: " + srcPath);
     }
 
-    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
-    // we are applying this factor to provide a more reasonable estimation.
-    return validateInputDir(fileStatuses) * INPUT_DATA_SIZE_FACTOR;
-  }
-
-  /**
-   * 1. Check whether it's Vson input or Avro input
-   * 2. Check schema consistency;
-   * 3. Populate key schema, value schema;
-   * @param inputUri
-   * @param props push job properties
-   * @return all schema related information
-   * @throws Exception
-   */
-  protected SchemaInfo getInputSchema(String inputUri, VeniceProperties props) throws Exception {
-    Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
-    Path srcPath = new Path(inputUri);
-    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
-
     SchemaInfo schemaInfo = new SchemaInfo();
-
     //try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath());
     if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
@@ -637,13 +631,19 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.vsonFileKeySchema = fileMetadata.get(FILE_KEY_SCHEMA);
       schemaInfo.vsonFileValueSchema = fileMetadata.get(FILE_VALUE_SCHEMA);
     }
+    // Check the first file type prior to check schema consistency to make sure a schema can be obtained from it.
+    if (fileStatuses[0].isDirectory()) {
+      throw new VeniceException("Input directory: " + fileStatuses[0].getPath().getParent().getName() +
+          " should not have sub directory: " + fileStatuses[0].getPath().getName());
+    }
 
+    final AtomicLong inputFileDataSize = new AtomicLong(0);
     if (schemaInfo.isAvro) {
       logger.info("Detected Avro input format.");
       schemaInfo.keyField = props.getString(KEY_FIELD_PROP);
       schemaInfo.valueField = props.getString(VALUE_FIELD_PROP);
 
-      Schema avroSchema = checkAvroSchemaConsistency(fs, fileStatuses);
+      Schema avroSchema = checkAvroSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
       schemaInfo.fileSchemaString = avroSchema.toString();
       schemaInfo.keySchemaString = extractAvroSubSchema(avroSchema, schemaInfo.keyField).toString();
@@ -654,7 +654,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.keyField = props.getString(KEY_FIELD_PROP, "");
       schemaInfo.valueField = props.getString(VALUE_FIELD_PROP, "");
 
-      Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fs, fileStatuses);
+      Pair<VsonSchema, VsonSchema> vsonSchemaPair = checkVsonSchemaConsistency(fs, fileStatuses, inputFileDataSize);
 
       VsonSchema vsonKeySchema = Utils.isNullOrEmpty(schemaInfo.keyField) ?
           vsonSchemaPair.getFirst() : vsonSchemaPair.getFirst().recordSubtype(schemaInfo.keyField);
@@ -664,7 +664,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
       schemaInfo.valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
     }
-    return schemaInfo;
+    return new Pair<>(schemaInfo, inputFileDataSize.get());
   }
 
   /**
@@ -1382,13 +1382,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   /**
    * This function is to execute HDFS operation in parallel, and the level of parallelism is controlled by this config: {@link #HDFS_OPERATIONS_PARALLEL_THREAD_NUM}
    */
-  private void parallelExecuteHDFSOperation(final FileStatus[] fileStatusList, String operation, boolean skipFirstOne, Consumer<FileStatus> fileStatusConsumer) {
+  private void parallelExecuteHDFSOperation(final FileStatus[] fileStatusList, String operation, Consumer<FileStatus> fileStatusConsumer) {
+    if (hdfsExecutorService == null) {
+      throw new VeniceException("Unable to execute HDFS operations in parallel, the executor is uninitialized");
+    }
     int len = fileStatusList.length;
-    int startPos = skipFirstOne ? 1 : 0;
-    CompletableFuture<Void>[] futures = new CompletableFuture[len - startPos];
-    for (int cur = startPos; cur < len; ++cur) {
+    CompletableFuture<Void>[] futures = new CompletableFuture[len];
+    for (int cur = 0; cur < len; ++cur) {
       final int finalCur = cur;
-      futures[cur - startPos] = CompletableFuture.runAsync(() -> fileStatusConsumer.accept(fileStatusList[finalCur]), hdfsExecutor);
+      futures[cur] = CompletableFuture.runAsync(() -> fileStatusConsumer.accept(fileStatusList[finalCur]),
+          hdfsExecutorService);
     }
     try {
       CompletableFuture.allOf(futures).get();
@@ -1398,13 +1401,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   //Avro-based file composes key and value schema as a whole
-  private Schema checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) {
-    int len = fileStatusList.length;
-    if (len == 0) {
-      throw new VeniceException("fileStatusList shouldn't be empty");
-    }
+  private Schema checkAvroSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList, AtomicLong inputFileDataSize) {
     Schema avroSchema = getAvroFileHeader(fs, fileStatusList[0].getPath());
-    parallelExecuteHDFSOperation(fileStatusList, "checkAvroSchemaConsistency", true, fileStatus -> {
+    parallelExecuteHDFSOperation(fileStatusList, "checkAvroSchemaConsistency", fileStatus -> {
+      if (fileStatus.isDirectory()) {
+        // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
+        throw new VeniceException("Input directory: " + fileStatus.getPath().getParent().getName() +
+            " should not have sub directory: " + fileStatus.getPath().getName());
+      }
+      inputFileDataSize.addAndGet(fileStatus.getLen());
       Schema newSchema = getAvroFileHeader(fs, fileStatus.getPath());
         if (!avroSchema.equals(newSchema)) {
           throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Avro schema found. File: %s.\n"
@@ -1416,13 +1421,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   }
 
   //Vson-based file store key / value schema string as separated properties in file header
-  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList) {
-    int len = fileStatusList.length;
-    if (len == 0) {
-      throw new VeniceException("fileStatusList shouldn't be empty");
-    }
+  private Pair<VsonSchema, VsonSchema> checkVsonSchemaConsistency(FileSystem fs, FileStatus[] fileStatusList,
+      AtomicLong inputFileDataSize) {
     Pair<VsonSchema, VsonSchema> vsonSchema = getVsonFileHeader(fs, fileStatusList[0].getPath());
-    parallelExecuteHDFSOperation(fileStatusList, "checkVsonSchemaConsistency", true, fileStatus -> {
+    parallelExecuteHDFSOperation(fileStatusList, "checkVsonSchemaConsistency", fileStatus -> {
+      if (fileStatus.isDirectory()) {
+        throw new VeniceException("Input directory: " + fileStatus.getPath().getParent().getName() +
+            " should not have sub directory: " + fileStatus.getPath().getName());
+      }
+      inputFileDataSize.addAndGet(fileStatus.getLen());
       Pair<VsonSchema, VsonSchema> newSchema = getVsonFileHeader(fs, fileStatus.getPath());
       if (!vsonSchema.getFirst().equals(newSchema.getFirst()) || !vsonSchema.getSecond().equals(newSchema.getSecond())) {
         throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
@@ -1432,21 +1439,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     });
 
     return vsonSchema;
-  }
-
-  private long validateInputDir(final FileStatus[] fileStatuses) {
-    final AtomicLong inputFileDataSize = new AtomicLong(0);
-
-    parallelExecuteHDFSOperation(fileStatuses, "validateInputDir", false, fileStatus -> {
-      if (fileStatus.isDirectory()) {
-        // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
-        throw new VeniceException("Input directory: " + fileStatus.getPath().getParent().getName() +
-            " should not have sub directory: " + fileStatus.getPath().getName());
-      }
-      inputFileDataSize.addAndGet(fileStatus.getLen());
-    });
-
-    return inputFileDataSize.get();
   }
 
   private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path) {
