@@ -28,6 +28,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -138,66 +139,71 @@ public class AdminExecutionTask implements Callable<Void> {
           + lastSucceededExecutionId + ", so will skip it");
       return;
     }
-    switch (AdminMessageType.valueOf(adminOperation)) {
-      case STORE_CREATION:
-        handleStoreCreation((StoreCreation) adminOperation.payloadUnion);
-        break;
-      case VALUE_SCHEMA_CREATION:
-        handleValueSchemaCreation((ValueSchemaCreation) adminOperation.payloadUnion);
-        break;
-      case DISABLE_STORE_WRITE:
-        handleDisableStoreWrite((PauseStore) adminOperation.payloadUnion);
-        break;
-      case ENABLE_STORE_WRITE:
-        handleEnableStoreWrite((ResumeStore) adminOperation.payloadUnion);
-        break;
-      case KILL_OFFLINE_PUSH_JOB:
-        handleKillOfflinePushJob((KillOfflinePushJob) adminOperation.payloadUnion);
-        break;
-      case DISABLE_STORE_READ:
-        handleDisableStoreRead((DisableStoreRead) adminOperation.payloadUnion);
-        break;
-      case ENABLE_STORE_READ:
-        handleEnableStoreRead((EnableStoreRead) adminOperation.payloadUnion);
-        break;
-      case DELETE_ALL_VERSIONS:
-        handleDeleteAllVersions((DeleteAllVersions) adminOperation.payloadUnion);
-        break;
-      case SET_STORE_CURRENT_VERSION:
-        handleSetStoreCurrentVersion((SetStoreCurrentVersion) adminOperation.payloadUnion);
-        break;
-      case SET_STORE_OWNER:
-        handleSetStoreOwner((SetStoreOwner) adminOperation.payloadUnion);
-        break;
-      case SET_STORE_PARTITION:
-        handleSetStorePartitionCount((SetStorePartitionCount) adminOperation.payloadUnion);
-        break;
-      case UPDATE_STORE:
-        handleSetStore((UpdateStore) adminOperation.payloadUnion);
-        break;
-      case DELETE_STORE:
-        handleDeleteStore((DeleteStore) adminOperation.payloadUnion);
-        break;
-      case DELETE_OLD_VERSION:
-        handleDeleteOldVersion((DeleteOldVersion) adminOperation.payloadUnion);
-        break;
-      case MIGRATE_STORE:
-        handleStoreMigration((MigrateStore) adminOperation.payloadUnion);
-        break;
-      case ABORT_MIGRATION:
-        handleAbortMigration((AbortMigration) adminOperation.payloadUnion);
-        break;
-      case ADD_VERSION:
-        handleAddVersion((AddVersion) adminOperation.payloadUnion);
-        break;
-      case DERIVED_SCHEMA_CREATION:
-        handleDerivedSchemaCreation((DerivedSchemaCreation) adminOperation.payloadUnion);
-        break;
-      case SUPERSET_SCHEMA_CREATION:
-        handleSupersetSchemaCreation((SupersetSchemaCreation) adminOperation.payloadUnion);
-        break;
-      default:
-        throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
+    try {
+      switch (AdminMessageType.valueOf(adminOperation)) {
+        case STORE_CREATION:
+          handleStoreCreation((StoreCreation) adminOperation.payloadUnion);
+          break;
+        case VALUE_SCHEMA_CREATION:
+          handleValueSchemaCreation((ValueSchemaCreation) adminOperation.payloadUnion);
+          break;
+        case DISABLE_STORE_WRITE:
+          handleDisableStoreWrite((PauseStore) adminOperation.payloadUnion);
+          break;
+        case ENABLE_STORE_WRITE:
+          handleEnableStoreWrite((ResumeStore) adminOperation.payloadUnion);
+          break;
+        case KILL_OFFLINE_PUSH_JOB:
+          handleKillOfflinePushJob((KillOfflinePushJob) adminOperation.payloadUnion);
+          break;
+        case DISABLE_STORE_READ:
+          handleDisableStoreRead((DisableStoreRead) adminOperation.payloadUnion);
+          break;
+        case ENABLE_STORE_READ:
+          handleEnableStoreRead((EnableStoreRead) adminOperation.payloadUnion);
+          break;
+        case DELETE_ALL_VERSIONS:
+          handleDeleteAllVersions((DeleteAllVersions) adminOperation.payloadUnion);
+          break;
+        case SET_STORE_CURRENT_VERSION:
+          handleSetStoreCurrentVersion((SetStoreCurrentVersion) adminOperation.payloadUnion);
+          break;
+        case SET_STORE_OWNER:
+          handleSetStoreOwner((SetStoreOwner) adminOperation.payloadUnion);
+          break;
+        case SET_STORE_PARTITION:
+          handleSetStorePartitionCount((SetStorePartitionCount) adminOperation.payloadUnion);
+          break;
+        case UPDATE_STORE:
+          handleSetStore((UpdateStore) adminOperation.payloadUnion);
+          break;
+        case DELETE_STORE:
+          handleDeleteStore((DeleteStore) adminOperation.payloadUnion);
+          break;
+        case DELETE_OLD_VERSION:
+          handleDeleteOldVersion((DeleteOldVersion) adminOperation.payloadUnion);
+          break;
+        case MIGRATE_STORE:
+          handleStoreMigration((MigrateStore) adminOperation.payloadUnion);
+          break;
+        case ABORT_MIGRATION:
+          handleAbortMigration((AbortMigration) adminOperation.payloadUnion);
+          break;
+        case ADD_VERSION:
+          handleAddVersion((AddVersion) adminOperation.payloadUnion);
+          break;
+        case DERIVED_SCHEMA_CREATION:
+          handleDerivedSchemaCreation((DerivedSchemaCreation) adminOperation.payloadUnion);
+          break;
+        case SUPERSET_SCHEMA_CREATION:
+          handleSupersetSchemaCreation((SupersetSchemaCreation) adminOperation.payloadUnion);
+          break;
+        default:
+          throw new VeniceException("Unknown admin operation type: " + adminOperation.operationType);
+      }
+    } catch (VeniceUnsupportedOperationException e) {
+      logger.info("Ignoring the " + e.getClass().getSimpleName() + " caught when processing "
+          + AdminMessageType.valueOf(adminOperation).toString() + "with detailed message: " + e.getMessage());
     }
     executionIdAccessor.updateLastSucceededExecutionIdMap(clusterName, storeName, adminOperation.executionId);
     lastSucceededExecutionIdMap.put(storeName, adminOperation.executionId);
