@@ -955,7 +955,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 "Unable to delete the version: " + versionNum + ". The current version could be deleted from store: "
                     + storeName;
             logger.error(errorMsg);
-            throw new VeniceException(errorMsg);
+            throw new VeniceUnsupportedOperationException("delete single version", errorMsg);
         }
     }
 
