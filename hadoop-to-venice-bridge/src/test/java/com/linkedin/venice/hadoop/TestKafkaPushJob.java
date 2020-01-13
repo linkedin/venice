@@ -152,7 +152,7 @@ public class TestKafkaPushJob {
    * @throws Exception
    */
   @Test(timeOut = TEST_TIMEOUT,
-      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to execute checkAvroSchemaConsistency.*")
+      expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Inconsistent file.* schema found.*")
   public void testRunJobWithInputHavingDifferentSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);

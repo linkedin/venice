@@ -664,7 +664,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       schemaInfo.keySchemaString = VsonAvroSchemaAdapter.parse(vsonKeySchema.toString()).toString();
       schemaInfo.valueSchemaString = VsonAvroSchemaAdapter.parse(vsonValueSchema.toString()).toString();
     }
-    return new Pair<>(schemaInfo, inputFileDataSize.get());
+
+    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
+    // we are applying this factor to provide a more reasonable estimation.
+    return new Pair<>(schemaInfo, inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR);
   }
 
   /**
@@ -1294,7 +1297,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     logger.info("File Schema: " + schemaInfo.fileSchemaString);
     logger.info("Avro key schema: " + schemaInfo.keySchemaString);
     logger.info("Avro value schema: " + schemaInfo.valueSchemaString);
-    logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
+    logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024)
+        + " MB, estimated with a factor of " + INPUT_DATA_SIZE_FACTOR);
     logger.info("Is incremental push: " + pushJobSetting.isIncrementalPush);
     logger.info("Is duplicated key allowed" + pushJobSetting.isDuplicateKeyAllowed);
   }
@@ -1396,6 +1400,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     try {
       CompletableFuture.allOf(futures).get();
     } catch (Exception e) {
+      if (e.getCause() instanceof VeniceException) {
+        throw (VeniceException) e.getCause();
+      }
       throw new VeniceException("Failed to execute " + operation + " in parallel", e);
     }
   }
