@@ -118,9 +118,9 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
       }
 
       /**
-       * Check if today's snapshots have been published
+       * Check if today's snapshots have been published, unified to use PT time
        */
-      Date todaysDate = new Date(System.currentTimeMillis());
+      Date todaysDate = convertFromUTCtoPT(new Date(System.currentTimeMillis()));
       Long latestSnapshotRecordsNum = getRecordsNumforSnapshots(todaysDate);
       logger.info("The summary for " + storeVersion + " :");
       if (latestSnapshotRecordsNum == null) {
@@ -170,6 +170,9 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
     Long recordsNum = null;
     if (!snapshotQueue.isEmpty()) {
       FileStatus snapshotStatus = snapshotQueue.poll();
+      /**
+       * The default time zone returned by Azkaban is in PT.
+       */
       Date modificationDate = new Date(snapshotStatus.getModificationTime());
       if (DateUtils.isSameDay(modificationDate, dateToCompare)) {
         String snapshotName = snapshotStatus.getPath().getName();
@@ -204,6 +207,15 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
         return;
       }
     }
+  }
+
+  /**
+   * Convert a UTC date to PT. UTC is 8 hours ahead of Pacific Time.
+   * @param date
+   * @return
+   */
+  private Date convertFromUTCtoPT(Date date) {
+    return DateUtils.addHours(date, -8);
   }
 
   /**
