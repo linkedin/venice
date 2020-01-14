@@ -41,6 +41,68 @@ public class TestWriteComputeSchemaAdapter {
       +"  } ]\n"
       +"}";
 
+  private String recordOfUnionWithCollectionStr = "{\n"
+      + "  \"type\": \"record\",\n" + "  \"name\": \"testRecord\",\n"
+      + "  \"namespace\": \"avro.example\",\n"
+      + "  \"fields\": [\n" + "    {\n"
+      + "      \"name\": \"intArray\",\n"
+      + "      \"type\":[\n"
+      + "      {\n"
+      + "        \"type\": \"array\",\n"
+      + "        \"items\": \"int\"\n"
+      + "      },\n"
+      + "      \"boolean\"\n"
+      + "      ],\n"
+      + "      \"default\": [\n"
+      + "      ]\n"
+      + "    },\n"
+      + "    {\n"
+      + "      \"name\": \"floatArray\",\n"
+      + "      \"type\": {\n"
+      + "        \"type\": \"array\",\n"
+      + "        \"items\": \"float\"\n"
+      + "      },\n"
+      + "      \"default\": [\n"
+      + "        \n"
+      + "      ]\n"
+      + "    }\n"
+      + "  ]\n"
+      + "}";
+
+  private String recordOfUnionWithTwoCollectionsStr = "{\n"
+      + "  \"type\": \"record\",\n"
+      + "  \"name\": \"testRecord\",\n"
+      + "  \"namespace\": \"avro.example\",\n"
+      + "  \"fields\": [\n"
+      + "    {\n"
+      + "      \"name\": \"intArray\",\n"
+      + "      \"type\":[\n"
+      + "      {\n"
+      + "        \"type\": \"array\",\n"
+      + "        \"items\": \"int\"\n"
+      + "      },\n"
+      + "      {\n"
+      + "        \"type\": \"map\",\n"
+      + "        \"values\": \"long\"\n"
+      + "      },\n"
+      + "      \"boolean\"\n"
+      + "      ],\n"
+      + "      \"default\": [\n"
+      + "      ]\n"
+      + "    },\n"
+      + "    {\n"
+      + "      \"name\": \"floatArray\",\n"
+      + "      \"type\": {\n"
+      + "        \"type\": \"array\",\n"
+      + "        \"items\": \"float\"\n"
+      + "      },\n"
+      + "      \"default\": [\n"
+      + "        \n"
+      + "      ]\n"
+      + "    }\n"
+      + "  ]\n"
+      + "}";
+
 
   @Test
   public void testAdapterCanParseBasicSchema() {
@@ -99,5 +161,26 @@ public class TestWriteComputeSchemaAdapter {
 
     Schema floatArrayFieldWriteSchema = recordOfArraysWriteSchema.getField("floatArray").schema();
     Assert.assertEquals(floatArrayFieldWriteSchema.getTypes().get(1).getNamespace(), "avro.example");
+  }
+
+  @Test
+  public void testAdapterCanParseRecordSchemaWithUnion() {
+    //test parsing a schema with a union type that contains 1 collection
+    Schema recordWriteSchema = WriteComputeSchemaAdapter.parse(recordOfUnionWithCollectionStr);
+    Assert.assertEquals(recordWriteSchema.getType(), RECORD);
+    Assert.assertEquals(recordWriteSchema.getFields().size(), 2);
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getType(), UNION);
+    // Check for NoOp option
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(0).getType(), RECORD);
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(0).getName(), "NoOp");
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(1), Schema.createArray(Schema.create(INT)));
+    Assert.assertEquals(recordWriteSchema.getField("intArray").schema().getTypes().get(2), Schema.create(BOOLEAN));
+
+  }
+
+  @Test
+  public void testAdapterCanNotParseRecordWithUnionOfMultipleCollections() {
+    //test parsing a schema with a union type that contains 2 collections (should barf)
+    Assert.assertThrows(() -> WriteComputeSchemaAdapter.parse(recordOfUnionWithTwoCollectionsStr));
   }
 }
