@@ -326,10 +326,11 @@ public class WriteComputeSchemaAdapter {
   }
 
   private Schema parseUnion(Schema unionSchema) {
+    containsOnlyOneCollection(unionSchema);
     return createFlattenedUnion(unionSchema.getTypes().stream().sequential()
         .map(schema ->{
           Schema.Type type = schema.getType();
-          if (type == RECORD || type == ARRAY || type == MAP) {
+          if (type == RECORD) {
             throw new VeniceException("recursive parsing inside union is not supported yet. Schema: "
                 + schema.toString(true));
           }
@@ -337,6 +338,35 @@ public class WriteComputeSchemaAdapter {
           return schema;
         })
         .collect(Collectors.toList()));
+  }
+
+  /**
+   * Utility function that checks to make sure that given a union schema, there only exists 1 collection type amongst the
+   * provided types.  Multiple collections will make the result of the flattened write compute schema lead to ambiguous behavior
+   *
+   * @param unionSchema a union schema to validate.
+   * @throws VeniceException When the unionSchema contains more then one collection type
+   */
+  private void containsOnlyOneCollection(Schema unionSchema) {
+    List<Schema> types = unionSchema.getTypes();
+    boolean hasCollectionType = false;
+    for (Schema type : types) {
+      switch (type.getType()) {
+        case ARRAY:
+        case MAP:
+          if (hasCollectionType) {
+            // More then one collection type found, this won't work.
+            throw new VeniceException("Multiple collection types in a union are not allowedSchema: "
+                + unionSchema.toString(true));
+          }
+          hasCollectionType = true;
+          continue;
+        case RECORD:
+        case UNION:
+        default:
+          continue;
+      }
+    }
   }
 
   /**
