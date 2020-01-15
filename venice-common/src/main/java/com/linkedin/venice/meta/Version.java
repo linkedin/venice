@@ -97,26 +97,38 @@ public class Version implements Comparable<Version> {
   private PushType pushType = PushType.BATCH;
 
   /**
+   * Default partition count of this version.
+   * assigned.
+   */
+  private int partitionCount = 0;
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
   public Version(String storeName, int number) {
-    this(storeName , number, System.currentTimeMillis(), numberBasedDummyPushId(number));
+    this(storeName , number, System.currentTimeMillis(), numberBasedDummyPushId(number), 0);
   }
 
   public Version(String storeName, int number, String pushJobId){
-    this(storeName, number, System.currentTimeMillis(), pushJobId);
+    this(storeName, number, System.currentTimeMillis(), pushJobId, 0);
+  }
+
+  public Version(String storeName, int number, String pushJobId, int partitionCount){
+    this(storeName, number, System.currentTimeMillis(), pushJobId, partitionCount);
   }
 
   public Version(
       @JsonProperty("storeName") @com.fasterxml.jackson.annotation.JsonProperty("storeName") @NotNull String storeName,
       @JsonProperty("number") @com.fasterxml.jackson.annotation.JsonProperty("number") int number,
       @JsonProperty("createdTime")  @com.fasterxml.jackson.annotation.JsonProperty("createdTime") long createdTime,
-      @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId) {
+      @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId,
+      @JsonProperty("partitionCount") @com.fasterxml.jackson.annotation.JsonProperty("partitionCount") int partitionCount) {
     this.storeName = storeName;
     this.number = number;
     this.createdTime = createdTime;
     this.pushJobId = pushJobId == null ? numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
+    this.partitionCount = partitionCount;
   }
 
   public int getNumber() {
@@ -184,6 +196,14 @@ public class Version implements Comparable<Version> {
     this.pushType = pushType;
   }
 
+  public void setPartitionCount(int partitionCount) {
+    this.partitionCount = partitionCount;
+  }
+
+  public int getPartitionCount() {
+    return partitionCount;
+  }
+
   @Override
   public String toString() {
     return "Version{" +
@@ -196,6 +216,7 @@ public class Version implements Comparable<Version> {
         ", leaderFollowerModelEnabled=" + leaderFollowerModelEnabled +
         ", bufferReplayEnabledForHybrid=" + bufferReplayEnabledForHybrid +
         ", pushType=" + pushType +
+        ", partitionCount=" + partitionCount +
         '}';
   }
 
@@ -252,6 +273,10 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if (partitionCount != version.partitionCount) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -265,6 +290,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + compressionStrategy.hashCode();
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
     result = 31 * result + (bufferReplayEnabledForHybrid ? 1: 0);
+    result = 31 * result + partitionCount;
     return result;
   }
 
@@ -277,7 +303,7 @@ public class Version implements Comparable<Version> {
    */
   @JsonIgnore
   public Version cloneVersion() {
-    Version clonedVersion = new Version(storeName, number, createdTime, pushJobId);
+    Version clonedVersion = new Version(storeName, number, createdTime, pushJobId, partitionCount);
     clonedVersion.setStatus(status);
     clonedVersion.setCompressionStrategy(compressionStrategy);
     clonedVersion.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
