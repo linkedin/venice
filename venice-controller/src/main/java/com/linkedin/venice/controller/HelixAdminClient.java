@@ -12,9 +12,10 @@ public interface HelixAdminClient {
 
   /**
    * Check if the Venice controller cluster is created and configured.
+   * @param controllerClusterName that wish to be checked.
    * @return true or false.
    */
-  boolean isVeniceControllerClusterCreated();
+  boolean isVeniceControllerClusterCreated(String controllerClusterName);
 
   /**
    * Check if the given Venice storage cluster is created and configured.
@@ -25,15 +26,25 @@ public interface HelixAdminClient {
 
   /**
    * Create and configure the Venice controller cluster.
+   * @param controllerClusterName to be created.
    */
-  void createVeniceControllerCluster();
+  void createVeniceControllerCluster(String controllerClusterName);
 
   /**
    * Create and configure the Venice storage cluster.
    * @param clusterName of the Venice storage cluster.
+   * @param controllerClusterName of the corresponding controller cluster.
    * @param helixClusterProperties to be applied to the new cluster.
    */
-  void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties);
+  void createVeniceStorageCluster(String clusterName, String controllerClusterName,
+      Map<String, String> helixClusterProperties);
+
+  /**
+   * Check if the grand cluster managed by HaaS controllers is aware of the given cluster.
+   * @param clusterName of the cluster.
+   * @return true or false.
+   */
+  boolean isClusterInGrandCluster(String clusterName);
 
   /**
    * Add the specified cluster as a resource to the grand cluster to be managed by HaaS controllers.

@@ -310,8 +310,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Create the controller cluster if required.
         if (isControllerClusterHAAS) {
-            if (!helixAdminClient.isVeniceControllerClusterCreated())
-                helixAdminClient.createVeniceControllerCluster();
+            if (!helixAdminClient.isVeniceControllerClusterCreated(controllerClusterName)) {
+                helixAdminClient.createVeniceControllerCluster(controllerClusterName);
+            } else if (!helixAdminClient.isClusterInGrandCluster(controllerClusterName)) {
+                // This is possible when transitioning to HaaS for the first time or if the grand cluster is reset.
+                helixAdminClient.addClusterToGrandCluster(controllerClusterName);
+            }
         } else {
             createControllerClusterIfRequired();
         }
@@ -2777,13 +2781,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
         helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
         helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
-        if (helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
+        if (!helixAdminClient.isVeniceStorageClusterCreated(clusterName)) {
+            helixAdminClient.createVeniceStorageCluster(clusterName, controllerClusterName, helixClusterProperties);
+        } else {
             // Cluster configs might have changed.
             helixAdminClient.updateClusterConfigs(clusterName, helixClusterProperties);
-        } else {
-            helixAdminClient.createVeniceStorageCluster(clusterName, helixClusterProperties);
+            if (!helixAdminClient.isClusterInGrandCluster(clusterName)) {
+                // This is possible when transitioning to HaaS for the first time or if the grand cluster is reset.
+                helixAdminClient.addClusterToGrandCluster(clusterName);
+            }
         }
-
     }
 
     // TODO remove this method once we are fully on HaaS

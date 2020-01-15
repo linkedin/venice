@@ -38,13 +38,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   private final HelixAdmin helixAdmin;
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final String haasSuperClusterName;
-  private final String controllerClusterName;
   private final int controllerClusterReplicaCount;
 
   public ZkHelixAdminClient(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
     this.multiClusterConfigs = multiClusterConfigs;
     haasSuperClusterName = multiClusterConfigs.getControllerHAASSuperClusterName();
-    controllerClusterName = multiClusterConfigs.getControllerClusterName();
     controllerClusterReplicaCount = multiClusterConfigs.getControllerClusterReplica();
     ZkClient helixAdminZkClient = ZkClientFactory.newZkClient(multiClusterConfigs.getZkAddress());
     helixAdminZkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, CONTROLLER_HAAS_ZK_CLIENT_NAME));
@@ -56,19 +54,17 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   @Override
-  public boolean isVeniceControllerClusterCreated() {
-    return helixAdmin.getClusters().contains(controllerClusterName)
-        && helixAdmin.getResourcesInCluster(haasSuperClusterName).contains(controllerClusterName);
+  public boolean isVeniceControllerClusterCreated(String controllerClusterName) {
+    return helixAdmin.getClusters().contains(controllerClusterName);
   }
 
   @Override
   public boolean isVeniceStorageClusterCreated(String clusterName) {
-     return helixAdmin.getClusters().contains(clusterName)
-         && helixAdmin.getResourcesInCluster(haasSuperClusterName).contains(clusterName);
+     return helixAdmin.getClusters().contains(clusterName);
   }
 
   @Override
-  public void createVeniceControllerCluster() {
+  public void createVeniceControllerCluster(String controllerClusterName) {
     if (!helixAdmin.addCluster(controllerClusterName, false)) {
       throw new VeniceException("Failed to create Helix cluster: " + controllerClusterName
           + ". HelixAdmin#addCluster returned false");
@@ -87,7 +83,8 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   @Override
-  public void createVeniceStorageCluster(String clusterName, Map<String, String> helixClusterProperties) {
+  public void createVeniceStorageCluster(String clusterName, String controllerClusterName,
+      Map<String, String> helixClusterProperties) {
     if (!helixAdmin.addCluster(clusterName, false)) {
       throw new VeniceException("Failed to create Helix cluster: " + clusterName
           + ". HelixAdmin#addCluster returned false");
@@ -105,6 +102,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
     helixAdmin.setResourceIdealState(controllerClusterName, clusterName, idealState);
     helixAdmin.rebalance(controllerClusterName, clusterName, controllerClusterReplicaCount);
     addClusterToGrandCluster(clusterName);
+  }
+
+  @Override
+  public boolean isClusterInGrandCluster(String clusterName) {
+    return helixAdmin.getResourcesInCluster(haasSuperClusterName).contains(clusterName);
   }
 
   @Override
