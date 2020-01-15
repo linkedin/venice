@@ -1072,22 +1072,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     if (store == null) {
                         throwStoreDoesNotExist(clusterName, storeName);
                     }
-                    // Update default partition count if it have not been assigned.
-                    // TODO: persist numberOfPartitions at the version level
-                    if (store.getPartitionCount() == 0) {
-                        store.setPartitionCount(numberOfPartitions);
-                        repository.updateStore(store);
-                    }
                     backupStrategy = store.getBackupStrategy();
                     if (versionNumber == VERSION_ID_UNSET) {
                         // No version supplied, generate a new version. This could happen either in the parent
                         // controller or local Samza jobs.
-                        version = new Version(storeName, store.peekNextVersion().getNumber(), pushJobId);
+                        version = new Version(storeName, store.peekNextVersion().getNumber(), pushJobId, numberOfPartitions);
                     } else {
                         if (store.containsVersion(versionNumber)) {
                             throwVersionAlreadyExists(storeName, versionNumber);
                         }
-                        version = new Version(storeName, versionNumber, pushJobId);
+                        version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
                     }
                 } finally {
                     repository.unLock();
@@ -1217,7 +1211,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * Note: this doesn't currently use the pushID to guarantee idempotence, unexpected behavior may result if multiple
+     * Note: this currently use the pushID to guarantee idempotence, unexpected behavior may result if multiple
      * batch jobs push to the same store at the same time.
      */
     @Override
@@ -1314,12 +1308,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (!store.isHybrid()){
                     logAndThrow("Store " + storeName + " is not hybrid, refusing to return a realtime topic");
                 }
-                int partitionCount = store.getPartitionCount();
-                if (partitionCount == 0){
+                Optional<Version> version = store.getVersion(store.getLargestUsedVersionNumber());
+                int partitionCount = version.isPresent() ? version.get().getPartitionCount() : 0;
+                // during transition to version based partition count, some old stores may have partition count on the store config only.
+                if (partitionCount == 0) {
+                    partitionCount = store.getPartitionCount();
+                }
+                if (0 == partitionCount){
                     //TODO:  partitioning is currently decided on first version push, and we need to match that versioning
                     // we should evaluate alternatives such as allowing the RT topic request to initialize the number of
                     // partitions, or setting the number of partitions at store creation time instead of at first version
-                    throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
+                    if (!version.isPresent()) {
+                        throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
+                    } else {
+                        throw new VeniceException("Store: " + storeName + " has partition count set to 0");
+                    }
                 }
                 VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
 
@@ -1887,7 +1890,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } else if (desiredPartitionCount < clusterConfig.getNumberOfPartition()) {
                     desiredPartitionCount = clusterConfig.getNumberOfPartition();
                 }
-
+                Optional<Version> version = store.getVersion(store.getCurrentVersion());
+                if (version.isPresent()) {
+                    version.get().setPartitionCount(desiredPartitionCount);
+                }
                 store.setPartitionCount(desiredPartitionCount);
                 return store;
             }

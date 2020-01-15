@@ -335,7 +335,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     //test setting partition count
     int newPartitionCount = 2;
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), partitionCount);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).get().getPartitionCount(), partitionCount);
 
     veniceAdmin.setStorePartitionCount(clusterName, storeName, MAX_NUMBER_OF_PARTITION + 1);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), MAX_NUMBER_OF_PARTITION,

@@ -333,11 +333,7 @@ public class VeniceParentHelixAdmin implements Admin {
           throw new VeniceException("Unable to create or fetch the " + storeDescriptor);
         }
       }
-      if (store.getPartitionCount() == 0) {
-        updateStoreQueryParams = new UpdateStoreQueryParams();
-        updateStoreQueryParams.setPartitionCount(partitionCount);
-        updateStore(clusterName, storeName, updateStoreQueryParams);
-      }
+
       if (!store.isHybrid()) {
         updateStoreQueryParams = new UpdateStoreQueryParams();
         updateStoreQueryParams.setHybridOffsetLagThreshold(100L);
@@ -351,8 +347,7 @@ public class VeniceParentHelixAdmin implements Admin {
       if (store.getVersions().isEmpty()) {
         int replicationFactor = getReplicationFactor(clusterName, storeName);
         Version version =
-            incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
-                store.getPartitionCount(), replicationFactor);
+            incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), partitionCount, replicationFactor);
         writeEndOfPush(clusterName, storeName, version.getNumber(), true);
         store = getStore(clusterName, storeName);
         if (store.getVersions().isEmpty()) {
@@ -376,8 +371,10 @@ public class VeniceParentHelixAdmin implements Admin {
           return false;
         }
         StoreInfo storeInfo = storeResponse.getStore();
-        if (storeInfo.getPartitionCount() == partitionCount && storeInfo.getHybridStoreConfig() != null
+
+        if (storeInfo.getHybridStoreConfig() != null
             && !storeInfo.getVersions().isEmpty()
+            && storeInfo.getVersions().get(storeInfo.getLargestUsedVersionNumber()).getPartitionCount() == partitionCount
             && getTopicManager().containsTopic(Version.composeRealTimeTopic(storeName))) {
           storeReady = true;
         }

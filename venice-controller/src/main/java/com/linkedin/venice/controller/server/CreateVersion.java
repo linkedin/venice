@@ -132,12 +132,18 @@ public class CreateVersion extends AbstractRoute {
           case BATCH:
           case INCREMENTAL:
           case STREAM_REPROCESSING:
-            if (! admin.whetherEnableBatchPushFromAdmin()) {
+            if (!admin.whetherEnableBatchPushFromAdmin()) {
               throw new VeniceUnsupportedOperationException(pushTypeString, "Please push data to Venice Parent Colo instead");
             }
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
                    pushType, sendStartOfPush, sorted);
+
+            // If Version partition count different from calculated partition count use the version count as store count
+            // may have been updated later.
+            if (version.getPartitionCount() != partitionCount) {
+              responseObject.setPartitions(version.getPartitionCount());
+            }
             String responseTopic = version.getPushType().isStreamReprocessing()
                 ? Version.composeStreamReprocessingTopic(storeName, version.getNumber()) : version.kafkaTopicName();
 
