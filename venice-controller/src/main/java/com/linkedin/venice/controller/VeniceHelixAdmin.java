@@ -48,6 +48,7 @@ import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -2148,6 +2149,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> readability,
         Optional<Boolean> writeability,
         Optional<Integer> partitionCount,
+        Optional<String> partitionerClass,
+        Optional<Map<String, String>> partitionerParams,
+        Optional<Integer> amplificationFactor,
         Optional<Long> storageQuotaInByte,
         Optional<Boolean> hybridStoreDbOverheadBypass,
         Optional<Long> readQuotaInCU,
@@ -2216,6 +2220,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (partitionCount.isPresent()) {
                 setStorePartitionCount(clusterName, storeName, partitionCount.get());
+            }
+
+            /**
+             * The parent controller makes sure that in the UpdateStore kafka message, partitionerClass, partitionerParams
+             * and amplificationFactor will be updated together, thus here we just need to check if partitionerClass is set in the UpdateStore message.
+             */
+            if (partitionerClass.isPresent()) {
+                PartitionerConfig partitionerConfig = new PartitionerConfig(partitionerClass.get(), partitionerParams.get(), amplificationFactor.get());
+                storeMetadataUpdate(clusterName, storeName, store -> {
+                    store.setPartitionerConfig(partitionerConfig);
+                    return store;
+                });
             }
 
             if (storageQuotaInByte.isPresent()) {

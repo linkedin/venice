@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.google.common.base.Splitter;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -344,6 +345,19 @@ public class Utils {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a boolean, but value: " + value);
     }
   }
+
+  /**
+   * For String-String key-value map config, we expect the command-line interface users to use "key1=value1,key2=value2,..."
+   * format to represent it. This method deserialize it to String-String map.
+   */
+  public static Map<String, String> parseCommaSeparatedStringMapFromString(String value, String fieldName) {
+    try {
+      return Splitter.on(",").withKeyValueSeparator("=").split(value);
+    } catch (Exception e) {
+      throw new VeniceException(fieldName + " must be key value pairs separated by comma, but value: " + value);
+    }
+  }
+
 
   public static String getHelixNodeIdentifier(int port) {
     return Utils.getHostName() + "_" + port;

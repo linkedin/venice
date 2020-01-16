@@ -2,10 +2,12 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 
 import com.linkedin.venice.utils.Time;
+import java.util.HashMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -49,6 +51,10 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getCreatedTime(), 0);
         Assert.assertEquals(store.isHybrid(), false);
         Assert.assertEquals(store.getHybridStoreConfig(), null);
+        Assert.assertNotNull(store.getPartitionerConfig());
+        Assert.assertEquals(store.getPartitionerConfig().getAmplificationFactor(), 1);
+        Assert.assertEquals(store.getPartitionerConfig().getPartitionerClass(), DefaultVenicePartitioner.class.getName());
+        Assert.assertEquals(store.getPartitionerConfig().getPartitionerParams(), new HashMap<>());
         Assert.assertTrue(store.isEnableReads(),
             "By default, allow store to be read while missing enableReads field in ZK");
         Assert.assertTrue(store.isEnableWrites(),

@@ -558,6 +558,10 @@ public class AdminTool {
     genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter, argSet);
   }
 
+  private static void stringMapParam(CommandLine cmd, Arg param, Consumer<Map<String, String>> setter, Set<Arg> argSet) {
+    genericParam(cmd, param, s -> Utils.parseCommaSeparatedStringMapFromString(s, param.toString()), setter, argSet);
+  }
+
   private static <TYPE> void genericParam(CommandLine cmd, Arg param, Function<String, TYPE> parser, Consumer<TYPE> setter,
       Set<Arg> argSet) {
     if (!argSet.contains(param)) {
@@ -585,6 +589,9 @@ public class AdminTool {
     UpdateStoreQueryParams params = new UpdateStoreQueryParams();
     genericParam(cmd, Arg.OWNER, s -> s, p -> params.setOwner(p), argSet);
     integerParam(cmd, Arg.PARTITION_COUNT, p -> params.setPartitionCount(p), argSet);
+    genericParam(cmd, Arg.PARTITIONER_CLASS, s -> s, p -> params.setPartitionerClass(p), argSet);
+    stringMapParam(cmd, Arg.PARTITIONER_PARAMS, p -> params.setPartitionerParams(p), argSet);
+    integerParam(cmd, Arg.AMPLIFICATION_FACTOR, p -> params.setAmplificationFactor(p), argSet);
     integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p), argSet);
     integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p), argSet);
     booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p), argSet);

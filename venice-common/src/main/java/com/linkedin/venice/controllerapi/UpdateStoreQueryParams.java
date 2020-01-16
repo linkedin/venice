@@ -1,9 +1,12 @@
 package com.linkedin.venice.controllerapi;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Map;
 import java.util.Optional;
@@ -67,6 +70,13 @@ public class UpdateStoreQueryParams extends QueryParams {
       updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
       updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
     }
+    PartitionerConfig partitionerConfig = srcStore.getPartitionerConfig();
+    if (partitionerConfig != null) {
+      updateStoreQueryParams.setPartitionerClass(partitionerConfig.getPartitionerClass());
+      updateStoreQueryParams.setPartitionerParams(partitionerConfig.getPartitionerParams());
+      updateStoreQueryParams.setAmplificationFactor(partitionerConfig.getAmplificationFactor());
+    }
+
     this.params.putAll(updateStoreQueryParams.params);
   }
 
@@ -83,6 +93,27 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
   public Optional<Integer> getPartitionCount() {
     return getInteger(PARTITION_COUNT);
+  }
+
+  public UpdateStoreQueryParams setPartitionerClass(String partitionerClass) {
+    return putString(PARTITIONER_CLASS, partitionerClass);
+  }
+  public Optional<String> getPartitionerClass() {
+    return getString(PARTITIONER_CLASS);
+  }
+
+  public UpdateStoreQueryParams setPartitionerParams(Map<String, String> partitionerParams) {
+    return putStringMap(PARTITIONER_PARAMS, partitionerParams);
+  }
+  public Optional<Map<String, String>> getPartitionerParams() {
+    return getStringMap(PARTITIONER_PARAMS);
+  }
+
+  public UpdateStoreQueryParams setAmplificationFactor(int amplificationFactor) {
+    return putInteger(AMPLIFICATION_FACTOR, amplificationFactor);
+  }
+  public Optional<Integer> getAmplificationFactor() {
+    return getInteger(AMPLIFICATION_FACTOR);
   }
 
   public UpdateStoreQueryParams setCurrentVersion(int currentVersion) {
@@ -328,5 +359,21 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   private Optional<Boolean> getBoolean(String name) {
     return Optional.ofNullable(params.get(name)).map(Boolean::valueOf);
+  }
+
+  private UpdateStoreQueryParams putString(String name, String value) {
+    return (UpdateStoreQueryParams) add(name, value);
+  }
+
+  private Optional<String> getString(String name) {
+    return Optional.ofNullable(params.get(name)).map(String::valueOf);
+  }
+
+  private UpdateStoreQueryParams putStringMap(String name, Map<String, String> value) {
+    return (UpdateStoreQueryParams) add(name, Joiner.on(",").withKeyValueSeparator("=").join(value));
+  }
+
+  private Optional<Map<String, String>> getStringMap(String name) {
+    return Optional.ofNullable(params.get(name)).map(Splitter.on(",").withKeyValueSeparator("=")::split);
   }
 }

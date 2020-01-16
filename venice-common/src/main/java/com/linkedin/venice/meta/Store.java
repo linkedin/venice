@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -230,18 +231,20 @@ public class Store {
    * Properties related to ETL Store behavior.
    */
   private ETLStoreConfig etlStoreConfig = new ETLStoreConfig();
+  private PartitionerConfig partitionerConfig;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
-        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null);
+        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null,
+        new PartitionerConfig()); // Every store comes with default partitioner settings.
   }
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy, int currentVersion,
-      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig) {
+      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig, PartitionerConfig partitionerConfig) {
     if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
@@ -257,6 +260,12 @@ public class Store {
     this.currentVersion = currentVersion;
     this.readQuotaInCU = readQuotaInCU;
     this.hybridStoreConfig = hybridStoreConfig;
+    // This makes sure when deserializing existing stores from ZK, we will use default partitioner setting.
+    if (partitionerConfig == null) {
+      this.partitionerConfig = new PartitionerConfig();
+    } else {
+      this.partitionerConfig = partitionerConfig;
+    }
   }
 
   /**
@@ -378,6 +387,13 @@ public class Store {
     this.partitionCount = partitionCount;
   }
 
+  public PartitionerConfig getPartitionerConfig() {
+    return partitionerConfig;
+  }
+
+  public void setPartitionerConfig(PartitionerConfig value) {
+    this.partitionerConfig = value;
+  }
 
   public boolean isEnableWrites() {
     return enableWrites;
@@ -828,6 +844,7 @@ public class Store {
     result = 31 * result + latestSuperSetValueSchemaId;
     result = 31 * result + (hybridStoreDiskQuotaEnabled ? 1 : 0);
     result = 31 * result + (etlStoreConfig != null ? etlStoreConfig.hashCode() : 0);
+    result = 31 * result + (partitionerConfig != null ? partitionerConfig.hashCode() : 0);
     return result;
   }
 
@@ -872,6 +889,7 @@ public class Store {
     if (superSetSchemaAutoGenerationForReadComputeEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
     if (latestSuperSetValueSchemaId != store.latestSuperSetValueSchemaId) return false;
     if (hybridStoreDiskQuotaEnabled != store.hybridStoreDiskQuotaEnabled) return false;
+    if (!partitionerConfig.equals(store.partitionerConfig)) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -893,7 +911,8 @@ public class Store {
                   currentVersion,
                   storageQuotaInByte,
                   readQuotaInCU,
-                  null == hybridStoreConfig ? null : hybridStoreConfig.clone());
+                  null == hybridStoreConfig ? null : hybridStoreConfig.clone(),
+                  null == partitionerConfig ? null : partitionerConfig.clone());
     clonedStore.setEnableReads(enableReads);
     clonedStore.setEnableWrites(enableWrites);
     clonedStore.setPartitionCount(partitionCount);
