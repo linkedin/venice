@@ -3,11 +3,13 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import java.util.Map;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -22,6 +24,7 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
         addMixin(Version.class, VersionSerializerMixin.class);
         addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
         addMixin(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
+        addMixin(PartitionerConfig.class, PartitionerConfigSerializerMixin.class);
     }
 
     private void addMixin(Class veniceClass, Class serializerClass) {
@@ -44,7 +47,8 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
             @JsonProperty("currentVersion") int currentVersion,
             @JsonProperty("storageQuotaInByte") long storageQuotaInByte,
             @JsonProperty("readQuotaInCU") long readQuotaInCU,
-            @JsonProperty("hybridStoreConfig") HybridStoreConfig hybridStoreConfig) {}
+            @JsonProperty("hybridStoreConfig") HybridStoreConfig hybridStoreConfig,
+            @JsonProperty("partitionerConfig") PartitionerConfig partitionerConfig) {}
     }
 
     /**
@@ -74,5 +78,13 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
             @JsonProperty("etledUserProxyAccount") String etledUserProxyAccount,
             @JsonProperty("regularVersionETLEnabled") boolean regularVersionETLEnabled,
             @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled) {}
+    }
+
+    public static class PartitionerConfigSerializerMixin {
+        @JsonCreator
+        public PartitionerConfigSerializerMixin(
+            @JsonProperty("partitionerClass") String partitionerClass,
+            @JsonProperty("partitionerParams") Map<String, String> partitionerParams,
+            @JsonProperty("amplificationFactor") int amplificationFactor) {}
     }
 }

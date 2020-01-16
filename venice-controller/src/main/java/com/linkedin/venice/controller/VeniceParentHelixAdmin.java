@@ -20,6 +20,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.MigrateStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -1075,6 +1076,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> readability,
       Optional<Boolean> writeability,
       Optional<Integer> partitionCount,
+      Optional<String> partitionerClass,
+      Optional<Map<String, String>> partitionerParams,
+      Optional<Integer> amplificationFactor,
       Optional<Long> storageQuotaInByte,
       Optional<Boolean> hybridStoreDbOverheadBypass,
       Optional<Long> readQuotaInCU,
@@ -1124,6 +1128,17 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
       }
       setStore.partitionNum = partitionCount.isPresent() ? partitionCount.get() : store.getPartitionCount();
+
+      /**
+       * Prepare the PartitionerConfigRecord object for admin message queue. Only update fields that are set, other fields
+       * will be read from the original store.
+       */
+      PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
+      partitionerConfigRecord.setPartitionerClass(partitionerClass.isPresent() ?  partitionerClass.get() : store.getPartitionerConfig().getPartitionerClass());
+      partitionerConfigRecord.setPartitionerParams(partitionerParams.isPresent() ? partitionerParams.get() : store.getPartitionerConfig().getPartitionerParams());
+      partitionerConfigRecord.setAmplificationFactor(amplificationFactor.isPresent() ? amplificationFactor.get() : store.getPartitionerConfig().getAmplificationFactor());
+      setStore.setPartitionerConfig(partitionerConfigRecord);
+
       setStore.enableReads = readability.isPresent() ? readability.get() : store.isEnableReads();
       setStore.enableWrites = writeability.isPresent() ? writeability.get() : store.isEnableWrites();
 

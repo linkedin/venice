@@ -12,6 +12,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation
 import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
+import com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
@@ -33,6 +34,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.ETLStoreConfig;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
@@ -734,13 +736,17 @@ public class TestAdminConsumptionTask {
     ETLStoreConfigRecord etlStoreConfig = new ETLStoreConfigRecord();
     etlStoreConfig.etledUserProxyAccount = "";
     setStore.ETLStoreConfig = etlStoreConfig;
+    PartitionerConfigRecord partitionerConfig = new PartitionerConfigRecord();
+    partitionerConfig.amplificationFactor = 10;
+    partitionerConfig.partitionerParams = new HashMap<>();
+    partitionerConfig.partitionerClass = "dummyClassName";
+    setStore.partitionerConfig = partitionerConfig;
 
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = setStore;
     adminMessage.executionId = 2;
     byte[] message = adminOperationSerializer.serialize(adminMessage);
-
 
     veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
@@ -752,7 +758,7 @@ public class TestAdminConsumptionTask {
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any(), any(), any(),
+    verify(admin, timeout(TIMEOUT).atLeastOnce()).updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(),
         any(), any(), any(), any(), any(), any(), eq(Optional.of(123L)), eq(Optional.of(1000L)),
         eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)),
         eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)),

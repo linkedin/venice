@@ -4,7 +4,7 @@ mkdir -p avro_tools
 avro_tools=`ls avro_tools | sort -rV | head -n 1`
 
 if [ -z $avro_tools ]; then
-  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/1.4.0/avro-tools-1.4.0.jar" -P avro_tools
+  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/1.7.7/avro-tools-1.7.7.jar" -P avro_tools
   avro_tools=`ls avro_tools | sort -rV | head -n 1`
 fi
 
@@ -77,7 +77,7 @@ FULL_CODE_GEN_PATH=(
 if [[ $# < 1 ]]; then
   echo "Usage: $0 avro_tools_path"
   echo ""
-  echo "    avro_tools_path: full path to the avro-tools-1.4.x.jar file (required). If you use 'default', it will take:"
+  echo "    avro_tools_path: full path to the avro-tools-1.7.x.jar file (required). If you use 'default', it will take:"
   echo ""
   echo "$DEFAULT_AVRO_TOOLS_JAR"
   echo ""
@@ -113,7 +113,8 @@ done
 echo "Finished deleting old files. About to generate new ones..."
 
 for (( i=0; i<${#FULL_CODE_GEN_PATH[@]}; i++ )); do
-  java -jar $AVRO_TOOLS_JAR compile schema ${AVRO_SCHEMAS_PATH[i]} ${CODE_GEN_PATH[i]}
+  # Add -string option to support Java String type. This option is not supported in avro-tools-1.4.x.
+  java -jar $AVRO_TOOLS_JAR compile -string schema ${AVRO_SCHEMAS_PATH[i]} ${CODE_GEN_PATH[i]}
 done
 
 # Don't generate class: com.linkedin.venice.kafka.protocol.GUID.java since it contains changes required to support Avro-1.8

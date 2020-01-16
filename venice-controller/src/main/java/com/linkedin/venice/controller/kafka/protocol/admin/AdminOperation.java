@@ -3,17 +3,35 @@
  * 
  * DO NOT EDIT DIRECTLY
  */
-package com.linkedin.venice.controller.kafka.protocol.admin;
-
+package com.linkedin.venice.controller.kafka.protocol.admin;  
 @SuppressWarnings("all")
+@org.apache.avro.specific.AvroGenerated
 public class AdminOperation extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AdminOperation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"operationType\",\"type\":\"int\",\"doc\":\"0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation\"},{\"name\":\"executionId\",\"type\":\"long\",\"doc\":\"ID of a command execution which is used to query the status of this command.\",\"default\":0},{\"name\":\"payloadUnion\",\"type\":[{\"type\":\"record\",\"name\":\"StoreCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"keySchema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"}]},{\"type\":\"record\",\"name\":\"ValueSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"schema\",\"type\":\"SchemaMeta\"},{\"name\":\"schemaId\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"PauseStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"ResumeStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"KillOfflinePushJob\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"kafkaTopic\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"DisableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"EnableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"DeleteAllVersions\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"SetStoreOwner\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"SetStorePartitionCount\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"partitionNum\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"SetStoreCurrentVersion\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"currentVersion\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"UpdateStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"partitionNum\",\"type\":\"int\"},{\"name\":\"currentVersion\",\"type\":\"int\"},{\"name\":\"enableReads\",\"type\":\"boolean\"},{\"name\":\"enableWrites\",\"type\":\"boolean\"},{\"name\":\"storageQuotaInByte\",\"type\":\"long\",\"default\":21474836480},{\"name\":\"readQuotaInCU\",\"type\":\"long\",\"default\":1800},{\"name\":\"hybridStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"HybridStoreConfigRecord\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"}]}],\"default\":null},{\"name\":\"accessControlled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"compressionStrategy\",\"type\":\"int\",\"doc\":\"Using int because Avro Enums are not evolvable\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"singleGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false,\"aliases\":[\"routerCacheEnabled\"]},{\"name\":\"batchGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"batchGetLimit\",\"type\":\"int\",\"doc\":\"The max key number allowed in batch get request, and Venice will use cluster-level config if the limit (not positive) is not valid\",\"default\":-1},{\"name\":\"numVersionsToPreserve\",\"type\":\"int\",\"doc\":\"The max number of versions the store should preserve. Venice will use cluster-level config if the number is 0 here.\",\"default\":0},{\"name\":\"incrementalPushEnabled\",\"type\":\"boolean\",\"doc\":\"a flag to see if the store supports incremental push or not\",\"default\":false},{\"name\":\"isMigrating\",\"type\":\"boolean\",\"doc\":\"Whether or not the store is in the process of migration\",\"default\":false},{\"name\":\"writeComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether write-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"readComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether read-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"bootstrapToOnlineTimeoutInHours\",\"type\":\"int\",\"doc\":\"Maximum number of hours allowed for the store to transition from bootstrap to online state\",\"default\":24},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to use leader follower state transition model for upcoming version\",\"default\":false},{\"name\":\"backupStrategy\",\"type\":\"int\",\"doc\":\"Strategies to store backup versions.\",\"default\":0},{\"name\":\"clientDecompressionEnabled\",\"type\":\"boolean\",\"default\":true},{\"name\":\"schemaAutoRegisterFromPushJobEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"superSetSchemaAutoGenerationForReadComputeEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreOverheadBypass\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreDiskQuotaEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to enable disk storage quota for a hybrid store\",\"default\":false},{\"name\":\"ETLStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"ETLStoreConfigRecord\",\"fields\":[{\"name\":\"etledUserProxyAccount\",\"type\":[\"null\",\"string\"]},{\"name\":\"regularVersionETLEnabled\",\"type\":\"boolean\"},{\"name\":\"futureVersionETLEnabled\",\"type\":\"boolean\"}]}],\"default\":null}]},{\"type\":\"record\",\"name\":\"DeleteStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"largestUsedVersionNumber\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"DeleteOldVersion\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"versionNum\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"MigrateStore\",\"fields\":[{\"name\":\"srcClusterName\",\"type\":\"string\"},{\"name\":\"destClusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"AbortMigration\",\"fields\":[{\"name\":\"srcClusterName\",\"type\":\"string\"},{\"name\":\"destClusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"AddVersion\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"versionNum\",\"type\":\"int\"},{\"name\":\"numberOfPartitions\",\"type\":\"int\"},{\"name\":\"pushType\",\"type\":\"int\",\"doc\":\"The push type of the new version, 0 => BATCH, 1 => STREAM_REPROCESSING. Previous add version messages will default to BATCH and this is a safe because they were created when BATCH was the only version type\",\"default\":0}]},{\"type\":\"record\",\"name\":\"DerivedSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"schema\",\"type\":\"SchemaMeta\"},{\"name\":\"valueSchemaId\",\"type\":\"int\"},{\"name\":\"derivedSchemaId\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"SupersetSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"},{\"name\":\"valueSchemaId\",\"type\":\"int\"},{\"name\":\"supersetSchema\",\"type\":\"SchemaMeta\"},{\"name\":\"supersetSchemaId\",\"type\":\"int\"}]}],\"doc\":\"This contains the main payload of the admin operation\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"record\",\"name\":\"AdminOperation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"operationType\",\"type\":\"int\",\"doc\":\"0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation\"},{\"name\":\"executionId\",\"type\":\"long\",\"doc\":\"ID of a command execution which is used to query the status of this command.\",\"default\":0},{\"name\":\"payloadUnion\",\"type\":[{\"type\":\"record\",\"name\":\"StoreCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"owner\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"keySchema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"}]},{\"type\":\"record\",\"name\":\"ValueSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"schema\",\"type\":\"SchemaMeta\"},{\"name\":\"schemaId\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"PauseStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"ResumeStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"KillOfflinePushJob\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"kafkaTopic\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"DisableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"EnableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"DeleteAllVersions\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"SetStoreOwner\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"owner\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"SetStorePartitionCount\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"partitionNum\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"SetStoreCurrentVersion\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"currentVersion\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"UpdateStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"owner\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"partitionNum\",\"type\":\"int\"},{\"name\":\"currentVersion\",\"type\":\"int\"},{\"name\":\"enableReads\",\"type\":\"boolean\"},{\"name\":\"enableWrites\",\"type\":\"boolean\"},{\"name\":\"storageQuotaInByte\",\"type\":\"long\",\"default\":21474836480},{\"name\":\"readQuotaInCU\",\"type\":\"long\",\"default\":1800},{\"name\":\"hybridStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"HybridStoreConfigRecord\",\"fields\":[{\"name\":\"rewindTimeInSeconds\",\"type\":\"long\"},{\"name\":\"offsetLagThresholdToGoOnline\",\"type\":\"long\"}]}],\"default\":null},{\"name\":\"accessControlled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"compressionStrategy\",\"type\":\"int\",\"doc\":\"Using int because Avro Enums are not evolvable\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"singleGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false,\"aliases\":[\"routerCacheEnabled\"]},{\"name\":\"batchGetRouterCacheEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"batchGetLimit\",\"type\":\"int\",\"doc\":\"The max key number allowed in batch get request, and Venice will use cluster-level config if the limit (not positive) is not valid\",\"default\":-1},{\"name\":\"numVersionsToPreserve\",\"type\":\"int\",\"doc\":\"The max number of versions the store should preserve. Venice will use cluster-level config if the number is 0 here.\",\"default\":0},{\"name\":\"incrementalPushEnabled\",\"type\":\"boolean\",\"doc\":\"a flag to see if the store supports incremental push or not\",\"default\":false},{\"name\":\"isMigrating\",\"type\":\"boolean\",\"doc\":\"Whether or not the store is in the process of migration\",\"default\":false},{\"name\":\"writeComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether write-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"readComputationEnabled\",\"type\":\"boolean\",\"doc\":\"Whether read-path computation feature is enabled for this store\",\"default\":false},{\"name\":\"bootstrapToOnlineTimeoutInHours\",\"type\":\"int\",\"doc\":\"Maximum number of hours allowed for the store to transition from bootstrap to online state\",\"default\":24},{\"name\":\"leaderFollowerModelEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to use leader follower state transition model for upcoming version\",\"default\":false},{\"name\":\"backupStrategy\",\"type\":\"int\",\"doc\":\"Strategies to store backup versions.\",\"default\":0},{\"name\":\"clientDecompressionEnabled\",\"type\":\"boolean\",\"default\":true},{\"name\":\"schemaAutoRegisterFromPushJobEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"superSetSchemaAutoGenerationForReadComputeEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreOverheadBypass\",\"type\":\"boolean\",\"default\":false},{\"name\":\"hybridStoreDiskQuotaEnabled\",\"type\":\"boolean\",\"doc\":\"Whether or not to enable disk storage quota for a hybrid store\",\"default\":false},{\"name\":\"ETLStoreConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"ETLStoreConfigRecord\",\"fields\":[{\"name\":\"etledUserProxyAccount\",\"type\":[\"null\",{\"type\":\"string\",\"avro.java.string\":\"String\"}]},{\"name\":\"regularVersionETLEnabled\",\"type\":\"boolean\"},{\"name\":\"futureVersionETLEnabled\",\"type\":\"boolean\"}]}],\"default\":null},{\"name\":\"partitionerConfig\",\"type\":[\"null\",{\"type\":\"record\",\"name\":\"PartitionerConfigRecord\",\"fields\":[{\"name\":\"partitionerClass\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":{\"type\":\"string\",\"avro.java.string\":\"String\"},\"avro.java.string\":\"String\"}},{\"name\":\"amplificationFactor\",\"type\":\"int\"}]}],\"default\":null}]},{\"type\":\"record\",\"name\":\"DeleteStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"largestUsedVersionNumber\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"DeleteOldVersion\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"versionNum\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"MigrateStore\",\"fields\":[{\"name\":\"srcClusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"destClusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"AbortMigration\",\"fields\":[{\"name\":\"srcClusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"destClusterName\",\"type\":{\"type\":\"string\"",",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}}]},{\"type\":\"record\",\"name\":\"AddVersion\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"pushJobId\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"versionNum\",\"type\":\"int\"},{\"name\":\"numberOfPartitions\",\"type\":\"int\"},{\"name\":\"pushType\",\"type\":\"int\",\"doc\":\"The push type of the new version, 0 => BATCH, 1 => STREAM_REPROCESSING. Previous add version messages will default to BATCH and this is a safe because they were created when BATCH was the only version type\",\"default\":0}]},{\"type\":\"record\",\"name\":\"DerivedSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"schema\",\"type\":\"SchemaMeta\"},{\"name\":\"valueSchemaId\",\"type\":\"int\"},{\"name\":\"derivedSchemaId\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"SupersetSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"storeName\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"},{\"name\":\"valueSchemaId\",\"type\":\"int\"},{\"name\":\"supersetSchema\",\"type\":\"SchemaMeta\"},{\"name\":\"supersetSchemaId\",\"type\":\"int\"}]}],\"doc\":\"This contains the main payload of the admin operation\"}]}");
+  public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
   /** 0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation */
-  public int operationType;
+  @Deprecated public int operationType;
   /** ID of a command execution which is used to query the status of this command. */
-  public long executionId;
+  @Deprecated public long executionId;
   /** This contains the main payload of the admin operation */
-  public java.lang.Object payloadUnion;
+  @Deprecated public java.lang.Object payloadUnion;
+
+  /**
+   * Default constructor.  Note that this does not initialize fields
+   * to their default values from the schema.  If that is desired then
+   * one should use <code>newBuilder()</code>. 
+   */
+  public AdminOperation() {}
+
+  /**
+   * All-args constructor.
+   */
+  public AdminOperation(java.lang.Integer operationType, java.lang.Long executionId, java.lang.Object payloadUnion) {
+    this.operationType = operationType;
+    this.executionId = executionId;
+    this.payloadUnion = payloadUnion;
+  }
+
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -32,6 +50,202 @@ public class AdminOperation extends org.apache.avro.specific.SpecificRecordBase 
     case 1: executionId = (java.lang.Long)value$; break;
     case 2: payloadUnion = (java.lang.Object)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
+    }
+  }
+
+  /**
+   * Gets the value of the 'operationType' field.
+   * 0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation   */
+  public java.lang.Integer getOperationType() {
+    return operationType;
+  }
+
+  /**
+   * Sets the value of the 'operationType' field.
+   * 0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions, 8=> SetStoreOwner, 9=> SetStorePartitionCount, 10=> SetStoreCurrentVersion, 11=> UpdateStore, 12=> DeleteStore, 13=> DeleteOldVersion, 14=> MigrateStore, 15=> AbortMigration, 16=>AddVersion, 17=> DerivedSchemaCreation, 18=>SupersetSchemaCreation   * @param value the value to set.
+   */
+  public void setOperationType(java.lang.Integer value) {
+    this.operationType = value;
+  }
+
+  /**
+   * Gets the value of the 'executionId' field.
+   * ID of a command execution which is used to query the status of this command.   */
+  public java.lang.Long getExecutionId() {
+    return executionId;
+  }
+
+  /**
+   * Sets the value of the 'executionId' field.
+   * ID of a command execution which is used to query the status of this command.   * @param value the value to set.
+   */
+  public void setExecutionId(java.lang.Long value) {
+    this.executionId = value;
+  }
+
+  /**
+   * Gets the value of the 'payloadUnion' field.
+   * This contains the main payload of the admin operation   */
+  public java.lang.Object getPayloadUnion() {
+    return payloadUnion;
+  }
+
+  /**
+   * Sets the value of the 'payloadUnion' field.
+   * This contains the main payload of the admin operation   * @param value the value to set.
+   */
+  public void setPayloadUnion(java.lang.Object value) {
+    this.payloadUnion = value;
+  }
+
+  /** Creates a new AdminOperation RecordBuilder */
+  public static com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder newBuilder() {
+    return new com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder();
+  }
+  
+  /** Creates a new AdminOperation RecordBuilder by copying an existing Builder */
+  public static com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder newBuilder(com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder other) {
+    return new com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder(other);
+  }
+  
+  /** Creates a new AdminOperation RecordBuilder by copying an existing AdminOperation instance */
+  public static com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder newBuilder(com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation other) {
+    return new com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder(other);
+  }
+  
+  /**
+   * RecordBuilder for AdminOperation instances.
+   */
+  public static class Builder extends org.apache.avro.specific.SpecificRecordBuilderBase<AdminOperation>
+    implements org.apache.avro.data.RecordBuilder<AdminOperation> {
+
+    private int operationType;
+    private long executionId;
+    private java.lang.Object payloadUnion;
+
+    /** Creates a new Builder */
+    private Builder() {
+      super(com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.SCHEMA$);
+    }
+    
+    /** Creates a Builder by copying an existing Builder */
+    private Builder(com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder other) {
+      super(other);
+      if (isValidValue(fields()[0], other.operationType)) {
+        this.operationType = data().deepCopy(fields()[0].schema(), other.operationType);
+        fieldSetFlags()[0] = true;
+      }
+      if (isValidValue(fields()[1], other.executionId)) {
+        this.executionId = data().deepCopy(fields()[1].schema(), other.executionId);
+        fieldSetFlags()[1] = true;
+      }
+      if (isValidValue(fields()[2], other.payloadUnion)) {
+        this.payloadUnion = data().deepCopy(fields()[2].schema(), other.payloadUnion);
+        fieldSetFlags()[2] = true;
+      }
+    }
+    
+    /** Creates a Builder by copying an existing AdminOperation instance */
+    private Builder(com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation other) {
+            super(com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.SCHEMA$);
+      if (isValidValue(fields()[0], other.operationType)) {
+        this.operationType = data().deepCopy(fields()[0].schema(), other.operationType);
+        fieldSetFlags()[0] = true;
+      }
+      if (isValidValue(fields()[1], other.executionId)) {
+        this.executionId = data().deepCopy(fields()[1].schema(), other.executionId);
+        fieldSetFlags()[1] = true;
+      }
+      if (isValidValue(fields()[2], other.payloadUnion)) {
+        this.payloadUnion = data().deepCopy(fields()[2].schema(), other.payloadUnion);
+        fieldSetFlags()[2] = true;
+      }
+    }
+
+    /** Gets the value of the 'operationType' field */
+    public java.lang.Integer getOperationType() {
+      return operationType;
+    }
+    
+    /** Sets the value of the 'operationType' field */
+    public com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder setOperationType(int value) {
+      validate(fields()[0], value);
+      this.operationType = value;
+      fieldSetFlags()[0] = true;
+      return this; 
+    }
+    
+    /** Checks whether the 'operationType' field has been set */
+    public boolean hasOperationType() {
+      return fieldSetFlags()[0];
+    }
+    
+    /** Clears the value of the 'operationType' field */
+    public com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder clearOperationType() {
+      fieldSetFlags()[0] = false;
+      return this;
+    }
+
+    /** Gets the value of the 'executionId' field */
+    public java.lang.Long getExecutionId() {
+      return executionId;
+    }
+    
+    /** Sets the value of the 'executionId' field */
+    public com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder setExecutionId(long value) {
+      validate(fields()[1], value);
+      this.executionId = value;
+      fieldSetFlags()[1] = true;
+      return this; 
+    }
+    
+    /** Checks whether the 'executionId' field has been set */
+    public boolean hasExecutionId() {
+      return fieldSetFlags()[1];
+    }
+    
+    /** Clears the value of the 'executionId' field */
+    public com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder clearExecutionId() {
+      fieldSetFlags()[1] = false;
+      return this;
+    }
+
+    /** Gets the value of the 'payloadUnion' field */
+    public java.lang.Object getPayloadUnion() {
+      return payloadUnion;
+    }
+    
+    /** Sets the value of the 'payloadUnion' field */
+    public com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder setPayloadUnion(java.lang.Object value) {
+      validate(fields()[2], value);
+      this.payloadUnion = value;
+      fieldSetFlags()[2] = true;
+      return this; 
+    }
+    
+    /** Checks whether the 'payloadUnion' field has been set */
+    public boolean hasPayloadUnion() {
+      return fieldSetFlags()[2];
+    }
+    
+    /** Clears the value of the 'payloadUnion' field */
+    public com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation.Builder clearPayloadUnion() {
+      payloadUnion = null;
+      fieldSetFlags()[2] = false;
+      return this;
+    }
+
+    @Override
+    public AdminOperation build() {
+      try {
+        AdminOperation record = new AdminOperation();
+        record.operationType = fieldSetFlags()[0] ? this.operationType : (java.lang.Integer) defaultValue(fields()[0]);
+        record.executionId = fieldSetFlags()[1] ? this.executionId : (java.lang.Long) defaultValue(fields()[1]);
+        record.payloadUnion = fieldSetFlags()[2] ? this.payloadUnion : (java.lang.Object) defaultValue(fields()[2]);
+        return record;
+      } catch (Exception e) {
+        throw new org.apache.avro.AvroRuntimeException(e);
+      }
     }
   }
 }

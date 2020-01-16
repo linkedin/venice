@@ -215,6 +215,10 @@ public class StoreInfo {
   private boolean hybridStoreDiskQuotaEnabled = false;
 
   private ETLStoreConfig etlStoreConfig;
+  /**
+   * Partitioner info of this store.
+   */
+  private PartitionerConfig partitionerConfig;
 
   public StoreInfo() {
   }
@@ -512,5 +516,13 @@ public class StoreInfo {
 
   public void setEtlStoreConfig(ETLStoreConfig etlStoreConfig) {
     this.etlStoreConfig = etlStoreConfig;
+  }
+
+  public PartitionerConfig getPartitionerConfig() {
+    return partitionerConfig;
+  }
+
+  public void setPartitionerConfig(PartitionerConfig partitionerConfig) {
+    this.partitionerConfig = partitionerConfig;
   }
 }

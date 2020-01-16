@@ -232,6 +232,9 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> readability,
         Optional<Boolean> writeability,
         Optional<Integer> partitionCount,
+        Optional<String> partitionerClass,
+        Optional<Map<String, String>> partitionerParams,
+        Optional<Integer> amplificationFactor,
         Optional<Long> storageQuotaInByte,
         Optional<Boolean> hybridStoreOverheadBypass,
         Optional<Long> readQuotaInCU,
@@ -1429,9 +1432,14 @@ public class TestVeniceParentHelixAdmin {
     long readQuota = 100L;
     boolean readability = true;
     boolean accessControlled = true;
+    Map<String, String> testPartitionerParams = new HashMap<>();
+    testPartitionerParams.put("project", "DaVinci");
+
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
         .setIncrementalPushEnabled(false)
         .setPartitionCount(64)
+        .setPartitionerClass("com.linkedin.venice.partitioner.DaVinciPartitioner")
+        .setPartitionerParams(testPartitionerParams)
         .setReadQuotaInCU(readQuota)
         .setAccessControlled(accessControlled)
         .setCompressionStrategy(CompressionStrategy.GZIP)
@@ -1457,7 +1465,9 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
     Assert.assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
-
+    Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
+    Assert.assertEquals(updateStore.partitionerConfig.partitionerParams, testPartitionerParams);
+    Assert.assertEquals(updateStore.partitionerConfig.partitionerClass, "com.linkedin.venice.partitioner.DaVinciPartitioner");
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
