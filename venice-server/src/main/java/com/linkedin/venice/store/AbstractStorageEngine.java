@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Map;
@@ -248,6 +249,11 @@ public abstract class AbstractStorageEngine implements Store {
     partition.put(key, value);
   }
 
+  /**
+   * Put the offset associated with the partitionId in the store
+   */
+  public abstract void putPartitionOffset(int partitionId, OffsetRecord offsetRecord);
+
   public void delete(Integer logicalPartitionId, byte[] key) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, key, "Delete");
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
@@ -266,6 +272,11 @@ public abstract class AbstractStorageEngine implements Store {
     AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
     return partition.get(keyBuffer);
   }
+
+  /**
+   * Retrieve the offset associated with the partitionId
+   */
+  public abstract OffsetRecord getPartitionOffset(int partitionId);
 
   public Map<String, String> sync(int partitionId) {
     if (!containsPartition(partitionId)) {

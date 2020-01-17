@@ -3,6 +3,7 @@ package com.linkedin.venice.store.bdb;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
@@ -71,6 +72,20 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new BdbStoragePartition(storagePartitionConfig, environment, bdbServerConfig);
+  }
+
+  /**
+   * TODO: redirect this request to {@link com.linkedin.venice.storage.BdbStorageMetadataService}
+    */
+  @Override
+  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
+    throw new RuntimeException("putPartitionOffset not supported in BdbStorageEngine yet!");
+  }
+
+  // TODO: redirect this request to {@link com.linkedin.venice.storage.BdbStorageMetadataService}
+  @Override
+  public OffsetRecord getPartitionOffset(int partitionId) {
+    throw new RuntimeException("getPartitionOffset not supported in BdbStorageEngine yet!");
   }
 
   public void close() {
