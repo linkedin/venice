@@ -151,14 +151,14 @@ public class VeniceETLPublisher extends AbstractJob {
       // Get current version of the store and publish current version snapshots
       int currentVersion = storeInfo.getColoToCurrentVersions().get(fabricName);
       logger.info("Current version for store: " + storeName + " is " + currentVersion);
-      publishVersionSnapshots(storeName, snapshotInfo, currentVersion);
+      publishVersionSnapshots(storeName, snapshotInfo, currentVersion, false);
 
       // Get future version and publish future version snapshots
       if (futureETLEnabledStores.contains(storeName)) {
         int futureVersion = snapshotInfo.getLargestVersionNumber();
         if (futureVersion > currentVersion) {
           logger.info("Future version for store: " + storeName + " is " + futureVersion);
-          publishVersionSnapshots(storeName + FUTURE_ETL_SUFFIX, snapshotInfo, futureVersion);
+          publishVersionSnapshots(storeName, snapshotInfo, futureVersion, true);
         } else {
           logger.info("Store " + storeName + " doesn't have a future version running yet. Skipped publishing.");
         }
@@ -194,7 +194,7 @@ public class VeniceETLPublisher extends AbstractJob {
     this.distcpJobFutures.clear();
   }
 
-  private void publishVersionSnapshots(String storeNamePath, StoreETLSnapshotInfo snapshotInfo, int storeVersion) throws Exception {
+  private void publishVersionSnapshots(String storeNamePath, StoreETLSnapshotInfo snapshotInfo, int storeVersion, boolean isFutureVersion) throws Exception {
     try {
       // build destination path
       String destination = snapshotDestinationDirPrefix;
@@ -202,6 +202,9 @@ public class VeniceETLPublisher extends AbstractJob {
         destination += ETLStoreToUserName.get(storeNamePath);
       } else {
         destination += props.getString(ETL_STORE_TO_ACCOUNT_NAME_DEFAULT);
+      }
+      if (isFutureVersion) {
+        storeNamePath += FUTURE_ETL_SUFFIX;
       }
       destination += "/" + storeNamePath;
       logger.info("Publishing ETL snapshot for store: " + storeNamePath + " to dir: " + destination);
