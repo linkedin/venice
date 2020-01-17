@@ -37,11 +37,7 @@ public class JobRoutes extends AbstractRoute {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check for getting job metadata
         AdminSparkServer.validateParams(request, JOB.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String store = request.queryParams(NAME);
@@ -100,7 +96,7 @@ public class JobRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -126,7 +122,7 @@ public class JobRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -161,7 +157,7 @@ public class JobRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           controllerResponse.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
         }

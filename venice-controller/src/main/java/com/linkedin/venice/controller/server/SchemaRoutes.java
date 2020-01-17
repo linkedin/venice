@@ -36,11 +36,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -128,11 +124,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -160,11 +152,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA_ID.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
         String store = request.queryParams(ControllerApiConstants.NAME);
@@ -195,11 +183,7 @@ public class SchemaRoutes extends AbstractRoute {
       SchemaResponse responseObject = new SchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_OR_DERIVED_SCHEMA_ID.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
         String store = request.queryParams(ControllerApiConstants.NAME);
@@ -239,11 +223,7 @@ public class SchemaRoutes extends AbstractRoute {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
@@ -278,11 +258,7 @@ public class SchemaRoutes extends AbstractRoute {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
         String store = request.queryParams(ControllerApiConstants.NAME);
