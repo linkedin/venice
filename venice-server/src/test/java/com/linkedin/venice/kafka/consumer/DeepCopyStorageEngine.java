@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -117,6 +118,11 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
+  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
+    throw new RuntimeException("putPartitionOffset not supported in DeepCopyStorageEngine yet!");
+  }
+
+  @Override
   public void delete(Integer logicalPartitionId, byte[] key) {
     this.delegate.delete(logicalPartitionId, key);
   }
@@ -131,6 +137,10 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine {
     return this.delegate.get(logicalPartitionId, keyBuffer);
   }
 
+  @Override
+  public OffsetRecord getPartitionOffset(int partitionId) {
+    throw new RuntimeException("getPartitionOffset not supported in DeepCopyStorageEngine yet!");
+  }
 
   @Override
   public Map<String, String> sync(int partitionId) {

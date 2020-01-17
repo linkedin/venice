@@ -14,6 +14,8 @@ import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
+import org.rocksdb.ColumnFamilyDescriptor;
+import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.FlushOptions;
 import org.rocksdb.IngestExternalFileOptions;
@@ -53,6 +55,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private static final WriteOptions DISABLE_WAL_OPTIONS = new WriteOptions().setDisableWAL(true);
 
+  private static final String METADATA_COLUMN_FAMILY_NAME = "metadataColumnFamily";
+
 
   private int lastFinishedSSTFileNo = -1;
   private int currentSSTFileNo = 0;
@@ -65,6 +69,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final String storeName;
   private final int partitionId;
   private final String fullPathForPartitionDB;
+
+  private final ColumnFamilyHandle metadataColumnFamilyHandle;
 
   /**
    * The passed in {@link Options} instance.
@@ -91,6 +97,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private final boolean readOnly;
 
+  /**
+   * Whether this parition is storing metadata in addition to data or just data
+   */
+  private final boolean storingMetadata;
+
   public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir) {
     super(storagePartitionConfig.getPartitionId());
 
@@ -102,6 +113,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeName, partitionId);
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
     this.options = options;
+    this.storingMetadata = storagePartitionConfig.isStoringMetadata();
     /**
      * TODO: check whether we should tune any config with {@link EnvOptions}.
      */
@@ -113,6 +125,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         this.rocksDB = RocksDB.openReadOnly(options, fullPathForPartitionDB);
       } else {
         this.rocksDB = RocksDB.open(options, fullPathForPartitionDB);
+      }
+      if (this.storingMetadata) {
+        this.metadataColumnFamilyHandle = rocksDB.createColumnFamily(new ColumnFamilyDescriptor(METADATA_COLUMN_FAMILY_NAME.getBytes()));
+      } else {
+        this.metadataColumnFamilyHandle = null;
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
@@ -266,6 +283,18 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     put(key, ByteUtils.extractByteArray(valueBuffer));
   }
 
+  public void putMetadata(byte[] key, byte[] value) {
+    if (!this.storingMetadata) {
+      throw new VeniceException("putMetadata is not support when storingMetadata is set to false!");
+    }
+
+    try {
+        rocksDB.put(metadataColumnFamilyHandle, DISABLE_WAL_OPTIONS, key, value);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to put partitionId/offset pair to store: " + storeName + ", partition id: " + partitionId, e);
+    }
+  }
+
   @Override
   public byte[] get(byte[] key) {
     try {
@@ -285,6 +314,18 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
      * to create a byte array copy here.
      */
     return get(ByteUtils.extractByteArray(keyBuffer));
+  }
+
+  public byte[] getMetadata(byte[] key) {
+    if (!this.storingMetadata) {
+      throw new VeniceException("getMetadata is not support when storingMetadata is set to false!");
+    }
+
+    try {
+      return rocksDB.get(metadataColumnFamilyHandle, key);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get offset from store: " + storeName + ", partition id: " + partitionId, e);
+    }
   }
 
   @Override
@@ -410,7 +451,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
-    return deferredWrite == storagePartitionConfig.isDeferredWrite() && readOnly == storagePartitionConfig.isReadOnly();
+    return deferredWrite == storagePartitionConfig.isDeferredWrite() && readOnly == storagePartitionConfig.isReadOnly()
+        && storingMetadata == storagePartitionConfig.isStoringMetadata();
   }
 
   /**

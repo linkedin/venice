@@ -1,6 +1,7 @@
 package com.linkedin.venice.store.blackhole;
 
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -26,6 +27,16 @@ public class BlackHoleStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new BlackHoleStorageEnginePartition(storagePartitionConfig.getPartitionId());
+  }
+
+  @Override
+  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
+    throw new RuntimeException("putPartitionOffset not supported in BlackHoleStorageEngine yet!");
+  }
+
+  @Override
+  public OffsetRecord getPartitionOffset(int partitionId) {
+    throw new RuntimeException("getPartitionOffset not supported in BlackHoleStorageEngine yet!");
   }
 
   @Override

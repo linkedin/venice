@@ -2,6 +2,7 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
@@ -35,6 +36,16 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return  new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
+  }
+
+  @Override
+  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
+    throw new RuntimeException("putPartitionOffset not supported in InMemoryStorageEngine yet!");
+  }
+
+  @Override
+  public OffsetRecord getPartitionOffset(int partitionId) {
+    throw new RuntimeException("getPartitionOffset not supported in InMemoryStorageEngine yet!");
   }
 
   @Override
