@@ -95,11 +95,7 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          veniceResponse.setError("ACL failed for request " + request.url());
-          return;
-        }
+        // No ACL check for getting store metadata
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
@@ -273,8 +269,8 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, OwnerResponse veniceResponse) {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        // Only admin users are allowed to update owners; regular user can do it through Nuage
+        if (!isWhitelistUsers(request)) {
           veniceResponse.setError("ACL failed for request " + request.url());
           return;
         }
@@ -420,11 +416,7 @@ public class StoresRoutes extends AbstractRoute {
 
       @Override
       public void internalHandle(Request request, StorageEngineOverheadRatioResponse veniceResponse) {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
-          veniceResponse.setError("ACL failed for request " + request.url());
-          return;
-        }
+        // No ACL check for getting store metadata
         AdminSparkServer.validateParams(request, STORAGE_ENGINE_OVERHEAD_RATIO.getParams(), admin);
 
         veniceResponse.setCluster(request.queryParams(CLUSTER));

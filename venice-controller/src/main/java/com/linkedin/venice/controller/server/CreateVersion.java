@@ -49,7 +49,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -144,7 +144,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -186,7 +186,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -213,7 +213,7 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasAccess(request)) {
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
