@@ -534,7 +534,11 @@ public class ControllerClient implements Closeable {
   }
 
   public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName) {
-    try (ControllerClient client = new ControllerClient("*", discoveryUrls)) {
+    return discoverCluster(discoveryUrls, storeName, Optional.empty());
+  }
+
+  public static D2ServiceDiscoveryResponse discoverCluster(String discoveryUrls, String storeName, Optional<SSLFactory> sslFactory) {
+    try (ControllerClient client = new ControllerClient("*", discoveryUrls, sslFactory)) {
       return client.discoverCluster(storeName);
     }
   }

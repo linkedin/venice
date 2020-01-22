@@ -274,6 +274,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private String pushId;
 
   private Properties veniceWriterProperties;
+  private Properties sslProperties;
   private VeniceWriter<KafkaKey, byte[], byte[]> veniceWriter; // Lazily initialized
 
   // Thread pool for Hadoop File System operations.
@@ -452,12 +453,14 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       logGreeting();
       int hdfsOperationThreadNum = props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20);
       hdfsExecutorService = Executors.newFixedThreadPool(hdfsOperationThreadNum);
-      // Discover the cluster based on the store name and re-initialized controller client.
-      this.clusterName = discoverCluster(pushJobSetting);
       Optional<SSLFactory> sslFactory = Optional.empty();
       if (pushJobSetting.enableSsl) {
-        sslFactory = Optional.of(SslUtils.getSSLFactory(getVeniceWriterProperties(versionTopicInfo), pushJobSetting.sslFactoryClassName));
+        logger.info("Controller ACL is enabled.");
+        Properties sslProps = getSslProperties();
+        sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, pushJobSetting.sslFactoryClassName));
       }
+      // Discover the cluster based on the store name and re-initialized controller client.
+      this.clusterName = discoverCluster(pushJobSetting, sslFactory);
       this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl, sslFactory);
       initPushJobDetails();
       sendPushJobDetails();
@@ -971,20 +974,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }
       if (versionTopicInfo.sslToKafka) {
-        veniceWriterProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
-        props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
-          veniceWriterProperties.setProperty(key, props.getString(key));
-        });
-        try {
-          SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
-              props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-          Properties sslWriterProperties = sslConfigurator.setupSSLConfig(veniceWriterProperties,
-              UserCredentialsFactory.getUserCredentialsFromTokenFile());
-          veniceWriterProperties.putAll(sslWriterProperties);
-          // Get the certs from Azkaban executor's file system.
-        } catch (IOException e) {
-          throw new VeniceException("Could not get user credential for kafka push job for topic" + versionTopicInfo.topic);
-        }
+        Properties sslProps = getSslProperties();
+        veniceWriterProperties.putAll(sslProps);
       }
       if (props.containsKey(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS)) {
         veniceWriterProperties.setProperty(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS, props.getString(KAFKA_PRODUCER_REQUEST_TIMEOUT_MS));
@@ -994,6 +985,32 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
     }
     return veniceWriterProperties;
+  }
+
+  /**
+   * Build ssl properties based on the hadoop token file.
+   */
+  private synchronized Properties getSslProperties() {
+    if (null == sslProperties) {
+      sslProperties = new Properties();
+      // SSL_ENABLED is needed in SSLFactory
+      sslProperties.setProperty(SSL_ENABLED, "true");
+      sslProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+      props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
+        sslProperties.setProperty(key, props.getString(key));
+      });
+      try {
+        SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
+            props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+        Properties sslWriterProperties = sslConfigurator.setupSSLConfig(sslProperties,
+            UserCredentialsFactory.getUserCredentialsFromTokenFile());
+        sslProperties.putAll(sslWriterProperties);
+        // Get the certs from Azkaban executor's file system.
+      } catch (IOException e) {
+        throw new VeniceException("Could not get user credential for kafka push job for topic" + versionTopicInfo.topic);
+      }
+    }
+    return sslProperties;
   }
 
   private synchronized void closeVeniceWriter() {
@@ -1479,10 +1496,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     return sourcePath;
   }
 
-  private String discoverCluster(PushJobSetting setting) {
+  private String discoverCluster(PushJobSetting setting, Optional<SSLFactory> sslFactory) {
     logger.info("Discover cluster for store:" + setting.storeName);
     // TODO: Evaluate what's the proper way to add retries here...
-    ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(setting.veniceControllerUrl, setting.storeName);
+    ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(setting.veniceControllerUrl, setting.storeName, sslFactory);
     if (clusterDiscoveryResponse.isError()) {
       throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
     } else {
