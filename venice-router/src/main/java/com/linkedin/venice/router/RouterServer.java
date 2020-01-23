@@ -63,6 +63,7 @@ import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -157,6 +158,7 @@ public class RouterServer extends AbstractVeniceService {
    * requests plus the threads used by the boss thread pool per bound socket (ie 1 for SSL and 1 for non-SSL)
    */
   private final static int ROUTER_THREAD_POOL_SIZE = 2 * (ROUTER_IO_THREAD_NUM + ROUTER_BOSS_THREAD_NUM);;
+  private VeniceJVMStats jvmStats;
 
   public static void main(String args[]) throws Exception {
 
@@ -289,6 +291,8 @@ public class RouterServer extends AbstractVeniceService {
      * we would like to execute Router owned shutdown logic first to avoid race condition.
      */
     ResourceRegistry.setGlobalShutdownDelayMillis(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds() * 2));
+
+    jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
     metadataRepository.refresh();
     storeConfigRepository.refresh();
