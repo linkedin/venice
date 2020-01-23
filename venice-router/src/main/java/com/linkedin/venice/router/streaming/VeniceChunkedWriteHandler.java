@@ -6,6 +6,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.stream.ChunkedWriteHandler;
 import io.netty.util.AttributeKey;
+import io.netty.util.ReferenceCountUtil;
 import java.util.Optional;
 import org.apache.log4j.Logger;
 
@@ -71,6 +72,7 @@ public class VeniceChunkedWriteHandler extends NettyChunkedWriteHandler {
       // pass the write to the downstream handlers.
       super.write(ctx, msg, promise);
     } catch (Exception e) {
+      ReferenceCountUtil.release(msg);
       promise.setFailure(e);
     }
   }

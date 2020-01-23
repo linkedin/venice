@@ -197,6 +197,7 @@ public class VeniceChunkedResponse {
       } else if (msg instanceof SuccessfulStreamingResponse) {
         // Full response to indicate that all the sub responses are good and handled
         finish(promise);
+        ((SuccessfulStreamingResponse) msg).release();
         return true;
       } else if (msg instanceof FullHttpResponse) {
         if (!responseMetadataWriteInitiated.get()) {
