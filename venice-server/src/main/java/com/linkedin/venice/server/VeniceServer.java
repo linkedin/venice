@@ -32,6 +32,7 @@ import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.DiskHealthStats;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.DiskHealthCheckService;
@@ -76,6 +77,7 @@ public class VeniceServer {
   private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
   private ZkClient zkClient;
+  private VeniceJVMStats jvmStats;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
@@ -140,6 +142,9 @@ public class VeniceServer {
   private List<AbstractVeniceService> createServices() {
     /* Services are created in the order they must be started */
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
+
+    // Create jvm metrics object
+    jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
