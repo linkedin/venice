@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.Map;
@@ -54,13 +55,18 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBackupStrategy(srcStore.getBackupStrategy())
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled());
 
-
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
       updateStoreQueryParams.setHybridOffsetLagThreshold(hybridStoreConfig.getOffsetLagThresholdToGoOnline());
       updateStoreQueryParams.setHybridRewindSeconds(hybridStoreConfig.getRewindTimeInSeconds());
     }
 
+    ETLStoreConfig etlStoreConfig = srcStore.getEtlStoreConfig();
+    if (etlStoreConfig != null) {
+      updateStoreQueryParams.setEtledProxyUserAccount(etlStoreConfig.getEtledUserProxyAccount());
+      updateStoreQueryParams.setRegularVersionETLEnabled(etlStoreConfig.isRegularVersionETLEnabled());
+      updateStoreQueryParams.setFutureVersionETLEnabled(etlStoreConfig.isFutureVersionETLEnabled());
+    }
     this.params.putAll(updateStoreQueryParams.params);
   }
 
@@ -272,6 +278,31 @@ public class UpdateStoreQueryParams extends QueryParams {
 
   public Optional<BackupStrategy> getBackupStrategy() {
     return Optional.ofNullable(params.get(BACKUP_STRATEGY)).map(BackupStrategy::valueOf);
+  }
+
+  public UpdateStoreQueryParams setRegularVersionETLEnabled(boolean regularVersionETLEnabled) {
+    return putBoolean(REGULAR_VERSION_ETL_ENABLED, regularVersionETLEnabled);
+  }
+
+  public Optional<Boolean> getRegularVersionETLEnabled() {
+    return getBoolean(REGULAR_VERSION_ETL_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setFutureVersionETLEnabled(boolean futureVersionETLEnabled) {
+    return putBoolean(FUTURE_VERSION_ETL_ENABLED, futureVersionETLEnabled);
+  }
+
+  public Optional<Boolean> getFutureVersionETLEnabled() {
+    return getBoolean(FUTURE_VERSION_ETL_ENABLED);
+  }
+
+  public UpdateStoreQueryParams setEtledProxyUserAccount(String etledProxyUserAccount) {
+    params.put(ETLED_PROXY_USER_ACCOUNT, etledProxyUserAccount);
+    return this;
+  }
+
+  public Optional<String> getETLedProxyUserAccount() {
+    return Optional.ofNullable(params.get(ETLED_PROXY_USER_ACCOUNT));
   }
 
   //***************** above this line are getters and setters *****************

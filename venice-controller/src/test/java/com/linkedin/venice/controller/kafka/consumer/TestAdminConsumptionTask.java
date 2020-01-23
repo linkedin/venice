@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AddVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -31,6 +32,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
@@ -729,6 +731,10 @@ public class TestAdminConsumptionTask {
     hybridConfig.offsetLagThresholdToGoOnline = 1000L;
     setStore.hybridStoreConfig = hybridConfig;
 
+    ETLStoreConfigRecord etlStoreConfig = new ETLStoreConfigRecord();
+    etlStoreConfig.etledUserProxyAccount = "";
+    setStore.ETLStoreConfig = etlStoreConfig;
+
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = setStore;
@@ -750,7 +756,7 @@ public class TestAdminConsumptionTask {
         any(), any(), any(), any(), any(), any(), eq(Optional.of(123L)), eq(Optional.of(1000L)),
         eq(Optional.of(accessControlled)), any(), any(), any(), any(), any(), any(), any(), eq(Optional.of(true)),
         eq(Optional.of(storeMigration)), eq(Optional.of(writeComputationEnabled)), eq(Optional.of(computationEnabled)),
-        eq(Optional.of(bootstrapToOnlineTimeoutInHours)), any(), any(), any(), any(), any());
+        eq(Optional.of(bootstrapToOnlineTimeoutInHours)), any(), any(), any(), any(), any(), any(), any(), any());
   }
 
   @Test (timeOut = TIMEOUT)

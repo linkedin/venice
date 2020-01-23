@@ -31,6 +31,7 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Optional;
@@ -386,7 +387,16 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(BackupStrategy.fromInt(message.backupStrategy)),
         Optional.of(message.schemaAutoRegisterFromPushJobEnabled),
         Optional.of(message.superSetSchemaAutoGenerationForReadComputeEnabled),
-        Optional.of(message.hybridStoreDiskQuotaEnabled));
+        Optional.of(message.hybridStoreDiskQuotaEnabled),
+        message.ETLStoreConfig == null
+            ? Optional.empty()
+            : Optional.of(message.ETLStoreConfig.regularVersionETLEnabled),
+        message.ETLStoreConfig == null
+            ? Optional.empty()
+            : Optional.of(message.ETLStoreConfig.futureVersionETLEnabled),
+        message.ETLStoreConfig == null
+            ? Optional.empty()
+            : Optional.of(message.ETLStoreConfig.etledUserProxyAccount.toString()));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

@@ -234,7 +234,10 @@ public interface Admin extends AutoCloseable, Closeable {
                      Optional<BackupStrategy> backupStrategy,
                      Optional<Boolean> autoSchemaRegisterPushJobEnabled,
                      Optional<Boolean> autoSupersetSchemaEnabledForReadComputeStore,
-                     Optional<Boolean> hybridStoreDiskQuotaEnabled);
+                     Optional<Boolean> hybridStoreDiskQuotaEnabled,
+                     Optional<Boolean> regularVersionETLEnabled,
+                     Optional<Boolean> futureVersionETLEnabled,
+                     Optional<String> etledProxyUserAccount);
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         updateStore(
@@ -268,7 +271,10 @@ public interface Admin extends AutoCloseable, Closeable {
             params.getBackupStrategy(),
             params.getAutoSchemaRegisterPushJobEnabled(),
             params.getAutoSupersetSchemaEnabledForReadComputeStore(),
-            params.getHybridStoreDiskQuotaEnabled());
+            params.getHybridStoreDiskQuotaEnabled(),
+            params.getRegularVersionETLEnabled(),
+            params.getFutureVersionETLEnabled(),
+            params.getETLedProxyUserAccount());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);
