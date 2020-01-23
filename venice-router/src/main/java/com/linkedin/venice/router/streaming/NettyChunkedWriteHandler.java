@@ -208,6 +208,21 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
       if (currentWrite == null) {
         break;
       }
+
+      if (currentWrite.promise.isDone()) {
+        // This might happen e.g. in the case when a write operation
+        // failed, but there're still unconsumed chunks left.
+        // Most chunked input sources would stop generating chunks
+        // and report end of input, but this doesn't work with any
+        // source wrapped in HttpChunkedInput.
+        // Note, that we're not trying to release the message/chunks
+        // as this had to be done already by someone who resolved the
+        // promise (using ChunkedInput.close method).
+        // See https://github.com/netty/netty/issues/8700.
+        this.currentWrite = null;
+        continue;
+      }
+
       final PendingWrite currentWrite = this.currentWrite;
       final Object pendingMessage = currentWrite.msg;
 
@@ -263,8 +278,14 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
           f.addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
-              currentWrite.progress(chunks.progress(), chunks.length());
-              currentWrite.success(chunks.length());
+
+              if (!future.isSuccess()) {
+                currentWrite.fail(future.cause());
+              } else {
+                // read state of the input in local variables before closing it
+                currentWrite.progress(chunks.progress(), chunks.length());
+                currentWrite.success(chunks.length());
+              }
               closeInput(chunks);
             }
           });
@@ -273,7 +294,7 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
               if (!future.isSuccess()) {
-                closeInput((ChunkedInput<?>) pendingMessage);
+                closeInput(chunks);
                 currentWrite.fail(future.cause());
               } else {
                 currentWrite.progress(chunks.progress(), chunks.length());
@@ -285,7 +306,7 @@ public class NettyChunkedWriteHandler extends ChannelDuplexHandler {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
               if (!future.isSuccess()) {
-                closeInput((ChunkedInput<?>) pendingMessage);
+                closeInput(chunks);
                 currentWrite.fail(future.cause());
               } else {
                 currentWrite.progress(chunks.progress(), chunks.length());
