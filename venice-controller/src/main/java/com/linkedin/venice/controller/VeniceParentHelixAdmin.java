@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DerivedSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.ETLStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -50,6 +51,7 @@ import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RoutersClusterConfig;
@@ -1097,7 +1099,10 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<BackupStrategy> backupStrategy,
       Optional<Boolean> autoSchemaRegisterPushJobEnabled,
       Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled,
-      Optional<Boolean> hybridStoreDiskQuotaEnabled) {
+      Optional<Boolean> hybridStoreDiskQuotaEnabled,
+      Optional<Boolean> regularVersionETLEnabled,
+      Optional<Boolean> futureVersionETLEnabled,
+      Optional<String> etledUserProxyAccount) {
     acquireLock(clusterName, storeName);
 
     try {
@@ -1206,6 +1211,9 @@ public class VeniceParentHelixAdmin implements Admin {
         setStore.superSetSchemaAutoGenerationForReadComputeEnabled = superSetSchemaAutoGenerationForReadComputeEnabled.orElse(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
       }
       setStore.hybridStoreDiskQuotaEnabled = hybridStoreDiskQuotaEnabled.orElse(store.isHybridStoreDiskQuotaEnabled());
+
+      setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(store, regularVersionETLEnabled, futureVersionETLEnabled, etledUserProxyAccount);
+
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
@@ -2061,5 +2069,30 @@ public class VeniceParentHelixAdmin implements Admin {
   private boolean checkLingeringVersion(Store store, Version version) {
     long bootstrapTimeLimit = version.getCreatedTime() + store.getBootstrapToOnlineTimeoutInHours() * Time.MS_PER_HOUR;
     return timer.getMilliseconds() > bootstrapTimeLimit;
+  }
+
+  /**
+   * Check if etled proxy account is set before enabling any ETL and return a {@link ETLStoreConfigRecord}
+   */
+  private ETLStoreConfigRecord mergeNewSettingIntoOldETLStoreConfig(Store store,
+                                                                    Optional<Boolean> regularVersionETLEnabled,
+                                                                    Optional<Boolean> futureVersionETLEnabled,
+                                                                    Optional<String> etledUserProxyAccount) {
+    ETLStoreConfig etlStoreConfig = store.getEtlStoreConfig();
+    /**
+     * If etl enabled is true (either current version or future version), then account name must be specified in the command
+     * and it's not empty, or the store metadata already contains a non-empty account name.
+     */
+    if (regularVersionETLEnabled.orElse(false) || futureVersionETLEnabled.orElse(false)) {
+      if ((!etledUserProxyAccount.isPresent() || etledUserProxyAccount.get().isEmpty()) &&
+          (etlStoreConfig.getEtledUserProxyAccount() == null || etlStoreConfig.getEtledUserProxyAccount().isEmpty())) {
+        throw new VeniceException("Cannot enable ETL for this store because etled user proxy account is not set");
+      }
+    }
+    ETLStoreConfigRecord etlStoreConfigRecord = new ETLStoreConfigRecord();
+    etlStoreConfigRecord.etledUserProxyAccount = etledUserProxyAccount.orElse(etlStoreConfig.getEtledUserProxyAccount());
+    etlStoreConfigRecord.regularVersionETLEnabled = regularVersionETLEnabled.orElse(etlStoreConfig.isRegularVersionETLEnabled());
+    etlStoreConfigRecord.futureVersionETLEnabled = futureVersionETLEnabled.orElse(etlStoreConfig.isFutureVersionETLEnabled());
+    return etlStoreConfigRecord;
   }
 }

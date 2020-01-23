@@ -72,6 +72,9 @@ public enum Arg {
   BACKUP_STRATEGY("backup-strategy", "bus", true, "Strategies to preserve backup versions, eg KEEP_MIN_VERSIONS, DELETE_ON_NEW_PUSH_START. Default is KEEP_MIN_VERSIONS"),
   AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED("auto-schema-register-push-job-enabled", "asp", true, "whether or not to use auto-schema register for pushjob"),
   AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED("auto-superset-schema-register-for-read-compute-store-enabled", "asa", true, "whether or not auto super-set register enabled for a read compute store"),
+  REGULAR_VERSION_ETL_ENABLED("regular-version-etl-enabled", "rve", true, "whether or not to enable regular version etl for this store."),
+  FUTURE_VERSION_ETL_ENABLED("future-version-etl-enabled", "fve", true, "whether or not to enable future version etl for this store."),
+  ETLED_PROXY_USER_ACCOUNT("etled-proxy-user-account", "epu", true, "if enabled ETL, the proxy user account for HDFS file directory where the ETLed snapshots will go."),
 
   FILTER_JSON("filter-json", "ftj", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "flj", false, "Display output as flat json, without pretty-print indentation and line breaks"),

@@ -1,18 +1,15 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.meta.Version;
-import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
-import org.codehaus.jackson.map.DeserializationConfig;
-import org.codehaus.jackson.map.ObjectMapper;
 
 /**
  * Serializer used to convert the data between Store and json.
@@ -24,6 +21,7 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
         addMixin(Store.class, StoreSerializerMixin.class);
         addMixin(Version.class, VersionSerializerMixin.class);
         addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
+        addMixin(ETLStoreConfig.class, ETLStoreConfigSerializerMixin.class);
     }
 
     private void addMixin(Class veniceClass, Class serializerClass) {
@@ -68,5 +66,13 @@ public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
         public HybridStoreConfigSerializerMixin(
             @JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
             @JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline) {}
+    }
+
+    public static class ETLStoreConfigSerializerMixin {
+        @JsonCreator
+        public ETLStoreConfigSerializerMixin(
+            @JsonProperty("etledUserProxyAccount") String etledUserProxyAccount,
+            @JsonProperty("regularVersionETLEnabled") boolean regularVersionETLEnabled,
+            @JsonProperty("futureVersionETLEnabled") boolean futureVersionETLEnabled) {}
     }
 }

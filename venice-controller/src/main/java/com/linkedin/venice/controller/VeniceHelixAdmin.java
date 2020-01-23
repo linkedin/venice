@@ -41,6 +41,7 @@ import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
@@ -2171,8 +2172,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<BackupStrategy> backupStrategy,
         Optional<Boolean> autoSchemaRegisterPushJobEnabled,
         Optional<Boolean> superSetSchemaAutoGenerationForReadComputeEnabled,
-        Optional<Boolean> hybridStoreDiskQuotaEnabled
-        ) {
+        Optional<Boolean> hybridStoreDiskQuotaEnabled,
+        Optional<Boolean> regularVersionETLEnabled,
+        Optional<Boolean> futureVersionETLEnabled,
+        Optional<String> etledUserProxyAccount) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -2332,6 +2335,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (hybridStoreDbOverheadBypass.isPresent()) {
                 logger.warn("If updateStore is triggered only in child controller, "
                     + "hybridStoreDbOverheadBypass would be ignored.");
+            }
+
+            if (regularVersionETLEnabled.isPresent() || futureVersionETLEnabled.isPresent() || etledUserProxyAccount.isPresent()) {
+                ETLStoreConfig etlStoreConfig = new ETLStoreConfig(etledUserProxyAccount.get(), regularVersionETLEnabled.get(), futureVersionETLEnabled.get());
+                storeMetadataUpdate(clusterName, storeName, store -> {
+                    store.setEtlStoreConfig(etlStoreConfig);
+                    return store;
+                });
             }
 
             logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);

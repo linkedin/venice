@@ -47,6 +47,7 @@ public class StoreInfo {
     storeInfo.setSuperSetSchemaAutoGenerationForReadComputeEnabled(store.isSuperSetSchemaAutoGenerationForReadComputeEnabled());
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     storeInfo.setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
+    storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());
     return storeInfo;
   }
   /**
@@ -212,6 +213,8 @@ public class StoreInfo {
    * Whether or not storage disk quota is enabled for a hybrid store.
    */
   private boolean hybridStoreDiskQuotaEnabled = false;
+
+  private ETLStoreConfig etlStoreConfig;
 
   public StoreInfo() {
   }
@@ -502,4 +505,12 @@ public class StoreInfo {
   public boolean isHybridStoreDiskQuotaEnabled() { return hybridStoreDiskQuotaEnabled; }
 
   public void setHybridStoreDiskQuotaEnabled(boolean enabled) {hybridStoreDiskQuotaEnabled = enabled; }
+
+  public ETLStoreConfig getEtlStoreConfig() {
+    return etlStoreConfig;
+  }
+
+  public void setEtlStoreConfig(ETLStoreConfig etlStoreConfig) {
+    this.etlStoreConfig = etlStoreConfig;
+  }
 }

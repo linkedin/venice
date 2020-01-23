@@ -143,6 +143,7 @@ public class TestVeniceParentHelixAdmin {
     accessor = mock(ParentHelixOfflinePushAccessor.class);
     parentAdmin.setOfflinePushAccessor(accessor);
 
+
     // Need to bypass VeniceWriter initialization
     veniceWriter = mock(VeniceWriter.class);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -255,7 +256,10 @@ public class TestVeniceParentHelixAdmin {
         Optional<BackupStrategy> backupStategy,
         Optional<Boolean> autoSchmePushJob,
         Optional<Boolean> autoSchmeAdmin,
-        Optional<Boolean> hybridStoreDiskQuotaEnabled) {
+        Optional<Boolean> hybridStoreDiskQuotaEnabled,
+        Optional<Boolean> regularVersionETLEnabled,
+        Optional<Boolean> futureVersionETLEnabled,
+        Optional<String> etledUserProxyAccount) {
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
