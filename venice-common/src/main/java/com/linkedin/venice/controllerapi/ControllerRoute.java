@@ -56,6 +56,7 @@ public enum ControllerRoute {
   GET_VALUE_SCHEMA("/get_value_schema", HttpMethod.GET, Arrays.asList(NAME, SCHEMA_ID)),
   GET_VALUE_SCHEMA_ID("/get_value_schema_id", HttpMethod.POST, Arrays.asList(NAME, VALUE_SCHEMA)),
   GET_VALUE_OR_DERIVED_SCHEMA_ID("/get_value_or_derived_schema_id", HttpMethod.POST, Arrays.asList(NAME, DERIVED_SCHEMA)),
+  REMOVE_DERIVED_SCHEMA("/remove_derived_schema", HttpMethod.POST, Arrays.asList(NAME, SCHEMA_ID, DERIVED_SCHEMA_ID)),
   MASTER_CONTROLLER("/master_controller", HttpMethod.GET, Arrays.asList()),
 
   EXECUTION("/execution", HttpMethod.GET, Arrays.asList(EXECUTION_ID)),

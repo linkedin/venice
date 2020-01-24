@@ -6,7 +6,6 @@ package com.linkedin.venice.exceptions;
  */
 public class KafkaConsumerException extends VeniceException {
 
-  /** */
   private static final long serialVersionUID = 1L;
 
   public KafkaConsumerException(String message) {

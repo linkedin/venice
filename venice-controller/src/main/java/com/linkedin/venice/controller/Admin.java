@@ -189,6 +189,12 @@ public interface Admin extends AutoCloseable, Closeable {
      */
     DerivedSchemaEntry addDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId, String derivedSchemaStr);
 
+    /**
+     * Remove an existing derived schema
+     * @return the derived schema that is deleted or null if the schema doesn't exist
+     */
+    DerivedSchemaEntry removeDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId);
+
     void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 
     void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);

@@ -44,4 +44,10 @@ public interface ReadWriteSchemaRepository extends ReadOnlySchemaRepository {
    * schema id. Mostly used in cross-colo mode.
    */
   DerivedSchemaEntry addDerivedSchema(String storeName, String schemaStr, int valueSchemaId, int derivedSchemaId);
+
+  /**
+   * Remove an existing derived schema
+   * @return the derived schema that is deleted or null if the schema doesn't exist
+   */
+  DerivedSchemaEntry removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId);
 }
