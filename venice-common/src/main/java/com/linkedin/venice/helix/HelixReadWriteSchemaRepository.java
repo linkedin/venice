@@ -368,6 +368,21 @@ import java.util.Collection;
     return newDerivedSchemaEntry;
   }
 
+  @Override
+  public DerivedSchemaEntry removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
+    DerivedSchemaEntry derivedSchemaEntry = getDerivedSchema(storeName, valueSchemaId, derivedSchemaId);
+    String idPairStr = valueSchemaId + HelixSchemaAccessor.DERIVED_SCHEMA_DELIMITER + derivedSchemaId;
+
+    if (derivedSchemaEntry == null) {
+      logger.info("ignore removing derived schema for store: " + storeName + " id pair: " + idPairStr
+      + " because it doesn't exist");
+      return null;
+    }
+
+    accessor.removeDerivedSchema(storeName, idPairStr);
+    return derivedSchemaEntry;
+  }
+
   private int getNextAvailableSchemaId(Collection<? extends SchemaEntry> schemaEntries, SchemaEntry newSchemaEntry,
       DirectionalSchemaCompatibilityType expectedCompatibilityType) {
     int newValueSchemaId;

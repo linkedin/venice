@@ -23,6 +23,7 @@ import spark.Route;
 
 import java.util.Collection;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
@@ -39,8 +40,8 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
-        responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
         SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(),
             responseObject.getName());
         if (null == keySchemaEntry) {
@@ -69,12 +70,12 @@ public class SchemaRoutes extends AbstractRoute {
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
-        responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
         SchemaEntry valueSchemaEntry = admin.addValueSchema(
             responseObject.getCluster(),
             responseObject.getName(),
-            request.queryParams(ControllerApiConstants.VALUE_SCHEMA),
+            request.queryParams(VALUE_SCHEMA),
             SchemaEntry.DEFAULT_SCHEMA_CREATION_COMPATIBILITY_TYPE
             // TODO: Make compat type configurable to allow force registration
         );
@@ -100,8 +101,8 @@ public class SchemaRoutes extends AbstractRoute {
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_DERIVED_SCHEMA.getParams(), admin);
-        String clusterName = request.queryParams(ControllerApiConstants.CLUSTER);
-        String storeName = request.queryParams(ControllerApiConstants.NAME);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
         int valueSchemaId = Utils.parseIntFromString(request.queryParams(ControllerApiConstants.SCHEMA_ID),
             "value schema id");
 
@@ -109,7 +110,7 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setName(storeName);
 
         DerivedSchemaEntry derivedSchemaEntry = admin.addDerivedSchema(clusterName, storeName, valueSchemaId,
-            request.queryParams(ControllerApiConstants.DERIVED_SCHEMA));
+            request.queryParams(DERIVED_SCHEMA));
         responseObject.setId(derivedSchemaEntry.getValueSchemaId());
         responseObject.setDerivedSchemaId(derivedSchemaEntry.getId());
         responseObject.setSchemaStr(derivedSchemaEntry.getSchema().toString());
@@ -129,9 +130,9 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
-        responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
-        String schemaId = request.queryParams(ControllerApiConstants.SCHEMA_ID);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        String schemaId = request.queryParams(SCHEMA_ID);
         SchemaEntry valueSchemaEntry = admin.getValueSchema(responseObject.getCluster(),
             responseObject.getName(),
             Utils.parseIntFromString(schemaId, "schema id"));
@@ -157,9 +158,9 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA_ID.getParams(), admin);
-        String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
-        String store = request.queryParams(ControllerApiConstants.NAME);
-        String schemaStr = request.queryParams(ControllerApiConstants.VALUE_SCHEMA);
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
+        String schemaStr = request.queryParams(VALUE_SCHEMA);
 
         responseObject.setCluster(cluster);
         responseObject.setName(store);
@@ -188,9 +189,9 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_VALUE_OR_DERIVED_SCHEMA_ID.getParams(), admin);
-        String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
-        String store = request.queryParams(ControllerApiConstants.NAME);
-        String schemaStr = request.queryParams(ControllerApiConstants.DERIVED_SCHEMA);
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
+        String schemaStr = request.queryParams(DERIVED_SCHEMA);
 
         responseObject.setCluster(cluster);
         responseObject.setName(store);
@@ -228,8 +229,8 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
-        responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
         Collection<SchemaEntry> valueSchemaEntries =
             admin.getValueSchemas(responseObject.getCluster(), responseObject.getName())
                 .stream()
@@ -263,8 +264,8 @@ public class SchemaRoutes extends AbstractRoute {
       try {
         // No ACL check on getting store metadata
         AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
-        String cluster = request.queryParams(ControllerApiConstants.CLUSTER);
-        String store = request.queryParams(ControllerApiConstants.NAME);
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
 
         responseObject.setCluster(cluster);
         responseObject.setName(store);
@@ -293,6 +294,44 @@ public class SchemaRoutes extends AbstractRoute {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public Route removeDerivedSchema(Admin admin) {
+    return (request, response) -> {
+      SchemaResponse responseObject = new SchemaResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("Only admin users are allowed to run " + request.url());
+          return AdminSparkServer.mapper.writeValueAsString(responseObject);
+        }
+
+        AdminSparkServer.validateParams(request, REMOVE_DERIVED_SCHEMA.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
+        int schemaId = Utils.parseIntFromString(request.queryParams(SCHEMA_ID), "schema id");
+        int derivedSchemaId = Utils.parseIntFromString(request.queryParams(DERIVED_SCHEMA_ID), "derived schema id");
+
+        DerivedSchemaEntry removedDerivedSchemaEntry = admin.removeDerivedSchema(cluster, store, schemaId, derivedSchemaId);
+        if (null == removedDerivedSchemaEntry) {
+          throw new VeniceException(
+              "Derived schema for schema id: " + schemaId + " of store: " + responseObject.getName() + " doesn't exist");
+        }
+
+        responseObject.setCluster(cluster);
+        responseObject.setName(store);
+        responseObject.setId(derivedSchemaId);
+        responseObject.setDerivedSchemaId(derivedSchemaId);
+        responseObject.setSchemaStr(removedDerivedSchemaEntry.getSchema().toString());
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(new VeniceException(e), request, response);
+      }
+
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }

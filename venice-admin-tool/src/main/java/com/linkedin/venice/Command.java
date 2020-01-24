@@ -51,6 +51,8 @@ public enum Command {
       new Arg[] {URL, CLUSTER, STORE, VALUE_SCHEMA}),
   ADD_DERIVED_SCHEMA("add-derived-schema", "",
       new Arg[] {URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA}),
+  REMOVE_DERIVED_SCHEMA("remove-derived-schema", "remove derived schema for a given store by the value and derived schema Ids",
+      new Arg[] {URL, CLUSTER, STORE, VALUE_SCHEMA_ID, DERIVED_SCHEMA_ID}),
   LIST_STORAGE_NODES("list-storage-nodes", "",
       new Arg[] {URL, CLUSTER}),
   CLUSTER_HEALTH_INSTANCES("cluster-health-instances", "List the status for every instance",

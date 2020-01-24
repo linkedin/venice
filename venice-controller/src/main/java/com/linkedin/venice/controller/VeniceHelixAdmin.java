@@ -2583,6 +2583,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public DerivedSchemaEntry removeDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId) {
+        checkControllerMastership(clusterName);
+        return getVeniceHelixResource(clusterName).getSchemaRepository()
+            .removeDerivedSchema(storeName, valueSchemaId, derivedSchemaId);
+    }
+
+    @Override
     public SchemaEntry addSupersetSchema(String clusterName, String storeName, String valueSchema,
         int valueSchemaId, String supersetSchema, int supersetSchemaId) {
         checkControllerMastership(clusterName);

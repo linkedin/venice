@@ -1439,6 +1439,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public DerivedSchemaEntry removeDerivedSchema(String clusterName, String storeName, int valueSchemaId, int derivedSchemaId) {
+    throw new VeniceUnsupportedOperationException("removeDerivedSchema");
+  }
+
+  @Override
   public List<String> getStorageNodes(String clusterName) {
     throw new VeniceUnsupportedOperationException("getStorageNodes");
   }

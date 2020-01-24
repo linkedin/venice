@@ -21,6 +21,7 @@ public enum Arg {
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA_ID("value-schema-id", "vid", true, "value schema id"),
   VALUE_SCHEMA("value-schema-file", "vs", true, "Path to text file with value schema"),
+  DERIVED_SCHEMA_ID("derived-schema-id", "did", true, "derived schema id"),
   DERIVED_SCHEMA("derived-schema-file", "ds", true, "Path to text file with derived schema"),
   OWNER("owner", "o", true, "Owner email for new store creation"),
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),

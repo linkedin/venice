@@ -539,6 +539,14 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.ADD_DERIVED_SCHEMA, params, SchemaResponse.class);
   }
 
+  public SchemaResponse removeDerivedSchema(String storeName, int valueSchemaId, int derivedSchemaId) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(SCHEMA_ID, valueSchemaId)
+        .add(DERIVED_SCHEMA_ID, derivedSchemaId);
+    return request(ControllerRoute.REMOVE_DERIVED_SCHEMA, params, SchemaResponse.class);
+  }
+
   public PartitionResponse setStorePartitionCount(String storeName, String partitionNum) {
     QueryParams params = newParams()
         .add(NAME, storeName)

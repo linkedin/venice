@@ -48,6 +48,7 @@ class AbstractTestVeniceHelixAdmin {
 
   VeniceHelixAdmin veniceAdmin;
   String clusterName;
+  String storeOwner = "Doge of Venice";
   VeniceControllerConfig config;
 
   String zkAddress;

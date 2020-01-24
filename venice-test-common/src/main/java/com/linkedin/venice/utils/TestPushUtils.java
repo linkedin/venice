@@ -63,6 +63,17 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
+  public static final String USER_SCHEMA_STRING_WITH_DEFAULT = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"User\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"string\", \"default\": \"\"},  " +
+      "       { \"name\": \"name\", \"type\": \"string\", \"default\": \"\"},  " +
+      "       { \"name\": \"age\", \"type\": \"int\", \"default\": 1 }" +
+      "  ] " +
+      " } ";
+
   public static final String USER_SCHEMA_WITH_A_FLOAT_ARRAY_STRING = "{" +
       "  \"namespace\" : \"example.avro\",  " +
       "  \"type\": \"record\",   " +

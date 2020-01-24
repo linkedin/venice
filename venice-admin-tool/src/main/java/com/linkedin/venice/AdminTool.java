@@ -238,6 +238,9 @@ public class AdminTool {
           break;
         case ADD_DERIVED_SCHEMA:
           applyDerivedSchemaToStore(cmd);
+        case REMOVE_DERIVED_SCHEMA:
+          removeDerivedSchema(cmd);
+          break;
         case LIST_STORAGE_NODES:
           printStorageNodeList();
           break;
@@ -668,6 +671,20 @@ public class AdminTool {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
     printObject(valueResponse);
+  }
+
+  private static void removeDerivedSchema(CommandLine cmd) {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.REMOVE_DERIVED_SCHEMA);
+    int valueSchemaId = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VALUE_SCHEMA_ID, Command.REMOVE_DERIVED_SCHEMA),
+        "value schema id");
+    int derivedSchemaId = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.DERIVED_SCHEMA_ID, Command.REMOVE_DERIVED_SCHEMA),
+        "derived schema id");
+
+    SchemaResponse derivedSchemaResponse = controllerClient.removeDerivedSchema(store, valueSchemaId, derivedSchemaId);
+    if (derivedSchemaResponse.isError()) {
+      throw new VeniceException("Error removing derived schema. " + derivedSchemaResponse.getError());
+    }
+    printObject(derivedSchemaResponse);
   }
 
   private static void printStoreDescription(String storeName) {
