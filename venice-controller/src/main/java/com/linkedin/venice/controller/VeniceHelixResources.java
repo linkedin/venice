@@ -18,6 +18,7 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.stats.AggStoreStats;
 import com.linkedin.venice.stats.HelixMessageChannelStats;
 import com.linkedin.venice.utils.VeniceLock;
 import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
@@ -48,6 +49,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final PushMonitorDelegator pushMonitor;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
+  private final AggStoreStats aggStoreStats;
   private final ZkStoreConfigAccessor storeConfigAccessor;
   private final VeniceLock veniceHelixResourceReadLock;
   private final VeniceLock veniceHelixResourceWriteLock;
@@ -105,17 +107,18 @@ public class VeniceHelixResources implements VeniceResource {
         metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid(),
         onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository);
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
-    routersClusterManager =
+    this.routersClusterManager =
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());
-    aggPartitionHealthStats =
+    this.aggPartitionHealthStats =
         new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor(), pushMonitor);
+    this.aggStoreStats = new AggStoreStats(metricsRepository, metadataRepository);
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
     String readLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-readLock";
-    veniceHelixResourceReadLock = new VeniceLock(shutdownLock.readLock(), readLockDescription, metricsRepository);
+    this.veniceHelixResourceReadLock = new VeniceLock(shutdownLock.readLock(), readLockDescription, metricsRepository);
     String writeLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-writeLock";
-    veniceHelixResourceWriteLock = new VeniceLock(shutdownLock.writeLock(), writeLockDescription, metricsRepository);
+    this.veniceHelixResourceWriteLock = new VeniceLock(shutdownLock.writeLock(), writeLockDescription, metricsRepository);
     this.accessController = accessController;
   }
 
@@ -131,7 +134,7 @@ public class VeniceHelixResources implements VeniceResource {
     if (accessController.isPresent()) {
       DynamicAccessController accessClient = accessController.get();
       accessClient.init(metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
-      this.metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessClient));
+      metadataRepository.registerStoreDataChangedListener(new AclCreationDeletionListener(accessClient));
     }
     schemaRepository.refresh();
     routingDataRepository.refresh();
