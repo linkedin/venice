@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -34,6 +35,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -1806,5 +1808,75 @@ public class TestVeniceParentHelixAdmin {
     // Store A is unblocked and should be able to process admin operations now.
     Assert.assertEquals(parentAdmin.incrementVersionIdempotent(clusterName, storeA, "", 3, 3),
         storeAVersion, "Unexpected new version returned");
+  }
+
+  @Test
+  public void testETLStoreConfig() {
+    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+    VeniceControllerWrapper childControllerWrapper =
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper controllerWrapper =
+        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+            new VeniceControllerWrapper[]{childControllerWrapper},false);
+    String controllerUrl = controllerWrapper.getControllerUrl();
+
+    // Adding store
+    String storeName = "test_store";
+    String owner = "test_owner";
+    String keySchemaStr = "\"long\"";
+    String proxyUser = "test_user";
+    Schema valueSchema = generateSchema(false);
+    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
+    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+
+    // test enabling ETL without etl proxy account, expected failure
+    params.setRegularVersionETLEnabled(true);
+    params.setFutureVersionETLEnabled(true);
+    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
+    ETLStoreConfig etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+    Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+    Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+    Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
+        + "because etled user proxy account is not set"));
+
+    // test enabling ETL with empty proxy account, expected failure
+    params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
+    params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
+    controllerResponse = controllerClient.updateStore(storeName, params);
+    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+    Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+    Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+    Assert.assertTrue(controllerResponse.getError().contains("Cannot enable ETL for this store "
+        + "because etled user proxy account is not set"));
+
+    // test enabling ETL with etl proxy account, expected success
+    params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
+    params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
+    controllerClient.updateStore(storeName, params);
+    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+    Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
+    Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
+
+    // set the ETL back to false
+    params.setRegularVersionETLEnabled(false);
+    params.setFutureVersionETLEnabled(false);
+    controllerClient.updateStore(storeName, params);
+    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+    Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
+    Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
+
+    // test enabling ETL again without etl proxy account, expected success
+    params.setRegularVersionETLEnabled(true);
+    params.setFutureVersionETLEnabled(true);
+    controllerClient.updateStore(storeName, params);
+    etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
+    Assert.assertTrue(etlStoreConfig.isRegularVersionETLEnabled());
+    Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
+
+    controllerWrapper.close();
+    childControllerWrapper.close();
+    kafkaBrokerWrapper.close();
   }
 }
