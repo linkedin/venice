@@ -864,4 +864,14 @@ public class ConfigKeys {
    * or a Helix as a service controller running remotely.
    */
   public static final String VENICE_STORAGE_CLUSTER_LEADER_HAAS = "venice.cluster.leader.haas.enabled";
+
+  /**
+   * A config specifies which partitioning scheme should be used by KafkaPushJob.
+   */
+  public static final String PARTITIONER_CLASS = "partitioner.class";
+  /**
+   * A configs of over-partitioning factor
+   * number of Kafka partitions in each partition
+   */
+  public static final String AMPLIFICATION_FACTOR = "amplification.factor";
 }

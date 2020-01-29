@@ -15,6 +15,7 @@ import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
@@ -148,6 +149,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
+  /**
+   * Specifies a list of partitioners venice supported.
+   * It contains a string of concatenated partitioner class names separated by comma.
+   */
+  public static final String VENICE_PARTITIONERS_PROP = "venice.partitioners";
 
   // Map-only job or a Map-Reduce job for data push, by default it is a map-reduce job.
   public static final String VENICE_MAP_ONLY = "venice.map.only";
@@ -331,6 +337,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     String kafkaUrl;
     boolean sslToKafka;
     CompressionStrategy compressionStrategy;
+    String partitionerClass;
+    Map<String, String> partitionerParams;
+    int amplificationFactor;
   }
   private VersionTopicInfo versionTopicInfo;
 
@@ -428,7 +437,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       pushJobSetting.veniceControllerUrl = props.getString(VENICE_DISCOVER_URL_PROP);
     }
     pushJobSetting.storeName = props.getString(VENICE_STORE_NAME_PROP);
-
 
     if (!pushJobSetting.enablePush && !pushJobSetting.enablePBNJ) {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
@@ -933,9 +941,16 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         Version.PushType.INCREMENTAL : Version.PushType.BATCH;
     boolean askControllerToSendControlMessage = !pushJobSetting.sendControlMessagesDirectly;
     boolean sorted = !pushJobSetting.isMapOnly;
+    Optional<String> partitioners;
+    if (props.containsKey(VENICE_PARTITIONERS_PROP)) {
+      partitioners = Optional.of(props.getString(VENICE_PARTITIONERS_PROP));
+    } else {
+      partitioners = Optional.of(DefaultVenicePartitioner.class.getName());
+    }
     VersionCreationResponse versionCreationResponse =
         controllerClient.retryableRequest(setting.controllerRetries, c ->
-            c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId, askControllerToSendControlMessage, sorted));
+            c.requestTopicForWrites(setting.storeName, inputFileDataSize, pushType, pushId, askControllerToSendControlMessage, sorted,
+                partitioners));
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + setting.veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
@@ -951,6 +966,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     versionTopicInfo.partitionCount = versionCreationResponse.getPartitions();
     versionTopicInfo.sslToKafka = versionCreationResponse.isEnableSSL();
     versionTopicInfo.compressionStrategy = versionCreationResponse.getCompressionStrategy();
+    versionTopicInfo.partitionerClass = versionCreationResponse.getPartitionerClass();
+    versionTopicInfo.partitionerParams = versionCreationResponse.getPartitionerParams();
+    versionTopicInfo.amplificationFactor = versionCreationResponse.getAmplificationFactor();
     return versionTopicInfo;
   }
 
@@ -970,6 +988,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (null == veniceWriterProperties) {
       veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
+      String partitionerClass =
+          versionTopicInfo.partitionerClass != null ? versionTopicInfo.partitionerClass : DefaultVenicePartitioner.class.getName();
+      veniceWriterProperties.setProperty(PARTITIONER_CLASS, partitionerClass);
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }
@@ -1181,6 +1202,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     conf.set(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
     conf.set(COMPRESSION_STRATEGY, versionTopicInfo.compressionStrategy.toString());
     conf.set(REDUCER_MINIMUM_LOGGING_INTERVAL_MS, Long.toString(pushJobSetting.minimumReducerLoggingIntervalInMs));
+    conf.set(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
+    // flatten partitionerParams since JobConf class does not support set an object
+    for (Map.Entry<String, String> entry : versionTopicInfo.partitionerParams.entrySet()) {
+      conf.set(entry.getKey(), entry.getValue());
+    }
+    conf.setInt(AMPLIFICATION_FACTOR, versionTopicInfo.amplificationFactor);
     if( versionTopicInfo.sslToKafka ){
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {

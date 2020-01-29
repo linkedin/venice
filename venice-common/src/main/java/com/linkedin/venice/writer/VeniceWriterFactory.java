@@ -3,9 +3,12 @@ package com.linkedin.venice.writer;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -83,8 +86,18 @@ public class VeniceWriterFactory {
     if (chunkingEnabled.isPresent()) {
       writerProperties.put(VeniceWriter.ENABLE_CHUNKING, chunkingEnabled.get());
     }
-    return new VeniceWriter<>(new VeniceProperties(writerProperties), topic, keySerializer, valueSerializer,
-        writeComputeSerializer, time);
+    VeniceProperties props = new VeniceProperties(writerProperties);
+    final VenicePartitioner venicePartitioner;
+    if (props.containsKey(ConfigKeys.PARTITIONER_CLASS)) {
+      String partitionerClassName = props.getString(ConfigKeys.PARTITIONER_CLASS);
+      Class<? extends VenicePartitioner> partitionerClass = ReflectUtils.loadClass(partitionerClassName);
+      venicePartitioner = ReflectUtils.callConstructor(partitionerClass,
+          new Class<?>[]{VeniceProperties.class}, new Object[]{props});
+    } else {
+      venicePartitioner = new DefaultVenicePartitioner(props);
+    }
+    return new VeniceWriter<>(props, topic, keySerializer, valueSerializer, writeComputeSerializer, venicePartitioner, time,
+        () -> new ApacheKafkaProducer(props));
   }
 
   public VeniceWriter<KafkaKey, byte[], byte[]> createVeniceWriter(String topic) {

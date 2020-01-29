@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
@@ -67,20 +68,20 @@ public class TestMetadataOperationInMultiCluster {
 
     VersionCreationResponse versionCreationResponse =
         controllerClient.requestTopicForWrites(storeName, 1000, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), false, true);
+            Version.guidBasedDummyPushId(), false, true, Optional.empty());
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
     versionCreationResponse =
         secondControllerClient.requestTopicForWrites(secondStoreName, 1000, Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(), false, true);
+        Version.guidBasedDummyPushId(), false, true, Optional.empty());
     Assert.assertFalse(versionCreationResponse.isError());
     Assert.assertEquals(versionCreationResponse.getVersion(), 1);
 
     // Create version in wrong cluster
     versionCreationResponse =
         controllerClient.requestTopicForWrites(secondStoreName, 1000, Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(), false, true);
+        Version.guidBasedDummyPushId(), false, true, Optional.empty());
     Assert.assertTrue(versionCreationResponse.isError());
 
     multiClusterWrapper.close();

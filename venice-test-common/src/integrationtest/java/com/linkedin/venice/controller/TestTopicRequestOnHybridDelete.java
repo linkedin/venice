@@ -17,6 +17,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.Optional;
 import org.apache.avro.util.Utf8;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
@@ -169,7 +170,7 @@ public class TestTopicRequestOnHybridDelete {
     //new version, but don't write records
     VersionCreationResponse startedVersion =
         controllerClient.requestTopicForWrites(storeName, 1L, Version.PushType.BATCH,
-            TestUtils.getUniqueString("pushId"), false, true);
+            TestUtils.getUniqueString("pushId"), false, true, Optional.empty());
     Assert.assertFalse(startedVersion.isError(),
         "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
     Assert.assertEquals(controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(), ExecutionStatus.STARTED.toString());

@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.TimeUnit;
+import java.util.Optional;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -50,7 +51,7 @@ public class TestRestartRouter {
     cluster.stopVeniceRouter(routerWrapper.getPort());
 
     VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, 100,
-        Version.PushType.BATCH, Version.guidBasedDummyPushId(), false, true);
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), false, true, Optional.empty());
     Assert.assertTrue(versionCreationResponse.isError(),
         "Router has already been shutdown, should not handle the request.");
 
@@ -73,7 +74,7 @@ public class TestRestartRouter {
 
     // The restarted router could continue to handle request.
     response = controllerClient.requestTopicForWrites(storeName, 100, Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(), false, true);
+        Version.guidBasedDummyPushId(), false, true, Optional.empty());
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum +1);
 
