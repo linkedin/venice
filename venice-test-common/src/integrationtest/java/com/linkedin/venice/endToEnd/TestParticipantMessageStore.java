@@ -168,6 +168,6 @@ public class TestParticipantMessageStore {
     String storeName = TestUtils.getUniqueString("test-kill");
     controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
-        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true);
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, Optional.empty());
   }
 }

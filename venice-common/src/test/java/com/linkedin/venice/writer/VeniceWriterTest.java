@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.util.Properties;
@@ -28,6 +29,7 @@ public class VeniceWriterTest {
       topicManager.createTopic(topicName, 1, 1, true);
       Properties properties = new Properties();
       properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+      properties.put(ConfigKeys.PARTITIONER_CLASS, DefaultVenicePartitioner.class.getName());
 
       try (VeniceWriter veniceWriter = new VeniceWriterFactory(properties).createVeniceWriter(topicName)) {
         int numberOfThreads = 100;

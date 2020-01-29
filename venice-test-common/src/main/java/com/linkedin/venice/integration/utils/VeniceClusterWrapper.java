@@ -20,6 +20,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 
+import java.util.Optional;
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;
@@ -489,7 +490,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       // Create new version
       VersionCreationResponse newVersion =
           controllerClient.requestTopicForWrites(storeName, storeSize, Version.PushType.BATCH,
-              Version.guidBasedDummyPushId(), false, false);
+              Version.guidBasedDummyPushId(), false, false, Optional.empty());
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
       }
@@ -580,7 +581,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
               false,
               // This function is expected to be called by tests that bypass the push job and write data directly,
               // therefore, it's safe to assume that it'll be written in arbitrary order, rather than sorted...
-              false);
+              false,
+              Optional.empty());
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
       }

@@ -1,8 +1,10 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
@@ -32,6 +34,14 @@ public class VeniceMRPartitioner implements Partitioner<BytesWritable, BytesWrit
     /**
      * Note: Here needs to use the exact same partitioner being used by {@link com.linkedin.venice.writer.VeniceWriter}.
      */
-    this.venicePartitioner = new DefaultVenicePartitioner(props);
+    String partitionerClassName = job.get(ConfigKeys.PARTITIONER_CLASS);
+    if (partitionerClassName == null) {
+      this.venicePartitioner = new DefaultVenicePartitioner(props);
+      return;
+    } else {
+      Class<? extends VenicePartitioner> partitionerClass = ReflectUtils.loadClass(partitionerClassName);
+      this.venicePartitioner = ReflectUtils.callConstructor(partitionerClass,
+          new Class<?>[]{VeniceProperties.class}, new Object[]{props});
+    }
   }
 }

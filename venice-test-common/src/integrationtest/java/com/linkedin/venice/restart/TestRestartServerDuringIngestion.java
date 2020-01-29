@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.Optional;
 import org.apache.avro.Schema;
 import org.rocksdb.ComparatorOptions;
 import org.rocksdb.Slice;
@@ -118,7 +119,7 @@ public abstract class TestRestartServerDuringIngestion {
         new ControllerClient(cluster.getClusterName(), veniceUrl);
     VersionCreationResponse versionCreationResponse =
         controllerClient.requestTopicForWrites(storeName, 1024 * 1024, Version.PushType.BATCH,
-            Version.guidBasedDummyPushId(), false, true);
+            Version.guidBasedDummyPushId(), false, true, Optional.empty());
     String topic = versionCreationResponse.getKafkaTopic();
     String kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     Properties veniceWriterProperties = new Properties();

@@ -1,6 +1,9 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import java.util.Collections;
+import java.util.Map;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 public class VersionCreationResponse extends VersionResponse {
@@ -13,6 +16,12 @@ public class VersionCreationResponse extends VersionResponse {
   private boolean enableSSL = false;
 
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+
+  private String partitionerClass = DefaultVenicePartitioner.class.getName();
+
+  private Map<String, String> partitionerParams = Collections.emptyMap();
+
+  private int amplificationFactor = 1;
 
   public void setPartitions(int partitions) {
     this.partitions = partitions;
@@ -62,6 +71,30 @@ public class VersionCreationResponse extends VersionResponse {
     this.compressionStrategy = compressionStrategy;
   }
 
+  public String getPartitionerClass() {
+    return partitionerClass;
+  }
+
+  public void setPartitionerClass(String partitionerClass) {
+    this.partitionerClass = partitionerClass;
+  }
+
+  public Map<String, String> getPartitionerParams() {
+    return partitionerParams;
+  }
+
+  public void setPartitionerParams(Map<String, String> partitionerParams) {
+    this.partitionerParams = partitionerParams;
+  }
+
+  public int getAmplificationFactor() {
+    return amplificationFactor;
+  }
+
+  public void setAmplificationFactor(int amplificationFactor) {
+    this.amplificationFactor = amplificationFactor;
+  }
+
   @JsonIgnore
   public String toString() {
     return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions +
@@ -70,6 +103,9 @@ public class VersionCreationResponse extends VersionResponse {
         ", kafkaBootstrapServers: " + kafkaBootstrapServers +
         ", enableSSL: " + enableSSL +
         ", compressionStrategy: " + compressionStrategy.toString() +
+        ", partitionerClass: " + partitionerClass +
+        ", partitionerParams: " + partitionerParams +
+        ", amplificationFactor: " + amplificationFactor +
         ", super: " + super.toString() + ")";
   }
 }
