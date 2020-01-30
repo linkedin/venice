@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
@@ -65,6 +66,31 @@ public class CreateVersion extends AbstractRoute {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
 
+        // Retrieve partitioner config from the store
+        PartitionerConfig storePartitionerConfig = store.getPartitionerConfig();
+
+        if (null == request.queryParams(PARTITIONERS)) {
+          // Request does not contain partitioner info
+          responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
+          responseObject.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());
+          responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
+        } else {
+          // Retrieve provided partitioner class list from the request
+          boolean hasMatchedPartitioner = false;
+          for (String partitioner : request.queryParams(PARTITIONERS).split(",")) {
+            if (partitioner.equals(storePartitionerConfig.getPartitionerClass())) {
+              responseObject.setPartitionerClass(storePartitionerConfig.getPartitionerClass());
+              responseObject.setAmplificationFactor(storePartitionerConfig.getAmplificationFactor());
+              responseObject.setPartitionerParams(storePartitionerConfig.getPartitionerParams());
+              hasMatchedPartitioner = true;
+              break;
+            }
+          }
+          if (!hasMatchedPartitioner) {
+            throw new VeniceException("Expected partitioner class " + storePartitionerConfig.getPartitionerClass() + " cannot be found.");
+          }
+        }
+
         String pushTypeString = request.queryParams(PUSH_TYPE);
         PushType pushType;
         try {
@@ -79,7 +105,7 @@ public class CreateVersion extends AbstractRoute {
         }
 
         boolean sendStartOfPush = false;
-        // Make this optional so that it is compatible with old version controller clien
+        // Make this optional so that it is compatible with old version controller client
         if (request.queryParams().contains(SEND_START_OF_PUSH)) {
           sendStartOfPush = Utils.parseBooleanFromString(request.queryParams(SEND_START_OF_PUSH), SEND_START_OF_PUSH);
         }
