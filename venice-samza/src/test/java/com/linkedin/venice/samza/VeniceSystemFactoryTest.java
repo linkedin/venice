@@ -15,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -32,6 +33,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.schema.WriteComputeSchemaAdapter.*;
 import static org.testng.Assert.*;
@@ -69,7 +71,7 @@ public class VeniceSystemFactoryTest {
   private void setUp() {
     venice = ServiceFactory.getVeniceCluster();
     zkAddress = venice.getZk().getAddress();
-    client = new D2ControllerClient(D2TestUtils.CONTROLLER_SERVICE_NAME, venice.getClusterName(), zkAddress);
+    client = new D2ControllerClient(D2TestUtils.CONTROLLER_SERVICE_NAME, venice.getClusterName(), zkAddress, Optional.empty());
   }
 
   @AfterClass
@@ -270,6 +272,7 @@ public class VeniceSystemFactoryTest {
     samzaConfig.put(D2_ZK_HOSTS_PROPERTY, zkAddress);
     samzaConfig.put(VENICE_PARENT_D2_ZK_HOSTS, "invalid_parent_zk_address");
     samzaConfig.put(DEPLOYMENT_ID, TestUtils.getUniqueString("samza-push-id"));
+    samzaConfig.put(SSL_ENABLED, "false");
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer(VENICE_SYSTEM_NAME, new MapConfig(samzaConfig), null);
     return veniceProducer;

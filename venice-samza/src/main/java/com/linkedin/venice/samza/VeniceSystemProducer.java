@@ -13,6 +13,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.RouterBasedPushMonitor;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
@@ -89,12 +90,12 @@ public class VeniceSystemProducer implements SystemProducer {
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory, SystemTime.INSTANCE);
+      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory) {
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory, sslFactory, SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Time time) {
+      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Time time) {
     this.storeName = storeName;
     this.pushType = pushType;
     this.time = time;
@@ -108,7 +109,7 @@ public class VeniceSystemProducer implements SystemProducer {
     String clusterName = discoveryResponse.getCluster();
     LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
 
-    this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, this.d2Client);
+    this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, this.d2Client, sslFactory);
 
     // Request all the necessary info from Venice Controller
     this.versionCreationResponse = (VersionCreationResponse)controllerRequestWithRetry(

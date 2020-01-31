@@ -14,6 +14,8 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import java.util.Optional;
+
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -91,7 +93,7 @@ public class TestControllerClient {
     String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
     mockController.addResponseForUriPattern(uriPattern,
         constructMasterControllerResponse(veniceClusterName, fakeMasterControllerUri));
-    try(D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress())) {
+    try(D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress(), Optional.empty())) {
       String masterControllerUrl = d2ControllerClient.getMasterControllerUrl();
       Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
     }
