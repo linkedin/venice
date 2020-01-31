@@ -1,11 +1,17 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Serializable;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -17,6 +23,9 @@ import org.apache.samza.system.SystemConsumer;
 import org.apache.samza.system.SystemFactory;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
+
+import static com.linkedin.venice.CommonConfigKeys.*;
+import static com.linkedin.venice.VeniceConstants.*;
 
 
 public class VeniceSystemFactory implements SystemFactory, Serializable {
@@ -72,6 +81,17 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   private Map<SystemProducer, Pair<Boolean, Boolean>> systemProducerStatues;
 
+  /**
+   * All the required configs to build a SSL Factory
+   */
+  private static final List<String> SSL_MANDATORY_CONFIGS = Arrays.asList(
+      SSL_KEYSTORE_TYPE,
+      SSL_KEYSTORE_LOCATION,
+      SSL_KEY_PASSWORD,
+      SSL_TRUSTSTORE_LOCATION,
+      SSL_TRUSTSTORE_PASSWORD
+  );
+
   public VeniceSystemFactory() {
     systemProducerStatues = new VeniceConcurrentHashMap<>();
     int totalNumberOfFactory = FACTORY_INSTANCE_NUMBER.incrementAndGet();
@@ -92,11 +112,14 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      Version.PushType venicePushType, String samzaJobId, Config config) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, this);
+      Version.PushType venicePushType, String samzaJobId, Config config, Optional<SSLFactory> sslFactory) {
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, this, sslFactory);
   }
 
-  // Overload this function to simplify Samza Table API.
+  /**
+   * Samza table writer would directly call this function to create venice system producer instead of calling the general
+   * {@link VeniceSystemFactory#getProducer(String, Config, MetricsRegistry)} function.
+   */
   public SystemProducer getProducer(String systemName, String storeName, boolean veniceAggregate,
       String pushTypeString, Config config) {
     if (isEmpty(storeName)) {
@@ -124,6 +147,16 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       throw new SamzaException(D2_ZK_HOSTS_PROPERTY + " should not be null");
     }
 
+    // Build Ssl Factory if Controller SSL is enabled
+    Optional<SSLFactory> sslFactory = Optional.empty();
+    boolean controllerSslEnabled = config.getBoolean(SSL_ENABLED, true);
+    if (controllerSslEnabled) {
+      LOGGER.info("Controller ACL is enabled.");
+      String sslFactoryClassName = config.get(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
+      Properties sslProps = getSslProperties(config);
+      sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
+    }
+
     LOGGER.info("Configs for " + systemName + " producer: ");
     LOGGER.info(prefix + VENICE_STORE + ": " + storeName);
     LOGGER.info(prefix + VENICE_AGGREGATE + ": " + veniceAggregate);
@@ -141,11 +174,15 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       veniceD2Service = VENICE_LOCAL_D2_SERVICE;
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
-    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config);
+    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config, sslFactory);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }
 
+  /**
+   * The core function of a {@link SystemFactory}; most Samza users would specify VeniceSystemFactory in the job
+   * config and Samza would invoke {@link SystemFactory#getProducer(String, Config, MetricsRegistry)} to create producers.
+   */
   @Override
   public SystemProducer getProducer(String systemName, Config config, MetricsRegistry registry) {
     final String prefix = SYSTEMS_PREFIX + systemName + DOT;
@@ -196,6 +233,27 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   public void endStreamReprocessingSystemProducer(SystemProducer systemProducer, boolean jobSucceed) {
     systemProducerStatues.put(systemProducer, Pair.create(false, jobSucceed));
+  }
+
+  /**
+   * Build SSL properties based on the Samza job config
+   */
+  private Properties getSslProperties(Config samzaConfig) {
+    // Make sure all mandatory configs exist
+    SSL_MANDATORY_CONFIGS.forEach(requiredConfig -> {
+      if (!samzaConfig.containsKey(requiredConfig)) {
+        throw new VeniceException("Missing a mandatory SSL config: " + requiredConfig);
+      }
+    });
+
+    Properties sslProperties = new Properties();
+    sslProperties.setProperty(SSL_ENABLED, "true");
+    sslProperties.setProperty(SSL_KEYSTORE_TYPE, samzaConfig.get(SSL_KEYSTORE_TYPE));
+    sslProperties.setProperty(SSL_KEYSTORE_LOCATION, samzaConfig.get(SSL_KEYSTORE_LOCATION));
+    sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, samzaConfig.get(SSL_KEY_PASSWORD));
+    sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, samzaConfig.get(SSL_TRUSTSTORE_LOCATION));
+    sslProperties.setProperty(SSL_TRUSTSTORE_PASSWORD, samzaConfig.get(SSL_TRUSTSTORE_PASSWORD));
+    return sslProperties;
   }
 
   private static boolean isEmpty(String input) {

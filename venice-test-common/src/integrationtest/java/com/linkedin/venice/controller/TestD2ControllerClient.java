@@ -10,6 +10,8 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.TestUtils;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -49,5 +51,14 @@ public class TestD2ControllerClient {
 
     controllerWrapper.close();
     kafkaBrokerWrapper.close();
+  }
+
+  /**
+   * TODO: Remove the below unit test after controller ACL migration
+   */
+  @Test
+  public void testHelperFunctionToConvertUrl() throws MalformedURLException {
+    URL testUrl = new URL("http://localhost:1576");
+    Assert.assertEquals(D2ControllerClient.convertToSecureUrl(testUrl, 1578).toString(), "https://localhost:1578");
   }
 }
