@@ -130,11 +130,11 @@ public class AdminTool {
         /**
          * SSL config file is not mandatory now; build the controller with SSL config if provided.
          */
-        if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.SSL_CONFIG_PATH))) {
+        if (cmd.hasOption(Arg.SSL_CONFIG_PATH.first())) {
           /**
            * Build SSL factory
            */
-          sslConfigPath = getRequiredArgument(cmd, Arg.SSL_CONFIG_PATH);
+          sslConfigPath = getOptionalArgument(cmd, Arg.SSL_CONFIG_PATH);
           Properties sslProperties = SslUtils.loadSSLConfig(sslConfigPath);
           String sslFactoryClassName = sslProperties.getProperty(SSL_FACTORY_CLASS_NAME, DEFAULT_SSL_FACTORY_CLASS_NAME);
           sslFactory = Optional.of(SslUtils.getSSLFactory(sslProperties, sslFactoryClassName));
