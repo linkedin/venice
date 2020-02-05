@@ -62,8 +62,8 @@ public class SchemaRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Only allow whitelist users to run this command
-        if (!isWhitelistUsers(request)) {
-          responseObject.setError("Only admin users are allowed to run " + request.url());
+        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+          responseObject.setError(" User is neither Admin nor has write access to topic to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
