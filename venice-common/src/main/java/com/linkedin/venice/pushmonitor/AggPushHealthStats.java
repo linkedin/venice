@@ -6,7 +6,7 @@ import io.tehuti.metrics.MetricsRepository;
 
 public class AggPushHealthStats extends AbstractVeniceAggStats<PushHealthStats> {
   public AggPushHealthStats(String clusterName, MetricsRepository metricsRepository) {
-    super(clusterName, metricsRepository, (metricsRepo, storeName) -> new PushHealthStats(metricsRepo, storeName));
+    super(clusterName, metricsRepository, PushHealthStats::new);
   }
 
   public void recordFailedPush(String storeName, long durationInSec) {

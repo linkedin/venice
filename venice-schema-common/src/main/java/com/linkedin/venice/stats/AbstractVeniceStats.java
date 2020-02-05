@@ -57,18 +57,6 @@ public class AbstractVeniceStats {
     });
   }
 
-  /**
-   * @deprecated Use {@link #registerSensorIfAbsent(String, MeasurableStat...)} instead.
-   */
-  protected Sensor getSensorIfPresent(String name, Supplier<Sensor> supplier) {
-    Sensor sensor = metricsRepository.getSensor(getSensorFullName(name));
-    if (sensor == null) {
-      return supplier.get();
-    } else {
-      return sensor;
-    }
-  }
-
   protected Sensor registerSensorWithAggregate(String sensorName, Supplier<MeasurableStat[]> stats) {
     return registerSensorWithAggregate(sensorName, null, stats);
   }
