@@ -31,14 +31,10 @@ public class HelixMessageChannelStats extends AbstractVeniceStats {
 
   public HelixMessageChannelStats(MetricsRepository metricsRepository, String clusterName) {
     super(metricsRepository, clusterName + NAME_SUFFIX);
-    toStorageNodesInvokeCountSensor = getSensorIfPresent(TO_STORAGE_NODES_INVOKE_COUNT,
-        () -> registerSensor(TO_STORAGE_NODES_INVOKE_COUNT, new Count()));
-    onReplyFromStorageNodesCountSensor = getSensorIfPresent(ON_REPLY_FROM_STORAGE_NODES_COUNT,
-        () -> registerSensor(ON_REPLY_FROM_STORAGE_NODES_COUNT, new Count()));
-    toStorageNodesMessageCountSensor = getSensorIfPresent(TO_STORAGE_NODES_MESSAGE_COUNT,
-            () -> registerSensor(TO_STORAGE_NODES_MESSAGE_COUNT, new Total()));
-    missedStorageNodeReplyMessageCountSensor = getSensorIfPresent(MISSED_STORAGE_NODES_REPLY_COUNT,
-        () -> registerSensor(MISSED_STORAGE_NODES_REPLY_COUNT, new Total()));
+    toStorageNodesInvokeCountSensor = registerSensorIfAbsent(TO_STORAGE_NODES_INVOKE_COUNT, new Count());
+    onReplyFromStorageNodesCountSensor = registerSensorIfAbsent(ON_REPLY_FROM_STORAGE_NODES_COUNT, new Count());
+    toStorageNodesMessageCountSensor = registerSensorIfAbsent(TO_STORAGE_NODES_MESSAGE_COUNT, new Total());
+    missedStorageNodeReplyMessageCountSensor = registerSensorIfAbsent(MISSED_STORAGE_NODES_REPLY_COUNT, new Total());
   }
 
   public void recordToStorageNodesInvokeCount() {
