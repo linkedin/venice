@@ -36,9 +36,4 @@ public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
    * @throws a VeniceException if cleanup failed for any of the partitions
    */
   CompletableFuture<Void> unsubscribe(Set<Integer> partitions);
-
-  /**
-   * @param daVinciConfig parameters for the behavior of the Da Vinci library
-   */
-  void configure(DaVinciConfig daVinciConfig);
 }
