@@ -31,7 +31,7 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
         stats = scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
       }
 
-      return new RouterHttpRequestStats(metricsRepo, storeName, requestType, stats);
+      return new RouterHttpRequestStats(metricsRepo, storeName, requestType, stats, isKeyValueProfilingEnabled);
     });
   }
 
