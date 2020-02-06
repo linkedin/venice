@@ -8,7 +8,7 @@ import java.lang.management.MemoryMXBean;
 import java.util.List;
 import java.util.function.Function;
 import org.apache.log4j.Logger;
-
+import sun.misc.VM;
 
 /**
  * Simple class that spins JVM platform stats into Venice stats. Explanations for these
@@ -47,6 +47,13 @@ public class VeniceJVMStats extends AbstractVeniceStats{
    * and garbage objects that have not been collected, if any.
    */
   public final Sensor heapUsage;
+
+  /**
+   * The JVM's max allowed direct memory.  This is usually set as -XX:MaxDirectMemorySize,
+   * however the ceiling can be raised during run time.  So we query the value directly from
+   * the jvm and register it with our metrics.
+   */
+  public final Sensor maxDirectMemorySize;
 
   private static Long getDirectMemoryBufferPoolBean(Function<BufferPoolMXBean, Long> function) {
     List<BufferPoolMXBean> bufferPoolMXBeans = ManagementFactory.getPlatformMXBeans(BufferPoolMXBean.class);
@@ -87,5 +94,6 @@ public class VeniceJVMStats extends AbstractVeniceStats{
         })
     );
 
+    maxDirectMemorySize = registerSensor("MaxDirectMemorySize", new Gauge(VM::maxDirectMemory));
   }
 }
