@@ -1748,10 +1748,10 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "test_store";
     String existingTopicName = storeName + "_v1";
     Store store = mock(Store.class);
-    Version version = new Version(storeName, 1, startTime, "test-push");
+    Version version = new Version(storeName, 1, "test-push");
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.STARTED);
     String newPushJobId = "new-test-push";
-    Version newVersion = new Version(storeName, 2, mockTime.getMilliseconds(), newPushJobId);
+    Version newVersion = new Version(storeName, 2, newPushJobId);
 
     doReturn(24).when(store).getBootstrapToOnlineTimeoutInHours();
     doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
