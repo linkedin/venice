@@ -1,5 +1,7 @@
 apply plugin: 'java-library'
 
 dependencies {
+  implementation project(':venice-common')
+  implementation project(':venice-server')
   implementation project(':venice-thin-client')
 }
