@@ -481,6 +481,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         pollResultNum = records.count();
       }
       if (emitMetrics.get()) {
+        storeIngestionStats.recordDiskQuotaAllowed(storeNameWithoutVersionInfo,
+            metadataRepo.getStore(storeNameWithoutVersionInfo).getStorageQuotaInByte());
         storeIngestionStats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
         storeIngestionStats.recordPollResultNum(storeNameWithoutVersionInfo, pollResultNum);
       }
