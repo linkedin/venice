@@ -25,6 +25,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor bytesReadFromKafkaAsUncompressedSizeSensor;
   private final Sensor recordsConsumedSensor;
   private final Sensor storageQuotaUsedSensor;
+  // disk quota allowed for a store without replication. It should be as a straight line unless we bumps the disk quota allowed.
+  private final Sensor diskQuotaSensor;
 
   private final Sensor pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
@@ -43,6 +45,11 @@ public class StoreIngestionStats extends AbstractVeniceStats{
    */
   private double hybridQuotaUsageGauge;
 
+  /**
+   * A gauge reporting the disk capacity allowed for a store
+   */
+  private long diskQuotaAllowedGauge;
+
   // Measure the avg/max time we need to spend on waiting for the leader producer
   private final Sensor leaderProducerSynchronizeLatencySensor;
   // Measure the avg/max latency for data lookup and deserialization
@@ -58,6 +65,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     bytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
     bytesReadFromKafkaAsUncompressedSizeSensor = registerSensor("bytes_read_from_kafka_as_uncompressed_size", new Total());
     recordsConsumedSensor = registerSensor("records_consumed", new Rate());
+    diskQuotaSensor = registerSensor("global_store_disk_quota_allowed",
+                                      new Gauge(() -> diskQuotaAllowedGauge), new Max());
 
     // Measure latency of Kafka consumer poll request and processing returned consumer records
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
@@ -120,6 +129,11 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   public void recordStorageQuotaUsed(double quotaUsed) {
     hybridQuotaUsageGauge = quotaUsed;
     storageQuotaUsedSensor.record(quotaUsed);
+  }
+
+  public void recordDiskQuotaAllowed(long quotaAllowed) {
+    diskQuotaAllowedGauge = quotaAllowed;
+    diskQuotaSensor.record(quotaAllowed);
   }
 
   public void recordPollRequestLatency(double latency) {
