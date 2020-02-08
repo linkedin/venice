@@ -525,6 +525,7 @@ public class TestPushUtils {
     Map<String, String> samzaConfig = getSamzaProducerConfig(venice, storeName, type);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    veniceProducer.start();
     return veniceProducer;
   }
 
