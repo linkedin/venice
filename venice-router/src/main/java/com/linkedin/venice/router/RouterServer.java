@@ -48,6 +48,7 @@ import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.HealthCheckStats;
 import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
@@ -314,7 +315,8 @@ public class RouterServer extends AbstractVeniceService {
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, routeHttpRequestStats,
-        config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute());
+        config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute(),
+        new AggHostHealthStats(metricsRepository));
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +

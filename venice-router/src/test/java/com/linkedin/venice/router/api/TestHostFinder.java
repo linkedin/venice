@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -225,7 +226,7 @@ public class TestHostFinder {
    */
   private class VeniceHostHealthTest extends VeniceHostHealth {
     public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats) {
-      super(liveInstanceMonitor, routeHttpRequestStats, false, 10);
+      super(liveInstanceMonitor, routeHttpRequestStats, false, 10, mock(AggHostHealthStats.class));
     }
 
     /**
