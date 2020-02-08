@@ -413,6 +413,7 @@ public class TestHybrid {
     Version.PushType pushType = isLeaderFollowerModelEnabled ? Version.PushType.STREAM_REPROCESSING : Version.PushType.BATCH;
     Map<String, String> samzaConfig = getSamzaProducerConfig(veniceClusterWrapper, storeName, pushType);
     SystemProducer veniceBatchProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    veniceBatchProducer.start();
     if (veniceBatchProducer instanceof VeniceSystemProducer) {
       // The default behavior would exit the process
       ((VeniceSystemProducer) veniceBatchProducer).setExitMode(SamzaExitMode.NO_OP);
@@ -452,6 +453,7 @@ public class TestHybrid {
 
     // Switch to stream mode and push more data
     SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
+    veniceStreamProducer.start();
     for (int i=11; i<=20; i++) {
       sendStreamingRecord(veniceStreamProducer, storeName, i);
     }
@@ -514,8 +516,10 @@ public class TestHybrid {
     VeniceSystemFactory factory = new VeniceSystemFactory();
     Map<String, String> samzaConfig1 = getSamzaProducerConfig(veniceClusterWrapper, storeName1, Version.PushType.STREAM_REPROCESSING);
     SystemProducer veniceBatchProducer1 = factory.getProducer("venice", new MapConfig(samzaConfig1), null);
+    veniceBatchProducer1.start();
     Map<String, String> samzaConfig2 = getSamzaProducerConfig(veniceClusterWrapper, storeName2, Version.PushType.STREAM_REPROCESSING);
     SystemProducer veniceBatchProducer2 = factory.getProducer("venice", new MapConfig(samzaConfig2), null);
+    veniceBatchProducer2.start();
     if (veniceBatchProducer1 instanceof VeniceSystemProducer) {
       // The default behavior would exit the process
       ((VeniceSystemProducer) veniceBatchProducer1).setExitMode(SamzaExitMode.NO_OP);

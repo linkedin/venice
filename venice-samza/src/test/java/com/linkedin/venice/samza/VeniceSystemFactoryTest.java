@@ -275,6 +275,7 @@ public class VeniceSystemFactoryTest {
     samzaConfig.put(SSL_ENABLED, "false");
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer(VENICE_SYSTEM_NAME, new MapConfig(samzaConfig), null);
+    veniceProducer.start();
     return veniceProducer;
   }
 }

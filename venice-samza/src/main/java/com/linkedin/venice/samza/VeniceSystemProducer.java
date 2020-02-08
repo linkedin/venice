@@ -65,11 +65,8 @@ public class VeniceSystemProducer implements SystemProducer {
   private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
-  private final VeniceWriter<byte[], byte[], byte[]> veniceWriter;
-
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
-
   private final Schema keySchema;
+  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
 
   /**
    * key is schema
@@ -87,6 +84,7 @@ public class VeniceSystemProducer implements SystemProducer {
   private final Version.PushType pushType;
   private final Time time;
 
+  private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
@@ -125,7 +123,6 @@ public class VeniceSystemProducer implements SystemProducer {
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
     this.topicName = versionCreationResponse.getKafkaTopic();
-    this.veniceWriter = getVeniceWriter(this.versionCreationResponse);
 
     SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
         () -> this.controllerClient.getKeySchema(this.storeName)
@@ -177,7 +174,10 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   @Override
-  public void start() {
+  public synchronized void start() {
+    if (null == veniceWriter) {
+      this.veniceWriter = getVeniceWriter(this.versionCreationResponse);
+    }
     if (pushMonitor.isPresent()) {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
