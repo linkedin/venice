@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -19,13 +20,15 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private final LiveInstanceMonitor liveInstanceMonitor;
   private RouteHttpRequestStats routeHttpRequestStats;
+  private final AggHostHealthStats aggHostHealthStats;
 
   public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats,
-      boolean statefulRouterHealthCheckEnabled, int maxPendingConnectionPerHost) {
+      boolean statefulRouterHealthCheckEnabled, int maxPendingConnectionPerHost, AggHostHealthStats aggHostHealthStats) {
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.statefulRouterHealthCheckEnabled = statefulRouterHealthCheckEnabled;
     this.maxPendingConnectionPerHost = maxPendingConnectionPerHost;
     this.liveInstanceMonitor = liveInstanceMonitor;
+    this.aggHostHealthStats = aggHostHealthStats;
   }
 
   /**
@@ -67,20 +70,32 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   }
 
   @Override
-  public boolean isHostHealthy(Instance hostName, String partitionName) {
-    if (!liveInstanceMonitor.isInstanceAlive(hostName) // not alive
-        || slowPartitionHosts.contains(hostPartitionString(hostName, partitionName))
-        || checkPendingRequestCount(hostName.getNodeId())
-        || unhealthyHosts.contains(hostName.getUrl())){
-      return false; /* can't check-then-get, would cause a race condition and might get null */
-    } else {
-      return true;
+  public boolean isHostHealthy(Instance instance, String partitionName) {
+    String nodeId = instance.getNodeId();
+
+    if (!liveInstanceMonitor.isInstanceAlive(instance)) {
+      aggHostHealthStats.recordUnhealthyHostOfflineInstance(nodeId);
+      return false;
     }
+    if (slowPartitionHosts.contains(hostPartitionString(instance, partitionName))) {
+      aggHostHealthStats.recordUnhealthyHostSlowPartition(nodeId);
+      return false;
+    }
+    if (checkPendingRequestCount(instance.getNodeId())) {
+      aggHostHealthStats.recordUnhealthyHostTooManyPendingRequest(nodeId);
+      return false;
+    }
+    if (unhealthyHosts.contains(instance.getUrl())) {
+      aggHostHealthStats.recordUnhealthyHostHeartBeatFailure(nodeId);
+      return false;
+    }
+    return true;
   }
 
-  private boolean checkPendingRequestCount(String hostName) {
-    return (statefulRouterHealthCheckEnabled
-        && routeHttpRequestStats.getPendingRequestCount(hostName) > maxPendingConnectionPerHost);
+  private boolean checkPendingRequestCount(String nodeId) {
+    long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(nodeId);
+    aggHostHealthStats.recordPendingRequestCount(nodeId, pendingRequestCount);
+    return statefulRouterHealthCheckEnabled && pendingRequestCount > maxPendingConnectionPerHost;
   }
 
   private static String hostPartitionString(Instance host, String partition){

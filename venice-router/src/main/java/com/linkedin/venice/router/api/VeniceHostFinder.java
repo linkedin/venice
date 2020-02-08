@@ -108,17 +108,17 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
        *
        * TODO: Sticky routing might be more preferable for hybrid store than measuring offset lag.
        */
-      if (instanceHealthMonitor.isHostHealthy(instance, partitionName) && hostHealthMonitor.isHostHealthy(instance, partitionName)) {
+      /**
+       * Router won't record unhealthy metric when {@link hostHealthMonitor} is returning unhealthy since
+       * it is only being used for retry purpose, which means when {@link hostHealthMonitor} is returning false,
+       * the current request is a retry request.
+       */
+      if (!instanceHealthMonitor.isHostHealthy(instance, partitionName)) {
+        currentStats.recordFindUnhealthyHostRequest(storeName);
+        continue;
+      }
+      if (hostHealthMonitor.isHostHealthy(instance, partitionName)) {
         newHosts.add(instance);
-      } else {
-        /**
-         * Router won't record unhealthy metric when {@link hostHealthMonitor} is returning unhealthy since
-         * it is only being used for retry purpose, which means when {@link hostHealthMonitor} is returning false,
-         * the current request is a retry request.
-         */
-        if (!instanceHealthMonitor.isHostHealthy(instance, partitionName)) {
-          currentStats.recordFindUnhealthyHostRequest(storeName);
-        }
       }
     }
     int hostCount = newHosts.size();

@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -54,7 +55,7 @@ public class TestRouterHeartbeat {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10);
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
@@ -86,7 +87,7 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10);
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, mock(AggHostHealthStats.class));
 
     VeniceRouterConfig config = mockVeniceRouterConfig();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
@@ -116,7 +117,7 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10);
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 

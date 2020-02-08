@@ -48,7 +48,7 @@ public class RouteHttpRequestStats {
 
 
       public InternalHostStats(MetricsRepository metricsRepository, String hostName) {
-        super(metricsRepository, hostName.replace('.', '_'));
+        super(metricsRepository, StatsUtils.convertHostnameToMetricName(hostName));
         pendingRequestCount = new AtomicLong();
         pendingRequestCountSensor = registerSensor("pending_request_count", new Gauge(() -> pendingRequestCount.get()));
       }
