@@ -33,7 +33,7 @@ import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.storage.chunking.BatchGetChunkingAdapter;
 import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
 import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
@@ -93,7 +93,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private final DiskHealthCheckService diskHealthCheckService;
   private final ExecutorService executor;
   private final ExecutorService computeExecutor;
-  private final StoreRepository storeRepository;
+  private final StorageEngineRepository storageEngineRepository;
   private final ReadOnlySchemaRepository schemaRepo;
   private final MetadataRetriever metadataRetriever;
   private final Map<Utf8, Schema> computeResultSchemaCache;
@@ -112,12 +112,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   };
 
   public StorageExecutionHandler(ExecutorService executor, ExecutorService computeExecutor,
-      StoreRepository storeRepository, ReadOnlySchemaRepository schemaRepository,
-      MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
-      boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, boolean keyValueProfilingEnabled) {
+                                 StorageEngineRepository storageEngineRepository, ReadOnlySchemaRepository schemaRepository,
+                                 MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
+                                 boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, boolean keyValueProfilingEnabled) {
     this.executor = executor;
     this.computeExecutor = computeExecutor;
-    this.storeRepository = storeRepository;
+    this.storageEngineRepository = storageEngineRepository;
     this.schemaRepo = schemaRepository;
     this.metadataRetriever = metadataRetriever;
     this.diskHealthCheckService = healthCheckService;
@@ -232,7 +232,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     byte[] key = request.getKeyBytes();
 
-    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
     Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partition);
     long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
@@ -255,7 +255,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private CompletableFuture<ReadResponse> handleMultiGetRequestInParallel(MultiGetRouterRequestWrapper request, int parallelChunkSize) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
@@ -339,7 +339,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private ReadResponse handleMultiGetRequest(MultiGetRouterRequestWrapper request) {
     String topic = request.getResourceName();
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
     responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
@@ -380,7 +380,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     String topic = request.getResourceName();
     String storeName = request.getStoreName();
     Iterable<ComputeRouterRequestKeyV1> keys = request.getKeys();
-    AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine store = storageEngineRepository.getLocalStorageEngine(topic);
 
     // deserialize all value to the latest schema
     Schema latestValueSchema = this.schemaRepo.getLatestValueSchema(storeName).getSchema();

@@ -27,7 +27,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -127,7 +127,7 @@ public class StoreIngestionTaskTest {
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
-  private StoreRepository mockStoreRepository;
+  private StorageEngineRepository mockStorageEngineRepository;
   private VeniceNotifier mockNotifier;
   private List<Object[]> mockNotifierProgress;
   private List<Object[]> mockNotifierEOPReveived;
@@ -197,7 +197,7 @@ public class StoreIngestionTaskTest {
     inMemoryKafkaBroker = new InMemoryKafkaBroker();
     inMemoryKafkaBroker.createTopic(topic, PARTITION_COUNT);
     veniceWriter = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
-    mockStoreRepository = mock(StoreRepository.class);
+    mockStorageEngineRepository = mock(StorageEngineRepository.class);
 
     mockNotifier = mock(LogNotifier.class);
     mockNotifierProgress = new ArrayList<>();
@@ -359,7 +359,7 @@ public class StoreIngestionTaskTest {
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
         .setVeniceConsumerFactory(mockFactory)
-        .setStoreRepository(mockStoreRepository)
+        .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
         .setNotifiersQueue(notifiers)
         .setBandwidthThrottler(mockBandwidthThrottler)
@@ -375,7 +375,7 @@ public class StoreIngestionTaskTest {
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true);
-    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStoreRepository).getLocalStorageEngine(topic);
+    doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {

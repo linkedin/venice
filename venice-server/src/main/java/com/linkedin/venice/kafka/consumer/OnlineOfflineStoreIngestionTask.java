@@ -16,7 +16,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -39,7 +39,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       VeniceWriterFactory writerFactory,
       VeniceConsumerFactory consumerFactory,
       Properties kafkaConsumerProperties,
-      StoreRepository storeRepository,
+      StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,
       Queue<VeniceNotifier> notifiers,
       EventThrottler bandwidthThrottler,
@@ -57,7 +57,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       VeniceServerConfig serverConfig) {
-    super(writerFactory, consumerFactory, kafkaConsumerProperties, storeRepository, storageMetadataService, notifiers,
+    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService, notifiers,
         bandwidthThrottler, recordsThrottler, schemaRepo, storeRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
         isCurrentVersion, hybridStoreConfig, isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
   }

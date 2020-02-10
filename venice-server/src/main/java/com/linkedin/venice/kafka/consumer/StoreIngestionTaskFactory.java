@@ -7,7 +7,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -43,12 +43,12 @@ public class StoreIngestionTaskFactory {
   ) {
     if (isLeaderFollowerModelEnabled) {
       return new LeaderFollowerStoreIngestionTask(builder.veniceWriterFactory, builder.veniceConsumerFactory, kafkaConsumerProperties,
-          builder.storeRepository, builder.storageMetadataService, builder.notifiers, builder.bandwidthThrottler, builder.recordsThrottler,
+          builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers, builder.bandwidthThrottler, builder.recordsThrottler,
           builder.schemaRepo, builder.metadataRepo, builder.topicManager, builder.ingestionStats, builder.versionedDIVStats, builder.storeBufferService, isCurrentVersion,
           hybridStoreConfig, isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
     } else {
       return new OnlineOfflineStoreIngestionTask(builder.veniceWriterFactory, builder.veniceConsumerFactory, kafkaConsumerProperties,
-          builder.storeRepository, builder.storageMetadataService, builder.notifiers, builder.bandwidthThrottler, builder.recordsThrottler,
+          builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers, builder.bandwidthThrottler, builder.recordsThrottler,
           builder.schemaRepo, builder.metadataRepo, builder.topicManager, builder.ingestionStats, builder.versionedDIVStats, builder.storeBufferService, isCurrentVersion,
           hybridStoreConfig, isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
     }
@@ -70,7 +70,7 @@ public class StoreIngestionTaskFactory {
 
     private VeniceWriterFactory veniceWriterFactory;
     private VeniceConsumerFactory veniceConsumerFactory;
-    private StoreRepository storeRepository;
+    private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> notifiers;
     private EventThrottler bandwidthThrottler;
@@ -104,9 +104,9 @@ public class StoreIngestionTaskFactory {
       return this;
     }
 
-    public Builder setStoreRepository(StoreRepository storeRepository) {
+    public Builder setStorageEngineRepository(StorageEngineRepository storageEngineRepository) {
       if (!built) {
-        this.storeRepository = storeRepository;
+        this.storageEngineRepository = storageEngineRepository;
       }
       return this;
     }

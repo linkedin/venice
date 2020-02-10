@@ -6,7 +6,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.storage.DiskHealthCheckService;
@@ -45,7 +45,7 @@ public class ListenerService extends AbstractVeniceService {
   private static int nettyBacklogSize = 1000;
 
   public ListenerService(
-      StoreRepository storeRepository,
+      StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<RoutingDataRepository> routingRepository,
@@ -70,7 +70,7 @@ public class ListenerService extends AbstractVeniceService {
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
     StorageExecutionHandler requestHandler = createRequestHandler(
-        executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
+        executor, computeExecutor, storageEngineRepository, schemaRepository, metadataRetriever, diskHealthService,
         serverConfig.isComputeFastAvroEnabled(), serverConfig.isEnableParallelBatchGet(), serverConfig.getParallelBatchGetChunkSize());
 
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
@@ -119,7 +119,7 @@ public class ListenerService extends AbstractVeniceService {
   protected StorageExecutionHandler createRequestHandler(
       ExecutorService executor,
       ExecutorService computeExecutor,
-      StoreRepository storeRepository,
+      StorageEngineRepository storageEngineRepository,
       ReadOnlySchemaRepository schemaRepository,
       MetadataRetriever metadataRetriever,
       DiskHealthCheckService diskHealthService,
@@ -127,7 +127,7 @@ public class ListenerService extends AbstractVeniceService {
       boolean parallelBatchGetEnabled,
       int parallelBatchGetChunkSize) {
     return new StorageExecutionHandler(
-        executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
+        executor, computeExecutor, storageEngineRepository, schemaRepository, metadataRetriever, diskHealthService,
         fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, serverConfig.isKeyValueProfilingEnabled());
   }
 }

@@ -23,7 +23,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -33,7 +33,6 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
-import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.writer.ChunkAwareCallback;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
@@ -101,7 +100,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceWriterFactory writerFactory,
       VeniceConsumerFactory consumerFactory,
       Properties kafkaConsumerProperties,
-      StoreRepository storeRepository,
+      StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,
       Queue<VeniceNotifier> notifiers,
       EventThrottler bandwidthThrottler,
@@ -119,7 +118,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       VeniceServerConfig serverConfig) {
-    super(writerFactory, consumerFactory, kafkaConsumerProperties, storeRepository, storageMetadataService, notifiers,
+    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService, notifiers,
         bandwidthThrottler, recordsThrottler, schemaRepo, metadataRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
         isCurrentVersion, hybridStoreConfig, isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
@@ -611,7 +610,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           try {
             KafkaKey key = consumerRecord.key();
             KafkaMessageEnvelope envelope = consumerRecord.value();
-            AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+            AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
             switch (MessageType.valueOf(envelope)) {
               case PUT:
                 // Issue an read to get the current value of the key

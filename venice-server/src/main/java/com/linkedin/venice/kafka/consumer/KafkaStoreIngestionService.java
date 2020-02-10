@@ -19,7 +19,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
@@ -101,7 +101,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final int retryStoreRefreshAttempt = 10;
 
 
-  public KafkaStoreIngestionService(StoreRepository storeRepository,
+  public KafkaStoreIngestionService(StorageEngineRepository storageEngineRepository,
                                     VeniceConfigLoader veniceConfigLoader,
                                     StorageMetadataService storageMetadataService,
                                     ReadOnlyStoreRepository metadataRepo,
@@ -169,7 +169,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
         .setVeniceConsumerFactory(veniceConsumerFactory)
-        .setStoreRepository(storeRepository)
+        .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
         .setNotifiersQueue(notifiers)
         .setBandwidthThrottler(consumptionBandwidthThrottler)

@@ -68,7 +68,7 @@ public class VeniceServerTest {
   public void testCheckBeforeJoinCluster() {
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 0)) {
       VeniceServerWrapper server = cluster.getVeniceServers().get(0);
-      StoreRepository repository = server.getVeniceServer().getStorageService().getStoreRepository();
+      StorageEngineRepository repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
       Assert.assertTrue(repository.getAllLocalStorageEngines().isEmpty(), "New node should not have any storage engine.");
 
       // Create a storage engine.
@@ -80,7 +80,7 @@ public class VeniceServerTest {
       // once the server join again.
       cluster.stopVeniceServer(server.getPort());
       cluster.restartVeniceServer(server.getPort());
-      repository = server.getVeniceServer().getStorageService().getStoreRepository();
+      repository = server.getVeniceServer().getStorageService().getStorageEngineRepository();
       Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We should not cleanup the local storage");
 
       // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
@@ -91,7 +91,7 @@ public class VeniceServerTest {
       }
 
       cluster.restartVeniceServer(server.getPort());
-      Assert.assertTrue(server.getVeniceServer().getStorageService().getStoreRepository().getAllLocalStorageEngines().isEmpty(),
+      Assert.assertTrue(server.getVeniceServer().getStorageService().getStorageEngineRepository().getAllLocalStorageEngines().isEmpty(),
           "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
     }
   }

@@ -6,7 +6,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import java.util.Collections;
 import java.util.Comparator;
@@ -18,10 +18,10 @@ import java.util.stream.Collectors;
 public class DaVinciVersionFinder {
   private final ReadOnlyStoreRepository storeRepository;
   private final IngestionService ingestionService;
-  private final StoreRepository storageEngineRepository;
+  private final StorageEngineRepository storageEngineRepository;
   private final String storeName;
 
-  public DaVinciVersionFinder(String storeName, ReadOnlyStoreRepository storeRepository, IngestionService ingestionService, StoreRepository storageEngineRepository) {
+  public DaVinciVersionFinder(String storeName, ReadOnlyStoreRepository storeRepository, IngestionService ingestionService, StorageEngineRepository storageEngineRepository) {
     this.storeName = storeName;
     this.storeRepository = storeRepository;
     this.ingestionService = ingestionService;

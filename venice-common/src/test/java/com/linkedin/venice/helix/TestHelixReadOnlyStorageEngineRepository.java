@@ -23,8 +23,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
-public class TestHelixReadOnlyStoreRepository {
-  private static Logger logger = Logger.getLogger(TestHelixReadOnlyStoreRepository.class);
+public class TestHelixReadOnlyStorageEngineRepository {
+  private static Logger logger = Logger.getLogger(TestHelixReadOnlyStorageEngineRepository.class);
 
   private String zkAddress;
   private ZkClient zkClient;

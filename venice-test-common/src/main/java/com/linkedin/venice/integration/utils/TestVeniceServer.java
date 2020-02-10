@@ -7,11 +7,10 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StorageExecutionHandler;
-import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.storage.DiskHealthCheckService;
@@ -46,7 +45,7 @@ public class TestVeniceServer extends VeniceServer {
 
   @Override
   protected ListenerService createListenerService(
-      StoreRepository storeRepository,
+      StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<RoutingDataRepository> routingRepository,
@@ -58,14 +57,14 @@ public class TestVeniceServer extends VeniceServer {
       DiskHealthCheckService diskHealthService) {
 
     return new ListenerService(
-        storeRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
+        storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
         metricsRepository, sslFactory, accessController, diskHealthService) {
 
       @Override
       protected StorageExecutionHandler createRequestHandler(
           ExecutorService executor,
           ExecutorService computeExecutor,
-          StoreRepository storeRepository,
+          StorageEngineRepository storageEngineRepository,
           ReadOnlySchemaRepository schemaRepository,
           MetadataRetriever metadataRetriever,
           DiskHealthCheckService diskHealthService,
@@ -74,7 +73,7 @@ public class TestVeniceServer extends VeniceServer {
           int parallelBatchGetChunkSize) {
 
         return new StorageExecutionHandler(
-            executor, computeExecutor, storeRepository, schemaRepository, metadataRetriever, diskHealthService,
+            executor, computeExecutor, storageEngineRepository, schemaRepository, metadataRetriever, diskHealthService,
             fastAvroEnabled, parallelBatchGetEnabled, parallelBatchGetChunkSize, false) {
           @Override
           public void channelRead(ChannelHandlerContext context, Object message) throws Exception {

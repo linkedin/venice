@@ -1,7 +1,7 @@
 package com.linkedin.venice.cleaner;
 
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
@@ -29,12 +29,12 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
   private long pollIntervalMs;
   private LeakedResourceCleanerRunnable cleaner;
   private Thread runner;
-  private StoreRepository storeRepository;
+  private StorageEngineRepository storageEngineRepository;
 
   private long checkpointDelayInMinutes = 60;
 
-  public LeakedResourceCleaner(StoreRepository storeRepository, long pollIntervalMs) {
-    this.storeRepository = storeRepository;
+  public LeakedResourceCleaner(StorageEngineRepository storageEngineRepository, long pollIntervalMs) {
+    this.storageEngineRepository = storageEngineRepository;
     this.pollIntervalMs = pollIntervalMs;
   }
 
@@ -44,7 +44,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
 
   @Override
   public boolean startInner() {
-    cleaner = new LeakedResourceCleanerRunnable(storeRepository);
+    cleaner = new LeakedResourceCleanerRunnable(storageEngineRepository);
     runner = new Thread(cleaner);
     runner.setName("Storage Leaked Resource cleaner");
     runner.setDaemon(true);
@@ -59,10 +59,10 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
   }
 
   private class LeakedResourceCleanerRunnable implements Runnable {
-    private StoreRepository storeRepository;
+    private StorageEngineRepository storageEngineRepository;
     private volatile boolean stop = false;
-    public LeakedResourceCleanerRunnable(StoreRepository storeRepository) {
-      this.storeRepository = storeRepository;
+    public LeakedResourceCleanerRunnable(StorageEngineRepository storageEngineRepository) {
+      this.storageEngineRepository = storageEngineRepository;
     }
 
     protected void setStop(){
@@ -76,7 +76,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
         try {
           Thread.sleep(pollIntervalMs);
 
-          List<AbstractStorageEngine> storageEngines = storeRepository.getAllLocalStorageEngines();
+          List<AbstractStorageEngine> storageEngines = storageEngineRepository.getAllLocalStorageEngines();
           for (AbstractStorageEngine storageEngine : storageEngines) {
             // only do checkpoint for BDB stores
             if (storageEngine.getType() == PersistenceType.BDB) {

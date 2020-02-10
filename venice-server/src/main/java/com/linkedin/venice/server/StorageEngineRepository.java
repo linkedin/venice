@@ -17,29 +17,21 @@ import static com.linkedin.venice.meta.PersistenceType.BDB;
  *  A wrapper class that holds all the server's storage engines.
  *
  *  TODO 1. Later need to add stats and monitoring
- *  TODO 2. Rename to StorageEngineRepository, as the current name is too confusing.
  */
-public class StoreRepository {
-
-  private static final Logger logger = Logger.getLogger(StoreRepository.class);
+public class StorageEngineRepository {
+  private static final Logger logger = Logger.getLogger(StorageEngineRepository.class);
 
   /**
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.
    */
-  private final ConcurrentMap<String, AbstractStorageEngine> localStorageEngines;
-
+  private final ConcurrentMap<String, AbstractStorageEngine> localStorageEngines = new ConcurrentHashMap<>();
   private AggVersionedBdbStorageEngineStats stats = null;
-
-
-  public StoreRepository() {
-    this.localStorageEngines = new ConcurrentHashMap<String, AbstractStorageEngine>();
-  }
 
   /*
   Usual CRUD operations on map of Local Storage Engines
    */
   public boolean hasLocalStorageEngine(String name) {
-    return this.localStorageEngines.containsKey(name);
+    return localStorageEngines.containsKey(name);
   }
 
   public AbstractStorageEngine getLocalStorageEngine(String storeName) {
@@ -57,8 +49,7 @@ public class StoreRepository {
     return engine;
   }
 
-  public synchronized void addLocalStorageEngine(AbstractStorageEngine engine)
-      throws VeniceException {
+  public synchronized void addLocalStorageEngine(AbstractStorageEngine engine) {
     AbstractStorageEngine found = localStorageEngines.putIfAbsent(engine.getName(), engine);
     if (found != null) {
       String errorMessage = "Storage Engine '" + engine.getName() + "' has already been initialized.";
@@ -98,16 +89,16 @@ public class StoreRepository {
     VeniceException lastException = null;
     for (Store store : localStorageEngines.values()) {
       String storeName = store.getName();
-      logger.info("Closing storage engine for " + storeName );
+      logger.info("Closing storage engine for " + storeName);
       try {
         store.close();
       } catch (VeniceException e) {
-        logger.error("Error closing storage engine for store" + storeName , e);
+        logger.error("Error closing storage engine for store" + storeName, e);
         lastException = e;
       }
     }
 
-    if(lastException != null) {
+    if (lastException != null) {
       throw lastException;
     }
     logger.info("All stores closed.");

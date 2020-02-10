@@ -7,7 +7,7 @@ import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -51,7 +51,7 @@ public class StorageExecutionHandlerTest {
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
     doReturn(valueBytes).when(testStore).get(partition, ByteBuffer.wrap(keyString.getBytes()));
 
-    StoreRepository testRepository = mock(StoreRepository.class);
+    StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
 
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
@@ -95,7 +95,7 @@ public class StorageExecutionHandlerTest {
 
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
-    StoreRepository testRepository = mock(StoreRepository.class);
+    StorageEngineRepository testRepository = mock(StorageEngineRepository.class);
     ReadOnlySchemaRepository schemaRepo = mock(ReadOnlySchemaRepository.class);
     MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
 
