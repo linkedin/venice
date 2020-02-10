@@ -39,7 +39,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -115,7 +115,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   // Final stuff
   /** storage destination for consumption */
-  protected final StoreRepository storeRepository;
+  protected final StorageEngineRepository storageEngineRepository;
   protected final String topic;
   protected final String storeNameWithoutVersionInfo;
   protected final int storeVersion;
@@ -203,7 +203,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   public StoreIngestionTask(VeniceWriterFactory writerFactory,
                             VeniceConsumerFactory consumerFactory,
                             Properties kafkaConsumerProperties,
-                            StoreRepository storeRepository,
+                            StorageEngineRepository storageEngineRepository,
                             StorageMetadataService storageMetadataService,
                             Queue<VeniceNotifier> notifiers,
                             EventThrottler bandwidthThrottler,
@@ -228,7 +228,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.veniceWriterFactory = writerFactory;
     this.factory = consumerFactory;
     this.kafkaProps = kafkaConsumerProperties;
-    this.storeRepository = storeRepository;
+    this.storageEngineRepository = storageEngineRepository;
     this.storageMetadataService = storageMetadataService;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
@@ -285,7 +285,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       /**
        * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
        */
-      AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+      AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
       if (isHybridMode() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
         this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(this,
                                                                     storageEngine,
@@ -370,7 +370,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     Map<String, String> checkpointedDatabaseInfo = partitionConsumptionState.getOffsetRecord().getDatabaseInfo();
     StoragePartitionConfig storagePartitionConfig = getStoragePartitionConfig(partitionId, sorted, partitionConsumptionState);
     partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
-    storeRepository.getLocalStorageEngine(topic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo);
+    storageEngineRepository.getLocalStorageEngine(topic).beginBatchWrite(storagePartitionConfig, checkpointedDatabaseInfo);
     logger.info("Started batch write to store: " + topic + ", partition: " + partitionId +
         " with checkpointed database info: " + checkpointedDatabaseInfo + " and sorted: " + sorted);
   }
@@ -945,7 +945,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   private void syncOffset(String topic, PartitionConsumptionState ps) {
     int partition = ps.getPartition();
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
     Map<String, String> dbCheckpointingInfo = storageEngine.sync(partition);
     OffsetRecord offsetRecord = ps.getOffsetRecord();
     /**
@@ -1065,7 +1065,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * Indicate the batch push is done, and the internal storage engine needs to do some cleanup.
      */
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
     storageEngine.endBatchWrite(storagePartitionConfig);
 
     /**
@@ -1393,7 +1393,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
     ByteUtils.writeInt(putValue.array(), schemaId, putValue.position());
 
-    writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition, keyBytes, putValue);
+    writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, putValue);
 
     /** We still want to recover the original position to make this function idempotent. */
     putValue.putInt(backupBytes);
@@ -1437,7 +1437,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int partition = consumerRecord.partition();
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
 
     byte[] keyBytes = kafkaKey.getKey();
 
@@ -1494,7 +1494,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         long lookupStartTimeInNS = System.nanoTime();
         boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(topic);
-        GenericRecord originalValue = ComputeChunkingAdapter.get(storeRepository.getLocalStorageEngine(topic), partition,
+        GenericRecord originalValue = ComputeChunkingAdapter.get(storageEngineRepository.getLocalStorageEngine(topic), partition,
             ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
             storageMetadataService.getStoreVersionCompressionStrategy(topic), serverConfig.isComputeFastAvroEnabled(),
             schemaRepo, storeNameWithoutVersionInfo);
@@ -1521,11 +1521,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 //from user's input instead of getting it from store's metadata repo. This causes SN
                 //to der-se of keys a couple of times.
                 //TODO: Remove chunking logic form SN side once Samze VeniceWriter gets fixed.
-                writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition,
+                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition,
                     ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(keyBytes),
                     updateValueWithSchemaId);
               } else {
-                writeToStorageEngine(storeRepository.getLocalStorageEngine(topic), partition, keyBytes, updateValueWithSchemaId);
+                writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, updateValueWithSchemaId);
               }
             },
             (callback, sourceTopicOffset) ->

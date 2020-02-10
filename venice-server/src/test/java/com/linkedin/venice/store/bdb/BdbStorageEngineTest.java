@@ -88,10 +88,10 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
   @Test
   public void testDropPartition() {
     // in this test case, wake up the cleaner thread every 1 second
-    LeakedResourceCleaner cleaner = new LeakedResourceCleaner(service.getStoreRepository(), 1000);
+    LeakedResourceCleaner cleaner = new LeakedResourceCleaner(service.getStorageEngineRepository(), 1000);
     cleaner.setCheckpointDelayInMinutes(-1L);
     cleaner.start();
-    AbstractStorageEngine storageEngine = service.getStoreRepository().getLocalStorageEngine(STORE_NAME);
+    AbstractStorageEngine storageEngine = service.getStorageEngineRepository().getLocalStorageEngine(STORE_NAME);
 
     // put roughly 100MB data in partition 0
     putRandomData(randomRecordNum, 0);

@@ -5,7 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
@@ -33,12 +33,12 @@ import static com.linkedin.venice.meta.PersistenceType.*;
  * Storage interface to Venice Server. Manages creation and deletion of of Storage engines
  * and Partitions.
  *
- * Use StoreRepository, if read only access is desired for the Storage Engines.
+ * Use StorageEngineRepository, if read only access is desired for the Storage Engines.
  */
 public class StorageService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(StorageService.class);
 
-  private final StoreRepository storeRepository;
+  private final StorageEngineRepository storageEngineRepository;
   private final VeniceServerConfig serverConfig;
 
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
@@ -50,8 +50,8 @@ public class StorageService extends AbstractVeniceService {
   public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter,
       AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats) {
     this.serverConfig = configLoader.getVeniceServerConfig();
-    this.storeRepository = new StoreRepository();
-    this.storeRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
+    this.storageEngineRepository = new StorageEngineRepository();
+    this.storageEngineRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
     this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
     this.storeVersionStateDeleter = storeVersionStateDeleter;
@@ -144,7 +144,7 @@ public class StorageService extends AbstractVeniceService {
    */
   private synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
     String storeName = storeConfig.getStoreName();
-    AbstractStorageEngine engine = storeRepository.getLocalStorageEngine(storeName);
+    AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(storeName);
     if (engine != null) {
       return engine;
     }
@@ -159,7 +159,7 @@ public class StorageService extends AbstractVeniceService {
     logger.info("Creating/Opening Storage Engine " + storeName + " with type: " + storeConfig.getStorePersistenceType());
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     engine = factory.getStore(storeConfig);
-    storeRepository.addLocalStorageEngine(engine);
+    storageEngineRepository.addLocalStorageEngine(engine);
     // Setup storage engine stats
     aggVersionedStorageEngineStats.setStorageEngine(storeName, engine);
 
@@ -173,7 +173,7 @@ public class StorageService extends AbstractVeniceService {
     String storeName = storeConfig.getStoreName(); // This is the Kafka topic name
 
     partitionAssignmentRepository.dropPartition(storeName , partitionId);
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeName);
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(storeName);
     if (storageEngine == null) {
       logger.info(storeName + " Store could not be located, ignoring the remove partition message.");
       return;
@@ -191,7 +191,7 @@ public class StorageService extends AbstractVeniceService {
       factory.removeStorageEngine(storageEngine);
 
       // Clean up the state
-      storeRepository.removeLocalStorageEngine(storeName);
+      storageEngineRepository.removeLocalStorageEngine(storeName);
 
       // Clean up the metadata
       storeVersionStateDeleter.accept(storeName);
@@ -203,7 +203,7 @@ public class StorageService extends AbstractVeniceService {
     // TODO Just clean the data dir in case loading and deleting is too slow.
     restoreAllStores(configLoader);
     logger.info("Start cleaning up all the stores persisted previously");
-    storeRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
+    storageEngineRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
       String storeName = storageEngine.getName();
       logger.info("Start deleting store: " + storeName);
       Set<Integer> partitionIds = storageEngine.getPartitionIds();
@@ -215,8 +215,8 @@ public class StorageService extends AbstractVeniceService {
     logger.info("Done cleaning up all the stores persisted previously");
   }
 
-  public StoreRepository getStoreRepository() {
-    return storeRepository;
+  public StorageEngineRepository getStorageEngineRepository() {
+    return storageEngineRepository;
   }
 
   @Override
@@ -233,7 +233,7 @@ public class StorageService extends AbstractVeniceService {
       throws VeniceException {
     VeniceException lastException = null;
     try {
-      this.storeRepository.close();
+      this.storageEngineRepository.close();
     } catch (VeniceException e) {
       lastException = e;
     }

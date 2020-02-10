@@ -12,7 +12,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
@@ -33,7 +33,7 @@ import static org.testng.Assert.*;
 
 
 public class KafkaStoreIngestionServiceTest {
-  private StoreRepository mockStoreRepository;
+  private StorageEngineRepository mockStorageEngineRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
   private StorageMetadataService storageMetadataService;
   private ReadOnlyStoreRepository mockmetadataRepo;
@@ -43,7 +43,7 @@ public class KafkaStoreIngestionServiceTest {
 
   @BeforeClass
   public void setup() {
-    mockStoreRepository = mock(StoreRepository.class);
+    mockStorageEngineRepository = mock(StorageEngineRepository.class);
     storageMetadataService = mock(StorageMetadataService.class);
     mockmetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
@@ -75,7 +75,7 @@ public class KafkaStoreIngestionServiceTest {
  @Test
  public void testDisableMetricsEmission() {
    kafkaStoreIngestionService = new KafkaStoreIngestionService(
-       mockStoreRepository,
+       mockStorageEngineRepository,
        mockVeniceConfigLoader,
        storageMetadataService,
        mockmetadataRepo,
@@ -139,7 +139,7 @@ public class KafkaStoreIngestionServiceTest {
     // Without starting the ingestion service test getIngestingTopicsWithVersionStatusNotOnline would return the correct
     // topics under different scenarios.
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        mockStoreRepository,
+        mockStorageEngineRepository,
         mockVeniceConfigLoader,
         storageMetadataService,
         mockmetadataRepo,

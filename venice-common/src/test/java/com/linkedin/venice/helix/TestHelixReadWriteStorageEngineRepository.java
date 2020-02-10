@@ -17,7 +17,7 @@ import org.testng.annotations.Test;
  * Test cases for HelixReadWriteStoreRepository. All the tests depend on Zookeeper. Please ensure there is a zookeeper
  * available for testing.
  */
-public class TestHelixReadWriteStoreRepository {
+public class TestHelixReadWriteStorageEngineRepository {
     private String zkAddress;
     private ZkClient zkClient;
     private String cluster = "test-metadata-cluster";

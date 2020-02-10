@@ -131,7 +131,7 @@ public class VeniceServer {
 
   /**
    * Instantiate all known services. Most of the services in this method intake:
-   * 1. StoreRepository - that maps store to appropriate storage engine instance
+   * 1. StorageEngineRepository - that maps store to appropriate storage engine instance
    * 2. VeniceConfig - which contains configs related to this cluster
    * 3. StoreNameToConfigsMap - which contains store specific configs
    * 4. PartitionAssignmentRepository - which contains how partitions for each store are mapped to nodes in the
@@ -169,7 +169,7 @@ public class VeniceServer {
 
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
-        storageService.getStoreRepository(),
+        storageService.getStorageEngineRepository(),
         veniceConfigLoader,
         storageMetadataService,
         metadataRepo,
@@ -199,7 +199,7 @@ public class VeniceServer {
     });
 
     // create and add ListenerServer for handling GET requests
-    ListenerService listenerService = createListenerService(storageService.getStoreRepository(), metadataRepo, schemaRepo,
+    ListenerService listenerService = createListenerService(storageService.getStorageEngineRepository(), metadataRepo, schemaRepo,
         routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory, accessController, diskHealthCheckService);
     services.add(listenerService);
 
@@ -222,7 +222,7 @@ public class VeniceServer {
      * the cleanup service can be extended to clean up any resources, but for now, we only use it to do BDB clean up.
      */
     if (serverConfig.getBdbServerConfig().isBdbDroppedDbCleanUpEnabled()) {
-      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStoreRepository(), serverConfig.getStorageLeakedResourceCleanUpIntervalInMS());
+      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStorageEngineRepository(), serverConfig.getStorageLeakedResourceCleanUpIntervalInMS());
       services.add(leakedResourceCleaner);
     }
 
@@ -367,7 +367,7 @@ public class VeniceServer {
   }
 
   protected ListenerService createListenerService(
-      StoreRepository storeRepository,
+      StorageEngineRepository storageEngineRepository,
       ReadOnlyStoreRepository storeMetadataRepository,
       ReadOnlySchemaRepository schemaRepository,
       CompletableFuture<RoutingDataRepository> routingRepository,
@@ -378,7 +378,7 @@ public class VeniceServer {
       Optional<StaticAccessController> accessController,
       DiskHealthCheckService diskHealthService) {
     return new ListenerService(
-        storeRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
+        storageEngineRepository, storeMetadataRepository, schemaRepository, routingRepository, metadataRetriever, serverConfig,
         metricsRepository, sslFactory, accessController, diskHealthService);
   }
 
