@@ -266,7 +266,7 @@ public class TestHelixReadWriteSchemaRepository {
         "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
         "                }\n" +
         "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
+        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" +
         "           ]\n" +
         "        }";
     String valueSchemaStr2 = "{\n" +
@@ -281,7 +281,7 @@ public class TestHelixReadWriteSchemaRepository {
         "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
         "                }\n" +
         "              },\n" +
-        "               {\"name\": \"salary\", \"type\": \"long\"}\n" +
+        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" +
         "           ]\n" +
         "        }";
     createStore(storeName);
@@ -293,7 +293,55 @@ public class TestHelixReadWriteSchemaRepository {
     Assert.assertNotEquals(entry2.getId(), entry1.getId());
     Assert.assertEquals(entry3.getId(), DUPLICATE_VALUE_SCHEMA_CODE);
     Assert.assertEquals(schemaRepo.getValueSchemas(storeName).size(), 2);
+    Assert.assertEquals(2, schemaRepo.getValueSchemaId(storeName, valueSchemaStr2));
+
     Assert.assertEquals(entry2.getSchema().getField("name").doc(), "name field updated");
+  }
+
+  @Test
+  public void testAddDuplicateValueSchemaDefaultValue() {
+    String storeName = "test_store1";
+    String valueSchemaStr1 = "{\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"KeyRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
+        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
+        "               {\n" +
+        "                 \"name\": \"Suit\", \n" +
+        "                 \"type\": {\n" +
+        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
+        "                }\n" +
+        "              },\n" +
+        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 123}\n" +
+        "           ]\n" +
+        "        }";
+    String valueSchemaStr2 = "{\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"KeyRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "               {\"name\": \"name\", \"type\": \"string\", \"doc\": \"name field\"},\n" +
+        "               {\"name\": \"company\", \"type\": \"string\"},\n" +
+        "               {\n" +
+        "                 \"name\": \"Suit\", \n" +
+        "                 \"type\": {\n" +
+        "                        \"name\": \"SuitType\", \"type\": \"enum\", \"symbols\": [\"SPADES\", \"DIAMONDS\", \"HEART\", \"CLUBS\"]\n" +
+        "                }\n" +
+        "              },\n" +
+        "               {\"name\": \"salary\", \"type\": \"long\", \"default\" : 1234}\n" +
+        "           ]\n" +
+        "        }";
+    createStore(storeName);
+    SchemaEntry entry1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    // Add the same value schema
+    SchemaEntry entry2 = schemaRepo.addValueSchema(storeName, valueSchemaStr2);
+    SchemaEntry entry3 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+
+    Assert.assertNotEquals(entry2.getId(), entry1.getId());
+    Assert.assertEquals(entry3.getId(), DUPLICATE_VALUE_SCHEMA_CODE);
+    Assert.assertEquals(schemaRepo.getValueSchemas(storeName).size(), 2);
+    Assert.assertEquals(2, schemaRepo.getValueSchemaId(storeName, valueSchemaStr2));
+    Assert.assertEquals(1, schemaRepo.getValueSchemaId(storeName, valueSchemaStr1));
   }
 
   @Test(expectedExceptions = SchemaParseException.class)

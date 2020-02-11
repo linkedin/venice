@@ -32,7 +32,7 @@ public class AvroSchemaUtils {
    * @param schemas to be filtered.
    * @return
    */
-  public static List<SchemaEntry> filterCanonicalizedSchemas (SchemaEntry referenceSchema,
+  public static List<SchemaEntry> filterCanonicalizedSchemas(SchemaEntry referenceSchema,
       Collection<SchemaEntry> schemas) {
     List<SchemaEntry> results = new ArrayList<>();
     String cannonicalizedReferenceSchema = LinkedinAvroMigrationHelper.toParsingForm(referenceSchema.getSchema());
@@ -49,11 +49,13 @@ public class AvroSchemaUtils {
    * @param schemas
    * @return
    */
-  public static List<SchemaEntry> filterSchemas (SchemaEntry referenceSchema, Collection<SchemaEntry> schemas) {
+  public static List<SchemaEntry> filterSchemas(SchemaEntry referenceSchema, Collection<SchemaEntry> schemas) {
     List<SchemaEntry> results = new ArrayList<>();
     for (SchemaEntry entry : schemas) {
-      if (referenceSchema.getSchema().equals(entry.getSchema()))
+      if (referenceSchema.getSchema().equals(entry.getSchema())
+          && !hasDocFieldChange(referenceSchema.getSchema(), entry.getSchema())) {
         results.add(entry);
+      }
     }
     return results;
   }
