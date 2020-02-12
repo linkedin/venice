@@ -2599,8 +2599,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // If the new superset schema does not exist in the schema repo, add it
         SchemaEntry existingSchema = schemaRepository.getValueSchema(storeName, supersetSchemaId);
         if (existingSchema != null) {
-            if (AvroSchemaUtils.compareSchemaIgnoreFieldOrder(existingSchema.getSchema(), Schema.parse(supersetSchema))) {
-                throw new VeniceException("Existing schema with id " + existingSchema.getId() + "does not match with new schema " + supersetSchema);
+            if (!AvroSchemaUtils.compareSchemaIgnoreFieldOrder(existingSchema.getSchema(), Schema.parse(supersetSchema))) {
+                throw new VeniceException("Existing schema with id " + existingSchema.getId() + " does not match with new schema " + supersetSchema);
             }
         } else {
             logger.info("Adding superset schema: " + supersetSchema + " for store: " + storeName);
