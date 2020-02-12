@@ -37,7 +37,7 @@ public class TestSuperSetSchemaRegistration {
      * @return the Schema object for the avro file
      * @throws IOException
      */
-    private static Schema writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
+    private static Schema writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue1, boolean addFieldWithDefaultValue2) throws IOException {
       String schemaStr = "{\"namespace\": \"example.avro\",\n" +
           " \"type\": \"record\",\n" +
           " \"name\": \"User\",\n" +
@@ -50,8 +50,11 @@ public class TestSuperSetSchemaRegistration {
           "           \"name\": \"ValueRecord\",\n" +
           "           \"fields\" : [\n" +
           "              {\"name\": \"favorite_number\", \"type\": \"int\", \"default\" : 0}\n";
-      if (addFieldWithDefaultValue) {
+      if (addFieldWithDefaultValue1) {
         schemaStr += ",{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"}\n";
+      }
+      if (addFieldWithDefaultValue2) {
+        schemaStr += ",{\"name\": \"favorite_food\", \"type\": \"string\", \"default\": \"chinese\"}\n";
       }
       schemaStr +=
           "           ]\n" +
@@ -71,8 +74,11 @@ public class TestSuperSetSchemaRegistration {
         user.put("id", Integer.toString(i));
         GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
         oldValue.put("favorite_number", i);
-        if (addFieldWithDefaultValue) {
+        if (addFieldWithDefaultValue1) {
           oldValue.put("favorite_color", "red");
+        }
+        if (addFieldWithDefaultValue2) {
+          oldValue.put("favorite_food", "italian");
         }
         user.put("value", oldValue);
         dataFileWriter.append(user);
@@ -105,7 +111,7 @@ public class TestSuperSetSchemaRegistration {
       File inputDir = TestUtils.getTempDataDirectory();
       String storeName = TestUtils.getUniqueString("store");
 
-      Schema recordSchema = writeComplicatedAvroFileWithUserSchema(inputDir, false);
+      Schema recordSchema = writeComplicatedAvroFileWithUserSchema(inputDir, false, true);
       Schema keySchema = recordSchema.getField("id").schema();
       Schema valueSchema = recordSchema.getField("value").schema();
 
@@ -123,12 +129,19 @@ public class TestSuperSetSchemaRegistration {
       params.setAutoSchemaPushJobEnabled(true);
       veniceCluster.updateStore(storeName, params);
 
-      writeComplicatedAvroFileWithUserSchema(inputDir, true);
+      writeComplicatedAvroFileWithUserSchema(inputDir, true, true);
       props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
 
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
+      KafkaPushJob job = new KafkaPushJob("Test Batch push job # 1", props);
+      job.run();
+
+      writeComplicatedAvroFileWithUserSchema(inputDir, false, false);
+      props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+      props.setProperty(VALUE_FIELD_PROP, "value");
+
+      job = new KafkaPushJob("Test Batch push job # 2", props);
       job.run();
     }
 }
