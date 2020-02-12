@@ -357,9 +357,9 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.enableReads),
         Optional.of(message.enableWrites),
         Optional.of(message.partitionNum),
-        Optional.of(message.partitionerConfig.partitionerClass),
-        Optional.of(message.partitionerConfig.partitionerParams),
-        Optional.of(message.partitionerConfig.amplificationFactor),
+        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.partitionerClass),
+        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.partitionerParams),
+        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.amplificationFactor),
         Optional.of(message.storageQuotaInByte),
         Optional.of(message.hybridStoreOverheadBypass),
         Optional.of(message.readQuotaInCU),
@@ -391,15 +391,9 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.schemaAutoRegisterFromPushJobEnabled),
         Optional.of(message.superSetSchemaAutoGenerationForReadComputeEnabled),
         Optional.of(message.hybridStoreDiskQuotaEnabled),
-        message.ETLStoreConfig == null
-            ? Optional.empty()
-            : Optional.of(message.ETLStoreConfig.regularVersionETLEnabled),
-        message.ETLStoreConfig == null
-            ? Optional.empty()
-            : Optional.of(message.ETLStoreConfig.futureVersionETLEnabled),
-        message.ETLStoreConfig == null
-            ? Optional.empty()
-            : Optional.of(message.ETLStoreConfig.etledUserProxyAccount.toString()));
+        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.regularVersionETLEnabled),
+        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.futureVersionETLEnabled),
+        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.etledUserProxyAccount.toString()));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
