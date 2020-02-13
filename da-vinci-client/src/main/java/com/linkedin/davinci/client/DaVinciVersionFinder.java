@@ -7,9 +7,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
-
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -31,7 +31,7 @@ public class DaVinciVersionFinder {
   }
 
   // Get latest available version of a specific partition this DaVinci client subscribes to.
-  public int getLatestVersion(int partitionId) throws VeniceException {
+  public Optional<Version> getLatestVersion(int partitionId) throws VeniceException {
     List<Version> storeVersions = getSortedDaVinciStoreVersionList();
     for (Version version : storeVersions) {
       AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(version.kafkaTopicName());
@@ -41,14 +41,14 @@ public class DaVinciVersionFinder {
       }
       // Check if this partition is ready.
       if ((ingestionController.isPartitionReady(storeName, version.getNumber(), partitionId))) {
-        return version.getNumber();
+        return Optional.of(version);
       }
     }
-    return Store.NON_EXISTING_VERSION;
+    return Optional.empty();
   }
 
   // Get latest available version on all partitions this DaVinci client subscribes to.
-  public int getLatestVersion(List<Integer> subscribedPartitions) throws VeniceException {
+  public Optional<Version> getLatestVersion(Set<Integer> subscribedPartitions) throws VeniceException {
     List<Version> storeVersions = getSortedDaVinciStoreVersionList();
     for (Version version : storeVersions) {
       AbstractStorageEngine engine = storageEngineRepository.getLocalStorageEngine(version.kafkaTopicName());
@@ -61,10 +61,10 @@ public class DaVinciVersionFinder {
       // List of partitions of this version that are ready to serve.
       Set<Integer> readyToServePartitions = ingestionController.getReadyPartitions(storeName, version.getNumber());
       if (readyToServePartitions.containsAll(subscribedPartitions) && localPartitions.containsAll(subscribedPartitions)) {
-        return version.getNumber();
+        return Optional.of(version);
       }
     }
-    return Store.NON_EXISTING_VERSION;
+    return Optional.empty();
   }
 
   private List<Version> getSortedDaVinciStoreVersionList() throws VeniceException {
