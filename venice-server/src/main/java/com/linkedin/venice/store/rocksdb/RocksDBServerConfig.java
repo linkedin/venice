@@ -17,8 +17,19 @@ public class RocksDBServerConfig {
 
   /**
    * Thread pool being used by all the RocksDB databases.
+   * https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide
+   *
+   * The maximum number of concurrent flush operations. It is usually good enough to set this to 1.
    */
   public static final String ROCKSDB_ENV_FLUSH_POOL_SIZE = "rocksdb.env.flush.pool.size";
+  /**
+   * Thread pool being used by all the RocksDB databases.
+   * https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide
+   *
+   * The maximum number of concurrent background compactions. The default is 1, but to fully utilize your
+   * CPU and storage you might want to increase this to the minimum of (the number of cores in the system, the disk throughput divided
+   * by the average throughput of one compaction thread).
+   */
   public static final String ROCKSDB_ENV_COMPACTION_POOL_SIZE = "rocksdb.env.compaction.pool.size";
 
   /**
@@ -101,6 +112,13 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_STATISTICS_ENABLED = "rocksdb.statistics.enabled";
 
+  /**
+   * https://github.com/facebook/rocksdb/wiki/Write-Buffer-Manager
+   *
+   * The total memory usage cap of all the memtables for every RocksDB database.
+   */
+  public static final String ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES = "rocksdb.total.memtable.usage.cap.in.bytes";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -132,14 +150,15 @@ public class RocksDBServerConfig {
   private final int rocksDBHugePageTlbSize;
   private final int rocksDBBloomBitsPerKey;
 
+  private final long rocksDBTotalMemtableUsageCapInBytes;
 
   public RocksDBServerConfig(VeniceProperties props) {
 
     // Do not use Direct IO for reads by default
     this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS,false);
 
-    this.rocksDBEnvFlushPoolSize = props.getInt(ROCKSDB_ENV_FLUSH_POOL_SIZE, 4);
-    this.rocksDBEnvCompactionPoolSize = props.getInt(ROCKSDB_ENV_COMPACTION_POOL_SIZE, 4);
+    this.rocksDBEnvFlushPoolSize = props.getInt(ROCKSDB_ENV_FLUSH_POOL_SIZE, 1);
+    this.rocksDBEnvCompactionPoolSize = props.getInt(ROCKSDB_ENV_COMPACTION_POOL_SIZE, 8);
 
     String compressionType = props.getString(ROCKSDB_OPTIONS_COMPRESSION_TYPE, CompressionType.NO_COMPRESSION.name());
     try {
@@ -191,6 +210,8 @@ public class RocksDBServerConfig {
     this.rocksDBStoreIndexInFile = props.getBoolean(ROCKSDB_STORE_INDEX_IN_FILE, true);
     this.rocksDBHugePageTlbSize = props.getInt(ROCKSDB_HUGE_PAGE_TLB_SIZE, 0);
     this.rocksDBBloomBitsPerKey = props.getInt(ROCKSDB_BLOOM_BITS_PER_KEY, 10);
+
+    this.rocksDBTotalMemtableUsageCapInBytes = props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024l); // 2GB
   }
 
   public boolean getRocksDBUseDirectReads() {
@@ -274,5 +295,10 @@ public class RocksDBServerConfig {
   }
   public int getRocksDBBloomBitsPerKey() {
     return rocksDBBloomBitsPerKey;
+  }
+
+
+  public long getRocksDBTotalMemtableUsageCapInBytes() {
+    return rocksDBTotalMemtableUsageCapInBytes;
   }
 }
