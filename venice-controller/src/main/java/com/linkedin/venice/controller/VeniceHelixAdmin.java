@@ -1890,10 +1890,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } else if (desiredPartitionCount < clusterConfig.getNumberOfPartition()) {
                     desiredPartitionCount = clusterConfig.getNumberOfPartition();
                 }
-                Optional<Version> version = store.getVersion(store.getCurrentVersion());
-                if (version.isPresent()) {
-                    version.get().setPartitionCount(desiredPartitionCount);
-                }
+                // Do not update the partitionCount on the store.version as version config is immutable. The version.getPartitionCount()
+                // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have any effect.
                 store.setPartitionCount(desiredPartitionCount);
                 return store;
             }
