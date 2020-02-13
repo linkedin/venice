@@ -3,6 +3,7 @@ package com.linkedin.venice.store.rocksdb;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
@@ -22,10 +23,12 @@ import org.rocksdb.HistogramType;
 import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
+import org.rocksdb.Priority;
 import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
+import org.rocksdb.SstFileManager;
 import org.rocksdb.Statistics;
-
-import static org.rocksdb.Env.*;
+import org.rocksdb.WriteBufferManager;
 
 
 public class RocksDBStorageEngineFactory extends StorageEngineFactory {
@@ -52,8 +55,20 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
   private final Map<String, RocksDBStorageEngine> storageEngineMap = new HashMap<>();
   private final Map<String, Options> storageEngineOptions = new HashMap<>();
 
-
   private final Optional<Statistics> aggStatistics;
+
+  /**
+   * https://github.com/facebook/rocksdb/wiki/Write-Buffer-Manager
+   * Setup write buffer manager to limit the total memtable usages to block cache
+   */
+  private final WriteBufferManager writeBufferManager;
+
+  /**
+   * A default SstFileManager object is created, which creates a DeleteScheduler object which in turn
+   * creates a background thread to handle file deletion.
+   * We would like to share the same SstFileManager across all the databases.
+   */
+  private final SstFileManager sstFileManager;
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
@@ -63,12 +78,15 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
      * Shared {@link Env} allows us to share the flush thread pool and compaction thread pool.
      */
     this.env = Env.getDefault();
-    // Make them configurable
-    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), FLUSH_POOL);
-    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), COMPACTION_POOL);
+    /**
+     * https://github.com/facebook/rocksdb/wiki/RocksDB-Tuning-Guide
+     * Flush threads are in the HIGH priority pool, while compaction threads are in the LOW priority pool
+     */
+    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvFlushPoolSize(), Priority.HIGH);
+    this.env.setBackgroundThreads(rocksDBServerConfig.getRocksDBEnvCompactionPoolSize(), Priority.LOW);
 
     // Shared cache across all the RocksDB databases
-    sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
+    this.sharedCache = new LRUCache(rocksDBServerConfig.getRocksDBBlockCacheSizeInBytes(),
                                rocksDBServerConfig.getRocksDBBlockCacheShardBits(),
                                rocksDBServerConfig.getRocksDBBlockCacheStrictCapacityLimit());
 
@@ -77,6 +95,15 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       this.aggStatistics = Optional.of(new Statistics(EnumSet.allOf(HistogramType.class)));
     } else {
       this.aggStatistics = Optional.empty();
+    }
+
+    // Write buffer manager across all the RocksDB databases
+    // The memory usage of all the memtables will cost to the shared block cache
+    this.writeBufferManager = new WriteBufferManager(rocksDBServerConfig.getRocksDBTotalMemtableUsageCapInBytes(), this.sharedCache);
+    try {
+      this.sstFileManager = new SstFileManager(this.env);
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
   }
 
@@ -97,6 +124,15 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     // Inherit Direct IO for read settings from globals
     newOptions.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+
+    newOptions.setWriteBufferManager(writeBufferManager);
+    newOptions.setSstFileManager(sstFileManager);
+    /**
+     * Disable the stat dump threads, which will create excessive threads, which will eventually crash
+     * storage node.
+     */
+    newOptions.setStatsDumpPeriodSec(0);
+    newOptions.setStatsPersistPeriodSec(0);
 
     aggStatistics.ifPresent(stat -> newOptions.setStatistics(stat));
 
@@ -175,6 +211,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     });
     storageEngineMap.clear();
     storageEngineOptions.clear();
+    sharedCache.close();
+    writeBufferManager.close();
     this.env.close();
     LOGGER.info("Closed RocksDBStorageEngineFactory");
   }
