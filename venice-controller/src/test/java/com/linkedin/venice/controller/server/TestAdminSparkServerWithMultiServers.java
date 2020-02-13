@@ -69,6 +69,20 @@ public class TestAdminSparkServerWithMultiServers {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientShouldSendEmptyPushAndWait() {
+    // Create a new store
+    String storeName = cluster.getNewStore(TestUtils.getUniqueString("venice-store")).getName();
+    // Send an empty push
+    try{
+      ControllerResponse response = controllerClient.sendEmptyPushAndWait(storeName,
+          TestUtils.getUniqueString("emptyPushId"), 10000, TEST_TIMEOUT);
+      Assert.assertFalse(response.isError(), "Received error response on empty push:" + response.getError());
+    } catch(Exception e) {
+      Assert.fail("Could not send empty push!!", e);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void requestTopicIsIdempotent() {
     HashMap<String, Version.PushType> storeToType = new HashMap<>(2);
     storeToType.put(TestUtils.getUniqueString("BatchStore"), Version.PushType.BATCH);
