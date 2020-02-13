@@ -91,7 +91,7 @@ public class ClientFactory {
         clientConfig.getD2ZkTimeout());
   }
 
-  private static TransportClient getTransportClient(ClientConfig clientConfig) {
+  public static TransportClient getTransportClient(ClientConfig clientConfig) {
     String bootstrapUrl = clientConfig.getVeniceURL();
 
     if (clientConfig.isD2Routing()) {

@@ -23,12 +23,12 @@ public class D2ServiceDiscovery {
   private final Time time = new SystemTime(); // TODO: Make it injectable if we need to control time via tests.
 
   public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
-    String d2ServiceNameForStore = discoverD2Service(client, storeName);
-    client.setServiceName(d2ServiceNameForStore);
+    D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = discoverD2Service(client, storeName);
+    client.setServiceName(d2ServiceDiscoveryResponse.getD2Service());
     return client;
   }
 
-  protected String discoverD2Service(D2TransportClient client, String storeName) {
+  public D2ServiceDiscoveryResponse discoverD2Service(D2TransportClient client, String storeName) {
     try {
       TransportClientResponse response = null;
       int currentAttempt = 0;
@@ -55,9 +55,8 @@ public class D2ServiceDiscovery {
         throw new VeniceClientException(
             "Could not found d2 service for store: " + storeName + ". " + d2ServiceDiscoveryResponse.getError());
       }
-      String d2Service = d2ServiceDiscoveryResponse.getD2Service();
-      LOGGER.info("Found d2 service: " + d2Service + " for store: " + storeName);
-      return d2Service;
+      LOGGER.info("Found d2 service: " + d2ServiceDiscoveryResponse.getD2Service() + " for store: " + storeName);
+      return d2ServiceDiscoveryResponse;
     } catch (Exception e) {
       throw new VeniceClientException("Could not found d2 service for store: " + storeName, e);
     }
