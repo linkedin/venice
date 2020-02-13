@@ -119,7 +119,12 @@ public class Segment {
     return this.aggregates;
   }
 
-  public byte[] getCheckSumState() {
+  /**
+   * `synchronized` keyword will guarantee the caller will always get the checksum after processing
+   * the full record in function: {@link #addToCheckSum(KafkaKey, KafkaMessageEnvelope)}.
+   * @return
+   */
+  public synchronized byte[] getCheckSumState() {
     if (this.checkSum.isPresent()) {
       return this.checkSum.get().getEncodedState();
     } else {
@@ -165,7 +170,7 @@ public class Segment {
    *         false otherwise (which happens when hitting an {@link ControlMessageType#END_OF_SEGMENT}).
    * @throws UnsupportedMessageTypeException if the {@link MessageType} or {@link ControlMessageType} is unknown.
    */
-  public boolean addToCheckSum(KafkaKey key, KafkaMessageEnvelope messageEnvelope) throws
+  public synchronized boolean addToCheckSum(KafkaKey key, KafkaMessageEnvelope messageEnvelope) throws
                                                                                    UnsupportedMessageTypeException {
     // Some of the instances could be re-used and clobbered in a single-threaded setting. TODO: Explore GC tuning later.
     switch (MessageType.valueOf(messageEnvelope)) {
@@ -247,7 +252,7 @@ public class Segment {
     }
   }
 
-  public byte[] getFinalCheckSum() {
+  public synchronized byte[] getFinalCheckSum() {
     if (this.checkSum.isPresent()) {
       return checkSum.get().getCheckSum();
     } else {

@@ -593,8 +593,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         processMessages();
       }
 
-      // If the ingestion task is stopped gracefully (server stops or kill push job), persist processed offset to disk
+      // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
       for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
+        /**
+         * Now, there are two threads, which could potentially trigger {@link #syncOffset(String, PartitionConsumptionState)}:
+         * 1. {@link com.linkedin.venice.kafka.consumer.StoreBufferService.StoreBufferDrainer}, which will checkpoint
+         *    periodically;
+         * 2. The main thread of ingestion task here, which will checkpoint when gracefully shutting down;
+         *
+         * We would like to make sure the syncOffset invocation is sequential with the message processing, so here
+         * will try to drain all the messages before checkpointing.
+         * Here is the detail::
+         * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
+         * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
+         * hasn't been applied yet, when checkpointing happens in current thread; and you can check the returned
+         * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)},
+         * where `segment` could be changed by another message independent from current `offsetRecord`;
+         */
+        storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partitionConsumptionState.getPartition());
         syncOffset(topic, partitionConsumptionState);
       }
 
