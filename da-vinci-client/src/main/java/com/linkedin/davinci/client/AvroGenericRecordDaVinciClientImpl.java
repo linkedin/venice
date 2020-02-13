@@ -19,7 +19,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -79,6 +78,8 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   private RecordSerializer<K> keySerializer;
   private DaVinciVersionFinder daVinciVersionFinder;
   private D2TransportClient d2TransportClient;
+  private DaVinciPartitioner partitioner;
+  private Set<Integer> subscribedPartitions;
 
   public AvroGenericRecordDaVinciClientImpl(
       VeniceConfigLoader veniceConfigLoader,
@@ -113,28 +114,32 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     if (!isStarted()) {
       throw new VeniceClientException("Client is not started.");
     }
-    ByteBuffer keyBuffer = ByteBuffer.wrap(keySerializer.serialize(key));
-    int partition = getPartition(key);
-    int version = daVinciVersionFinder.getLatestVersion(partition);
-    if (version == Store.NON_EXISTING_VERSION) {
-      throw new VeniceClientException("Failed to find a ready store version.");
-    }
-    String topic = Version.composeKafkaTopic(getStoreName(), version);
+
+    /**
+     * Here we don't know which partition this key belongs to in a version in advance, so we must make sure all partitions this
+     * client subscribes to are available for this latest version.
+     */
+    Version version = daVinciVersionFinder
+        .getLatestVersion(subscribedPartitions)
+        .orElseThrow(() -> new VeniceClientException("Failed to find a ready store version."));
+    String topic = version.kafkaTopicName();
     AbstractStorageEngine store = storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
     if (store == null) {
       throw new VeniceClientException("Failed to find a ready store version.");
+    }
+    ByteBuffer keyBuffer = ByteBuffer.wrap(keySerializer.serialize(key));
+    int partitionId = partitioner.getPartitionId(keyBuffer, version.getPartitionCount());
+    // Make sure the partition id is within client's subscription.
+    if (!subscribedPartitions.contains(partitionId)) {
+      throw new VeniceClientException("DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
     }
     boolean isChunked = kafkaStoreIngestionService.isStoreVersionChunked(topic);
     CompressionStrategy compressionStrategy = kafkaStoreIngestionService.getStoreVersionCompressionStrategy(topic);
     Schema latestValueSchema = getLatestValueSchema();
     GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
     valueRecord =
-        ComputeChunkingAdapter.get(store, partition, keyBuffer, isChunked, valueRecord, binaryDecoder, null, compressionStrategy, useFastAvro, schemaRepository, getStoreName());
+        ComputeChunkingAdapter.get(store, partitionId, keyBuffer, isChunked, valueRecord, binaryDecoder, null, compressionStrategy, useFastAvro, schemaRepository, getStoreName());
     return CompletableFuture.completedFuture(valueRecord);
-  }
-
-  private int getPartition(K key) {
-    return 0;
   }
 
   @Override
@@ -194,6 +199,7 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     this.daVinciVersionFinder = new DaVinciVersionFinder(
         getStoreName(), metadataReposotory, null, storageService.getStorageEngineRepository()
     );
+    this.partitioner = new DaVinciPartitioner(metadataReposotory.getStore(getStoreName()).getPartitionerConfig());
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
     for (AbstractVeniceService service : services) {
