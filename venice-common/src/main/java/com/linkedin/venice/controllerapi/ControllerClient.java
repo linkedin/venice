@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Time;
@@ -18,6 +19,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.function.Function;
 
@@ -162,6 +167,56 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(VERSION, version);
     return request(ControllerRoute.END_OF_PUSH, params, ControllerResponse.class);
+  }
+
+  /**
+   * Sends and empty push to the venice controller, but verifies that the push has succeeded before
+   * returning to the caller.
+   *
+   * @param storeName the store name for which the empty push is for
+   * @param pushJobId the push job id for the push
+   * @param storeSize the size of the store (currently unused)
+   * @param timeOut max amount of time this function should take before returning.  Retries sent to the controller
+   *                have 2 second sleeps between them.  So a timeout should be chosen that is larger, and a multiple of
+   *                2 seconds preferablly.
+   * @return the response from the controller.  Either a successful one, or a failed one with more information.
+   * @throws InterruptedException
+   * @throws TimeoutException
+   * @throws ExecutionException
+   */
+  public ControllerResponse sendEmptyPushAndWait(String storeName, String pushJobId, long storeSize, long timeOut) {
+    // Check Store existence
+    VersionCreationResponse versionCreationResponse = emptyPush(storeName, pushJobId, storeSize);
+    if (versionCreationResponse.isError()) {
+      return versionCreationResponse;
+    }
+    String topicName = Version.composeKafkaTopic(storeName, versionCreationResponse.getVersion());
+
+
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    try {
+      ControllerResponse response = (ControllerResponse) executor.invokeAll(Arrays.asList(() -> {
+        JobStatusQueryResponse jobStatusQueryResponse;
+        while (true) {
+          jobStatusQueryResponse = retryableRequest(3, client -> this.queryJobStatus(topicName));
+          if (jobStatusQueryResponse.isError()) {
+            return jobStatusQueryResponse;
+          }
+          ExecutionStatus executionStatus = ExecutionStatus.valueOf(jobStatusQueryResponse.getStatus());
+          if (executionStatus.isTerminal()) {
+            break;
+          }
+        }
+        return jobStatusQueryResponse;
+      }), timeOut, TimeUnit.MILLISECONDS).get(0).get(timeOut, TimeUnit.MILLISECONDS);
+
+      return response;
+    } catch(Exception e) {
+      throw new VeniceException("Could not send empty push with Exception:", e);
+    } finally {
+      executor.shutdown();
+    }
   }
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
