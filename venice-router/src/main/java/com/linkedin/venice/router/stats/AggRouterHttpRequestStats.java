@@ -56,6 +56,11 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     }
   }
 
+  public void recordUnavailableReplicaStreamingRequest(String storeName) {
+    totalStats.recordUnavailableReplicaStreamingRequest();
+    getStoreStats(storeName).recordUnavailableReplicaStreamingRequest();
+  }
+
   public void recordUnhealthyRequest(String storeName, double latency) {
     totalStats.recordUnhealthyRequest(latency);
     if (storeName != null) {

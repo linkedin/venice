@@ -66,6 +66,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor inFlightRequestSensor;
   private Sensor keySizeSensor;
   private final AtomicInteger currentInFlightRequest;
+  private final Sensor unavailableReplicaStreamingRequestSensor;
+
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
@@ -84,6 +86,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestSensor = registerSensor("request", new Count(), requestRate);
     healthySensor = registerSensor("healthy_request", new Count(), healthyRequestRate);
     unhealthySensor = registerSensor("unhealthy_request", new Count());
+    unavailableReplicaStreamingRequestSensor = registerSensor("unavailable_replica_streaming_request", new Count());
     tardySensor = registerSensor("tardy_request", new Count(), tardyRequestRate);
     healthyRequestRateSensor = registerSensor("healthy_request_ratio",
         new TehutiUtils.SimpleRatioStat(healthyRequestRate, requestRate));
@@ -207,6 +210,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordUnhealthyRequest() {
     unhealthySensor.record();
+  }
+
+  public void recordUnavailableReplicaStreamingRequest() {
+    unavailableReplicaStreamingRequestSensor.record();
   }
 
   public void recordUnhealthyRequest(double latency) {

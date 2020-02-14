@@ -436,6 +436,94 @@ public class TestVeniceDelegateMode {
   }
 
   @Test
+  public void testScatterWitStreamingMultiGet() throws RouterException {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String resourceName = storeName + "_v1";
+    RouterKey key1 = new RouterKey("key_1".getBytes());
+    key1.setPartitionId(1);
+    RouterKey key2 = new RouterKey("key_2".getBytes());
+    key2.setPartitionId(2);
+    RouterKey key3 = new RouterKey("key_3".getBytes());
+    key3.setPartitionId(3);
+    RouterKey key4 = new RouterKey("key_4".getBytes());
+    key4.setPartitionId(4);
+    RouterKey key5 = new RouterKey("key_5".getBytes());
+    key5.setPartitionId(5);
+    RouterKey key6 = new RouterKey("key_6".getBytes());
+    key6.setPartitionId(6);
+    List<RouterKey> keys = new ArrayList<>();
+    keys.add(key1);
+    keys.add(key2);
+    keys.add(key3);
+    keys.add(key4);
+    keys.add(key5);
+    keys.add(key6);
+    VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET_STREAMING, keys);
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
+    String requestMethod = HttpMethod.POST.name();
+
+    Map<RouterKey, String> keyPartitionMap = new HashMap<>();
+    String p1 = HelixUtils.getPartitionName(resourceName, 1);
+    String p2 = HelixUtils.getPartitionName(resourceName, 2);
+    String p3 = HelixUtils.getPartitionName(resourceName, 3);
+    String p4 = HelixUtils.getPartitionName(resourceName, 4);
+    String p5 = HelixUtils.getPartitionName(resourceName, 5);
+    keyPartitionMap.put(key1, p1);
+    keyPartitionMap.put(key2, p2);
+    keyPartitionMap.put(key3, p3);
+    keyPartitionMap.put(key4, p4);
+    keyPartitionMap.put(key5, p5);
+    PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
+
+    Instance instance1 = new Instance("host1_123", "host1", 123);
+    Instance instance2 = new Instance("host2_123", "host2", 123);
+    Instance instance3 = new Instance("host3_123", "host3", 123);
+    Instance instance4 = new Instance("host4_123", "host4", 123);
+    Instance instance5 = new Instance("host5_123", "host5", 123);
+    List<Instance> instanceListForP1 = new ArrayList<>();
+    instanceListForP1.add(instance1);
+    instanceListForP1.add(instance2);
+    List<Instance> instanceListForP2 = new ArrayList<>();
+    instanceListForP2.add(instance1);
+    instanceListForP2.add(instance2);
+    List<Instance> instanceListForP3 = new ArrayList<>();
+    instanceListForP3.add(instance1);
+    instanceListForP3.add(instance3);
+    List<Instance> instanceListForP4 = new ArrayList<>();
+    instanceListForP4.add(instance1);
+    instanceListForP4.add(instance3);
+    List<Instance> instanceListForP5 = new ArrayList<>();
+    instanceListForP5.add(instance2);
+    instanceListForP5.add(instance4);
+    List<Instance> instanceListForP6 = new ArrayList<>();
+    instanceListForP6.add(instance5);
+    instanceListForP6.add(instance3);
+    Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
+    partitionInstanceMap.put(p1, instanceListForP1);
+    partitionInstanceMap.put(p2, instanceListForP2);
+    partitionInstanceMap.put(p3, instanceListForP3);
+    partitionInstanceMap.put(p4, instanceListForP4);
+    partitionInstanceMap.put(p5, instanceListForP5);
+
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap, false);
+    HostHealthMonitor monitor = getHostHealthMonitor();
+    ReadRequestThrottler throttler = getReadRequestThrottle(false);
+
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode(
+        new VeniceDelegateModeConfig()
+            .withStickyRoutingEnabledForSingleGet(false)
+            .withStickyRoutingEnabledForMultiGet(true)
+    );
+    scatterMode.initReadRequestThrottler(throttler);
+
+    Scatter<Instance, VenicePath, RouterKey> finalScatter =
+        scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
+
+    Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOfflineRequests();
+    Assert.assertEquals(requests.size(), 1);
+  }
+
+  @Test
   public void testRequestNotChoosingSlowHost() throws RouterException {
     byte[] keyBytes = {'a', 'b', 'c'};
     RouterKey key = new RouterKey(keyBytes);
