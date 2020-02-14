@@ -1,11 +1,11 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
 import org.apache.log4j.Logger;
@@ -72,6 +72,11 @@ public class RouterExceptionAndTrackingUtils {
   public static VeniceException newVeniceExceptionAndTracking(Optional<String> storeName,
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
     return newVeniceExceptionAndTracking(storeName, requestType, responseStatus, msg, FailureType.REGULAR);
+  }
+
+  public static void recordUnavailableReplicaStreamingRequest(String storeName, RequestType requestType) {
+    AggRouterHttpRequestStats stats = ROUTER_STATS.getStatsByType(requestType);
+    stats.recordUnavailableReplicaStreamingRequest(storeName);
   }
 
   private static void metricTracking(Optional<String> storeName, Optional<RequestType> requestType,

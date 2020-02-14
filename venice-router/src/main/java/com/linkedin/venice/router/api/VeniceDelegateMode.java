@@ -28,6 +28,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import javax.annotation.Nonnull;
 
+import static com.linkedin.venice.read.RequestType.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceDelegateMode extends ScatterGatherMode {
@@ -135,9 +136,15 @@ public class VeniceDelegateMode extends ScatterGatherMode {
     Scatter finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder,
         hostHealthMonitor, roles, metrics);
     int offlineRequestNum = scatter.getOfflineRequestCount();
+    int onlineRequestNum = scatter.getOnlineRequestCount();
     if (offlineRequestNum > 0) {
-      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-          SERVICE_UNAVAILABLE, "Some partition is not available for store: " + storeName + " with request type: " + venicePath.getRequestType());
+      // For streaming request do not reject request as long as there is some replica available to serve some keys.
+      if (onlineRequestNum != 0 && (venicePath.getRequestType() == MULTI_GET_STREAMING || venicePath.getRequestType() == COMPUTE_STREAMING)) {
+        RouterExceptionAndTrackingUtils.recordUnavailableReplicaStreamingRequest(storeName, venicePath.getRequestType());
+      } else {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+            SERVICE_UNAVAILABLE, "Some partition is not available for store: " + storeName + " with request type: " + venicePath.getRequestType());
+      }
     }
 
     for (ScatterGatherRequest<H, K> part : scatter.getOnlineRequests()) {
@@ -210,7 +217,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         @Nonnull HostFinder<H, R> hostFinder, @Nonnull HostHealthMonitor<H> hostHealthMonitor, @Nonnull R roles,
         Metrics metrics) throws RouterException {
       P path = scatter.getPath();
-      if (!  (path instanceof VenicePath)) {
+      if (!(path instanceof VenicePath)) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),INTERNAL_SERVER_ERROR,
             "VenicePath is expected, but received " + path.getClass());
       }
