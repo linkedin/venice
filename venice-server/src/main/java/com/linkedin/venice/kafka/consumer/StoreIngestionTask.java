@@ -631,7 +631,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Non-exception Throwable caught in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
       }
       // Only record ingestion failure if it is not caused by kill operation
-      storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
+      if (! (t instanceof InterruptedException)) {
+        // We don't report ingestion failure because server restarts.
+        storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
+      }
     } finally {
       internalClose();
     }
