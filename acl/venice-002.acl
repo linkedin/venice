@@ -1,0 +1,3 @@
+owners: [ jlliu, xnma, zfan ]
+paths: [ '.*' ]
+whitelist: [ ]
