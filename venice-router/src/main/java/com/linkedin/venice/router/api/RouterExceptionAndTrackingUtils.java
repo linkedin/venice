@@ -26,6 +26,8 @@ public class RouterExceptionAndTrackingUtils {
     REGULAR, SMART_RETRY_ABORTED_BY_SLOW_ROUTE, SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT
   }
 
+  private static final StackTraceElement[] emptyStackTrace = new StackTraceElement[0];
+
   private static RouterStats<AggRouterHttpRequestStats> ROUTER_STATS;
 
   private static Logger logger = Logger.getLogger(RouterExceptionAndTrackingUtils.class);
@@ -40,6 +42,10 @@ public class RouterExceptionAndTrackingUtils {
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg, FailureType failureType) {
     metricTracking(storeName, requestType, responseStatus, failureType);
     RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
+    // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
+    if (responseStatus.equals(TOO_MANY_REQUESTS)) {
+      e.setStackTrace(emptyStackTrace);
+    }
     String name = storeName.isPresent() ? storeName.get() : "";
     if (!filter.isRedundantException(name, e)) {
       if (responseStatus == BAD_REQUEST) {
@@ -62,6 +68,11 @@ public class RouterExceptionAndTrackingUtils {
     metricTracking(storeName, requestType, responseStatus, failureType);
     String name = storeName.isPresent() ? storeName.get() : "";
     VeniceException e = new VeniceException(msg);
+
+    // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
+    if (responseStatus.equals(TOO_MANY_REQUESTS)) {
+      e.setStackTrace(emptyStackTrace);
+    }
     if (!filter.isRedundantException(name, e)) {
       logger.error("Got an exception for store:" + name, e);
     }
