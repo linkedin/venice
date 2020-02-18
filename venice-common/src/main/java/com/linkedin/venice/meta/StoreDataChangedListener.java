@@ -8,9 +8,13 @@ public interface StoreDataChangedListener {
    * Do NOT try to acquire the lock of store repository again in the implementation, otherwise a dead lock issue will
    * happen.
    */
-  void handleStoreCreated(Store store);
+  default void handleStoreCreated(Store store) {}
 
-  void handleStoreDeleted(String storeName);
+  default void handleStoreDeleted(Store store) {
+    handleStoreDeleted(store.getName());
+  }
 
-  void handleStoreChanged(Store store);
+  default void handleStoreDeleted(String storeName) {}
+
+  default void handleStoreChanged(Store store) {}
 }
