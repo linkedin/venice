@@ -27,7 +27,7 @@ public class TestD2ServiceDiscovery {
         try (D2TransportClient client = new D2TransportClient(zk.getAddress(), router.getRouterD2Service(),
             clientConfig.getD2BasePath(),
             clientConfig.getD2ZkTimeout())) {
-          String d2ServiceName = new D2ServiceDiscovery().discoverD2Service(client, storeName);
+          String d2ServiceName = new D2ServiceDiscovery().discoverD2Service(client, storeName).getD2Service();
           Assert.assertEquals(d2ServiceName, router.getD2ServiceNameForCluster(router.getClusterName()),
               "Should find the correct d2 service associated with the given cluster.");
         }
