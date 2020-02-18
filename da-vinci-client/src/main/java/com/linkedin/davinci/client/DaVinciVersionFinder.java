@@ -5,10 +5,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import java.util.Collections;
+
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -17,14 +16,17 @@ import java.util.stream.Collectors;
 
 public class DaVinciVersionFinder {
   private final ReadOnlyStoreRepository storeRepository;
-  private final IngestionService ingestionService;
+  private final IngestionController ingestionController;
   private final StorageEngineRepository storageEngineRepository;
   private final String storeName;
 
-  public DaVinciVersionFinder(String storeName, ReadOnlyStoreRepository storeRepository, IngestionService ingestionService, StorageEngineRepository storageEngineRepository) {
+  public DaVinciVersionFinder(String storeName,
+                              ReadOnlyStoreRepository storeRepository,
+                              IngestionController ingestionController,
+                              StorageEngineRepository storageEngineRepository) {
     this.storeName = storeName;
     this.storeRepository = storeRepository;
-    this.ingestionService = ingestionService;
+    this.ingestionController = ingestionController;
     this.storageEngineRepository = storageEngineRepository;
   }
 
@@ -38,7 +40,7 @@ public class DaVinciVersionFinder {
         continue;
       }
       // Check if this partition is ready.
-      if ((ingestionService.isPartitionReadyToServe(storeName, version.getNumber(), partitionId))) {
+      if ((ingestionController.isPartitionReady(storeName, version.getNumber(), partitionId))) {
         return version.getNumber();
       }
     }
@@ -57,7 +59,7 @@ public class DaVinciVersionFinder {
       // Set of partition that local storage engine contains for this version.
       Set<Integer> localPartitions = engine.getPartitionIds();
       // List of partitions of this version that are ready to serve.
-      List<Integer> readyToServePartitions = ingestionService.getReadyToServePartitions(storeName, version.getNumber());
+      Set<Integer> readyToServePartitions = ingestionController.getReadyPartitions(storeName, version.getNumber());
       if (readyToServePartitions.containsAll(subscribedPartitions) && localPartitions.containsAll(subscribedPartitions)) {
         return version.getNumber();
       }
