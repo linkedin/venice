@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop.ssl;
 
-import com.linkedin.venice.exceptions.VeniceException;
+
 import java.io.File;
 import java.io.IOException;
 import org.apache.hadoop.conf.Configuration;
@@ -25,7 +25,7 @@ public class UserCredentialsFactory {
   }
 
   /**
-   * Get user's credentials from the the Hadoop taken file
+   * Get user's credentials from the the Hadoop token file
    */
   public static Credentials getUserCredentialsFromTokenFile()
       throws IOException {

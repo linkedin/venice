@@ -838,6 +838,26 @@ public class ConfigKeys {
   public static final String FUTURE_ETL_ENABLED_STORES = "future.etl.enabled.stores";
 
   /**
+   * This config define ssl key store property name for ETL workflows.
+   */
+  public static final String SSL_KEY_STORE_PROPERTY_NAME = "ssl.key.store.property.name";
+
+  /**
+   * This config define ssl trust store property name for ETL workflows.
+   */
+  public static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
+
+  /**
+   * This config define ssl key store password for ETL workflows.
+   */
+  public static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
+
+  /**
+   * This config define ssl key password for ETL workflows.
+   */
+  public static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
+
+  /**
    * The super cluster name for HAAS. This config is required if HAAS is enabled for the creation of helix clusters.
    */
   public static final String CONTROLLER_HAAS_SUPER_CLUSTER_NAME = "controller.haas.super.cluster.name";
@@ -874,4 +894,5 @@ public class ConfigKeys {
    * number of Kafka partitions in each partition
    */
   public static final String AMPLIFICATION_FACTOR = "amplification.factor";
+
 }

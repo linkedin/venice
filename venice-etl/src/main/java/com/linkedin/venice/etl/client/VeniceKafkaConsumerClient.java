@@ -1,6 +1,5 @@
 package com.linkedin.venice.etl.client;
 
-import com.google.common.base.Optional;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -14,8 +13,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -30,6 +32,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
@@ -89,14 +92,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   private static final String SSL_PROTOCOL = "ssl.protocol";
   private static final String DEFAULT_SSL_PROTOCOL = "TLS";
   private static final String DEFAULT_KAFKA_CONSUMER_GROUP_ID_PREFIX = "VeniceETL";
-
-  private static final String SSL_KEY_STORE_PROPERTY_NAME = "ssl.key.store.property.name";
-  private static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
-  private static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
-  private static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
-
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
+  private Optional<SSLFactory> sslFactory;
   private String fabricName;
   private String veniceControllerUrls;
   private Set<String> veniceStoreNames;
@@ -139,7 +137,42 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     } catch (Exception e) {
       logger.warn("The config for future-etl-enabled-stores doesn't exist.");
     }
+    Properties props = new Properties();
+    props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, baseConfig.getString(SSL_KEY_STORE_PROPERTY_NAME));
+    props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, baseConfig.getString(SSL_TRUST_STORE_PROPERTY_NAME));
+    props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, baseConfig.getString(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME));
+    props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, baseConfig.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    veniceKafkaProp.putAll(setUpSSLProperties(new VeniceProperties(props)));
+    this.veniceKafkaConsumer = new ApacheKafkaConsumer(veniceKafkaProp);
+    this.sslFactory = Optional.of(SslUtils.getSSLFactory(veniceKafkaProp, baseConfig.getString(SSL_FACTORY_CLASS_NAME)));
+  }
 
+  public static Map<String, ControllerClient> getControllerClients(Set<String> storeNames, String veniceControllerUrls, Optional<SSLFactory> sslFactory) {
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>(storeNames.size());
+    // Reuse the same controller client for stores in the same cluster
+    Map<String, ControllerClient> clusterToControllerClient = new HashMap<>();
+    for (String veniceStoreName: storeNames) {
+      ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrls, veniceStoreName, sslFactory);
+      if (clusterDiscoveryResponse.isError()) {
+        throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
+      } else {
+        String clusterName = clusterDiscoveryResponse.getCluster();
+        ControllerClient controllerClient = clusterToControllerClient.computeIfAbsent(clusterName, k -> new ControllerClient(k, veniceControllerUrls, sslFactory));
+        controllerClientMap.put(veniceStoreName, controllerClient);
+        logger.info("Found cluster: " + clusterDiscoveryResponse.getCluster() + " for store: " + veniceStoreName);
+      }
+    }
+    return controllerClientMap;
+  }
+
+  /**
+   * Set up Ssl Properties needed to talk to acled controller
+   * @param props
+   * @return properties which contains all needed information.
+   * TODO: unify the code for setting up ssl properties between here and KafkaPushJob class in H2V.
+   */
+  public static Properties setUpSSLProperties(VeniceProperties props) {
+    Properties sslProperties = new Properties();
     try {
       String tokenFilePath = System.getenv("HADOOP_TOKEN_FILE_LOCATION");
       File tokenFile = new File(tokenFilePath);
@@ -149,48 +182,22 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
         logger.warn("Number of secret keys found: " + credentials.numberOfSecretKeys());  // Currently should be 4
         throw new VeniceException("Token file does not contain required secret keys!");
       }
-
       Charset UTF_8 = Charset.forName("UTF-8");
-      String trustStorePath = writeToTempFile(credentials.getSecretKey(new Text(baseConfig.getString(SSL_TRUST_STORE_PROPERTY_NAME)))).getCanonicalPath();
-      String keyStorePath = writeToTempFile(credentials.getSecretKey(new Text(baseConfig.getString(SSL_KEY_STORE_PROPERTY_NAME)))).getCanonicalPath();
-      String keyStorePassword = new String(credentials.getSecretKey(new Text(baseConfig.getString(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME))), UTF_8);
-      String keyPassword = new String(credentials.getSecretKey(new Text(baseConfig.getString(SSL_KEY_PASSWORD_PROPERTY_NAME))), UTF_8);
-
-      veniceKafkaProp.setProperty(SSL_KEYSTORE_LOCATION, keyStorePath);
-      veniceKafkaProp.setProperty(SSL_KEYSTORE_PASSWORD, keyStorePassword);
-      veniceKafkaProp.setProperty(SSL_TRUSTSTORE_LOCATION, trustStorePath);
-      veniceKafkaProp.setProperty(SSL_TRUSTSTORE_PASSWORD, DEFAULT_KAFKA_TRUST_STORE_PASSWORD);
-      veniceKafkaProp.setProperty(SSL_KEYSTORE_TYPE, DEFAULT_KAFKA_KEY_STORE_TYPE);
-      veniceKafkaProp.setProperty(SSL_TRUSTSTORE_TYPE, DEFAULT_KAFKA_TRUST_STORE_TYPE);
-      veniceKafkaProp.setProperty(SSL_KEY_PASSWORD, keyPassword);
-      veniceKafkaProp.setProperty(SSL_SECURE_RANDOM_IMPLEMENTATION, DEFAULT_KAFKA_SECURE_RANDOM_IMPLEMENTATION);
-      veniceKafkaProp.setProperty(SSL_TRUSTMANAGER_ALGORITHM, DEFAULT_KAFKA_TRUST_MANAGER_ALGORITHM);
-      veniceKafkaProp.setProperty(SSL_KEYMANAGER_ALGORITHM, DEFAULT_KAFKA_KEY_MANAGER_ALGORITHM);
-      veniceKafkaProp.setProperty(KAFKA_SECURITY_PROTOCOL, DEFAULT_SECURITY_PROTOCOL);
-      veniceKafkaProp.setProperty(SSL_PROTOCOL, DEFAULT_SSL_PROTOCOL);
+      String trustStorePath = writeToTempFile(credentials.getSecretKey(new Text(props.getString(SSL_TRUST_STORE_PROPERTY_NAME)))).getCanonicalPath();
+      String keyStorePath = writeToTempFile(credentials.getSecretKey(new Text(props.getString(SSL_KEY_STORE_PROPERTY_NAME)))).getCanonicalPath();
+      String keyStorePassword =
+          new String(credentials.getSecretKey(new Text(props.getString(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME))), UTF_8);
+      String keyPassword =
+          new String(credentials.getSecretKey(new Text(props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME))), UTF_8);
+      sslProperties.setProperty(SSL_KEYSTORE_LOCATION, keyStorePath);
+      sslProperties.setProperty(SSL_KEYSTORE_PASSWORD, keyStorePassword);
+      sslProperties.setProperty(SSL_TRUSTSTORE_LOCATION, trustStorePath);
+      sslProperties.setProperty(SSL_KEY_PASSWORD, keyPassword);
     } catch (IOException e) {
-      logger.error("error reading or writing to temp file on Azkaban: ", e);
+      throw new VeniceException("Error in reading temp file on Azkaban: ", e);
     }
-
-    veniceKafkaConsumer = new ApacheKafkaConsumer(veniceKafkaProp);
-  }
-
-  public static Map<String, ControllerClient> getControllerClients(Set<String> storeNames, String veniceControllerUrls) {
-    Map<String, ControllerClient> controllerClientMap = new HashMap<>(storeNames.size());
-    // Reuse the same controller client for stores in the same cluster
-    Map<String, ControllerClient> clusterToControllerClient = new HashMap<>();
-    for (String veniceStoreName: storeNames) {
-      ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrls, veniceStoreName);
-      if (clusterDiscoveryResponse.isError()) {
-        throw new VeniceException("Get error in clusterDiscoveryResponse:" + clusterDiscoveryResponse.getError());
-      } else {
-        String clusterName = clusterDiscoveryResponse.getCluster();
-        ControllerClient controllerClient = clusterToControllerClient.computeIfAbsent(clusterName, k -> new ControllerClient(k, veniceControllerUrls));
-        controllerClientMap.put(veniceStoreName, controllerClient);
-        logger.info("Found cluster: " + clusterDiscoveryResponse.getCluster() + " for store: " + veniceStoreName);
-      }
-    }
-    return controllerClientMap;
+    setDefaultSSLProperties(sslProperties);
+    return sslProperties;
   }
 
   private static Properties getKafkaConsumerProperties(String kafkaBoostrapServers) {
@@ -209,8 +216,20 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     return kafkaConsumerProperties;
   }
 
+  private static void setDefaultSSLProperties(Properties properties) {
+    properties.setProperty(SSL_TRUSTSTORE_PASSWORD, DEFAULT_KAFKA_TRUST_STORE_PASSWORD);
+    properties.setProperty(SSL_KEYSTORE_TYPE, DEFAULT_KAFKA_KEY_STORE_TYPE);
+    properties.setProperty(SSL_TRUSTSTORE_TYPE, DEFAULT_KAFKA_TRUST_STORE_TYPE);
+    properties.setProperty(SSL_SECURE_RANDOM_IMPLEMENTATION, DEFAULT_KAFKA_SECURE_RANDOM_IMPLEMENTATION);
+    properties.setProperty(SSL_TRUSTMANAGER_ALGORITHM, DEFAULT_KAFKA_TRUST_MANAGER_ALGORITHM);
+    properties.setProperty(SSL_KEYMANAGER_ALGORITHM, DEFAULT_KAFKA_KEY_MANAGER_ALGORITHM);
+    properties.setProperty(KAFKA_SECURITY_PROTOCOL, DEFAULT_SECURITY_PROTOCOL);
+    properties.setProperty(SSL_PROTOCOL, DEFAULT_SSL_PROTOCOL);
+    properties.setProperty(SSL_ENABLED, "true");
+  }
+
   private synchronized void createControllersList(Set<String> storeNames) {
-    Map<String, ControllerClient> storeToControllers = getControllerClients(storeNames, veniceControllerUrls);
+    Map<String, ControllerClient> storeToControllers = getControllerClients(storeNames, veniceControllerUrls, sslFactory);
     storeToControllerClient.putAll(storeToControllers);
   }
 
@@ -264,7 +283,8 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
          */
         topicSpecificState.appendToSetProp(EXTRACT_TABLE_NAME_KEY, topicEntry.getKey());
         filteredTopics.add(new KafkaTopic(topicEntry.getKey(),
-            topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList()), Optional.of(topicSpecificState)));
+            topicEntry.getValue().stream().map(PARTITION_INFO_TO_KAFKA_PARTITION).collect(Collectors.toList()),
+            com.google.common.base.Optional.of(topicSpecificState)));
 
         topicNames.remove(topicEntry.getKey());
       }

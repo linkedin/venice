@@ -4,6 +4,9 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.etl.client.VeniceKafkaConsumerClient;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -14,6 +17,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.commons.lang3.StringUtils;
@@ -26,7 +31,9 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.etl.client.VeniceKafkaConsumerClient.*;
 import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 
 
@@ -54,20 +61,27 @@ public class HDFSSchemaSource implements SchemaSource {
    * @param state
    */
   public void load(SourceState state) {
+    // build up ssl factory to talk to controller
+    Properties props = new Properties();
+    props.setProperty(SSL_KEY_STORE_PROPERTY_NAME, state.getProp(SSL_KEY_STORE_PROPERTY_NAME));
+    props.setProperty(SSL_TRUST_STORE_PROPERTY_NAME, state.getProp(SSL_TRUST_STORE_PROPERTY_NAME));
+    props.setProperty(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, state.getProp(SSL_KEY_STORE_PASSWORD_PROPERTY_NAME));
+    props.setProperty(SSL_KEY_PASSWORD_PROPERTY_NAME, state.getProp(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    Optional<SSLFactory> sslFactory = Optional.of(SslUtils.getSSLFactory(setUpSSLProperties(new VeniceProperties(props)), state.getProp(SSL_FACTORY_CLASS_NAME)));
+
     String veniceControllerUrls = state.getProp(VENICE_CONTROLLER_URLS);
-    loadSchemas(veniceControllerUrls, state.getProp(VENICE_STORE_NAME));
+    loadSchemas(veniceControllerUrls, state.getProp(VENICE_STORE_NAME), sslFactory);
     // load schemas for future version etl enabled stores
     String futureETLEnabledStores = state.getProp(FUTURE_ETL_ENABLED_STORES);
     if (futureETLEnabledStores != null) {
-      loadSchemas(veniceControllerUrls, state.getProp(FUTURE_ETL_ENABLED_STORES));
+      loadSchemas(veniceControllerUrls, state.getProp(FUTURE_ETL_ENABLED_STORES), sslFactory);
     } else {
       logger.warn("The config for future-etl-enabled-stores doesn't exist.");
     }
   }
 
-  private void getStoreSchemaFromVenice(String veniceControllerUrls, Set<String> veniceStoreNames) {
-
-    Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(veniceStoreNames, veniceControllerUrls);
+  private void getStoreSchemaFromVenice(String veniceControllerUrls, Set<String> veniceStoreNames, Optional<SSLFactory> sslFactory) {
+    Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(veniceStoreNames, veniceControllerUrls, sslFactory);
     getStoreSchema(storeToControllerClient, veniceStoreNames);
   }
 
@@ -197,13 +211,13 @@ public class HDFSSchemaSource implements SchemaSource {
     return storeSchemaDir;
   }
 
-  private void loadSchemas(String veniceControllerUrls, String storeNamesList) {
+  private void loadSchemas(String veniceControllerUrls, String storeNamesList, Optional<SSLFactory> sslFactory) {
     Set<String> veniceStoreNames = new HashSet<>();
     String[] tokens = storeNamesList.split(VENICE_STORE_NAME_SEPARATOR);
     for (String token : tokens) {
       veniceStoreNames.add(token.trim());
     }
-    getStoreSchemaFromVenice(veniceControllerUrls, veniceStoreNames);
+    getStoreSchemaFromVenice(veniceControllerUrls, veniceStoreNames, sslFactory);
     for (String storeName : veniceStoreNames) {
       setKeySchema(storeName);
       putValueSchemas(storeName);
