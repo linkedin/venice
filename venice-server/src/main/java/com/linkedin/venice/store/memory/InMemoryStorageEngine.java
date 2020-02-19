@@ -2,24 +2,22 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 
-import java.util.HashSet;
+import java.util.Collections;
 import java.util.Set;
 
 
 /**
  * A simple non-persistent, in-memory store.
  */
-public class InMemoryStorageEngine extends AbstractStorageEngine {
+public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStoragePartition> {
 
-  public InMemoryStorageEngine(VeniceStoreConfig storeDef)
-    throws Exception {
+  public InMemoryStorageEngine(VeniceStoreConfig storeDef) {
     super(storeDef.getStoreName());
+    restoreStoragePartitions();
   }
 
   @Override
@@ -30,22 +28,12 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   @Override
   protected Set<Integer> getPersistedPartitionIds() {
     // Nothing to return for InMemoryStorageEngine
-    return new HashSet<>();
+    return Collections.emptySet();
   }
 
   @Override
-  public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    return  new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
-  }
-
-  @Override
-  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
-    throw new RuntimeException("putPartitionOffset not supported in InMemoryStorageEngine yet!");
-  }
-
-  @Override
-  public OffsetRecord getPartitionOffset(int partitionId) {
-    throw new RuntimeException("getPartitionOffset not supported in InMemoryStorageEngine yet!");
+  public InMemoryStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+    return new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
   }
 
   @Override

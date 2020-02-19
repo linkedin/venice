@@ -9,14 +9,12 @@ public class StoragePartitionConfig {
   private final int partitionId;
   private boolean deferredWrite;
   private boolean readOnly;
-  private boolean storingMetadata;
 
   public StoragePartitionConfig(String storeName, int partitionId) {
     this.storeName = storeName;
     this.partitionId = partitionId;
     this.deferredWrite = false;
     this.readOnly = false;
-    this.storingMetadata = false;
   }
 
   public String getStoreName() {
@@ -43,14 +41,6 @@ public class StoragePartitionConfig {
     this.readOnly = readOnly;
   }
 
-  public boolean isStoringMetadata() {
-    return this.storingMetadata;
-  }
-
-  public void setStoringMetadata(boolean storingMetadata) {
-    this.storingMetadata = storingMetadata;
-  }
-
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -71,9 +61,6 @@ public class StoragePartitionConfig {
     if (readOnly != that.readOnly) {
       return false;
     }
-    if (storingMetadata != that.storingMetadata) {
-      return false;
-    }
     return storeName.equals(that.storeName);
   }
 
@@ -83,13 +70,12 @@ public class StoragePartitionConfig {
     result = 31 * result + partitionId;
     result = 31 * result + (deferredWrite ? 1 : 0);
     result = 31 * result + (readOnly ? 1 : 0);
-    result = 31 * result + (storingMetadata ? 1 : 0);
     return result;
   }
 
   @Override
   public String toString() {
     return "Store: " + storeName + ", partition id: " + partitionId + ", deferred-write: " + deferredWrite +
-        ", read-only: " + readOnly + ", storing-metadata: " + storingMetadata;
+        ", read-only: " + readOnly;
   }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -8,6 +9,7 @@ import com.linkedin.venice.store.StoragePartitionConfig;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 
@@ -18,12 +20,13 @@ import java.util.Set;
  *
  * If you need to pass a deep copy parameter to other functions, you can modify this class accordingly.
  */
-public class DeepCopyStorageEngine extends AbstractStorageEngine {
+public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStoragePartition> {
   private final AbstractStorageEngine delegate;
 
   public DeepCopyStorageEngine(AbstractStorageEngine delegate) {
     super(delegate.getName());
     this.delegate = delegate;
+    restoreStoragePartitions();
   }
 
   @Override
@@ -118,11 +121,6 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
-    throw new RuntimeException("putPartitionOffset not supported in DeepCopyStorageEngine yet!");
-  }
-
-  @Override
   public void delete(Integer logicalPartitionId, byte[] key) {
     this.delegate.delete(logicalPartitionId, key);
   }
@@ -135,11 +133,6 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine {
   @Override
   public byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) {
     return this.delegate.get(logicalPartitionId, keyBuffer);
-  }
-
-  @Override
-  public OffsetRecord getPartitionOffset(int partitionId) {
-    throw new RuntimeException("getPartitionOffset not supported in DeepCopyStorageEngine yet!");
   }
 
   @Override
