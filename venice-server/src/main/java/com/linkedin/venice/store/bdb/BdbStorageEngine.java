@@ -1,15 +1,13 @@
 package com.linkedin.venice.store.bdb;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.sleepycat.je.Environment;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -23,7 +21,7 @@ import static com.linkedin.venice.store.bdb.BdbStoragePartition.*;
 /**
  * BDB-JE Storage Engine
  */
-public class BdbStorageEngine extends AbstractStorageEngine {
+public class BdbStorageEngine extends AbstractStorageEngine<BdbStoragePartition> {
 
   private final Environment environment;
 
@@ -70,22 +68,8 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+  public BdbStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new BdbStoragePartition(storagePartitionConfig, environment, bdbServerConfig);
-  }
-
-  /**
-   * TODO: redirect this request to {@link com.linkedin.venice.storage.BdbStorageMetadataService}
-    */
-  @Override
-  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
-    throw new RuntimeException("putPartitionOffset not supported in BdbStorageEngine yet!");
-  }
-
-  // TODO: redirect this request to {@link com.linkedin.venice.storage.BdbStorageMetadataService}
-  @Override
-  public OffsetRecord getPartitionOffset(int partitionId) {
-    throw new RuntimeException("getPartitionOffset not supported in BdbStorageEngine yet!");
   }
 
   public void close() {

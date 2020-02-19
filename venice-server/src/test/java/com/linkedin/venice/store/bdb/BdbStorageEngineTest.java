@@ -220,14 +220,13 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     storageEngineList.stream().forEach(AbstractStorageEngine::close);
     storageEngineList.clear();
     bdbFactory.close();
-
     bdbFactory = new BdbStorageEngineFactory(serverConfig);
     for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
       String storeName = entry.getKey();
       int partitionNum = entry.getValue();
       VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName, PersistenceType.BDB);
       AbstractStorageEngine storageEngine = bdbFactory.getStore(storeConfig);
-      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum);
+      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 1);
       storageEngineList.add(storageEngine);
     }
 

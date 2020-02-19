@@ -10,6 +10,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import java.io.Closeable;
@@ -51,7 +52,7 @@ public class IngestionController implements Closeable {
   @Override
   public synchronized void close() {
     // stop consumption of all locally present partitions
-    for (AbstractStorageEngine engine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+    for (AbstractStorageEngine<? extends AbstractStoragePartition> engine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
       String kafkaTopic = engine.getName();
       for (int partitionId : engine.getPartitionIds()) {
         ingestionService.stopConsumption(configLoader.getStoreConfig(kafkaTopic), partitionId);

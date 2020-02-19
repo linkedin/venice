@@ -20,6 +20,7 @@ import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.store.AbstractStorageEngine.*;
 import static org.mockito.Mockito.*;
 
 
@@ -74,11 +75,12 @@ public class StorageServiceTest {
         }
       }
 
+      service.dropStorePartition(storeConfig, METADATA_PARTITION_ID);
+
       if (!errors.isEmpty()) {
         Map.Entry<String, Throwable> entry = errors.poll();
         throw new RuntimeException("Error in BDB Worker thread" + entry.getKey(), entry.getValue());
       }
-
       Assert.assertFalse(factory.getStorePath(storeName).exists(), "BDB dir should be removed at the end");
     }
   }
@@ -172,10 +174,11 @@ public class StorageServiceTest {
       int partitionNum = entry.getValue();
       VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
       // This operation won't add any new partition
-      storageService.openStoreForNewPartition(storeConfig, existingPartitionId);
+      Assert.assertEquals(storageService.openStoreForNewPartition(storeConfig, existingPartitionId).getPartitionIds().size(), partitionNum + 1);
       // this operation will add a new partition
       AbstractStorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, bigPartitionId);
-      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 1);
+      // Expected partition set should be (# of existing partitions) + bigPartition + metadataPartition.
+      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 2);
     }
     // Shutdown storage service
     storageService.stop();

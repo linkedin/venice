@@ -3,7 +3,6 @@ package com.linkedin.venice.store.rocksdb;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -15,12 +14,13 @@ import org.apache.log4j.Logger;
 import org.rocksdb.Options;
 
 
-class RocksDBStorageEngine extends AbstractStorageEngine {
+class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition> {
   private static final Logger LOGGER = Logger.getLogger(RocksDBStorageEngine.class);
 
   private final String rocksDbPath;
   private final String storeDbPath;
   private final Options options;
+
 
   public RocksDBStorageEngine(VeniceStoreConfig storeConfig, Options options, String rocksDbPath) {
     super(storeConfig.getStoreName());
@@ -64,7 +64,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+  public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     return new RocksDBStoragePartition(storagePartitionConfig, options, rocksDbPath);
   }
 
@@ -103,39 +103,5 @@ class RocksDBStorageEngine extends AbstractStorageEngine {
     } else {
       return 0;
     }
-  }
-
-  @Override
-  public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
-    if (partitionId < 0) {
-      throw new IllegalArgumentException("partitionId cannot be < 0");
-    }
-    AbstractStoragePartition partition = partitionIdToPartitionMap.get(partitionId);
-    if (!(partition instanceof RocksDBStoragePartition)) {
-      throw new VeniceException("Expect RocksDBStoragePartition instance");
-    }
-    RocksDBStoragePartition rocksDBStoragePartition = (RocksDBStoragePartition) partition;
-    rocksDBStoragePartition.putMetadata(MetadataType.PARTITION_OFFSET.name().getBytes(), offsetRecord.toBytes());
-  }
-
-  @Override
-  public OffsetRecord getPartitionOffset(int partitionId) {
-    if (partitionId < 0) {
-      throw new IllegalArgumentException("partitionId cannot be < 0");
-    }
-    AbstractStoragePartition partition = partitionIdToPartitionMap.get(partitionId);
-    if (!(partition instanceof RocksDBStoragePartition)) {
-      throw new VeniceException("Expect RocksDBStoragePartition instance");
-    }
-    RocksDBStoragePartition rocksDBStoragePartition = (RocksDBStoragePartition) partition;
-    byte[] value = rocksDBStoragePartition.getMetadata(MetadataType.PARTITION_OFFSET.name().getBytes());
-    if (null == value) {
-      return new OffsetRecord();
-    }
-    return new OffsetRecord(rocksDBStoragePartition.getMetadata(MetadataType.PARTITION_OFFSET.name().getBytes()));
-  }
-
-  enum MetadataType {
-    PARTITION_OFFSET
   }
  }
