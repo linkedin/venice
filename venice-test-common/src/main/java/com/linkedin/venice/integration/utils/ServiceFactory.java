@@ -1,28 +1,32 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.davinci.client.AvroGenericRecordDaVinciClientImpl;
+import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
+import java.io.File;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
-
 import java.util.Optional;
-
-import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
-
 
 /**
  * A factory for generating Venice services and external service instances
@@ -42,6 +46,10 @@ public class ServiceFactory {
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
   private static final boolean DEFAULT_SSL_TO_STORAGE_NODES = false;
   private static final boolean DEFAULT_SSL_TO_KAFKA = false;
+  // DaVinci Config
+  // fields below are dummy value not used
+  private static final int DAVINCI_LISTENER_PORT = 0;
+  private static final String DAVINCI_CLUSTER_NAME = "DaVinciCluster";
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -416,6 +424,7 @@ public class ServiceFactory {
 
     throw new VeniceException(errorMessage + " Aborting.", lastException);
   }
+
   private static <S extends Closeable> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider, int port) {
     // Just some initial state. If the fabric of space-time holds up, you should never see these strings.
     Exception lastException = new VeniceException("There is no spoon.");
@@ -457,5 +466,37 @@ public class ServiceFactory {
     }
 
     throw new VeniceException(errorMessage + " Aborting.", lastException);
+  }
+
+  public static <K> DaVinciClient<K, GenericRecord> getAndStartGenericRecordAvroDaVinciClient(
+      String storeName, VeniceClusterWrapper cluster) {
+    File dataDirectory = TestUtils.getTempDataDirectory();
+    String zkAddress = cluster.getZk().getAddress();
+    VeniceProperties clusterProperties = new PropertyBuilder()
+        // Helix-related config
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
+        // Kafka-related config
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, cluster.getKafka().getAddress())
+        .put(ConfigKeys.KAFKA_ZK_ADDRESS, zkAddress)
+        // Other configs
+        .put(ConfigKeys.CLUSTER_NAME, DAVINCI_CLUSTER_NAME)
+        .build();
+    // Generate server.properties in config directory
+    VeniceProperties serverProperties = new PropertyBuilder()
+        .put(ConfigKeys.LISTENER_PORT, DAVINCI_LISTENER_PORT)
+        .put(ConfigKeys.DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+        .build();
+    VeniceProperties serverOverrideProperties = new VeniceProperties(new Properties());
+    VeniceConfigLoader
+        veniceConfigLoader = new VeniceConfigLoader(clusterProperties, serverProperties, serverOverrideProperties);
+    // initialize ClientConfig
+    ClientConfig clientConfig = ClientConfig
+        .defaultGenericClientConfig(storeName)
+        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+        .setVeniceURL(cluster.getZk().getAddress());
+    DaVinciClient<K, GenericRecord> daVinciClient =
+        new AvroGenericRecordDaVinciClientImpl<>(veniceConfigLoader, DaVinciConfig.defaultDaVinciConfig(), clientConfig);
+    daVinciClient.start();
+    return daVinciClient;
   }
 }
