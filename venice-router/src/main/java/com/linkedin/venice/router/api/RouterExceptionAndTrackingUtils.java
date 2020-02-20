@@ -43,7 +43,7 @@ public class RouterExceptionAndTrackingUtils {
     metricTracking(storeName, requestType, responseStatus, failureType);
     RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, false);
     // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-    if (responseStatus.equals(TOO_MANY_REQUESTS)) {
+    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)) {
       e.setStackTrace(emptyStackTrace);
     }
     String name = storeName.isPresent() ? storeName.get() : "";
@@ -70,7 +70,7 @@ public class RouterExceptionAndTrackingUtils {
     VeniceException e = new VeniceException(msg);
 
     // Do not dump stack-trace for Quota exceed exception as it might blow up memory on high load
-    if (responseStatus.equals(TOO_MANY_REQUESTS)) {
+    if (responseStatus.equals(TOO_MANY_REQUESTS) || responseStatus.equals(SERVICE_UNAVAILABLE)) {
       e.setStackTrace(emptyStackTrace);
     }
     if (!filter.isRedundantException(name, e)) {
