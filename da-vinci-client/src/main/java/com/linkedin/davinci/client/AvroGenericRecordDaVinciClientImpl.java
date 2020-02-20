@@ -161,13 +161,14 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = d2ServiceDiscovery.discoverD2Service(d2TransportClient, getStoreName());
     d2TransportClient.setServiceName(d2ServiceDiscoveryResponse.getD2Service());
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
+    String clusterName = d2ServiceDiscoveryResponse.getCluster();
     zkClient = ZkClientFactory.newZkClient(clusterConfig.getZookeeperAddress());
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "davinci-zk-client"));
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    metadataReposotory = new HelixReadOnlyStoreRepository(zkClient, adapter, d2ServiceDiscoveryResponse.getCluster(),
+    metadataReposotory = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
         REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS);
     metadataReposotory.refresh();
-    schemaRepository = new HelixReadOnlySchemaRepository(metadataReposotory, zkClient, adapter, d2ServiceDiscoveryResponse.getCluster(),
+    schemaRepository = new HelixReadOnlySchemaRepository(metadataReposotory, zkClient, adapter, clusterName,
         REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS);
     schemaRepository.refresh();
     storageMetadataService = new BdbStorageMetadataService(clusterConfig);
@@ -229,14 +230,13 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
         }
       }
       logger.info("All services stopped");
-
       if (exceptions.size() > 0) {
         throw new VeniceException(exceptions.get(0));
       }
-      isStarted.set(false);
-
       metricsRepository.close();
       zkClient.close();
+      d2TransportClient.close();
+      isStarted.set(false);
     }
   }
 

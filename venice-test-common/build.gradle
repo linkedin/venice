@@ -108,6 +108,7 @@ dependencies {
   implementation libraries.mockito
   implementation project(':venice-brooklin')
   implementation project(':venice-samza')
+  implementation project(':da-vinci-client')
   implementation libraries.kafka
   implementation libraries.kafkaClients
   implementation libraries.kafkaTest
