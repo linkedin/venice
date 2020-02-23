@@ -14,8 +14,6 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
-import org.apache.helix.manager.zk.ZNRecordSerializer;
-import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -101,6 +99,11 @@ public class HelixAsAServiceWrapper extends ProcessWrapper{
 
   public List<SafeHelixManager> getHelixSuperControllers() {
     return managers;
+  }
+
+  public LiveInstance getClusterLeader(String clusterName) {
+    PropertyKey.Builder clusterKeyBuilder = new PropertyKey.Builder(clusterName);
+    return managers.iterator().next().getHelixDataAccessor().getProperty(clusterKeyBuilder.controllerLeader());
   }
 
   public LiveInstance getSuperClusterLeader() {

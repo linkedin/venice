@@ -129,12 +129,16 @@ public class TestHAASController {
             ExecutionStatus.STARTED.toString()));
     List<VeniceControllerWrapper> oldControllers = venice.getVeniceControllers();
     List<VeniceControllerWrapper> newControllers = new ArrayList<>();
+    assertFalse(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId()
+        .startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
     // Start the rolling bounce process
     for (VeniceControllerWrapper oldController : oldControllers) {
       venice.stopVeniceController(oldController.getPort());
       oldController.close();
       newControllers.add(venice.addVeniceController(enableControllerAndStorageClusterHAASProperties));
     }
+    assertTrue(helixAsAServiceWrapper.getClusterLeader(venice.getClusterName()).getId()
+        .startsWith(HelixAsAServiceWrapper.HELIX_INSTANCE_NAME_PREFIX));
     // Make sure the previous ongoing push can be completed.
     venice.getControllerClient().writeEndOfPush(response.getName(),
         Version.parseVersionFromKafkaTopicName(response.getKafkaTopic()));
