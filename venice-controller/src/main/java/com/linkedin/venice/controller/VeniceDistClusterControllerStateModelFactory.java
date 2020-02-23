@@ -62,7 +62,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterConfig, storeCleaner,
             metricsRepository, controllerInitialization, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-            accessController, clusterConfigs.getCommonConfig().isVeniceClusterLeaderHAAS());
+            accessController, clusterConfigs.getConfigForCluster(veniceClusterName).isVeniceClusterLeaderHAAS());
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

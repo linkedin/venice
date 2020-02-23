@@ -376,7 +376,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (clusterName.startsWith("/") || clusterName.endsWith("/") || clusterName.indexOf(' ') >= 0) {
             throw new IllegalArgumentException("Invalid cluster name:" + clusterName);
         }
-        if (multiClusterConfigs.getCommonConfig().isVeniceClusterLeaderHAAS()) {
+        if (multiClusterConfigs.getConfigForCluster(clusterName).isVeniceClusterLeaderHAAS()) {
             setupStorageClusterAsNeeded(clusterName);
         } else {
             createClusterIfRequired(clusterName);
@@ -3025,7 +3025,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public Instance getMasterController(String clusterName) {
-        if (multiClusterConfigs.getCommonConfig().isVeniceClusterLeaderHAAS()) {
+        if (multiClusterConfigs.getConfigForCluster(clusterName).isVeniceClusterLeaderHAAS()) {
             return getVeniceControllerLeader(clusterName);
         } else {
             if (!multiClusterConfigs.getClusters().contains(clusterName)) {
