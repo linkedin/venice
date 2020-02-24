@@ -19,6 +19,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
@@ -34,7 +35,18 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
+
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,13 +55,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 
 public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, GenericRecord> {
@@ -69,6 +76,8 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   private final D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
   private final List<AbstractVeniceService> services = new ArrayList<>();
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
+  private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
+
   private ZkClient zkClient;
   private ReadOnlyStoreRepository metadataReposotory;
   private ReadOnlySchemaRepository schemaRepository;
@@ -76,10 +85,10 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   private BdbStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private RecordSerializer<K> keySerializer;
-  private DaVinciVersionFinder daVinciVersionFinder;
+  private DaVinciVersionFinder versionFinder;
   private D2TransportClient d2TransportClient;
   private DaVinciPartitioner partitioner;
-  private Set<Integer> subscribedPartitions;
+  private IngestionController ingestionController;
 
   public AvroGenericRecordDaVinciClientImpl(
       VeniceConfigLoader veniceConfigLoader,
@@ -96,17 +105,24 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
 
   @Override
   public CompletableFuture<Void> subscribeToAllPartitions() {
-    return CompletableFuture.allOf();
+    // TODO: add non-static partitioning support
+    Store store = metadataReposotory.getStoreOrThrow(storeName);
+    String msg = "Cannot subscribe to an empty store " + storeName + ". Please push data to the store first.";
+    Version version = store.getVersions().stream().findAny().orElseThrow(() -> new VeniceClientException(msg));
+    Set<Integer> partitions = IntStream.range(0, version.getPartitionCount()).boxed().collect(Collectors.toSet());
+    return subscribe(partitions);
   }
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    return CompletableFuture.allOf();
+    subscribedPartitions.addAll(partitions);
+    return ingestionController.subscribe(getStoreName(), partitions);
   }
 
   @Override
   public CompletableFuture<Void> unsubscribe(Set<Integer> partitions) {
-    return CompletableFuture.allOf();
+    subscribedPartitions.removeAll(partitions);
+    return ingestionController.unsubscribe(getStoreName(), partitions);
   }
 
   @Override
@@ -119,7 +135,7 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
      * Here we don't know which partition this key belongs to in a version in advance, so we must make sure all partitions this
      * client subscribes to are available for this latest version.
      */
-    Version version = daVinciVersionFinder
+    Version version = versionFinder
         .getLatestVersion(subscribedPartitions)
         .orElseThrow(() -> new VeniceClientException("Failed to find a ready store version."));
     String topic = version.kafkaTopicName();
@@ -148,7 +164,7 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   }
 
   @Override
-  public void start() throws VeniceClientException {
+  public synchronized void start() throws VeniceClientException {
     boolean isntStarted = isStarted.compareAndSet(false, true);
     if (!isntStarted) {
       throw new VeniceClientException("Client is already started!");
@@ -197,47 +213,61 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     this.keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
-    this.daVinciVersionFinder = new DaVinciVersionFinder(
-        getStoreName(), metadataReposotory, null, storageService.getStorageEngineRepository()
-    );
     this.partitioner = new DaVinciPartitioner(metadataReposotory.getStore(getStoreName()).getPartitionerConfig());
+
+    ingestionController = new IngestionController(
+        veniceConfigLoader,
+        metadataReposotory,
+        storageService,
+        kafkaStoreIngestionService);
+
+    versionFinder = new DaVinciVersionFinder(
+        getStoreName(),
+        metadataReposotory,
+        ingestionController,
+        storageService.getStorageEngineRepository());
+
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
     for (AbstractVeniceService service : services) {
       service.start();
     }
+    ingestionController.start();
     long end = System.currentTimeMillis();
     logger.info("Startup completed in " + (end - start) + " ms.");
   }
 
   @Override
-  public void close() {
+  public synchronized void close() {
     List<Exception> exceptions = new ArrayList<>();
     logger.info("Stopping all services ");
 
     /* Stop in reverse order */
-    synchronized (this) {
-      if (!isStarted()) {
-        logger.info("The client is already stopped, ignoring duplicate attempt.");
-        return;
-      }
-      for (AbstractVeniceService service : Utils.reversed(services)) {
-        try {
-          service.stop();
-        } catch (Exception e) {
-          exceptions.add(e);
-          logger.error("Exception in stopping service: " + service.getName(), e);
-        }
-      }
-      logger.info("All services stopped");
-      if (exceptions.size() > 0) {
-        throw new VeniceException(exceptions.get(0));
-      }
-      metricsRepository.close();
-      zkClient.close();
-      d2TransportClient.close();
-      isStarted.set(false);
+    if (!isStarted()) {
+      logger.info("The client is already stopped, ignoring duplicate attempt.");
+      return;
     }
+
+    ingestionController.close();
+    for (AbstractVeniceService service : Utils.reversed(services)) {
+      try {
+        service.stop();
+      } catch (Exception e) {
+        exceptions.add(e);
+        logger.error("Exception in stopping service: " + service.getName(), e);
+      }
+    }
+    logger.info("All services stopped");
+
+    if (exceptions.size() > 0) {
+      throw new VeniceException(exceptions.get(0));
+    }
+    isStarted.set(false);
+
+    metricsRepository.close();
+    zkClient.close();
+    d2TransportClient.close();
+    isStarted.set(false);
   }
 
   @Override
@@ -267,5 +297,4 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   public boolean isStarted() {
     return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isStarted());
   }
-
 }

@@ -80,6 +80,10 @@ public class IngestionController implements Closeable {
     return consumeVersion(version.get(), partitions);
   }
 
+  public synchronized CompletableFuture<Void> unsubscribe(String storeName, Set<Integer> partitions) {
+    return CompletableFuture.completedFuture(null);
+  }
+
   protected synchronized CompletableFuture<Void> consumeVersion(Version version, Set<Integer> partitions) {
     for (int partitionId : partitions) {
       if (partitionId < 0 || partitionId >= version.getPartitionCount()) {
