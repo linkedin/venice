@@ -1,5 +1,6 @@
 package com.linkedin.venice.store;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -17,6 +18,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 
 
@@ -38,11 +40,12 @@ import org.apache.log4j.Logger;
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
  */
 public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> implements Store {
+  private static final String VERSION_METADATA_KEY = "VERSION_METADATA";
+  private static final String PARTITION_METADATA_PREFIX = "P_";
   private final String storeName;
   // Storing StoreVersionState in metadata partition requires specific serializer.
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
-  private static final String VERSION_METADATA_KEY = "VERSION_METADATA";
-  private static final String PARTITION_METADATA_PREFIX = "P_";
+  private final AtomicReference<StoreVersionState> storeVersionStateCache = new AtomicReference<>();
 
   protected final AtomicBoolean isOpen;
   protected final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
@@ -319,12 +322,19 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * Retrieve the store version state from the metadata partition.
    */
   public Optional<StoreVersionState> getStoreVersionState() {
+    // If store version state cache is set, return the cache value directly.
+    StoreVersionState storeVersionState = storeVersionStateCache.get();
+    if (storeVersionState != null) {
+      return Optional.of(storeVersionState);
+    }
     byte[] value = partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
         .get(VERSION_METADATA_KEY.getBytes());
     if (null == value) {
       return Optional.empty();
     }
-    StoreVersionState storeVersionState = storeVersionStateSerializer.deserialize(storeName, value);
+    storeVersionState = storeVersionStateSerializer.deserialize(storeName, value);
+    // Update store version state cache.
+    storeVersionStateCache.set(storeVersionState);
     return Optional.of(storeVersionState);
   }
 
@@ -332,9 +342,28 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * Clear the store version state in the metadata partition.
    */
   public void clearStoreVersionState() {
+    // Delete the cached store version state.
+    storeVersionStateCache.set(null);
     partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
         .delete(VERSION_METADATA_KEY.getBytes());
   }
+
+  /**
+   * Retrieve the store version's CompressionStrategy from cached StoreVersionState.
+   */
+  public CompressionStrategy getStoreVersionCompressionStrategy() {
+    return getStoreVersionState()
+        .map(storeVersionState -> CompressionStrategy.valueOf(storeVersionState.compressionStrategy))
+        .orElse(CompressionStrategy.NO_OP);
+  }
+
+  /**
+   * Retrieve the store version's chunked flag from cached StoreVersionState.
+   */
+  public boolean isStoreVersionChunked() {
+    return getStoreVersionState().map(storeVersionState -> storeVersionState.chunked).orElse(false);
+  }
+
 
   public void delete(Integer logicalPartitionId, byte[] key) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, key, "Delete");
