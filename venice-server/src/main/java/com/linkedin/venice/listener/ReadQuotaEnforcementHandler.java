@@ -136,14 +136,12 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
           return;
         }
       }
-    } else { // If this happens it is probably due to a short-lived race condition
+    } else if (enforcing && !noBucketStores.contains(request.getResourceName())) {
+      // If this happens it is probably due to a short-lived race condition
       // of the resource being allocated before the bucket is allocated.
-      if (!noBucketStores.contains(request.getResourceName())){
-        logger.warn("Request for resource " + request.getResourceName() + " but no TokenBucket for that resource.  Not yet enforcing quota");
-        //TODO: We could consider initializing a bucket.  Would need to carefully consider this case.
-        noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
-      }
-
+      logger.warn("Request for resource " + request.getResourceName() + " but no TokenBucket for that resource.  Not yet enforcing quota");
+      //TODO: We could consider initializing a bucket.  Would need to carefully consider this case.
+      noBucketStores.add(request.getResourceName()); // So that we only log this once every 30 seconds
     }
 
     /**
