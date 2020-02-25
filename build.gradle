@@ -109,8 +109,8 @@ ext.libraries = [ // Groovy map literal
                   // RocksDB
                   rocksdbjni: 'org.rocksdb:rocksdbjni:6.6.4',
 
-                  // avro-fastserde
-                  linkedinAvroFastserde: 'com.linkedin.linkedin-avro-fastserde:linkedin-avro-fastserde-impl:0.0.13'
+                  // open source fastserde from avro-util
+                  linkedinAvroFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.1.8'
 ]
 
 subprojects {
@@ -133,7 +133,7 @@ subprojects {
     }
     mavenCentral() // when build fails, move this to first and then build, then move it back and build should work
     maven {
-      url 'http://download.oracle.com/maven/'
+      url 'https://dl.bintray.com/linkedin/maven/'
     }
   }
 
