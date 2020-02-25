@@ -219,6 +219,60 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  //TODO: Refactor this to work in the controller once system store has become available.
+
+  /**
+   * Simplified API that wraps together the store create/update/and empty push functionalities with some clean up functionality
+   *
+   * @param storeName the store name for which the empty push is for
+   * @param owner the owner of this store to be created
+   * @param keySchema Schema of the key for row retrieval for this store
+   * @param valueSchema Schema of the value for rows in this new store
+   * @param updateStoreQueryParams What parameters should be applied to this store after it's creation
+   * @param pushJobId the push job id for the push
+   * @param storeSize the size of the store (currently unused)
+   * @return Either the response from the store creation, OR, the response from the first failed operation for store creation, modification, and push
+   */
+  public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize) {
+
+    NewStoreResponse creationResponse = null;
+    ControllerResponse updateResponse = null;
+    ControllerResponse pushResponse = null;
+
+    try {
+      creationResponse = this.createNewStore(storeName, owner, keySchema, valueSchema);
+
+      if(creationResponse.isError()) {
+        // Return the error
+        return creationResponse;
+      }
+
+      updateResponse = updateStore(storeName, updateStoreQueryParams);
+      if(updateResponse.isError()) {
+        // update failed.  Lets clean up and return the error
+        if(!this.getStore(storeName).isError()) {
+          this.deleteStore(storeName);
+          return updateResponse;
+        }
+      }
+
+      pushResponse = this.sendEmptyPushAndWait(storeName, pushJobId, storeSize, 10000L);
+      if(pushResponse.isError()) {
+        this.deleteStore(storeName);
+        return pushResponse;
+      }
+    } finally {
+      if(creationResponse == null || updateResponse == null || pushResponse == null || pushResponse.isError()) {
+        // If any step in this process failed (that is, the store was created in some inconsistent state, clean up.
+        if(!this.getStore(storeName).isError()) {
+          this.deleteStore(storeName);
+        }
+      }
+    }
+
+    return creationResponse;
+  }
+
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
     QueryParams params = newParams()
         .add(NAME, storeName)

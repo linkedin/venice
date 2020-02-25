@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -79,6 +80,27 @@ public class TestAdminSparkServerWithMultiServers {
       Assert.assertFalse(response.isError(), "Received error response on empty push:" + response.getError());
     } catch(Exception e) {
       Assert.fail("Could not send empty push!!", e);
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientShouldCreateStoreWithParameters() {
+    String storeName = TestUtils.getUniqueString("venice-store");
+    try {
+      UpdateStoreQueryParams updateStore = new UpdateStoreQueryParams()
+          .setHybridRewindSeconds(1000)
+          .setHybridOffsetLagThreshold(1000)
+          .setHybridStoreOverheadBypass(true)
+          .setEnableWrites(true)
+          .setOwner("Napolean");
+      ControllerResponse response = controllerClient.createNewStoreWithParameters(storeName, "The_Doge", "\"string\"", "\"string\"",
+          updateStore, "coolPushId", 10000);
+      Assert.assertFalse(response.isError(), "Received error response on store creation:" + response.getError());
+      StoreInfo store = controllerClient.getStore(storeName).getStore();
+      Assert.assertEquals(store.getOwner(), "Napolean");
+      Assert.assertEquals(store.getHybridStoreConfig().getRewindTimeInSeconds(), 1000);
+    } catch(Exception e) {
+      Assert.fail("Could not create new Store with Exception!!", e);
     }
   }
 
