@@ -90,8 +90,8 @@ public class InstanceStatusDecider {
             PartitionAssignment partitionAssignmentAfterRemoving =
                 getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName, isInstanceView);
 
-              // Push has been completed normally. The version of this push is ready to serve read requests. It might or
-              // might NOT be the current version of a store.
+              // Push has been completed normally. The version of this push is ready to serve read requests. It is the
+              // current version of a store (at least when it was checked recently).
               // Venice can not remove the given instance once:
               // 1. Venice would lose data. If server hold the last ONLINE replica, we can NOT remove it otherwise data
               // would be lost.

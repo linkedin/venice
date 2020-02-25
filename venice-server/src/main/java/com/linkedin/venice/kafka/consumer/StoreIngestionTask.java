@@ -63,6 +63,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.errors.InterruptException;
 import org.apache.log4j.Logger;
 
 import java.io.Closeable;
@@ -615,8 +617,17 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
 
     } catch (VeniceIngestionTaskKilledException ke) {
-      logger.info(consumerTaskId+"is killed, start to report to notifier.", ke);
+      logger.info(consumerTaskId + " is killed, start to report to notifier.", ke);
       notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
+    } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException interruptException) {
+      // Known exceptions during graceful shutdown of storage server. Report error only if the server is still running.
+      if (isRunning.get()) {
+        // Report ingestion failure if it is not caused by kill operation or server restarts.
+        logger.error(consumerTaskId + " failed with InterruptException.", interruptException);
+        notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
+            "Caught InterruptException during ingestion.", interruptException);
+        storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
+      }
     } catch (Throwable t) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
       // So even this storage node recover eventually, controller will not confused.
@@ -624,17 +635,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // recovered, it will send STARTED message to controller again)
       if (t instanceof Exception) {
         logger.error(consumerTaskId + " failed with Exception.", t);
-        notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Exception caught during poll.", (Exception)t);
-      } else {
-        logger.error(consumerTaskId + " failed with Throwable!!!", t);
         notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
-            "Non-exception Throwable caught in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
+            "Caught Exception during ingestion.", (Exception)t);
+      } else {
+        logger.error(consumerTaskId + " failed with Error!!!", t);
+        notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
+            "Caught non-exception Throwable during ingestion in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
       }
-      // Only record ingestion failure if it is not caused by kill operation
-      if (! (t instanceof InterruptedException)) {
-        // We don't report ingestion failure because server restarts.
-        storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
-      }
+      storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
     } finally {
       internalClose();
     }
