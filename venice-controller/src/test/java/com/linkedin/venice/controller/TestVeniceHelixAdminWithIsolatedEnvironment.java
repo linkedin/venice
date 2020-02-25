@@ -164,6 +164,35 @@ public class TestVeniceHelixAdminWithIsolatedEnvironment extends AbstractTestVen
   }
 
   @Test
+  public void testIsInstanceRemovableOnOldVersion() throws Exception {
+    int partitionCount = 2;
+    int replicaCount = 1;
+    String storeName = "testIsInstanceRemovableOnOldVersion";
+
+    veniceAdmin.addStore(clusterName, storeName, "test", KEY_SCHEMA, VALUE_SCHEMA);
+    Version version = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
+        partitionCount, replicaCount);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(),
+          ExecutionStatus.COMPLETED);
+    });
+
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, 1, false).isRemovable());
+    // Add a new node and increase the replica count to 2.
+    String newNodeId = "localhost_9900";
+    startParticipant(false, newNodeId);
+    int newVersionReplicaCount = 2;
+    Version newVersion = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
+        partitionCount, newVersionReplicaCount);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
+          ExecutionStatus.COMPLETED);
+    });
+    // The old instance should now be removable because its replica is no longer the current version.
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, NODE_ID, 1, false).isRemovable());
+  }
+
+  @Test
   public void testIsInstanceRemovableForRunningPush() throws Exception {
     stopParticipants();
     startParticipant(true, NODE_ID);

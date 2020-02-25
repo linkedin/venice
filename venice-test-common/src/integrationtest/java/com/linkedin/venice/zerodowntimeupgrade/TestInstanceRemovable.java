@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -84,8 +85,18 @@ public class TestInstanceRemovable {
     cluster.stopVeniceServer(serverPort2);
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
         () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(clusterName, topicName).size() == 2);
-    // Even there is no live node, push would not fail.
+    // Even if there are no alive storage nodes, push should not fail.
     Assert.assertTrue(client.isNodeRemovable(Utils.getHelixNodeIdentifier(serverPort3)).isRemovable());
+    // Add the storage servers back and the ingestion should still be able to complete.
+    cluster.addVeniceServer(new Properties(), new Properties());
+    cluster.addVeniceServer(new Properties(), new Properties());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
+        () -> cluster.getMasterVeniceController()
+            .getVeniceAdmin()
+            .getOffLinePushStatus(cluster.getClusterName(), topicName)
+            .getExecutionStatus()
+            .equals(ExecutionStatus.COMPLETED));
   }
 
   @Test
