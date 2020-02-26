@@ -4,14 +4,18 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.KafkaSSLUtils;
@@ -20,20 +24,22 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 
-import java.util.Optional;
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;
+import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
-import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -60,8 +66,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceControllerWrapper> veniceControllerWrappers;
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
-  private final AtomicInteger storeCount;
-
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
 
@@ -91,7 +95,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.defaultPartitionSize = defaultPartitionSize;
     this.defaultDelayToRebalanceMS = defaultDelayToRebalanceMS;
     this.defaultMinActiveReplica = mintActiveReplica;
-    this.storeCount = new AtomicInteger(0);
     this.sslToStorageNodes = sslToStorageNodes;
     this.sslToKafka = sslToKafka;
   }
@@ -186,6 +189,38 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
+  @Override
+  protected void internalStart() throws Exception {
+    // Everything should already be started. So this is a no-op.
+  }
+
+  @Override
+  protected void internalStop() throws Exception {
+    CompletableFuture.runAsync(() -> {
+      veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
+      veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
+      veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
+      IOUtils.closeQuietly(zkServerWrapper);
+      IOUtils.closeQuietly(kafkaBrokerWrapper);
+      IOUtils.closeQuietly(brooklinWrapper);
+    });
+  }
+
+  @Override
+  protected void newProcess() throws Exception {
+    throw new UnsupportedOperationException("Cluster does not support to create new process.");
+  }
+
+  @Override
+  public String getHost() {
+    throw new VeniceException("Not applicable since this is a whole cluster of many different services.");
+  }
+
+  @Override
+  public int getPort() {
+    throw new VeniceException("Not applicable since this is a whole cluster of many different services.");
+  }
+
   public String getClusterName() {
     return clusterName;
   }
@@ -196,10 +231,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public KafkaBrokerWrapper getKafka() {
     return kafkaBrokerWrapper;
-  }
-
-  public String getTopicReplicationConnectionString() {
-    return brooklinWrapper.getBrooklinDmsUri();
   }
 
   public synchronized List<VeniceControllerWrapper> getVeniceControllers() {
@@ -214,20 +245,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return new ArrayList<>(veniceRouterWrappers.values());
   }
 
-  /**
-   * Choose one of running venice router randomly.
-   */
   public synchronized VeniceRouterWrapper getRandomVeniceRouter() {
     // TODO might use D2 to get router in the future
     return getRandomRunningVeniceComponent(veniceRouterWrappers);
   }
 
+  public String getRandomRouterURL() {
+    return "http://" + getRandomVeniceRouter().getAddress();
+  }
+
+  public String getRandomRouterSslURL() {
+    VeniceRouterWrapper router = getRandomVeniceRouter();
+    return "https://" + router.getHost() + ":" + router.getSslPort();
+  }
+
   public synchronized void refreshAllRouterMetaData() {
-    veniceRouterWrappers.values()
-        .stream()
+    veniceRouterWrappers.values().stream()
         .filter(ProcessWrapper::isRunning)
         .map(VeniceRouterWrapper::getMetaDataRepository)
-        .collect(Collectors.toList())
         .forEach(HelixReadOnlyStoreRepository::refresh);
   }
 
@@ -236,14 +271,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public synchronized String getAllControllersURLs() {
-    String URLs = "";
-    for (VeniceControllerWrapper controllerWrapper : veniceControllerWrappers.values()) {
-      if (!URLs.isEmpty()) {
-        URLs += ",";
-      }
-      URLs += controllerWrapper.getControllerUrl();
-    }
-    return URLs;
+    return veniceControllerWrappers.values().stream()
+               .map(VeniceControllerWrapper::getControllerUrl)
+               .collect(Collectors.joining(","));
   }
 
   public VeniceControllerWrapper getMasterVeniceController() {
@@ -263,7 +293,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
   }
 
-  public VeniceControllerWrapper addVeniceController(Properties properties) {
+  public synchronized VeniceControllerWrapper addVeniceController(Properties properties) {
     VeniceControllerWrapper veniceControllerWrapper =
         ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
             defaultDelayToRebalanceMS, defaultMinActiveReplica, null, null, sslToKafka, false, properties);
@@ -271,7 +301,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return veniceControllerWrapper;
   }
 
-  public VeniceRouterWrapper addVeniceRouter(Properties properties) {
+  public synchronized VeniceRouterWrapper addVeniceRouter(Properties properties) {
     VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, properties);
     veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
     return veniceRouterWrapper;
@@ -284,7 +314,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @param enableAutoJoinWhiteList
    * @return
    */
-  public VeniceServerWrapper addVeniceServer(boolean enableWhitelist, boolean enableAutoJoinWhiteList) {
+  public synchronized VeniceServerWrapper addVeniceServer(boolean enableWhitelist, boolean enableAutoJoinWhiteList) {
     Properties featureProperties = new Properties();
     featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableWhitelist));
     featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinWhiteList));
@@ -300,13 +330,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @param properties
    * @return
    */
-  public VeniceServerWrapper addVeniceServer(Properties properties) {
+  public synchronized VeniceServerWrapper addVeniceServer(Properties properties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, new Properties(), properties);
     veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     return veniceServerWrapper;
   }
 
-  public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
+  public synchronized VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, configProperties);
     veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     return veniceServerWrapper;
@@ -380,7 +410,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * After getting these servers, you can fail some of them to simulate the server failure. Otherwise you might not
    * know which server you should fail.
    */
-  public synchronized List<VeniceServerWrapper> findVeniceServer(String resourceName, int partition, HelixState state){
+  public synchronized List<VeniceServerWrapper> findVeniceServer(String resourceName, int partition, HelixState state) {
     Admin admin = getMasterVeniceController().getVeniceAdmin();
 
     List<Replica> replicas = admin.getReplicas(clusterName, resourceName);
@@ -434,37 +464,40 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return components.get(selectedPort);
   }
 
-
-  @Override
-  public String getHost() {
-    throw new VeniceException("Not applicable since this is a whole cluster of many different services.");
+  public ControllerClient getControllerClient() {
+    return new ControllerClient(clusterName, getAllControllersURLs());
   }
 
-  @Override
-  public int getPort() {
-    throw new VeniceException("Not applicable since this is a whole cluster of many different services.");
+  /**
+   * Get a venice writer to write string key-value pairs to given version for this cluster.
+   * @return
+   */
+  public VeniceWriter<String, String, byte[]> getVeniceWriter(String storeVersionName) {
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
+    properties.put(CLUSTER_NAME, clusterName);
+    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
+
+    return factory.createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
 
-  @Override
-  protected void internalStart() throws Exception {
-    // Everything should already be started. So this is a no-op.
-  }
+  public VeniceWriter<String, String, byte[]> getSslVeniceWriter(String storeVersionName) {
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
+    properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
+    properties.put(CLUSTER_NAME, clusterName);
+    properties.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
+    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
 
-  @Override
-  protected void internalStop() throws Exception {
-    CompletableFuture.runAsync(() -> {
-      veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
-      veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
-      veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
-      IOUtils.closeQuietly(zkServerWrapper);
-      IOUtils.closeQuietly(kafkaBrokerWrapper);
-      IOUtils.closeQuietly(brooklinWrapper);
-    });
-  }
+    String stringSchema = "\"string\"";
+    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
 
-  @Override
-  protected void newProcess() throws Exception {
-    throw new UnsupportedOperationException("Cluster does not support to create new process.");
+    return factory.createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
 
   /**
@@ -494,83 +527,23 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       if (newVersion.isError()) {
         throw new VeniceException(newVersion.getError());
       }
-      storeCount.getAndIncrement();
       return newVersion;
     }
   }
 
-  public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
-    try (ControllerClient controllerClient = getControllerClient()) {
-      // Create new store
-      ControllerResponse response = controllerClient.updateStore(storeName, params);
-      if (response.isError()) {
-        throw new VeniceException(response.getError());
-      }
-      return response;
-    }
-  }
-
-  public ControllerClient getControllerClient() {
-    return new ControllerClient(clusterName, getAllControllersURLs());
-  }
-
-  /**
-   * Get a venice writer to write string key-value pairs to given version for this cluster.
-   * @return
-   */
-  public VeniceWriter<String, String, byte[]> getVeniceWriter(String storeVersionName) {
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
-    properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
-    properties.put(CLUSTER_NAME, clusterName);
-    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
-    String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
-
-    return factory.createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
-
-  }
-
-  public VeniceWriter<String, String, byte[]> getSslVeniceWriter(String storeVersionName) {
-
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
-    properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
-    properties.put(CLUSTER_NAME, clusterName);
-    properties.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
-    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
-
-    String stringSchema = "\"string\"";
-    VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(stringSchema);
-    VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(stringSchema);
-
-    return factory.createVeniceWriter(storeVersionName, keySerializer, valueSerializer);
-  }
-
   public NewStoreResponse getNewStore(String storeName) {
-    return getNewStore(storeName, "store-owner");
-  }
-
-  public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
-    return getNewVersion(getAllControllersURLs(), storeName, dataSize);
-  }
-
-  public NewStoreResponse getNewStore(String storeName, String owner) {
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     try (ControllerClient controllerClient = getControllerClient()) {
-      NewStoreResponse response = controllerClient.createNewStore(storeName, owner, keySchema, valueSchema);
+      NewStoreResponse response = controllerClient.createNewStore(storeName, getClass().getName(), keySchema, valueSchema);
       if (response.isError()) {
         throw new VeniceException(response.getError());
       }
-
-      storeCount.getAndIncrement();
       return response;
     }
   }
 
-  public VersionCreationResponse getNewVersion(String url, String storeName, int dataSize) {
+  public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
     try (ControllerClient controllerClient = getControllerClient()) {
       VersionCreationResponse newVersion =
           controllerClient.requestTopicForWrites(
@@ -590,29 +563,117 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
-  public String getRandomRouterURL() {
-    return "http://" + getRandomVeniceRouter().getAddress();
+  public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
+    try (ControllerClient controllerClient = getControllerClient()) {
+      ControllerResponse response = controllerClient.updateStore(storeName, params);
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+      return response;
+    }
   }
 
-  public String getRandomRouterSslURL() {
-    VeniceRouterWrapper router = getRandomVeniceRouter();
-    return "https://" + router.getHost() + ":" + router.getSslPort();
+  public static final String DEFAULT_KEY_SCHEMA = "\"int\"";
+  public static final String DEFAULT_VALUE_SCHEMA = "\"int\"";
+
+  public String createStore(int keyCount) throws Exception {
+    int nextVersionId = 1;
+    return createStore(IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
   }
 
-  public int getStoreCount() {
-    return storeCount.get();
+  public String createStore(Stream<Map.Entry> batchData) throws Exception {
+    return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
   }
 
-  public void increaseStoreCount() {
-    storeCount.getAndIncrement();
+  public String createStore(String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+    try (ControllerClient client = getControllerClient()) {
+      String storeName = TestUtils.getUniqueString("store");
+      NewStoreResponse response = client.createNewStore(
+          storeName,
+          getClass().getName(),
+          keySchema,
+          valueSchema);
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+
+      createVersion(storeName, keySchema, valueSchema, batchData);
+      return storeName;
+    }
   }
 
-  public String clusterConnectionInformation() {
-    StringJoiner joiner = new StringJoiner("\n*****", "*****", "");
-    joiner.add("Zookeeper: " + zkServerWrapper.getAddress());
-    joiner.add("Kafka: " + kafkaBrokerWrapper.getAddress());
-    joiner.add("Router: " + getRandomRouterURL());
-    joiner.add("Cluster: " + clusterName);
-    return joiner.toString();
+  public int createVersion(String storeName, int keyCount) throws Exception {
+    try (ControllerClient client = getControllerClient()) {
+      StoreResponse response = client.getStore(storeName);
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+      int nextVersionId = response.getStore().getLargestUsedVersionNumber() + 1;
+      return createVersion(storeName, IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
+    }
+  }
+
+  public int createVersion(String storeName, Stream<Map.Entry> batchData) throws Exception {
+    return createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
+  }
+
+  public int createVersion(String storeName, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+    try (ControllerClient client = getControllerClient()) {
+      VersionCreationResponse response = client.requestTopicForWrites(
+          storeName,
+          1024, // estimate of the version size in bytes
+          Version.PushType.BATCH,
+          Version.guidBasedDummyPushId(),
+          true,
+          false,
+          Optional.empty());
+      if (response.isError()) {
+        throw new VeniceException(response.getError());
+      }
+
+      String kafkaTopic = response.getKafkaTopic();
+      writeBatchData(kafkaTopic, keySchema, valueSchema, batchData);
+
+      int versionId = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      waitVersion(storeName, versionId);
+      return versionId;
+    }
+  }
+
+  public void waitVersion(String storeName, int versionId) {
+    try (ControllerClient client = getControllerClient()) {
+      TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
+        JobStatusQueryResponse response = client.queryJobStatus(Version.composeKafkaTopic(storeName, versionId));
+        if (response.isError()) {
+          throw new VeniceException(response.getError());
+        }
+        if (response.getStatus().equals(ExecutionStatus.ERROR.toString())) {
+          throw new VeniceException("Unexpected push failure");
+        }
+
+        StoreResponse storeResponse = client.getStore(storeName);
+        if (storeResponse.isError()) {
+          throw new VeniceException(storeResponse.getError());
+        }
+        return storeResponse.getStore().getCurrentVersion() == versionId;
+      });
+    }
+    refreshAllRouterMetaData();
+  }
+
+  protected void writeBatchData(String kafkaTopic, String keySchema, String valueSchema, Stream<Map.Entry> batchData) throws Exception {
+    TestUtils.VeniceTestWriterFactory writerFactory = TestUtils.getVeniceTestWriterFactory(getKafka().getAddress());
+    try (
+        VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
+        VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
+        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(kafkaTopic, keySerializer, valueSerializer)) {
+
+      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+      writer.broadcastStartOfPush(Collections.emptyMap());
+      for (Map.Entry e : (Iterable<Map.Entry>) batchData::iterator) {
+        writer.put(e.getKey(), e.getValue(), valueSchemaId).get();
+      }
+      writer.broadcastEndOfPush(Collections.emptyMap());
+    }
   }
 }
