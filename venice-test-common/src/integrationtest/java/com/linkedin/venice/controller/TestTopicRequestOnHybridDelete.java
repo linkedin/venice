@@ -66,8 +66,6 @@ public class TestTopicRequestOnHybridDelete {
       }
       veniceProducer.stop();
 
-      System.out.println(venice.clusterConnectionInformation());
-
       client = ClientFactory.getAndStartGenericAvroClient(
           ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
       final AvroGenericStoreClient finalClient = client;

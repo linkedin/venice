@@ -4,9 +4,6 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -14,35 +11,30 @@ import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.TestUtils.VeniceTestWriterFactory;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.writer.VeniceWriter;
+
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
-import org.testng.Assert;
 
 public class ReplicaFailoverTest {
   private static final Logger logger = Logger.getLogger(ReplicaFailoverTest.class);
@@ -69,35 +61,7 @@ public class ReplicaFailoverTest {
     props.setProperty(ConfigKeys.ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE, String.valueOf(MAX_CONCURRENT_REQUESTS));
     props.setProperty(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, String.valueOf(MAX_REQUEST_LATENCY_QD1 / 2));
     cluster.addVeniceRouter(props);
-
-    String keySchema = "\"string\"";
-    String valueSchema = "{\"type\": \"record\", \"name\": \"dummy_schema\", \"fields\": []}";
-    VersionCreationResponse response = cluster.getNewStoreVersion(keySchema, valueSchema);
-    storeName = Version.parseStoreFromKafkaTopicName(response.getKafkaTopic());
-
-    VeniceTestWriterFactory writerFactory = TestUtils.getVeniceTestWriterFactory(this.cluster.getKafka().getAddress());
-    try (
-        VeniceKafkaSerializer keySerializer = new VeniceAvroKafkaSerializer(keySchema);
-        VeniceKafkaSerializer valueSerializer = new VeniceAvroKafkaSerializer(valueSchema);
-        VeniceWriter<Object, Object, byte[]> writer = writerFactory.createVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer)) {
-
-      GenericRecord record = new GenericData.Record(new Schema.Parser().parse(valueSchema));
-      int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-
-      writer.broadcastStartOfPush(new HashMap<>());
-      for (int i = 0; i < KEY_COUNT; ++i) {
-        writer.put(String.valueOf(i), record, valueSchemaId).get();
-      }
-      writer.broadcastEndOfPush(new HashMap<>());
-    }
-
-    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
-      if (ControllerClient.getStore(cluster.getAllControllersURLs(), cluster.getClusterName(), storeName).getStore().getCurrentVersion() == 0) {
-        return false;
-      }
-      cluster.refreshAllRouterMetaData();
-      return true;
-    });
+    storeName = cluster.createStore(KEY_COUNT);
   }
 
   @AfterClass
@@ -227,7 +191,7 @@ public class ReplicaFailoverTest {
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
 
-    try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(config)) {
+    try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(config)) {
 
       Semaphore semaphore = new Semaphore(maxConcurrentRequests);
       AtomicReference<Throwable> lastFailure = new AtomicReference<>();
@@ -237,9 +201,14 @@ public class ReplicaFailoverTest {
             "Minimal QPS requirement not met");
 
         long startTime = System.nanoTime();
-        client.get(String.valueOf(submittedRequests)).whenComplete((record, throwable) -> {
+        client.get(submittedRequests).whenComplete((value, throwable) -> {
           if (throwable != null) {
             lastFailure.set(throwable);
+          }
+
+          if (!Objects.equals(value, 1)) {
+            lastFailure.set(
+                new AssertionError("Unexpected single-get result, expected=" + 1 + ", actual=" + value));
           }
 
           long latency = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTime);

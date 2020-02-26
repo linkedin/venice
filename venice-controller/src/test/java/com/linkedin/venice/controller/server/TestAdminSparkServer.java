@@ -159,8 +159,6 @@ public class TestAdminSparkServer {
     NewStoreResponse newStoreResponse =
         controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    //if the store is not created by VeniceClusterWrapper, it has to be reported so other test cases will not be broken.
-    cluster.increaseStoreCount();
 
     NewStoreResponse duplicateNewStoreResponse =
         controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
@@ -502,7 +500,7 @@ public class TestAdminSparkServer {
     List<String> storeNames = new ArrayList<>();
     int storeCount = 2;
     for (int i = 0; i < storeCount; i++) {
-      storeNames.add(cluster.getNewStore("testStore" + i, "test").getName());
+      storeNames.add(cluster.getNewStore("testStore" + i).getName());
     }
 
     MultiStoreStatusResponse storeResponse =
