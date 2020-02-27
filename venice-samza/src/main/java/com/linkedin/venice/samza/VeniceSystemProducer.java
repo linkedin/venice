@@ -1,5 +1,6 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.venice.D2.D2ClientUtils;
@@ -36,7 +37,6 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.log4j.Logger;
@@ -377,7 +377,7 @@ public class VeniceSystemProducer implements SystemProducer {
    */
   private static <T> byte[] serializePrimitive(T input, DatumWriter<T> writer) {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
-    BinaryEncoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(out);
+    BinaryEncoder encoder = AvroCompatibilityHelper.newBinaryEncoder(out);
     try {
       writer.write(input, encoder);
       encoder.flush();

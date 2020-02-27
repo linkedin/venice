@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -30,7 +31,6 @@ import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -509,7 +509,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       ByteArrayOutputStream output = new ByteArrayOutputStream();
 
       try {
-        Encoder jsonEncoder = LinkedinAvroMigrationHelper.newJsonEncoder(keySchema, output);
+        Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output);
         writer.write(keyRecord, jsonEncoder);
         jsonEncoder.flush();
         output.flush();

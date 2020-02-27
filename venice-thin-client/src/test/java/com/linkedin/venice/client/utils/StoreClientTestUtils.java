@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.utils;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
@@ -12,15 +13,12 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
-import io.netty.handler.codec.http.HttpHeaderValues;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -118,7 +116,7 @@ public class StoreClientTestUtils {
 
   public static byte[] serializeRecord(Object object, Schema schema) throws VeniceClientException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
     GenericDatumWriter<Object> datumWriter = null;
     try {
       datumWriter = new GenericDatumWriter<>(schema);

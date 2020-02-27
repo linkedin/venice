@@ -1,13 +1,13 @@
 package com.linkedin.venice.serializer;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avro.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
-import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.log4j.Logger;
@@ -22,7 +22,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   private final DatumWriter<K> specificDatumWriter;
 
   static {
-    AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
+    AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
   }
 
@@ -64,7 +64,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   @Override
   public byte[] serialize(K object) throws VeniceException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
     try {
       write(object, encoder);
       encoder.flush();
@@ -88,7 +88,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output) throws VeniceException {
-    Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
     try {
       objects.forEach(object -> {
         try {

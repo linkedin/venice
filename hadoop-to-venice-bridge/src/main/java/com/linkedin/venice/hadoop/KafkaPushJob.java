@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -61,7 +62,6 @@ import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.EncoderFactory;
 import org.apache.avro.io.JsonEncoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
 import org.apache.avro.specific.SpecificDatumWriter;
@@ -864,8 +864,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
     Schema serverSchema = Schema.parse(keySchemaResponse.getSchemaStr());
     Schema clientSchema = Schema.parse(schemaInfo.keySchemaString);
-    String canonicalizedServerSchema = LinkedinAvroMigrationHelper.toParsingForm(serverSchema);
-    String canonicalizedClientSchema = LinkedinAvroMigrationHelper.toParsingForm(clientSchema);
+    String canonicalizedServerSchema = AvroCompatibilityHelper.toParsingForm(serverSchema);
+    String canonicalizedClientSchema = AvroCompatibilityHelper.toParsingForm(clientSchema);
     if (!canonicalizedServerSchema.equals(canonicalizedClientSchema)) {
       String briefErrorMessage = "Key schema mis-match for store " + setting.storeName;
       logger.error(briefErrorMessage +

@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -27,7 +28,7 @@ public class TestTopicCleanupService {
     topicManager = mock(TopicManager.class);
     doReturn(topicManager).when(admin).getTopicManager();
     VeniceControllerMultiClusterConfig config = mock(VeniceControllerMultiClusterConfig.class);
-    doReturn(10l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
+    doReturn(0l).when(config).getTopicCleanupSleepIntervalBetweenTopicListFetchMs();
     doReturn(1).when(config).getMinNumberOfUnusedKafkaTopicsToPreserve();
     topicCleanupService = new TopicCleanupService(admin, config);
   }
@@ -161,7 +162,7 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
 
     topicCleanupService.start();
-    final int TOPIC_CLEANUP_TIMEOUT_IN_MS = 2000; // 2 seconds
+    final long TOPIC_CLEANUP_TIMEOUT_IN_MS = TimeUnit.SECONDS.toMillis(30); // 30 seconds
 
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
@@ -194,7 +195,7 @@ public class TestTopicCleanupService {
     when(admin.isMasterControllerOfControllerCluster()).thenReturn(true).thenReturn(false);
 
     topicCleanupService.start();
-    final int TOPIC_CLEANUP_TIMEOUT_IN_MS = 200; // 200 ms
+    final long TOPIC_CLEANUP_TIMEOUT_IN_MS = TimeUnit.SECONDS.toMillis(30); // 30 seconds
 
     verify(topicManager, after(TOPIC_CLEANUP_TIMEOUT_IN_MS).never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
@@ -222,7 +223,7 @@ public class TestTopicCleanupService {
     when(admin.isMasterControllerOfControllerCluster()).thenReturn(false).thenReturn(true);
 
     topicCleanupService.start();
-    final int TOPIC_CLEANUP_TIMEOUT_IN_MS = 200; // 200 ms
+    final long TOPIC_CLEANUP_TIMEOUT_IN_MS = TimeUnit.SECONDS.toMillis(30); // 30 seconds
 
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
     verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
