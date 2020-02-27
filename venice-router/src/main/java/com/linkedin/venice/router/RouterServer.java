@@ -164,6 +164,8 @@ public class RouterServer extends AbstractVeniceService {
   private final static int ROUTER_THREAD_POOL_SIZE = 2 * (ROUTER_IO_THREAD_NUM + ROUTER_BOSS_THREAD_NUM);;
   private VeniceJVMStats jvmStats;
 
+  private final AggHostHealthStats aggHostHealthStats;
+
   public static void main(String args[]) throws Exception {
 
     VeniceProperties props;
@@ -256,6 +258,8 @@ public class RouterServer extends AbstractVeniceService {
         new RouterStats<>( requestType -> new AggRouterHttpRequestStats(metricsRepository, requestType,
             config.isKeyValueProfilingEnabled()));
 
+    this.aggHostHealthStats = new AggHostHealthStats(metricsRepository);
+
     this.d2ServerList = d2ServerList;
     this.accessController = accessController;
     this.sslFactory = sslFactory;
@@ -319,7 +323,7 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, routeHttpRequestStats,
         config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute(),
-        new AggHostHealthStats(metricsRepository));
+        aggHostHealthStats);
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +
@@ -362,7 +366,7 @@ public class RouterServer extends AbstractVeniceService {
     }
 
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
-        routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats);
+        routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats);
     scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config));
 
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests);
@@ -574,6 +578,8 @@ public class RouterServer extends AbstractVeniceService {
     storageNodeClient.close();
     workerEventLoopGroup.shutdownGracefully();
     serverEventLoopGroup.shutdownGracefully();
+
+    dispatcher.stop();
 
     router.shutdown();
     secureRouter.shutdown();

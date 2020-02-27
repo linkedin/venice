@@ -82,6 +82,8 @@ public class VeniceRouterConfig {
   private boolean perNodeClientAllocationEnabled;
   private int perNodeClientThreadCount;
   private boolean keyValueProfilingEnabled;
+  private long leakedFutureCleanupPollIntervalMs;
+  private long leakedFutureCleanupThresholdMs;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -187,6 +189,9 @@ public class VeniceRouterConfig {
     perNodeClientThreadCount = props.getInt(ROUTER_PER_NODE_CLIENT_THREAD_COUNT, 2);
 
     keyValueProfilingEnabled = props.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
+
+    leakedFutureCleanupPollIntervalMs = props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
+    leakedFutureCleanupThresholdMs = props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(1));
   }
 
   public String getClusterName() {
@@ -431,6 +436,14 @@ public class VeniceRouterConfig {
 
   public boolean isKeyValueProfilingEnabled() {
     return keyValueProfilingEnabled;
+  }
+
+  public long getLeakedFutureCleanupPollIntervalMs() {
+    return leakedFutureCleanupPollIntervalMs;
+  }
+
+  public long getLeakedFutureCleanupThresholdMs() {
+    return leakedFutureCleanupThresholdMs;
   }
 
   /**
