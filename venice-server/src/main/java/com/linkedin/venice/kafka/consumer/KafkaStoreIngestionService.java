@@ -216,7 +216,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     // In theory, the version should exist since the corresponding store ingestion is ready to start.
     // The issue could be caused by race condition that the in-memory metadata hasn't been refreshed yet,
-    // So here will refresh that store explicitly upto getRefreshAttemptsForZkReconnect times
+    // So here will refresh that store explicitly up to getRefreshAttemptsForZkReconnect times
     if (!version.isPresent()) {
       while (attempt < retryStoreRefreshAttempt) {
         store = metadataRepo.refreshOneStore(storeName);

@@ -263,6 +263,8 @@ public abstract class TestBatch {
       job.run();
     }
 
+    veniceCluster.refreshAllRouterMetaData();
+
     MetricsRepository metricsRepository = new MetricsRepository();
     try (AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName)
@@ -611,9 +613,11 @@ public abstract class TestBatch {
     Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
     Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
+    veniceCluster.refreshAllRouterMetaData();
+
     // Verify the data in Venice Store
     String routerUrl = veniceCluster.getRandomRouterURL();
-    try(AvroGenericStoreClient<String, Object> client =
+    try (AvroGenericStoreClient<String, Object> client =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
       for (int i = 1; i <= 100; ++i) {
         String expected = "test_name_" + i;
