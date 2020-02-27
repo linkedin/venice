@@ -1,5 +1,7 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avro.compatibility.AvroVersion;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
@@ -53,9 +55,7 @@ import java.util.function.Supplier;
 import javax.validation.constraints.NotNull;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.AvroVersion;
 import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
@@ -107,7 +107,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     COMPUTE_HEADER_MAP_FOR_STREAMING_V1 = new HashMap<>(COMPUTE_HEADER_MAP_V1);
     COMPUTE_HEADER_MAP_FOR_STREAMING_V1.put(HttpConstants.VENICE_STREAMING, "1");
 
-    AvroVersion version = LinkedinAvroMigrationHelper.getRuntimeAvroVersion();
+    AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
     logger.info("Detected: " + version.toString() + " on the classpath.");
   }
 

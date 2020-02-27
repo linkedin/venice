@@ -1,5 +1,6 @@
 package com.linkedin.venice.schema;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -12,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -78,7 +78,7 @@ public class TestAvroSchema {
     RecordDeserializer<NamespaceTest> deserializer =
         SerializerDeserializerFactory.getAvroSpecificDeserializer(schemaWithoutNamespace, NamespaceTest.class);
     SpecificData.Record record = new SpecificData.Record(schemaWithoutNamespace);
-    record.put("foo", LinkedinAvroMigrationHelper.newEnumSymbol(
+    record.put("foo", AvroCompatibilityHelper.newEnumSymbol(
         schemaWithoutNamespace.getField("foo").schema(), "B"));
     String testString = "test";
     record.put("boo", testString);

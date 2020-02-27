@@ -1,11 +1,11 @@
 package com.linkedin.venice.schema.vson;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serializer.AvroSerializer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -37,7 +37,7 @@ public class TestVsonAvroDatumReader {
 
     //single byte
     byte[] singleByteArray = {randomBytes[0]};
-    GenericData.Fixed fixedByte = LinkedinAvroMigrationHelper.newFixedField(
+    GenericData.Fixed fixedByte = AvroCompatibilityHelper.newFixedField(
         Schema.createFixed(VsonAvroSchemaAdapter.BYTE_WRAPPER, VsonAvroSchemaAdapter.DEFAULT_DOC,
             VsonAvroSchemaAdapter.DEFAULT_NAMESPACE, 1), singleByteArray);
     testReader("\"int8\"", () -> fixedByte,
@@ -46,7 +46,7 @@ public class TestVsonAvroDatumReader {
 
     //short
     byte[] shortBytesArray = {(byte) 0xFF, (byte) 0xFE}; //0xFFFE = -2
-    GenericData.Fixed fixedShort = LinkedinAvroMigrationHelper.newFixedField(
+    GenericData.Fixed fixedShort = AvroCompatibilityHelper.newFixedField(
         Schema.createFixed(VsonAvroSchemaAdapter.SHORT_WRAPPER, VsonAvroSchemaAdapter.DEFAULT_DOC,
             VsonAvroSchemaAdapter.DEFAULT_NAMESPACE, 2), shortBytesArray);
     testReader("\"int16\"", () -> fixedShort,

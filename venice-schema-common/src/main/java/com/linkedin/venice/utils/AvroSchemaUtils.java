@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.Lists;
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.IOException;
@@ -13,7 +14,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.io.ResolvingDecoder;
 import org.apache.avro.io.parsing.Symbol;
 import org.apache.commons.lang.StringUtils;
@@ -24,7 +24,7 @@ public class AvroSchemaUtils {
   private static final String NAMESPACE_FIELD = "namespace";
 
   /**
-   * Filter the given schemas using the referenceSchema and LinkedinAvroMigrationHelper. The helper compares the
+   * Filter the given schemas using the referenceSchema and AvroCompatibilityHelper. The helper compares the
    * canonicalized version of the schemas which means some differences are ignored when comparing two schemas.
    * Specifically things docs and at the time of writing, default values (which is a bug).
    *
@@ -35,9 +35,9 @@ public class AvroSchemaUtils {
   public static List<SchemaEntry> filterCanonicalizedSchemas(SchemaEntry referenceSchema,
       Collection<SchemaEntry> schemas) {
     List<SchemaEntry> results = new ArrayList<>();
-    String cannonicalizedReferenceSchema = LinkedinAvroMigrationHelper.toParsingForm(referenceSchema.getSchema());
+    String cannonicalizedReferenceSchema = AvroCompatibilityHelper.toParsingForm(referenceSchema.getSchema());
     for (SchemaEntry entry : schemas) {
-      if (cannonicalizedReferenceSchema.equals(LinkedinAvroMigrationHelper.toParsingForm(entry.getSchema())))
+      if (cannonicalizedReferenceSchema.equals(AvroCompatibilityHelper.toParsingForm(entry.getSchema())))
         results.add(entry);
     }
     return results;

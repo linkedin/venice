@@ -1,5 +1,6 @@
 package com.linkedin.venice.consumer;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -45,7 +46,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -305,7 +305,7 @@ public class ConsumerIntegrationTest {
   public static byte[] serializeNewProtocol(GenericRecord messageFromNewProtocol) {
     try {
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(byteArrayOutputStream);
 
       byteArrayOutputStream.write(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getMagicByte().get());
       byteArrayOutputStream.write((byte) NEW_PROTOCOL_VERSION);

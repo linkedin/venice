@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
@@ -16,7 +17,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificData;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -155,7 +155,7 @@ public class TestAvroStoreClient {
 
     RecordDeserializer<NamespaceTest> deserializer = specificStoreClient.getDataRecordDeserializer(1);
     SpecificData.Record record = new SpecificData.Record(schemaWithoutNamespace);
-    record.put("foo", LinkedinAvroMigrationHelper.newEnumSymbol(
+    record.put("foo", AvroCompatibilityHelper.newEnumSymbol(
         schemaWithoutNamespace.getField("foo").schema(), "B"));
     String testString = "test";
     record.put("boo", testString);

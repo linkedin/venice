@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -8,7 +9,6 @@ import org.apache.avro.Schema;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 
@@ -30,7 +30,7 @@ public class AdminOperationSerializer {
   public byte[] serialize(AdminOperation object) {
     try {
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(byteArrayOutputStream);
       SPECIFIC_DATUM_WRITER.write(object, encoder);
       encoder.flush();
 

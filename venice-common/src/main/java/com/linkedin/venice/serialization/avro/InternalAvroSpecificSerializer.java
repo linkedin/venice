@@ -1,5 +1,6 @@
 package com.linkedin.venice.serialization.avro;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -12,7 +13,6 @@ import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
@@ -170,7 +170,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     try {
       // If single-threaded, both the ByteArrayOutputStream and Encoder can be re-used. TODO: explore GC tuning later.
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = LinkedinAvroMigrationHelper.newBinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(byteArrayOutputStream);
 
       // We write according to the latest protocol version.
       if (MAGIC_BYTE_LENGTH == 1) {

@@ -1,9 +1,9 @@
 package com.linkedin.venice.schema.vson;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serializer.VsonSerializationException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 import org.apache.avro.util.Utf8;
 
 import java.io.ByteArrayInputStream;
@@ -242,7 +242,7 @@ public class VsonAvroSerializer {
     }
 
     byte[] byteArray = {b};
-    return LinkedinAvroMigrationHelper.newFixedField(avroSchema, byteArray);
+    return AvroCompatibilityHelper.newFixedField(avroSchema, byteArray);
   }
 
   private GenericData.Fixed readShortToAvro(DataInputStream stream, Schema avroSchema) throws IOException {
@@ -251,7 +251,7 @@ public class VsonAvroSerializer {
 
     //big-endian encoding
     byte[] byteArray = {(byte) ((s >>> 8) & 0xff), (byte) (s & 0xff)};
-    return LinkedinAvroMigrationHelper.newFixedField(avroSchema, byteArray);
+    return AvroCompatibilityHelper.newFixedField(avroSchema, byteArray);
   }
 
   @SuppressWarnings("unchecked")

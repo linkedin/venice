@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -8,17 +9,13 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.SslUtils;
 import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.io.JsonDecoder;
-import org.apache.avro.io.LinkedinAvroMigrationHelper;
 
 
 /**
@@ -93,7 +90,7 @@ public class QueryTool {
         case RECORD:
           try {
             key = new GenericDatumReader<>(keySchema).read(null,
-                LinkedinAvroMigrationHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+                AvroCompatibilityHelper.newJsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
           } catch (IOException e) {
             throw new VeniceException("Invalid input key:" + key, e);
           }
