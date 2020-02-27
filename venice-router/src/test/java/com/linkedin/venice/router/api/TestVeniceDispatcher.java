@@ -17,6 +17,7 @@ import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
 import com.linkedin.venice.router.httpclient.NettyStorageNodeClient;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
@@ -60,38 +61,44 @@ public class TestVeniceDispatcher {
   @Test(dataProvider = "isNettyClientEnabled")
   public void testErrorRetry(boolean useNettyClient) {
     VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient);
+    try {
+      AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
+      AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
+      List<HttpResponseStatus> successRetries = new ArrayList<>();
+      doAnswer((invocation -> {
+        successRetries.add(invocation.getArgument(0));
+        return null;
+      })).when(mockRetryFuture).setSuccess(any());
 
-    AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
-    AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
-    List<HttpResponseStatus> successRetries = new ArrayList<>();
-    doAnswer((invocation -> {
-      successRetries.add(invocation.getArgument(0));
-      return null;
-    })).when(mockRetryFuture).setSuccess(any());
-
-    triggerResponse(dispatcher, HttpResponseStatus.INTERNAL_SERVER_ERROR, mockRetryFuture, mockResponseFuture, () -> {
-      Assert.assertEquals(successRetries.size(), 1);
-      Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
-    });
+      triggerResponse(dispatcher, HttpResponseStatus.INTERNAL_SERVER_ERROR, mockRetryFuture, mockResponseFuture, () -> {
+        Assert.assertEquals(successRetries.size(), 1);
+        Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      });
+    } finally {
+      dispatcher.stop();
+    }
 
   }
 
   @Test(dataProvider = "isNettyClientEnabled")
   public void passesThroughHttp429(boolean useNettyClient) {
     VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient);
+    try {
+      AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
+      AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
+      List<FullHttpResponse> responses = new ArrayList<>();
+      doAnswer((invocation -> {
+        responses.addAll(invocation.getArgument(0));
+        return null;
+      })).when(mockResponseFuture).setSuccess(any());
 
-    AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
-    AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
-    List<FullHttpResponse> responses = new ArrayList<>();
-    doAnswer((invocation -> {
-      responses.addAll(invocation.getArgument(0));
-      return null;
-    })).when(mockResponseFuture).setSuccess(any());
-
-    triggerResponse(dispatcher, HttpResponseStatus.TOO_MANY_REQUESTS, mockRetryFuture, mockResponseFuture, () -> {
-      Assert.assertEquals(responses.size(), 1);
-      Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.TOO_MANY_REQUESTS);
-    });
+      triggerResponse(dispatcher, HttpResponseStatus.TOO_MANY_REQUESTS, mockRetryFuture, mockResponseFuture, () -> {
+        Assert.assertEquals(responses.size(), 1);
+        Assert.assertEquals(responses.get(0).status(), HttpResponseStatus.TOO_MANY_REQUESTS);
+      });
+    } finally {
+      dispatcher.stop();
+    }
   }
 
   private VeniceDispatcher getMockDispatcher(boolean useNettyClient){
@@ -102,6 +109,8 @@ public class TestVeniceDispatcher {
     doReturn(10).when(routerConfig).getNettyClientChannelPoolMaxPendingAcquires();
     doReturn(10l).when(routerConfig).getMaxPendingRequest();
     doReturn(false).when(routerConfig).isSslToStorageNodes();
+    doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupPollIntervalMs();
+    doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupThresholdMs();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
     MetricsRepository mockMetricsRepo = new MetricsRepository();
     RouterStats mockRouterStats = mock(RouterStats.class);
@@ -129,7 +138,7 @@ public class TestVeniceDispatcher {
       storageNodeClient = new ApacheHttpAsyncStorageNodeClient(routerConfig, Optional.empty(), mockMetricsRepo, mockLiveInstanceMonitor);
     }
     VeniceDispatcher dispatcher = new VeniceDispatcher(routerConfig, mockHostHealth, mockStoreRepo, Optional.empty(),
-        mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats);
+        mockRouterStats, mockMetricsRepo, storageNodeClient, routeHttpRequestStats, mock(AggHostHealthStats.class));
     dispatcher.initReadRequestThrottler(mock(ReadRequestThrottler.class));
     return dispatcher;
   }

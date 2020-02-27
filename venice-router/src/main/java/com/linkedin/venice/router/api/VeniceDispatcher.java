@@ -10,6 +10,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.QuotaExceededException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
@@ -21,6 +22,7 @@ import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.PortableHttpResponse;
 import com.linkedin.venice.router.httpclient.StorageNodeClient;
+import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpStats;
@@ -33,6 +35,7 @@ import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
 import com.google.common.collect.ImmutableSet;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -41,7 +44,6 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -51,6 +53,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicLong;
 import javax.annotation.Nonnull;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
@@ -62,10 +65,17 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VenicePath, RouterKey> {
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
+  /**
+   * This map is used to capture all the {@link CompletableFuture} returned by {@link #storageNodeClient},
+   * and it is used to clean up the leaked futures in {@link LeakedCompletableFutureCleanupService}.
+   */
+  private final VeniceConcurrentHashMap<Long, TimedCompletableFuture> responseFutureMap = new VeniceConcurrentHashMap<>();
+  private final AtomicLong uniqueRequestId = new AtomicLong(0);
 
   private static final Set<Integer> PASS_THROUGH_ERROR_CODES = ImmutableSet.of(TOO_MANY_REQUESTS.code());
   private static final Set<Integer> RETRIABLE_ERROR_CODES = ImmutableSet.of(INTERNAL_SERVER_ERROR.code(), SERVICE_UNAVAILABLE.code());
 
+  private final VeniceRouterConfig routerConfig;
   private final Optional<RouterCache> routerCache;
   private final double cacheHitRequestThrottleWeight;
   private final ReadOnlyStoreRepository storeRepository;
@@ -78,8 +88,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final RouterStats<RouteHttpStats> perRouteStatsByType;
   private final RouterStats<AggRouterHttpRequestStats> perStoreStatsByType;
 
+  private final AggHostHealthStats aggHostHealthStats;
+
   private final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseRecordSerializer =
       SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+
+  private final LeakedCompletableFutureCleanupService leakedCompletableFutureCleanupService;
 
   public VeniceDispatcher(
       VeniceRouterConfig config,
@@ -89,8 +103,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       RouterStats perStoreStatsByType,
       MetricsRepository metricsRepository,
       StorageNodeClient storageNodeClient,
-      RouteHttpRequestStats routerStats) {
-
+      RouteHttpRequestStats routerStats,
+      AggHostHealthStats aggHostHealthStats) {
+    this.routerConfig = config;
     this.storeRepository = storeRepository;
     this.routerCache = routerCache;
     this.cacheHitRequestThrottleWeight = config.getCacheHitRequestThrottleWeight();
@@ -99,6 +114,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     this.perStoreStatsByType = perStoreStatsByType;
     this.storageNodeClient = storageNodeClient;
     this.pendingRequestThrottler = new PendingRequestThrottler(config.getMaxPendingRequest());
+    this.aggHostHealthStats = aggHostHealthStats;
+
+    this.leakedCompletableFutureCleanupService = new LeakedCompletableFutureCleanupService();
+    this.leakedCompletableFutureCleanupService.start();
   }
 
   public void initReadRequestThrottler(RouterThrottler requestThrottler) {
@@ -163,7 +182,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
 
     // sendRequest completes future either immediately in the calling thread context or on the executor
-    sendRequest(storageNode, path, executor).whenComplete((response, throwable) -> {
+    sendRequest(storageNode, path).whenComplete((response, throwable) -> {
       try {
         int statusCode = response != null ? response.getStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
         if (!retryFuture.isCancelled() && RETRIABLE_ERROR_CODES.contains(statusCode)) {
@@ -191,8 +210,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   protected CompletableFuture<PortableHttpResponse> sendRequest(
       Instance storageNode,
-      VenicePath path,
-      Executor executor) throws RouterException {
+      VenicePath path) throws RouterException {
 
     String storeName = path.getStoreName();
     RequestType requestType = path.getRequestType();
@@ -207,14 +225,17 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     routerStats.recordPendingRequest(storageNode.getNodeId());
 
     long startTime = System.nanoTime();
-    CompletableFuture<PortableHttpResponse> responseFuture = new CompletableFuture<>();
+    TimedCompletableFuture<PortableHttpResponse>
+        responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
 
+    long requestId = uniqueRequestId.getAndIncrement();
+    responseFutureMap.put(requestId, responseFuture);
     try {
       storageNodeClient.query(
           storageNode,
           path,
           responseFuture::complete,
-          responseFuture::completeExceptionally,
+          responseFuture::completeExceptionally ,
           () -> responseFuture.cancel(false),
           startTime);
 
@@ -222,13 +243,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       responseFuture.completeExceptionally(throwable);
 
     } finally {
-      return responseFuture.whenCompleteAsync((response, throwable) -> {
+      return responseFuture.whenComplete((response, throwable) -> {
         RouteHttpStats perRouteStats = perRouteStatsByType.getStatsByType(requestType);
         perRouteStats.recordResponseWaitingTime(storageNode.getHost(), LatencyUtils.getLatencyInMS(startTime));
 
         routerStats.recordFinishedRequest(storageNode.getNodeId());
         pendingRequestThrottler.take();
-      }, executor);
+        responseFutureMap.remove(requestId);
+      });
     }
   }
 
@@ -486,5 +508,61 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     AggRouterHttpRequestStats perStoreStats = perStoreStatsByType.getStatsByType(path.getRequestType());
     perStoreStats.recordCachePutRequest(storeName);
     perStoreStats.recordCachePutLatency(storeName, LatencyUtils.getLatencyInMS(startTime));
+  }
+
+  public void stop() {
+    this.leakedCompletableFutureCleanupService.interrupt();
+  }
+
+  /**
+   * This implementation of {@link CompletableFuture} has the capability to track the start time.
+   * @param <T>
+   */
+  private static class TimedCompletableFuture<T> extends CompletableFuture<T> {
+    private final long requestTime;
+    private final String hostName;
+    public TimedCompletableFuture(long requestTime, String hostName) {
+      this.requestTime = requestTime;
+      this.hostName = hostName;
+    }
+
+    public String toString() {
+      return getClass().getName() + " for request to " + hostName + " at timestamp: " + requestTime;
+    }
+  }
+
+  /**
+   * This class is used to clean up leaked CompletableFuture returned by {@link #storageNodeClient}.
+   * We noticed that this leaking behavior is happening to HttpAsyncClient, which means the callback of
+   * returned future will never be triggered, which makes the stateful health check problematic.
+   * Since we still don't know the root cause in HttpAsyncClient, this service will try to mitigate the impact.
+   */
+  private class LeakedCompletableFutureCleanupService extends Thread {
+    private final long pollIntervalMs;
+    private final long cleanupThresholdMs;
+    public LeakedCompletableFutureCleanupService() {
+      super("LeakedCompletableFutureCleanupService");
+      this.pollIntervalMs = routerConfig.getLeakedFutureCleanupPollIntervalMs();
+      this.cleanupThresholdMs = routerConfig.getLeakedFutureCleanupThresholdMs();
+    }
+
+    @Override
+    public void run() {
+      while (true) {
+        try {
+          Thread.sleep(pollIntervalMs);
+          responseFutureMap.forEach( (requestId, responseFuture) -> {
+            if (System.currentTimeMillis() - responseFuture.requestTime >= cleanupThresholdMs) {
+              logger.warn("Cleaning up the leaked response future: " + responseFuture);
+              responseFuture.completeExceptionally(new VeniceException("Leaking response future"));
+              aggHostHealthStats.recordLeakedPendingRequestCount(responseFuture.hostName);
+            }
+          });
+        } catch (InterruptedException e) {
+          logger.info("LeakedCompletableFutureCleanupService was interrupt, will exit", e);
+          break;
+        }
+      }
+    }
   }
 }

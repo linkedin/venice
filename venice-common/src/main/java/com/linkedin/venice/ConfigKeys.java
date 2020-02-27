@@ -715,6 +715,18 @@ public class ConfigKeys {
   public static final String ROUTER_ENABLE_READ_THROTTLING = "router.enable.read.throttling";
 
   /**
+   * This config is for {@literal LeakedCompletableFutureCleanupService}.
+   * Polling interval.
+   */
+  public static final String ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS = "router.leaked.future.cleanup.poll.interval.ms";
+  /**
+   * This config is for {@literal LeakedCompletableFutureCleanupService}.
+   * If the CompletableFuture stays in current service beyonds the configured threshold,
+   * {@literal LeakedCompletableFutureCleanupService} will complete it exceptionally.
+   */
+  public static final String ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS = "router.leaked.future.cleanup.threshold.ms";
+
+  /**
    * Store name for the internal store for storing push job status records.
    */
   public static final String PUSH_JOB_STATUS_STORE_NAME = "controller.push.job.status.store.name";
