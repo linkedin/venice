@@ -1,17 +1,5 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
-import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
-import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
-import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
-import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
-import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
-import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
-import com.linkedin.ddsstorage.router.impl.Router;
-import com.linkedin.ddsstorage.router.impl.netty4.Router4Impl;
-import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -24,7 +12,6 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.read.RequestType;
@@ -70,6 +57,20 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
+import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
+import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
+import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
+import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
+import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
+import com.linkedin.ddsstorage.router.impl.Router;
+import com.linkedin.ddsstorage.router.impl.netty4.Router4Impl;
+import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+
 import io.netty.channel.AbstractChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelPipeline;
@@ -83,6 +84,13 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.helix.InstanceType;
+import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
+
+import javax.annotation.Nonnull;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.ArrayList;
@@ -95,11 +103,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
-import javax.annotation.Nonnull;
-import org.apache.helix.InstanceType;
-import org.apache.helix.manager.zk.ZKHelixManager;
-import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
 
 
 public class RouterServer extends AbstractVeniceService {
@@ -122,8 +125,8 @@ public class RouterServer extends AbstractVeniceService {
   private HelixRoutingDataRepository routingDataRepository;
   private HelixReadOnlyStoreRepository metadataRepository;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
-
   private HelixLiveInstanceMonitor liveInstanceMonitor;
+  private PartitionStatusOnlineInstanceFinder partitionStatusOnlineInstanceFinder;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
@@ -372,10 +375,13 @@ public class RouterServer extends AbstractVeniceService {
      * so there is no way to distinguish compute request from multi-get; all read compute metrics in host finder will
      * be recorded as multi-get metrics; affected metric is "find_unhealthy_host_request"
      */
+    partitionStatusOnlineInstanceFinder = new PartitionStatusOnlineInstanceFinder(
+        metadataRepository,
+        new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter),
+        routingDataRepository);
+
     OnlineInstanceFinderDelegator onlineInstanceFinder =
-        new OnlineInstanceFinderDelegator(metadataRepository,
-            routingDataRepository,
-            new PartitionStatusOnlineInstanceFinder(metadataRepository, new HelixOfflinePushMonitorAccessor(config.getClusterName(), zkClient, adapter), routingDataRepository));
+        new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, partitionStatusOnlineInstanceFinder);
 
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
@@ -699,5 +705,15 @@ public class RouterServer extends AbstractVeniceService {
 
   public VeniceRouterConfig getConfig() {
     return config;
+  }
+
+  /* test-only */
+  public void refresh() {
+    liveInstanceMonitor.refresh();
+    storeConfigRepository.refresh();
+    metadataRepository.refresh();
+    schemaRepository.refresh();
+    routingDataRepository.refresh();
+    partitionStatusOnlineInstanceFinder.refresh();
   }
 }

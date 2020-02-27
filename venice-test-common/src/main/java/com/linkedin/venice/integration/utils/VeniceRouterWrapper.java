@@ -130,6 +130,10 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
     return service.getMetricsRepository();
   }
 
+  public void refresh() {
+    service.refresh();
+  }
+
   private static int sslPortFromPort(int port) {
     return port + 1;
   }

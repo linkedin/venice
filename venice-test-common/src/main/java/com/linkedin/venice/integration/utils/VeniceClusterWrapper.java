@@ -262,8 +262,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public synchronized void refreshAllRouterMetaData() {
     veniceRouterWrappers.values().stream()
         .filter(ProcessWrapper::isRunning)
-        .map(VeniceRouterWrapper::getMetaDataRepository)
-        .forEach(HelixReadOnlyStoreRepository::refresh);
+        .forEach(VeniceRouterWrapper::refresh);
   }
 
   public synchronized VeniceControllerWrapper getRandmonVeniceController() {
