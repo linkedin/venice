@@ -174,11 +174,11 @@ public class StorageServiceTest {
       int partitionNum = entry.getValue();
       VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
       // This operation won't add any new partition
-      Assert.assertEquals(storageService.openStoreForNewPartition(storeConfig, existingPartitionId).getPartitionIds().size(), partitionNum + 1);
+      Assert.assertEquals(storageService.openStoreForNewPartition(storeConfig, existingPartitionId).getPartitionIds().size(), partitionNum);
       // this operation will add a new partition
       AbstractStorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, bigPartitionId);
-      // Expected partition set should be (# of existing partitions) + bigPartition + metadataPartition.
-      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 2);
+      // Expected partition set should be (# of existing partitions) + bigPartition.
+      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 1);
     }
     // Shutdown storage service
     storageService.stop();

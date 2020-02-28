@@ -19,6 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 
@@ -153,10 +154,31 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       return;
     }
     /* NOTE: bdb database is not closed here. */
-    logger.info("Removing Partition: " + partitionId + " Store " + this.getName() );
+    logger.info("Removing Partition: " + partitionId + " Store " + this.getName());
+
+    /**
+     * Partition offset should be cleared by StorageEngine drops the corresponding partition. Here we may not be able to
+     * guarantee the drop-partition order in bulk deletion, but if metadata partition get removed first, then it needs not
+     * to clear partition offset.
+     */
+    if (containsPartition(METADATA_PARTITION_ID) && (partitionId != METADATA_PARTITION_ID)) {
+      clearPartitionOffset(partitionId);
+    }
+
     AbstractStoragePartition partition = partitionIdToPartitionMap.remove(partitionId);
     partition.drop();
-    if(partitionIdToPartitionMap.size() == 0) {
+
+    // Make sure we remove the metadata partition before we cleanup the whole storage engine.
+    if ((partitionIdToPartitionMap.size() == 1) && (containsPartition(METADATA_PARTITION_ID))) {
+      // Clear the version metadata state that stores both inside cache and metadata partition of the AbstractStorageEngine.
+      clearStoreVersionState();
+      // Make sure we drop the metadata partition.
+      AbstractStoragePartition metadataPartition = partitionIdToPartitionMap.remove(METADATA_PARTITION_ID);
+      metadataPartition.drop();
+      logger.info("Metadata partition for Store " + storeName + " are removed.");
+    }
+
+    if (partitionIdToPartitionMap.size() == 0) {
       logger.info("All Partitions deleted for Store " + this.getName() );
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
@@ -212,7 +234,8 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * @return partition Ids that are hosted in the current Storage Engine.
    */
   public synchronized Set<Integer> getPartitionIds() {
-    return partitionIdToPartitionMap.keySet();
+    // Filter out metadata partition id as it is an internal concept for AbstractStorageEngine.
+    return partitionIdToPartitionMap.keySet().stream().filter(s -> s != METADATA_PARTITION_ID).collect(Collectors.toSet());
   }
 
   /**
@@ -302,6 +325,12 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   public void clearPartitionOffset(int partitionId) {
     if (!partitionIdToPartitionMap.containsKey(partitionId)) {
       throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionIdToPartitionMap.");
+    }
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
+    }
+    if (!partitionIdToPartitionMap.containsKey(METADATA_PARTITION_ID)) {
+      throw new VeniceException("Metadata partition does not exist in partitionIdToPartitionMap.");
     }
     partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
         .delete(composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes());
