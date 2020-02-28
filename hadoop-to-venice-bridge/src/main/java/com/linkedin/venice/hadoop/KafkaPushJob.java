@@ -990,9 +990,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     if (null == veniceWriterProperties) {
       veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, versionTopicInfo.kafkaUrl);
-      String partitionerClass =
-          versionTopicInfo.partitionerClass != null ? versionTopicInfo.partitionerClass : DefaultVenicePartitioner.class.getName();
-      veniceWriterProperties.setProperty(PARTITIONER_CLASS, partitionerClass);
+      veniceWriterProperties.setProperty(PARTITIONER_CLASS, versionTopicInfo.partitionerClass);
+      for (Map.Entry<String, String> entry : versionTopicInfo.partitionerParams.entrySet()) {
+        veniceWriterProperties.setProperty(entry.getKey(), entry.getValue());
+      }
+      veniceWriterProperties.setProperty(AMPLIFICATION_FACTOR, String.valueOf(versionTopicInfo.amplificationFactor));
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }
