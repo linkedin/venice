@@ -499,11 +499,11 @@ public class TestPushUtils {
   }
 
   public static void makeStoreHybrid(VeniceClusterWrapper venice, String storeName, long rewindSeconds, long offsetLag) {
-    try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())){
+    try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())) {
       ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setHybridRewindSeconds(rewindSeconds)
           .setHybridOffsetLagThreshold(offsetLag));
-      if (response.isError()){
+      if (response.isError()) {
         throw new VeniceException(response.getError());
       }
     }
@@ -521,7 +521,7 @@ public class TestPushUtils {
     return samzaConfig;
   }
 
-  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName, PushType type){
+  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName, PushType type) {
     Map<String, String> samzaConfig = getSamzaProducerConfig(venice, storeName, type);
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
@@ -534,11 +534,13 @@ public class TestPushUtils {
    * key and value schema of the store must both be "string", the record produced is
    * based on the provided recordId
    */
-  public static void sendStreamingRecord(SystemProducer producer, String storeName, int recordId){
+  public static void sendStreamingRecord(SystemProducer producer, String storeName, int recordId) {
+    sendStreamingRecord(producer, storeName, Integer.toString(recordId), "stream_" + recordId);
+  }
+
+  public static void sendStreamingRecord(SystemProducer producer, String storeName, Object key, Object message) {
     OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
-        new SystemStream("venice", storeName),
-        Integer.toString(recordId),
-        "stream_" + recordId);
+        new SystemStream("venice", storeName), key, message);
     producer.send(storeName, envelope);
   }
 
@@ -548,15 +550,10 @@ public class TestPushUtils {
    *
    * @see #sendStreamingRecord(SystemProducer, String, int)
    */
-  public static void sendCustomSizeStreamingRecord(SystemProducer producer, String storeName, int recordId, int valueSizeInBytes){
+  public static void sendCustomSizeStreamingRecord(SystemProducer producer, String storeName, int recordId, int valueSizeInBytes) {
     char[] chars = new char[valueSizeInBytes];
     Arrays.fill(chars, Integer.toString(recordId).charAt(0));
-
-    OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
-        new SystemStream("venice", storeName),
-        Integer.toString(recordId),
-        new String(chars));
-    producer.send(storeName, envelope);
+    sendStreamingRecord(producer, storeName, Integer.toString(recordId), new String(chars));
   }
 
   public static String loadFileAsString(String fileName) throws IOException {
