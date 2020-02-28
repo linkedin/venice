@@ -226,7 +226,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
       int partitionNum = entry.getValue();
       VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName, PersistenceType.BDB);
       AbstractStorageEngine storageEngine = bdbFactory.getStore(storeConfig);
-      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 1);
+      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum);
       storageEngineList.add(storageEngine);
     }
 

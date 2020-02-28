@@ -26,27 +26,16 @@ import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
+import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
-
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +46,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
 
 
 public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, GenericRecord> {
@@ -82,7 +78,7 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   private ReadOnlyStoreRepository metadataReposotory;
   private ReadOnlySchemaRepository schemaRepository;
   private StorageService storageService;
-  private BdbStorageMetadataService storageMetadataService;
+  private StorageEngineMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private RecordSerializer<K> keySerializer;
   private DaVinciVersionFinder versionFinder;
@@ -187,16 +183,15 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     schemaRepository = new HelixReadOnlySchemaRepository(metadataReposotory, zkClient, adapter, clusterName,
         REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS);
     schemaRepository.refresh();
-    storageMetadataService = new BdbStorageMetadataService(clusterConfig);
-    services.add(storageMetadataService);
-    AggVersionedBdbStorageEngineStats
-        bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataReposotory);
+
     AggVersionedStorageEngineStats
         storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataReposotory);
-    // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
-        bdbStorageEngineStats, storageEngineStats);
+    storageService = new StorageService(veniceConfigLoader, storageEngineStats);
     services.add(storageService);
+
+    storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+    services.add(storageMetadataService);
+
     // SchemaReader of Kafka protocol
     SchemaReader schemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)));

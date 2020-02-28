@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 import org.rocksdb.Statistics;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.store.AbstractStorageEngine.*;
 
 
 /**
@@ -51,7 +52,9 @@ public class StorageService extends AbstractVeniceService {
       AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats) {
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
-    this.storageEngineRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
+    if (bdbStorageEngineStats != null) {
+      this.storageEngineRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
+    }
     this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
     this.storeVersionStateDeleter = storeVersionStateDeleter;
@@ -59,6 +62,10 @@ public class StorageService extends AbstractVeniceService {
     initInternalStorageEngineFactories();
     // Restore all the stores persisted previously
     restoreAllStores(configLoader);
+  }
+
+  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats) {
+    this(configLoader, s -> {}, null, storageEngineStats);
   }
 
   /**
@@ -181,11 +188,9 @@ public class StorageService extends AbstractVeniceService {
     storageEngine.dropPartition(partitionId);
     Set<Integer> assignedPartitions = storageEngine.getPartitionIds();
     storeConfig.setStorePersistenceType(storageEngine.getType());
-
     logger.info("Dropped Partition " + partitionId + " Store " + storeName + " Remaining " + Arrays.toString(assignedPartitions.toArray()));
-    if (assignedPartitions.isEmpty()) {
-      logger.info("All partitions for Store " + storeName + " are removed... cleaning up state");
 
+    if (assignedPartitions.isEmpty()) {
       // Drop the directory completely.
       StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
       factory.removeStorageEngine(storageEngine);
