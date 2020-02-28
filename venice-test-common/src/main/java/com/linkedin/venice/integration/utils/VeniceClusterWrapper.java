@@ -11,7 +11,6 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
@@ -69,21 +68,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
 
-  VeniceClusterWrapper(File dataDirectory,
-                       String clusterName,
-                       ZkServerWrapper zkServerWrapper,
-                       KafkaBrokerWrapper kafkaBrokerWrapper,
-                       BrooklinWrapper brooklinWrapper,
-                       Map<Integer, VeniceControllerWrapper> veniceControllerWrappers,
-                       Map<Integer, VeniceServerWrapper> veniceServerWrappers,
-                       Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
-                       int defaultReplicaFactor,
-                       int defaultPartitionSize,
-                       long defaultDelayToRebalanceMS,
-                       int mintActiveReplica,
-                       boolean sslToStorageNodes,
-                       boolean sslToKafka) {
+  VeniceClusterWrapper(
+      File dataDirectory,
+      String clusterName,
+      ZkServerWrapper zkServerWrapper,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      BrooklinWrapper brooklinWrapper,
+      Map<Integer, VeniceControllerWrapper> veniceControllerWrappers,
+      Map<Integer, VeniceServerWrapper> veniceServerWrappers,
+      Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
+      int defaultReplicaFactor,
+      int defaultPartitionSize,
+      long defaultDelayToRebalanceMS,
+      int mintActiveReplica,
+      boolean sslToStorageNodes,
+      boolean sslToKafka) {
+
     super(SERVICE_NAME, dataDirectory);
+
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
@@ -99,11 +101,25 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.sslToKafka = sslToKafka;
   }
 
-  static ServiceProvider<VeniceClusterWrapper> generateService(ZkServerWrapper zkServerWrapper,
-      KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName, String clusterToD2,
-      int numberOfControllers, int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize,
-      boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica,
-      boolean sslToStorageNodes, boolean sslToKafka, Properties extraProperties) {
+  static ServiceProvider<VeniceClusterWrapper> generateService(
+      ZkServerWrapper zkServerWrapper,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      BrooklinWrapper brooklinWrapper,
+      String clusterName,
+      String clusterToD2,
+      int numberOfControllers,
+      int numberOfServers,
+      int numberOfRouters,
+      int replicaFactor,
+      int partitionSize,
+      boolean enableWhitelist,
+      boolean enableAutoJoinWhitelist,
+      long delayToReblanceMS,
+      int minActiveReplica,
+      boolean sslToStorageNodes,
+      boolean sslToKafka,
+      Properties extraProperties) {
+
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
@@ -150,9 +166,23 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
        * so we can assume they're reliable enough.
        */
-      return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper,
-          brooklinWrapper, veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor,
-          partitionSize, delayToReblanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
+      return (serviceName, port) ->
+                 new VeniceClusterWrapper(
+                     null,
+                     clusterName,
+                     zkServerWrapper,
+                     kafkaBrokerWrapper,
+                     brooklinWrapper,
+                     veniceControllerWrappers,
+                     veniceServerWrappers,
+                     veniceRouterWrappers,
+                     replicaFactor,
+                     partitionSize,
+                     delayToReblanceMS,
+                     minActiveReplica,
+                     sslToStorageNodes,
+                     sslToKafka);
+
     } catch (Exception e) {
       veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
       veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
@@ -161,10 +191,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
-  static ServiceProvider<VeniceClusterWrapper> generateService(String clusterName, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
-      boolean sslToKafka, Properties extraProperties) {
+  static ServiceProvider<VeniceClusterWrapper> generateService(
+      String clusterName,
+      int numberOfControllers,
+      int numberOfServers,
+      int numberOfRouters,
+      int replicaFactor,
+      int partitionSize,
+      boolean enableWhitelist,
+      boolean enableAutoJoinWhitelist,
+      long delayToReblanceMS,
+      int minActiveReplica,
+      boolean sslToStorageNodes,
+      boolean sslToKafka,
+      Properties extraProperties) {
+
     ZkServerWrapper zkServerWrapper = null;
     KafkaBrokerWrapper kafkaBrokerWrapper = null;
     BrooklinWrapper brooklinWrapper = null;
@@ -178,9 +219,24 @@ public class VeniceClusterWrapper extends ProcessWrapper {
        * complexity of O(N^2) on the amount of retries. The calls have their own retries,
        * so we can assume they're reliable enough.
        */
-      return generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, null, numberOfControllers,
-          numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
-          delayToReblanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, extraProperties);
+      return generateService(
+          zkServerWrapper,
+          kafkaBrokerWrapper,
+          brooklinWrapper,
+          clusterName,
+          null,
+          numberOfControllers,
+          numberOfServers,
+          numberOfRouters,
+          replicaFactor,
+          partitionSize,
+          enableWhitelist,
+          enableAutoJoinWhitelist,
+          delayToReblanceMS,
+          minActiveReplica,
+          sslToStorageNodes,
+          sslToKafka,extraProperties);
+
     } catch (Exception e) {
       IOUtils.closeQuietly(zkServerWrapper);
       IOUtils.closeQuietly(kafkaBrokerWrapper);
@@ -197,12 +253,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   @Override
   protected void internalStop() throws Exception {
     CompletableFuture.runAsync(() -> {
-      veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
-      veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
-      veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
-      IOUtils.closeQuietly(zkServerWrapper);
-      IOUtils.closeQuietly(kafkaBrokerWrapper);
-      IOUtils.closeQuietly(brooklinWrapper);
+      synchronized (this) {
+        veniceRouterWrappers.values().stream().forEach(IOUtils::closeQuietly);
+        veniceServerWrappers.values().stream().forEach(IOUtils::closeQuietly);
+        veniceControllerWrappers.values().stream().forEach(IOUtils::closeQuietly);
+        IOUtils.closeQuietly(zkServerWrapper);
+        IOUtils.closeQuietly(kafkaBrokerWrapper);
+        IOUtils.closeQuietly(brooklinWrapper);
+      }
     });
   }
 
@@ -292,17 +350,21 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     throw new VeniceException("Master controller does not exist, cluster=" + clusterName);
   }
 
-  public synchronized VeniceControllerWrapper addVeniceController(Properties properties) {
+  public VeniceControllerWrapper addVeniceController(Properties properties) {
     VeniceControllerWrapper veniceControllerWrapper =
         ServiceFactory.getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
             defaultDelayToRebalanceMS, defaultMinActiveReplica, null, null, sslToKafka, false, properties);
-    veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
+    synchronized (this) {
+      veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
+    }
     return veniceControllerWrapper;
   }
 
-  public synchronized VeniceRouterWrapper addVeniceRouter(Properties properties) {
+  public VeniceRouterWrapper addVeniceRouter(Properties properties) {
     VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes, properties);
-    veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
+    synchronized (this) {
+      veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
+    }
     return veniceRouterWrapper;
   }
 
@@ -313,13 +375,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @param enableAutoJoinWhiteList
    * @return
    */
-  public synchronized VeniceServerWrapper addVeniceServer(boolean enableWhitelist, boolean enableAutoJoinWhiteList) {
+  public VeniceServerWrapper addVeniceServer(boolean enableWhitelist, boolean enableAutoJoinWhiteList) {
     Properties featureProperties = new Properties();
     featureProperties.setProperty(SERVER_ENABLE_SERVER_WHITE_LIST, Boolean.toString(enableWhitelist));
     featureProperties.setProperty(SERVER_IS_AUTO_JOIN, Boolean.toString(enableAutoJoinWhiteList));
     VeniceServerWrapper veniceServerWrapper =
         ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, new Properties());
-    veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    synchronized (this) {
+      veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    }
     return veniceServerWrapper;
   }
 
@@ -329,15 +393,19 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @param properties
    * @return
    */
-  public synchronized VeniceServerWrapper addVeniceServer(Properties properties) {
+  public VeniceServerWrapper addVeniceServer(Properties properties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, new Properties(), properties);
-    veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    synchronized (this) {
+      veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    }
     return veniceServerWrapper;
   }
 
-  public synchronized VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
+  public VeniceServerWrapper addVeniceServer(Properties featureProperties, Properties configProperties) {
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, configProperties);
-    veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    synchronized (this) {
+      veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
+    }
     return veniceServerWrapper;
   }
 
@@ -400,7 +468,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return effectedReplicas;
   }
 
-  public synchronized void restartVeniceServer(int port){
+  public synchronized void restartVeniceServer(int port) {
     restartVeniceComponent(veniceServerWrappers, port);
   }
 
@@ -428,7 +496,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   private <T extends ProcessWrapper> void stopVeniceComponent(Map<Integer, T> components, int port) {
-    if(components.containsKey(port)){
+    if (components.containsKey(port)) {
       T component = components.get(port);
       try {
         component.stop();
