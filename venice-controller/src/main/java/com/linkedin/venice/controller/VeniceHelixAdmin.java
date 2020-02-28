@@ -3122,6 +3122,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+    private Optional<Version> getStoreVersion(String clusterName, String topic) {
+        String storeName = Version.parseStoreFromKafkaTopicName(topic);
+        int versionId = Version.parseVersionFromKafkaTopicName(topic);
+        Store store = getStore(clusterName, storeName);
+        if (null == store) {
+            throw new VeniceNoStoreException(storeName, clusterName);
+        }
+        return store.getVersion(versionId);
+    }
+
     @Override
     public void killOfflinePush(String clusterName, String kafkaTopic) {
         if (!isResourceStillAlive(kafkaTopic)) {
@@ -3140,6 +3150,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return;
         }
         checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
+        /**
+         * Check whether the specified store is already terminated or not.
+         * If yes, the kill job message will be skipped.
+         */
+        Optional<Version> version;
+        try {
+            version = getStoreVersion(clusterName, kafkaTopic);
+        } catch (VeniceNoStoreException e) {
+            logger.warn("Kill job will be skipped since the corresponding store for topic: " + kafkaTopic
+                + " doesn't exist in cluster: " + clusterName);
+            return;
+        }
+        if (version.isPresent() && VersionStatus.isBootstrapTerminated(version.get().getStatus())) {
+            /**
+             * This is trying to avoid kill job entry in participant store if the version is already online.
+             * This won't solve all the edge cases since the following race condition could still happen, but it is fine.
+             * The race condition could be:
+             * 1. The version status is still not 'ONLINE' yet from Controller's view, then kill job message will be sent to storage node;
+             * 2. When storage node receives the kill job message, the version from storage node's perspective could be already
+             *    'online';
+             *
+             * The reason not to fix this race condition:
+             * 1. It should happen rarely;
+             * 2. This will change the lifecycle of store version greatly, which might introduce other potential issues;
+             *
+             * The target use case is for new fabric build out.
+             * In Blueshift project, we are planning to leverage participant store to short-cuit
+             * the bootstrap if the corresponding version has been killed in the source fabric.
+             * So in the new fabric, we need the kill-job message to be as accurate as possible to
+             * avoid the discrepancy.
+             */
+            logger.info("Resource: " + kafkaTopic + " has finished bootstrapping, so kill job will be skipped");
+            return;
+        }
+
         StatusMessageChannel messageChannel = getVeniceHelixResource(clusterName).getMessageChannel();
         // As we should already have retry outside of this function call, so we do not need to retry again inside.
         int retryCount = 1;
