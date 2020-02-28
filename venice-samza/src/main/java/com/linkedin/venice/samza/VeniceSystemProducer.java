@@ -89,11 +89,12 @@ public class VeniceSystemProducer implements SystemProducer {
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
       Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory, sslFactory, SystemTime.INSTANCE);
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory, sslFactory, Optional.empty(), SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory, Time time) {
+      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory,
+      Optional<String> partitioners, Time time) {
     this.storeName = storeName;
     this.pushType = pushType;
     this.time = time;
@@ -118,7 +119,7 @@ public class VeniceSystemProducer implements SystemProducer {
             samzaJobId,
             true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
             false, // Samza jobs, including batch ones, are expected to write data out of order
-            Optional.empty()
+            partitioners
         )
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
@@ -166,6 +167,11 @@ public class VeniceSystemProducer implements SystemProducer {
   protected VeniceWriter<byte[], byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    veniceWriterProperties.setProperty(PARTITIONER_CLASS, store.getPartitionerClass());
+    for (Map.Entry<String, String> entry : store.getPartitionerParams().entrySet()) {
+      veniceWriterProperties.setProperty(entry.getKey(), entry.getValue());
+    }
+    veniceWriterProperties.setProperty(AMPLIFICATION_FACTOR, String.valueOf(store.getAmplificationFactor()));
     return getVeniceWriter(store, veniceWriterProperties);
   }
 
