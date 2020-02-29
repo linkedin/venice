@@ -35,6 +35,7 @@ public class PushMonitorDelegator implements PushMonitor {
   private final ReadWriteStoreRepository metadataRepository;
   private final OfflinePushAccessor offlinePushAccessor;
   private final Object lock;
+  private final String clusterName;
 
   private OfflinePushMonitor offlinePushMonitor;
   private PartitionStatusBasedPushMonitor partitionStatusBasedPushStatusMonitor;
@@ -49,6 +50,7 @@ public class PushMonitorDelegator implements PushMonitor {
       Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator,
       MetricsRepository metricsRepository) {
 
+    this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
     this.metadataRepository = metadataRepository;
     this.offlinePushAccessor = offlinePushAccessor;
@@ -106,6 +108,7 @@ public class PushMonitorDelegator implements PushMonitor {
 
   @Override
   public void loadAllPushes() {
+    logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     lockAllPushMonitorsToLoadPushes();
     try {
       List<OfflinePushStatus> offlinePushMonitorStatuses = new ArrayList<>();
@@ -131,6 +134,7 @@ public class PushMonitorDelegator implements PushMonitor {
       partitionStatusBasedPushStatusMonitor.loadAllPushes(partitionStatusBasedPushMonitorStatuses);
 
       legacyPushStatuses.forEach(offlinePushAccessor::deleteOfflinePushStatusAndItsPartitionStatuses);
+      logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } finally {
       unlockAllPushMonitors();
     }

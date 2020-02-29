@@ -97,7 +97,7 @@ public abstract class AbstractPushMonitor
   public void loadAllPushes(List<OfflinePushStatus> offlinePushStatusList) {
     pushMonitorWriteLock.lock();
     try {
-
+      logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
       // Subscribe to changes first
       List<OfflinePushStatus> refreshedOfflinePushStatusList = new ArrayList<>();
       for(OfflinePushStatus offlinePushStatus : offlinePushStatusList) {
@@ -110,7 +110,6 @@ public abstract class AbstractPushMonitor
       }
       offlinePushStatusList = refreshedOfflinePushStatusList;
 
-      logger.info("Start loading pushes for cluster: " + clusterName);
       for (OfflinePushStatus offlinePushStatus : offlinePushStatusList) {
         getTopicToPushMap().put(offlinePushStatus.getKafkaTopic(), offlinePushStatus);
         getOfflinePushAccessor().subscribePartitionStatusChange(offlinePushStatus, this);
@@ -141,6 +140,7 @@ public abstract class AbstractPushMonitor
               storeName -> new ArrayList<>()).add(Version.parseVersionFromKafkaTopicName(topic)));
 
       storeToVersionNumsMap.forEach(this::retireOldErrorPushes);
+      logger.info("Load all pushes finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } finally {
       pushMonitorWriteLock.unlock();
     }
