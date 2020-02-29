@@ -111,6 +111,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public void refresh() {
+    logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     updateLock.lock();
     try {
       List<Store> newStores = getStoresFromZk();
@@ -123,6 +124,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       for (String storeName : deletedStoreNames) {
         removeStore(storeName);
       }
+      logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
     } finally {
       updateLock.unlock();
     }

@@ -87,6 +87,7 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
      */
     public void refresh() {
         try {
+            logger.info("Refresh started for cluster " + manager.getClusterName() + "'s" + getClass().getSimpleName());
             // After adding the listener, helix will initialize the callback which will get the entire external view
             // and trigger the external view change event. In other words, venice will read the newest external view immediately.
             manager.addIdealStateChangeListener(this);
@@ -97,8 +98,9 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
             // Get the current external view and process at first. As the new helix API will not init a event after you add the listener.
             onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(), null);
             // TODO subscribe zk state change event after we can get zk client from HelixManager(Should be fixed by Helix team soon)
+            logger.info("Refresh finished for cluster" + manager.getClusterName() + "'s" + getClass().getSimpleName());
         } catch (Exception e) {
-            String errorMessage = "Cannot register routing table into Helix";
+            String errorMessage = "Cannot refresh routing table from Helix for cluster " + manager.getClusterName();
             logger.error(errorMessage, e);
             throw new VeniceException(errorMessage, e);
         }

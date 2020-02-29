@@ -58,6 +58,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   @Override
   public void refresh() {
+    logger.info("Refresh started for cluster " + clusterName + "'s " + getClass().getSimpleName());
     zkClient.subscribeDataChanges(getRouterRootPath(), this);
     zkClient.subscribeChildChanges(getRouterRootPath(), this);
     RoutersClusterConfig newRoutersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
@@ -68,6 +69,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     }
     routersClusterConfig = newRoutersClusterConfig;
     zkClient.subscribeStateChanges(zkStateListener);
+    logger.info("Refresh finished for cluster " + clusterName + "'s " + getClass().getSimpleName());
   }
 
   @Override
