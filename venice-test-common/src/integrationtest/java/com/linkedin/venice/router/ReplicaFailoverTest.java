@@ -90,7 +90,7 @@ public class ReplicaFailoverTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT, dataProvider = "workloadParams")
-  void testDeadReplica(int maxConcurrentRequests) {
+  public void testDeadReplica(int maxConcurrentRequests) {
     List<VeniceServerWrapper> servers = cluster.getVeniceServers().subList(0, REPLICATION_FACTOR - 1);
     for (VeniceServerWrapper server : servers) {
       cluster.stopVeniceServer(server.getPort());

@@ -118,7 +118,7 @@ public class StoreIngestionTaskTest {
   private static final long EMPTY_POLL_SLEEP_MS = 0;
 
   static {
-    StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
+    StoreIngestionTask.SCHEMA_POLLING_DELAY_MS = 100;
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
     StoreIngestionTask.OFFSET_REPORTING_INTERVAL = 1;
