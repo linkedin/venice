@@ -1811,7 +1811,7 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testETLStoreConfig() {
+  public void testHybridAndETLStoreConfig() {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     VeniceControllerWrapper childControllerWrapper =
         ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
@@ -1829,12 +1829,31 @@ public class TestVeniceParentHelixAdmin {
     Schema valueSchema = generateSchema(false);
     ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
     controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+
+    // Configure the store to hybrid
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(600)
+        .setHybridOffsetLagThreshold(10000);
+    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
+    Assert.assertFalse(controllerResponse.isError());
+    HybridStoreConfig hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 600);
+    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
+
+    // Try to update the hybrid store with different hybrid configs
+    params = new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(172800);
+    controllerResponse = controllerClient.updateStore(storeName, params);
+    Assert.assertFalse(controllerResponse.isError());
+    hybridStoreConfig = controllerClient.getStore(storeName).getStore().getHybridStoreConfig();
+    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 172800);
+    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 10000);
 
     // test enabling ETL without etl proxy account, expected failure
+    params = new UpdateStoreQueryParams();
     params.setRegularVersionETLEnabled(true);
     params.setFutureVersionETLEnabled(true);
-    ControllerResponse controllerResponse = controllerClient.updateStore(storeName, params);
+    controllerResponse = controllerClient.updateStore(storeName, params);
     ETLStoreConfig etlStoreConfig = controllerClient.getStore(storeName).getStore().getEtlStoreConfig();
     Assert.assertFalse(etlStoreConfig.isRegularVersionETLEnabled());
     Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
@@ -1842,6 +1861,7 @@ public class TestVeniceParentHelixAdmin {
         + "because etled user proxy account is not set"));
 
     // test enabling ETL with empty proxy account, expected failure
+    params = new UpdateStoreQueryParams();
     params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount("");
     params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount("");
     controllerResponse = controllerClient.updateStore(storeName, params);
@@ -1852,6 +1872,7 @@ public class TestVeniceParentHelixAdmin {
         + "because etled user proxy account is not set"));
 
     // test enabling ETL with etl proxy account, expected success
+    params = new UpdateStoreQueryParams();
     params.setRegularVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
     params.setFutureVersionETLEnabled(true).setEtledProxyUserAccount(proxyUser);
     controllerClient.updateStore(storeName, params);
@@ -1860,6 +1881,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertTrue(etlStoreConfig.isFutureVersionETLEnabled());
 
     // set the ETL back to false
+    params = new UpdateStoreQueryParams();
     params.setRegularVersionETLEnabled(false);
     params.setFutureVersionETLEnabled(false);
     controllerClient.updateStore(storeName, params);
@@ -1868,6 +1890,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertFalse(etlStoreConfig.isFutureVersionETLEnabled());
 
     // test enabling ETL again without etl proxy account, expected success
+    params = new UpdateStoreQueryParams();
     params.setRegularVersionETLEnabled(true);
     params.setFutureVersionETLEnabled(true);
     controllerClient.updateStore(storeName, params);

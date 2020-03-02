@@ -2234,7 +2234,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 PartitionerConfig partitionerConfig = new PartitionerConfig(partitionerClass.get(), partitionerParams.get(), amplificationFactor.get());
                 storeMetadataUpdate(clusterName, storeName, store -> {
                     // Cannot change the partitioner config if store is a hybrid store.
-                    if ((store.getPartitionerConfig().equals(partitionerConfig)) && store.isHybrid()) {
+                    if (!store.getPartitionerConfig().equals(partitionerConfig) && store.isHybrid()) {
                         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partitioner config change in hybrid store is not supported");
                     } else {
                         store.setPartitionerConfig(partitionerConfig);
