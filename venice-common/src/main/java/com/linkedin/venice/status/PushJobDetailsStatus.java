@@ -13,7 +13,10 @@ public enum PushJobDetailsStatus {
   UNKNOWN(4),
   TOPIC_CREATED(5),
   WRITE_COMPLETED(6),
-  KILLED(7);
+  KILLED(7),
+  END_OF_PUSH_RECEIVED(8),
+  START_OF_INCREMENTAL_PUSH_RECEIVED(9),
+  END_OF_INCREMENTAL_PUSH_RECEIVED(10);
 
   private static final Set<Integer> TERMINAL_STATUSES = new HashSet<>(Arrays.asList(COMPLETED.getValue(),
       ERROR.getValue(), KILLED.getValue()));

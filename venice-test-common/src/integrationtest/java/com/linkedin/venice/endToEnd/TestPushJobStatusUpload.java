@@ -12,6 +12,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -25,6 +26,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -37,6 +39,7 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -195,6 +198,28 @@ public class TestPushJobStatusUpload {
       assertFalse(value.pushJobConfigs.isEmpty());
       assertNotNull(value.producerConfigs);
       assertTrue(value.producerConfigs.isEmpty());
+    }
+  }
+
+  /**
+   * This is to ensure the known {@link com.linkedin.venice.pushmonitor.ExecutionStatus} statuses reported as part of
+   * push job details can be parsed properly. This test should fail and alert developers when adding new statuses in
+   * {@link com.linkedin.venice.pushmonitor.ExecutionStatus} without modifying this test or {@link PushJobDetailsStatus}.
+   */
+  @Test
+  public void testPushJobDetailsStatusEnums() {
+    // A list of known ExecutionStatus that we don't report/expose to job status polling.
+    ExecutionStatus[] unreportedStatusesArray = {NEW, PROGRESS, START_OF_BUFFER_REPLAY_RECEIVED, TOPIC_SWITCH_RECEIVED,
+        DROPPED, WARNING, ARCHIVED};
+    HashSet<ExecutionStatus> unreportedStatuses = new HashSet<>(Arrays.asList(unreportedStatusesArray));
+    HashSet<Integer> processedSignals = new HashSet<>();
+    for (ExecutionStatus status : ExecutionStatus.values()) {
+      if (unreportedStatuses.contains(status)) {
+        continue; // Ignore parsing of statuses that are never reported.
+      }
+      Integer intValue = PushJobDetailsStatus.valueOf(status.toString()).getValue();
+      assertFalse(processedSignals.contains(intValue), "Each PushJobDetailsStatus should have its own unique int value");
+      processedSignals.add(intValue);
     }
   }
 }
