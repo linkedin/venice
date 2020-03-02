@@ -299,7 +299,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   }
 
   protected void validateState() {
-    if (!isRunning.get()) {
+    if (!isRunning()) {
       throw new VeniceException(" Topic " + topic + " is shutting down, no more messages accepted");
     }
   }
@@ -580,7 +580,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
        * acquired by some other synchronized function, such as {@link #kill()}.
         */
-      while (isRunning.get()) {
+      while (isRunning()) {
         processConsumerActions();
         checkLongRunningTaskState();
         processMessages();
@@ -612,7 +612,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
     } catch (org.apache.kafka.common.errors.InterruptException | InterruptedException interruptException) {
       // Known exceptions during graceful shutdown of storage server. Report error only if the server is still running.
-      if (isRunning.get()) {
+      if (isRunning()) {
         // Report ingestion failure if it is not caused by kill operation or server restarts.
         logger.error(consumerTaskId + " failed with InterruptException.", interruptException);
         notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
@@ -1639,7 +1639,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return state.get();
       }
 
-      if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS && !isRunning.get()) {
+      if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
         logger.warn("Version state is not available for " + kafkaTopic + " after " + NANOSECONDS.toSeconds(elapsedTime));
         throw new VeniceException("Store version state is not available for " + kafkaTopic);
       }
@@ -1673,7 +1673,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return;
       }
 
-      if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS && !isRunning.get()) {
+      if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
         logger.warn("Value schema [" + schemaId + "] is not available for " + storeNameWithoutVersionInfo +
                         " after " + NANOSECONDS.toSeconds(elapsedTime));
         throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeNameWithoutVersionInfo);
@@ -1695,7 +1695,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Stops the consumer task.
    */
   public synchronized void close() {
-    isRunning.getAndSet(false);
+    isRunning.set(false);
 
     // KafkaConsumer is closed at the end of the run method.
     // The operation is executed on a single thread in run method.
@@ -1707,7 +1707,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * A function to allow the service to get the current status of the task.
    * This would allow the service to create a new task if required.
    */
-  public synchronized boolean isRunning() {
+  public boolean isRunning() {
     return isRunning.get();
   }
 
