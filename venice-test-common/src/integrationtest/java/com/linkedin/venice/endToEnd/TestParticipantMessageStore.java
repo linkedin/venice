@@ -97,7 +97,7 @@ public class TestParticipantMessageStore {
     });
     ControllerResponse response = parentControllerClient.killOfflinePushJob(topicName);
     assertFalse(response.isError());
-    verifyKillMessageInParticipantStore(topicName);
+    verifyKillMessageInParticipantStore(topicName, true);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Poll job status to verify the job is killed
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.ERROR.toString());
@@ -116,10 +116,10 @@ public class TestParticipantMessageStore {
 
   @Test
   public void testKillWhenVersionIsOnline() {
-    VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient);
-    String storeName = versionCreationResponse.getName();
-    String topicName = versionCreationResponse.getKafkaTopic();
-    parentControllerClient.writeEndOfPush(storeName, versionCreationResponse.getVersion());
+    String storeName = TestUtils.getUniqueString("testKillWhenVersionIsOnline");
+    VersionCreationResponse versionCreationResponseForOnlineVersion = getNewStoreVersion(parentControllerClient, storeName);
+    String topicNameForOnlineVersion = versionCreationResponseForOnlineVersion.getKafkaTopic();
+    parentControllerClient.writeEndOfPush(storeName, versionCreationResponseForOnlineVersion.getVersion());
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Verify the push job is COMPLETED and the version is online.
       StoreInfo storeInfo = controllerClient.getStore(storeName).getStore();
@@ -127,24 +127,42 @@ public class TestParticipantMessageStore {
           && storeInfo.getVersions().iterator().next().getStatus().equals(VersionStatus.ONLINE),
           "Waiting for a version to become online");
     });
-    parentControllerClient.killOfflinePushJob(topicName);
-    verifyKillMessageInParticipantStore(topicName);
+    parentControllerClient.killOfflinePushJob(topicNameForOnlineVersion);
+
+    /**
+     * Try to kill an ongoing push, since for the same store, all the admin messages are processed sequentially.
+     * When the new version receives kill job, then it is safe to make an assertion about whether the previous
+     * version receives a kill-job message or not.
+     */
+    VersionCreationResponse versionCreationResponseForBootstrappingVersion = getNewStoreVersion(parentControllerClient, storeName);
+    String topicNameForBootstrappingVersion = versionCreationResponseForBootstrappingVersion.getKafkaTopic();
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Verify the push job is STARTED.
+      assertEquals(controllerClient.queryJobStatus(topicNameForBootstrappingVersion).getStatus(), ExecutionStatus.STARTED.toString());
+    });
+    ControllerResponse response = parentControllerClient.killOfflinePushJob(topicNameForBootstrappingVersion);
+    assertFalse(response.isError());
+    verifyKillMessageInParticipantStore(topicNameForBootstrappingVersion, true);
+
+    // Then we could verify whether the previous version receives a kill-job or not.
+    verifyKillMessageInParticipantStore(topicNameForOnlineVersion, false);
+
     venice.stopVeniceServer(veniceServerWrapper.getPort());
     // Ensure the partition assignment is 0 before restarting the server
     TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> venice.getRandomVeniceRouter()
-        .getRoutingDataRepository().getPartitionAssignments(topicName).getAssignedNumberOfPartitions() == 0);
+        .getRoutingDataRepository().getPartitionAssignments(topicNameForOnlineVersion).getAssignedNumberOfPartitions() == 0);
     venice.restartVeniceServer(veniceServerWrapper.getPort());
-    int expectedOnlineReplicaCount = versionCreationResponse.getReplicas();
+    int expectedOnlineReplicaCount = versionCreationResponseForOnlineVersion.getReplicas();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
-      for (int p = 0; p < versionCreationResponse.getPartitions(); p++) {
+      for (int p = 0; p < versionCreationResponseForOnlineVersion.getPartitions(); p++) {
         assertEquals(venice.getRandomVeniceRouter().getRoutingDataRepository()
-                .getReadyToServeInstances(topicName, p).size(),
+                .getReadyToServeInstances(topicNameForOnlineVersion, p).size(),
             expectedOnlineReplicaCount, "Not all replicas are ONLINE yet");
       }
     });
   }
 
-  private void verifyKillMessageInParticipantStore(String topic) {
+  private void verifyKillMessageInParticipantStore(String topic, boolean shouldPresent) {
     // Verify the kill push message is in the participant message store.
     ParticipantMessageKey key = new ParticipantMessageKey();
     key.resourceName = topic;
@@ -155,8 +173,12 @@ public class TestParticipantMessageStore {
                 ParticipantMessageValue.class).setVeniceURL(venice.getRandomRouterURL()))) {
       TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
         try {
-          // Verify that the kill offline message has made it to the participant message store.
-          assertNotNull(client.get(key).get());
+          if (shouldPresent) {
+            // Verify that the kill offline message has made it to the participant message store.
+            assertNotNull(client.get(key).get());
+          } else {
+            assertNull(client.get(key).get());
+          }
         } catch (Exception e) {
           // no op
         }
@@ -164,10 +186,14 @@ public class TestParticipantMessageStore {
     }
   }
 
-  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient) {
-    String storeName = TestUtils.getUniqueString("test-kill");
+  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, String storeName) {
     controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
         Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, Optional.empty());
+  }
+
+
+  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient) {
+    return getNewStoreVersion(controllerClient, TestUtils.getUniqueString("test-kill"));
   }
 }
