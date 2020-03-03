@@ -35,7 +35,6 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
-import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -324,7 +323,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // We should only perform the store validation if the current controller is the master controller of the requested cluster.
       Store store = getStore(clusterName, storeName);
       if (store == null) {
-        addStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema);
+        addStore(clusterName, storeName, VENICE_INTERNAL_STORE_OWNER, keySchema, valueSchema, true);
         store = getStore(clusterName, storeName);
         if (store == null) {
           throw new VeniceException("Unable to create or fetch the " + storeDescriptor);
@@ -469,10 +468,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+  public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+      boolean isSystemStore) {
     acquireLock(clusterName, storeName);
     try {
-      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema);
+      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       // Write store creation message to Kafka

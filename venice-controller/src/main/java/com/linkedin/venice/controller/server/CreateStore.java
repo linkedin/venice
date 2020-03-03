@@ -30,6 +30,7 @@ public class CreateStore extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         String keySchema = request.queryParams(KEY_SCHEMA);
         String valueSchema = request.queryParams(VALUE_SCHEMA);
+        boolean isSystemStore = Boolean.getBoolean(request.queryParams(IS_SYSTEM_STORE));
 
         String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
         if (owner == null) {
@@ -39,7 +40,7 @@ public class CreateStore extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         veniceResponse.setOwner(owner);
-        admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
+        admin.addStore(clusterName, storeName, owner, keySchema, valueSchema, isSystemStore);
       }
     };
   }

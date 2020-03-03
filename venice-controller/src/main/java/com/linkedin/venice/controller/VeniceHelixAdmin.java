@@ -460,12 +460,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema,
-        String valueSchema) {
+        String valueSchema, boolean isSystemStore) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         logger.info("Start creating store: " + storeName);
         resources.lockForMetadataOperation();
         try{
-            checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema);
+            checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema, isSystemStore);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store newStore = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
@@ -862,7 +862,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void checkPreConditionForCloneStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        checkStoreNameConflict(storeName);
+        checkStoreNameConflict(storeName, true);
 
         if (storeConfigAccessor.containsConfig(storeName)) {
             if (storeConfigAccessor.getStoreConfig(storeName).getCluster().equals(clusterName)) {
@@ -872,12 +872,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
+    protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema,
+        String valueSchema, boolean allowSystemStore) {
         if (!Store.isValidStoreName(storeName)) {
             throw new VeniceException("Invalid store name " + storeName + ". Only letters, numbers, underscore or dash");
         }
         checkControllerMastership(clusterName);
-        checkStoreNameConflict(storeName);
+        checkStoreNameConflict(storeName, allowSystemStore);
 
         // Before creating store, check the global stores configs at first.
         // TODO As some store had already been created before we introduced global store config
@@ -908,9 +909,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
     }
 
-    private void checkStoreNameConflict(String storeName) {
+    private void checkStoreNameConflict(String storeName, boolean allowSystemStore) {
         if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
             throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
+        }
+
+        if (!allowSystemStore && VeniceSystemStoreUtils.isSystemStore(storeName)) {
+            throw new VeniceException("Store name: " + storeName
+                + " clashes with the Venice system store usage, please change it");
         }
     }
 

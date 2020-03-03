@@ -11,11 +11,6 @@ import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
-import org.I0Itec.zkclient.IZkChildListener;
-import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
-
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -24,6 +19,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
+import org.I0Itec.zkclient.IZkChildListener;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 /**
  * This class is used to cache store schema and provide various query operations.
@@ -43,7 +44,9 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
-  // Local cache between store name and store schema
+  /**
+   * Local cache between store name and store schema.
+   */
   private Map<String, SchemaData> schemaMap = new VeniceConcurrentHashMap<>();
 
   private final ZkClient zkClient;
@@ -87,7 +90,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    if (!schemaMap.containsKey(storeName)) {
+    if (!schemaMap.containsKey(getZkStoreName(storeName))) {
       populateSchemaMap(storeName);
     }
   }
@@ -116,7 +119,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -140,8 +143,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    */
   @Override
   public SchemaEntry getValueSchema(String storeName, int id) {
-    SchemaEntry valueSchema = getValueSchemaInternally(storeName, id);
-    return valueSchema;
+    return getValueSchemaInternally(storeName, id);
   }
 
   private SchemaEntry getValueSchemaInternally(String storeName, int id) {
@@ -154,12 +156,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
-      SchemaEntry valueSchema = schemaData.getValueSchema(id);
-      return valueSchema;
+      return schemaData.getValueSchema(id);
     } finally {
       schemaLock.readLock().unlock();
     }
@@ -197,7 +198,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -220,7 +221,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -237,7 +238,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     schemaLock.readLock().lock();
     try {
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -267,7 +268,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -288,7 +289,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -312,7 +313,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -345,7 +346,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
        * which could cause this function throw {@link VeniceNoStoreException}.
        */
       fetchStoreSchemaIfNotInCache(storeName);
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
@@ -397,7 +398,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    * You can get more details from the 'CachedData' example in {@link ReentrantReadWriteLock}.
    */
   private void populateSchemaMap(String storeName) {
-    schemaMap.computeIfAbsent(storeName, k -> {
+    schemaMap.computeIfAbsent(getZkStoreName(storeName), k -> {
       // Gradually warm up
       logger.info("Try to fetch schema data for store: " + storeName);
       // If the local cache doesn't have the schema entry for this store,
@@ -432,7 +433,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     zkClient.unsubscribeStateChanges(zkStateListener);
     schemaLock.writeLock().lock();
     try {
-      Set<String> storeNameSet = schemaMap.keySet();
+      Set<String> storeNameSet = schemaMap.values().stream().map(SchemaData::getStoreName).collect(Collectors.toSet());
       storeNameSet.forEach(this::removeStoreSchemaFromLocal);
     } finally {
       schemaLock.writeLock().unlock();
@@ -448,11 +449,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private void removeStoreSchemaFromLocal(String storeName) {
     schemaLock.writeLock().lock();
     try {
-      if (!schemaMap.containsKey(storeName)) {
+      if (!schemaMap.containsKey(getZkStoreName(storeName))) {
         return;
       }
       logger.info("Remove schema for store locally: " + storeName);
-      schemaMap.remove(storeName);
+      schemaMap.remove(getZkStoreName(storeName));
       accessor.unsubscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
       accessor.unsubscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
       accessor.unsubscribeDerivedSchemaCreationChanges(storeName, derivedSchemaChildListener);
@@ -496,7 +497,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
     // Keep under readlock as other threads could be updating (refresh) the map.
     schemaLock.readLock().lock();
     try {
-      schemaData = schemaMap.get(storeName);
+      schemaData = schemaMap.get(getZkStoreName(storeName));
       if (null == schemaData) { // Should not happen, safety check for rare race condition.
         populateSchemaMap(storeName);
       }
@@ -513,14 +514,14 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private class KeySchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
-      schemaMap.get(storeName).setKeySchema(accessor.getKeySchema(storeName));
+      schemaMap.get(getZkStoreName(storeName)).setKeySchema(accessor.getKeySchema(storeName));
     }
   }
 
   private class ValueSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
 
       for (String id : currentChildren) {
         if (null == schemaData.getValueSchema(Integer.parseInt(id))) {
@@ -533,7 +534,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   private class DerivedSchemaChildListener extends SchemaChildListener {
     @Override
     void handleSchemaChanges(String storeName, List<String> currentChildren) {
-      SchemaData schemaData = schemaMap.get(storeName);
+      SchemaData schemaData = schemaMap.get(getZkStoreName(storeName));
       for (String derivedSchemaIdPairStr : currentChildren) {
         String [] ids = derivedSchemaIdPairStr.split(HelixSchemaAccessor.DERIVED_SCHEMA_DELIMITER);
         if (ids.length != 2) {
@@ -564,7 +565,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
       schemaLock.writeLock().lock();
       try {
-        if (schemaMap.containsKey(storeName)) {
+        if (schemaMap.containsKey(getZkStoreName(storeName))) {
           handleSchemaChanges(storeName, currentChildren);
         } else {
           // Should not happen, since we will add the store entry locally when subscribe its child change

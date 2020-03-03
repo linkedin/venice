@@ -30,9 +30,8 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * TODO: It's handy to make {@link #versions} as a hash map.
  */
 public class Store {
-
-  private static final String SYSTEM_STORE_NAME_PADDING = "venice_system_store_";
-  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PADDING + "%s";
+  public static final String SYSTEM_STORE_NAME_PREFIX = "venice_system_store_";
+  public static final String SYSTEM_STORE_FORMAT = SYSTEM_STORE_NAME_PREFIX + "%s";
 
   /**
    * Special version number indicates none of version is available to read.
@@ -822,7 +821,7 @@ public class Store {
   }
 
   public boolean isSystemStore() {
-    return getName().startsWith(SYSTEM_STORE_NAME_PADDING);
+    return getName().startsWith(SYSTEM_STORE_NAME_PREFIX);
   }
 
   /**

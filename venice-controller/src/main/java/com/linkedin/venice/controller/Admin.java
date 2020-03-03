@@ -74,7 +74,12 @@ public interface Admin extends AutoCloseable, Closeable {
 
     boolean isClusterValid(String clusterName);
 
-    void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
+    default void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+        addStore(clusterName, storeName, owner, keySchema, valueSchema, false);
+    }
+
+    void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+        boolean isSystemStore);
 
     void migrateStore(String srcClusterName, String destClusterName, String storeName);
 

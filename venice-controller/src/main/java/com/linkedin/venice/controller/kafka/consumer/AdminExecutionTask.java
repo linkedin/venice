@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -223,7 +224,8 @@ public class AdminExecutionTask implements Callable<Void> {
       logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
     } else {
       // Adding store
-      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
+      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema,
+          VeniceSystemStoreUtils.isSystemStore(storeName));
       logger.info("Added store: " + storeName + " to cluster: " + clusterName);
     }
   }

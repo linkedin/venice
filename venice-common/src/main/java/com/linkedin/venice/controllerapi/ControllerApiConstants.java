@@ -96,4 +96,6 @@ public class ControllerApiConstants {
   public static final String SKIP_DIV = "skip_div";
 
   public static final String STORE_TYPE = "store_type";
+
+  public static final String IS_SYSTEM_STORE = "is_system_store";
 }

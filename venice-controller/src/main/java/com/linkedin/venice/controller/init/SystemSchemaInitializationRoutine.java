@@ -67,7 +67,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
           String firstKeySchemaStr = "\"int\""; // ignored
           String firstSchemaStr = firstSchema.toString();
           admin.addStore(clusterToInit, systemStoreName, VeniceConstants.SYSTEM_STORE_OWNER, firstKeySchemaStr,
-              firstSchemaStr);
+              firstSchemaStr, true);
 
           LOGGER.info("System store '" + systemStoreName + "' has been created.");
         } else {
