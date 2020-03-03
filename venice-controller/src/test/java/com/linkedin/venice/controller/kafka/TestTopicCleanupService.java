@@ -162,13 +162,16 @@ public class TestTopicCleanupService {
     doReturn(true).when(admin).isResourceStillAlive(storeName2 + "_v2");
 
     topicCleanupService.start();
-    final long TOPIC_CLEANUP_TIMEOUT_IN_MS = TimeUnit.SECONDS.toMillis(30); // 30 seconds
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // As long as topicManager#getAllTopicRetentions has been invoked 4 times, all the store cleanup logic should be done already
+      verify(topicManager, atLeast(4)).getAllTopicRetentions();
+    });
 
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v1");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v1");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName2 + "_v2");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName3 + "_rt");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName3 + "_rt");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
@@ -195,9 +198,11 @@ public class TestTopicCleanupService {
     when(admin.isMasterControllerOfControllerCluster()).thenReturn(true).thenReturn(false);
 
     topicCleanupService.start();
-    final long TOPIC_CLEANUP_TIMEOUT_IN_MS = TimeUnit.SECONDS.toMillis(30); // 30 seconds
-
-    verify(topicManager, after(TOPIC_CLEANUP_TIMEOUT_IN_MS).never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // As long as admin#isMasterControllerOfControllerCluster has been invoked 3 times, all the store cleanup logic should be done already
+      verify(admin, atLeast(3)).isMasterControllerOfControllerCluster();
+    });
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v1");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v2");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v3");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock(storeName1 + "_v4");
@@ -223,10 +228,13 @@ public class TestTopicCleanupService {
     when(admin.isMasterControllerOfControllerCluster()).thenReturn(false).thenReturn(true);
 
     topicCleanupService.start();
-    final long TOPIC_CLEANUP_TIMEOUT_IN_MS = TimeUnit.SECONDS.toMillis(30); // 30 seconds
+    TestUtils.waitForNonDeterministicAssertion(60, TimeUnit.SECONDS, () -> {
+      // As long as topicManager#getAllTopicRetentions has been invoked 2 times, all the store cleanup logic should be done already
+      verify(topicManager, atLeast(2)).getAllTopicRetentions();
+    });
 
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
-    verify(topicManager, timeout(TOPIC_CLEANUP_TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v1");
+    verify(topicManager, atLeastOnce()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v2");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v3");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_v4");
     verify(topicManager, never()).ensureTopicIsDeletedAndBlockWithRetry(storeName1 + "_rt");
