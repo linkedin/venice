@@ -200,7 +200,7 @@ class AbstractTestVeniceHelixAdmin {
     int participantStorePartitionCount = 3;
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     veniceAdmin.addStore(clusterName, participantStoreName, "venice-internal", ParticipantMessageKey.SCHEMA$.toString(),
-        ParticipantMessageValue.SCHEMA$.toString());
+        ParticipantMessageValue.SCHEMA$.toString(), true);
     UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams();
     queryParams.setPartitionCount(participantStorePartitionCount);
     queryParams.setHybridOffsetLagThreshold(100L);

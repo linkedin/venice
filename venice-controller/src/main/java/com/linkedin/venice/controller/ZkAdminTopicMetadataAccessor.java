@@ -1,6 +1,5 @@
-package com.linkedin.venice.controller.stats;
+package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.kafka.consumer.StringToLongMapJSONSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.exception.HelixClusterMaintenanceModeException;
@@ -1223,5 +1224,27 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     Assert.assertEquals(store.getCompressionStrategy(), CompressionStrategy.GZIP);
     // Existing version config should not be updated!
     Assert.assertEquals(store.getVersion(existingVersion.getNumber()).get().getCompressionStrategy(), CompressionStrategy.NO_OP);
+  }
+
+  @Test
+  public void testSharedZkStore() {
+    String metadataStorePrefix = VeniceSystemStore.METADATA_STORE.getPrefix();
+    String systemStoreOne = metadataStorePrefix + "_store_one";
+    String systemStoreTwo = metadataStorePrefix + "_store_two";
+    veniceAdmin.addStore(clusterName, metadataStorePrefix,"Venice", KEY_SCHEMA, VALUE_SCHEMA, true);
+    Store storeOne = veniceAdmin.getStore(clusterName, systemStoreOne);
+    Store storeTwo = veniceAdmin.getStore(clusterName, systemStoreTwo);
+    Assert.assertEquals(storeOne, storeTwo, "The two metadata system store should share the same Store in Zk");
+    Schema storeOneValueSchema = veniceAdmin.getLatestValueSchema(clusterName, storeOne);
+    Assert.assertNotNull(storeOneValueSchema);
+    Assert.assertEquals(storeOneValueSchema, veniceAdmin.getLatestValueSchema(clusterName, storeTwo),
+        "The two metadata system store should share the same value schema in Zk");
+    long quotaInBytes = 12345;
+    veniceAdmin.updateStore(clusterName, metadataStorePrefix,
+        new UpdateStoreQueryParams().setStorageQuotaInByte(quotaInBytes));
+    storeOne = veniceAdmin.getStore(clusterName, systemStoreOne);
+    storeTwo = veniceAdmin.getStore(clusterName, systemStoreTwo);
+    Assert.assertEquals(storeOne.getStorageQuotaInByte(), quotaInBytes, "The metadata system store quota should be updated");
+    Assert.assertEquals(storeOne, storeTwo, "The two metadata system store should get the same update");
   }
 }

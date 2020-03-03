@@ -16,7 +16,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controller.stats.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -351,7 +350,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
-        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
+        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(1))
@@ -426,7 +425,7 @@ public class TestVeniceParentHelixAdmin {
       parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
 
       verify(internalAdmin)
-          .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr);
+          .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr, false);
       verify(veniceWriter)
           .put(any(), any(), anyInt());
       verify(zkClient, times(1))
@@ -459,7 +458,7 @@ public class TestVeniceParentHelixAdmin {
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
     doThrow(new VeniceStoreAlreadyExistsException(storeName, clusterName))
-        .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
+        .when(internalAdmin).checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr, false);
 
     when(zkClient.readData(zkMetadataNodePath, null)).thenReturn(null);
     parentAdmin.start(clusterName);

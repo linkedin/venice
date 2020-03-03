@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
 
+import java.util.stream.Collectors;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.manager.zk.ZkClient;
@@ -43,7 +44,7 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     try {
       zkClient.unsubscribeStateChanges(zkStateListener);
       zkDataAccessor.unsubscribeChildChanges(clusterStoreRepositoryPath, zkStoreRepositoryListener);
-      for (String storeName : storeMap.keySet()) {
+      for (String storeName : storeMap.values().stream().map(Store::getName).collect(Collectors.toSet())) {
         zkDataAccessor.unsubscribeDataChanges(getStoreZkPath(storeName), zkStoreListener);
       }
       super.clear();
@@ -87,24 +88,24 @@ public class HelixReadOnlyStoreRepository extends CachedReadOnlyStoreRepository 
     }
   }
 
-  protected void onRepositoryChanged(Collection<String> newStoreNames) {
+  protected void onRepositoryChanged(Collection<String> newZkStoreNames) {
     updateLock.lock();
     try {
-      Set<String> addedStoreNames = new HashSet<>(newStoreNames);
-      List<String> deletedStoreNames = new ArrayList<>();
-      for (String storeName : storeMap.keySet()) {
-        if (!addedStoreNames.remove(storeName)) {
-          deletedStoreNames.add(storeName);
+      Set<String> addedZkStoreNames = new HashSet<>(newZkStoreNames);
+      List<String> deletedZkStoreNames = new ArrayList<>();
+      for (String zkStoreName : storeMap.keySet()) {
+        if (!addedZkStoreNames.remove(zkStoreName)) {
+          deletedZkStoreNames.add(zkStoreName);
         }
       }
 
-      List<Store> addedStores = getStoresFromZk(addedStoreNames);
+      List<Store> addedStores = getStoresFromZk(addedZkStoreNames);
       for (Store newStore : addedStores) {
         putStore(newStore);
       }
 
-      for (String storeName : deletedStoreNames) {
-        removeStore(storeName);
+      for (String zkStoreName : deletedZkStoreNames) {
+        removeStore(storeMap.get(zkStoreName).getName());
       }
     } finally {
       updateLock.unlock();

@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -25,6 +26,8 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
+
+import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;
 
 
 public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
@@ -58,7 +61,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   @Override
   public Store getStore(String storeName) {
     // TODO: refactor calls to this method to avoid unnecessary copying
-    Store store = storeMap.get(storeName);
+    Store store = storeMap.get(getZkStoreName(storeName));
     if (store != null) {
       return store.cloneStore();
     }
@@ -66,7 +69,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   public Store getStoreOrThrow(String storeName) throws VeniceNoStoreException {
-    Store store = storeMap.get(storeName);
+    Store store = storeMap.get(getZkStoreName(storeName));
     if (store != null) {
       return store;
     }
@@ -75,7 +78,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   @Override
   public boolean hasStore(String storeName) {
-    return storeMap.containsKey(storeName);
+    return storeMap.containsKey(getZkStoreName(storeName));
   }
 
   @Override
@@ -115,7 +118,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     updateLock.lock();
     try {
       List<Store> newStores = getStoresFromZk();
-      Set<String> deletedStoreNames = new HashSet<>(storeMap.keySet());
+      Set<String> deletedStoreNames = storeMap.values().stream().map(Store::getName).collect(Collectors.toSet());
       for (Store newStore : newStores) {
         putStore(newStore);
         deletedStoreNames.remove(newStore.getName());
@@ -170,7 +173,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected Store putStore(Store newStore) {
     updateLock.lock();
     try {
-      Store oldStore = storeMap.put(newStore.getName(), newStore);
+      Store oldStore = storeMap.put(getZkStoreName(newStore.getName()), newStore);
       if (oldStore == null) {
         totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU());
         notifyStoreCreated(newStore);
@@ -187,7 +190,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected Store removeStore(String storeName) {
     updateLock.lock();
     try {
-      Store oldStore = storeMap.remove(storeName);
+      Store oldStore = storeMap.remove(getZkStoreName(storeName));
       if (oldStore != null) {
         totalStoreReadQuota.addAndGet(-oldStore.getReadQuotaInCU());
         notifyStoreDeleted(storeName);
@@ -199,7 +202,7 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   protected final String getStoreZkPath(String storeName) {
-    return Paths.get(clusterStoreRepositoryPath, storeName).toString();
+    return Paths.get(clusterStoreRepositoryPath, getZkStoreName(storeName)).toString();
   }
 
   protected Store getStoreFromZk(String storeName) {

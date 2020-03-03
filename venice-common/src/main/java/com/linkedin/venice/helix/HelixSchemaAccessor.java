@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -145,11 +146,11 @@ public class HelixSchemaAccessor {
     logger.info("Unsubscribe derived schema child changes for store: " + storeName);
   }
 
-  private String getStorePath(String storeName) {
+  protected String getStorePath(String storeName) {
     StringBuilder sb = new StringBuilder(HelixUtils.getHelixClusterZkPath(clusterName));
     sb.append(HelixReadOnlyStoreRepository.STORE_REPOSITORY_PATH)
         .append("/")
-        .append(storeName)
+        .append(VeniceSystemStoreUtils.getZkStoreName(storeName))
         .append("/");
     return sb.toString();
   }
