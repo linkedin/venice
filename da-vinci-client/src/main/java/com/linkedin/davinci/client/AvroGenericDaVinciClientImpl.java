@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
@@ -22,6 +23,8 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -31,11 +34,13 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
+import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,20 +52,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
 
-public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, GenericRecord> {
+public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private static String DAVINCI_CLIENT_NAME = "davinci_client";
   private static final byte[] BINARY_DECODER_PARAM = new byte[16];
   private static int REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = 1;
   private static int REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS = 1;
-  private static final Logger logger = Logger.getLogger(AvroGenericRecordDaVinciClientImpl.class);
+  private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClientImpl.class);
 
   private final BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(BINARY_DECODER_PARAM, null);
   private final String storeName;
@@ -85,8 +88,9 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   private D2TransportClient d2TransportClient;
   private DaVinciPartitioner partitioner;
   private IngestionController ingestionController;
+  private SchemaReader schemaReader;
 
-  public AvroGenericRecordDaVinciClientImpl(
+  public AvroGenericDaVinciClientImpl(
       VeniceConfigLoader veniceConfigLoader,
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig) {
@@ -122,7 +126,7 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   }
 
   @Override
-  public CompletableFuture<GenericRecord> get(K key) throws VeniceClientException {
+  public CompletableFuture<V> get(K key) throws VeniceClientException {
     if (!isStarted()) {
       throw new VeniceClientException("Client is not started.");
     }
@@ -139,23 +143,22 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     if (store == null) {
       throw new VeniceClientException("Failed to find a ready store version.");
     }
-    ByteBuffer keyBuffer = ByteBuffer.wrap(keySerializer.serialize(key));
-    int partitionId = partitioner.getPartitionId(keyBuffer, version.getPartitionCount());
+    byte[] keyBytes = keySerializer.serialize(key);
+    int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
     // Make sure the partition id is within client's subscription.
     if (!subscribedPartitions.contains(partitionId)) {
       throw new VeniceClientException("DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
     }
     boolean isChunked = kafkaStoreIngestionService.isStoreVersionChunked(topic);
     CompressionStrategy compressionStrategy = kafkaStoreIngestionService.getStoreVersionCompressionStrategy(topic);
-    Schema latestValueSchema = getLatestValueSchema();
-    GenericRecord valueRecord = new GenericData.Record(latestValueSchema);
-    valueRecord =
-        ComputeChunkingAdapter.get(store, partitionId, keyBuffer, isChunked, valueRecord, binaryDecoder, null, compressionStrategy, useFastAvro, schemaRepository, getStoreName());
-    return CompletableFuture.completedFuture(valueRecord);
+    ValueRecord valueRecord = SingleGetChunkingAdapter.get(store, partitionId, keyBytes, isChunked, null);
+    ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(valueRecord.getDataInBytes()));
+    RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
+    return CompletableFuture.completedFuture(deserializer.deserialize(data));
   }
 
   @Override
-  public CompletableFuture<Map<K, GenericRecord>> batchGet(Set<K> keys) throws VeniceClientException {
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
     throw new UnsupportedOperationException();
   }
 
@@ -193,7 +196,7 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
     services.add(storageMetadataService);
 
     // SchemaReader of Kafka protocol
-    SchemaReader schemaReader = ClientFactory.getSchemaReader(
+    this.schemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)));
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -285,11 +288,49 @@ public class AvroGenericRecordDaVinciClientImpl<K> implements DaVinciClient<K, G
   }
 
   /**
-   * @return true if the {@link AvroGenericRecordDaVinciClientImpl} and all of its inner services are fully started
-   *         false if the {@link AvroGenericRecordDaVinciClientImpl} was not started or if any of its inner services
+   * @return true if the {@link AvroGenericDaVinciClientImpl} and all of its inner services are fully started
+   *         false if the {@link AvroGenericDaVinciClientImpl} was not started or if any of its inner services
    *         are not finished starting.
    */
   public boolean isStarted() {
     return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isStarted());
+  }
+
+  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
+    try {
+      return CompressorFactory.getCompressor(compressionStrategy).decompress(data);
+    } catch (IOException e) {
+      throw new VeniceClientException(
+          String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);
+    }
+  }
+
+  private RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
+    // Get latest value schema
+    Schema readerSchema = schemaRepository.getLatestValueSchema(storeName).getSchema();
+    if (null == readerSchema) {
+      throw new VeniceClientException("Failed to get latest value schema for store: " + getStoreName());
+    }
+
+    Schema writerSchema = schemaRepository.getValueSchema(storeName, schemaId).getSchema();
+    if (null == writerSchema) {
+      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
+    }
+
+    /**
+     * The reason to fetch the latest value schema before fetching the writer schema since internally
+     * it will fetch all the available value schemas when no value schema is present in {@link SchemaReader},
+     * which means the latest value schema could be pretty accurate even the following read requests are
+     * asking for older schema versions.
+     *
+     * The reason to fetch latest value schema again after fetching the writer schema is that the new fetched
+     * writer schema could be newer than the cached value schema versions.
+     * When the latest value schema is present in {@link SchemaReader}, the following invocation is very cheap.
+     */
+    if (isUseFastAvro()) {
+      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
+    } else {
+      return SerializerDeserializerFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
+    }
   }
 }
