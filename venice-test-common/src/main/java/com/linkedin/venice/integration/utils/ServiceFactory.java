@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.davinci.client.AvroGenericRecordDaVinciClientImpl;
+import com.linkedin.davinci.client.AvroGenericDaVinciClientImpl;
 import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.ConfigKeys;
@@ -15,7 +15,6 @@ import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
@@ -23,7 +22,6 @@ import java.io.File;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import java.util.Optional;
@@ -40,7 +38,6 @@ public class ServiceFactory {
 
   // Test config
   private static final int MAX_ATTEMPT = 5;
-  private static final int MAX_ASYNC_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_REPLICATION_FACTOR =1;
   private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
@@ -468,7 +465,7 @@ public class ServiceFactory {
     throw new VeniceException(errorMessage + " Aborting.", lastException);
   }
 
-  public static <K> DaVinciClient<K, GenericRecord> getAndStartGenericRecordAvroDaVinciClient(
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(
       String storeName, VeniceClusterWrapper cluster) {
     File dataDirectory = TestUtils.getTempDataDirectory();
     String zkAddress = cluster.getZk().getAddress();
@@ -494,8 +491,8 @@ public class ServiceFactory {
         .defaultGenericClientConfig(storeName)
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
-    DaVinciClient<K, GenericRecord> daVinciClient =
-        new AvroGenericRecordDaVinciClientImpl<>(veniceConfigLoader, DaVinciConfig.defaultDaVinciConfig(), clientConfig);
+    DaVinciClient<K, V> daVinciClient =
+        new AvroGenericDaVinciClientImpl<>(veniceConfigLoader, DaVinciConfig.defaultDaVinciConfig(), clientConfig);
     daVinciClient.start();
     return daVinciClient;
   }
