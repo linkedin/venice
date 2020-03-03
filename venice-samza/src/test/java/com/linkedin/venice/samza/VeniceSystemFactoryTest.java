@@ -8,10 +8,13 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -48,11 +51,18 @@ public class VeniceSystemFactoryTest {
     IOUtils.closeQuietly(cluster);
   }
 
+  @DataProvider(name = "testGetProducerParams")
+  public static Object[][] testGetProducerParams() {
+    return new Object[][] {
+        { new Pair<>(VeniceSystemFactory.VENICE_PARTITIONERS, null) },
+        { new Pair<>(VeniceSystemFactory.VENICE_PARTITIONERS, DefaultVenicePartitioner.class.getName()) }
+    };
+  }
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
    */
-  @Test(timeOut = TEST_TIMEOUT)
-  public void testGetProducer() throws Exception {
+  @Test(timeOut = TEST_TIMEOUT, dataProvider = "testGetProducerParams")
+  public void testGetProducer(Pair<String, String>... optionalConfigs) throws Exception {
     String keySchema = "\"string\"";
     String valueSchema =
         "{\n" +
@@ -73,7 +83,6 @@ public class VeniceSystemFactoryTest {
         "    \"default\" :  [ ]\n" +
         "  } ]\n" +
         "}";
-
     String storeName = TestUtils.getUniqueString("store");
     Schema writeComputeSchema = WriteComputeSchemaAdapter.parse(valueSchema);
 
@@ -95,7 +104,7 @@ public class VeniceSystemFactoryTest {
         .defaultGenericClientConfig(storeName)
         .setVeniceURL(cluster.getRandomRouterURL());
 
-    SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM);
+    SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM, optionalConfigs);
 
     try (AvroGenericStoreClient<String, GenericRecord> client = ClientFactory.getAndStartGenericAvroClient(config)) {
       // Send the record to Venice using the SystemProducer
