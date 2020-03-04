@@ -45,13 +45,13 @@ public class TestParticipantMessageStore {
   private ControllerClient controllerClient;
   private ControllerClient parentControllerClient;
   private String participantMessageStoreName;
-  private Properties serverFeatureProperties = new Properties();
-  private Properties serverProperties = new Properties();
   private VeniceServerWrapper veniceServerWrapper;
 
   @BeforeClass
   public void setup() {
     Properties enableParticipantMessageStore = new Properties();
+    Properties serverFeatureProperties = new Properties();
+    Properties serverProperties = new Properties();
     enableParticipantMessageStore.setProperty(PARTICIPANT_MESSAGE_STORE_ENABLED, "true");
     enableParticipantMessageStore.setProperty(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, "false");
     // Disable topic cleanup since parent and child are sharing the same kafka cluster.
@@ -63,7 +63,7 @@ public class TestParticipantMessageStore {
     serverFeatureProperties.put(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
         .setD2Client(d2Client));
-    serverProperties.setProperty(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, Long.toString(500));
+    serverProperties.setProperty(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, Long.toString(100));
     veniceServerWrapper = venice.addVeniceServer(serverFeatureProperties, serverProperties);
     parentZk = ServiceFactory.getZkServer();
     parentController =
@@ -95,19 +95,21 @@ public class TestParticipantMessageStore {
       // Verify the push job is STARTED.
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.STARTED.toString());
     });
+    String metricPrefix = "." + venice.getClusterName() + "-participant_store_consumption_task";
+    double killedPushJobCount = venice.getVeniceServers().iterator().next().getMetricsRepository().metrics()
+        .get(metricPrefix + "--killed_push_jobs.Count").value();
     ControllerResponse response = parentControllerClient.killOfflinePushJob(topicName);
     assertFalse(response.isError());
     verifyKillMessageInParticipantStore(topicName, true);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Poll job status to verify the job is killed
+      // Poll job status to verify the job is indeed killed
       assertEquals(controllerClient.queryJobStatus(topicName).getStatus(), ExecutionStatus.ERROR.toString());
     });
     // Verify participant store consumption stats
-    String metricPrefix = "." + venice.getClusterName() + "-participant_store_consumption_task";
     String requestMetricExample = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(venice.getClusterName())
         + "--success_request_key_count.Avg";
     Map<String, ? extends Metric> metrics = venice.getVeniceServers().iterator().next().getMetricsRepository().metrics();
-    assertEquals(metrics.get(metricPrefix + "--killed_push_jobs.Count").value(), 1.0);
+    assertEquals(metrics.get(metricPrefix + "--killed_push_jobs.Count").value() - killedPushJobCount, 1.0);
     assertTrue(metrics.get(metricPrefix + "--kill_push_job_latency.Avg").value() > 0);
     // One from the server stats and the other from the client stats.
     assertTrue(metrics.get("." + requestMetricExample).value() > 0);
@@ -143,7 +145,10 @@ public class TestParticipantMessageStore {
     ControllerResponse response = parentControllerClient.killOfflinePushJob(topicNameForBootstrappingVersion);
     assertFalse(response.isError());
     verifyKillMessageInParticipantStore(topicNameForBootstrappingVersion, true);
-
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Poll job status to verify the job is indeed killed
+      assertEquals(controllerClient.queryJobStatus(topicNameForBootstrappingVersion).getStatus(), ExecutionStatus.ERROR.toString());
+    });
     // Then we could verify whether the previous version receives a kill-job or not.
     verifyKillMessageInParticipantStore(topicNameForOnlineVersion, false);
 
