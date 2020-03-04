@@ -7,14 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
-import java.io.File;
-import java.util.Arrays;
-import java.util.EnumSet;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
+
 import org.apache.log4j.Logger;
 import org.rocksdb.BlockBasedTableConfig;
 import org.rocksdb.Cache;
@@ -29,6 +22,15 @@ import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileManager;
 import org.rocksdb.Statistics;
 import org.rocksdb.WriteBufferManager;
+
+import java.io.File;
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 
 public class RocksDBStorageEngineFactory extends StorageEngineFactory {
@@ -50,11 +52,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    * RocksDB root path
    */
   private final String rocksDBPath;
-
   private final Cache sharedCache;
   private final Map<String, RocksDBStorageEngine> storageEngineMap = new HashMap<>();
   private final Map<String, Options> storageEngineOptions = new HashMap<>();
-
   private final Optional<Statistics> aggStatistics;
 
   /**
@@ -69,6 +69,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    * We would like to share the same SstFileManager across all the databases.
    */
   private final SstFileManager sstFileManager;
+
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
@@ -111,38 +112,38 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     return aggStatistics;
   }
 
-  private synchronized Options getOptionsForStore(String storeName) {
+  private synchronized Options getStoreOptions(String storeName) {
     if (storageEngineOptions.containsKey(storeName)) {
       return storageEngineOptions.get(storeName);
     }
-    Options newOptions = new Options();
-    newOptions.setEnv(this.env);
-    newOptions.setCreateIfMissing(true);
-    newOptions.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
-    newOptions.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
-    newOptions.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
 
-    // Inherit Direct IO for read settings from globals
-    newOptions.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+    Options options = new Options();
+    options.setEnv(env);
+    options.setCreateIfMissing(true);
+    options.setCompressionType(rocksDBServerConfig.getRocksDBOptionsCompressionType());
+    options.setCompactionStyle(rocksDBServerConfig.getRocksDBOptionsCompactionStyle());
+    options.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
+    options.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
+    options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
 
-    newOptions.setWriteBufferManager(writeBufferManager);
-    newOptions.setSstFileManager(sstFileManager);
+    options.setWriteBufferManager(writeBufferManager);
+    options.setSstFileManager(sstFileManager);
     /**
      * Disable the stat dump threads, which will create excessive threads, which will eventually crash
      * storage node.
      */
-    newOptions.setStatsDumpPeriodSec(0);
-    newOptions.setStatsPersistPeriodSec(0);
+    options.setStatsDumpPeriodSec(0);
+    options.setStatsPersistPeriodSec(0);
 
-    aggStatistics.ifPresent(stat -> newOptions.setStatistics(stat));
+    aggStatistics.ifPresent(stat -> options.setStatistics(stat));
 
     if (rocksDBServerConfig.isRocksDBPlainTableFormatEnabled()) {
       PlainTableConfig tableConfig = new PlainTableConfig();
       tableConfig.setStoreIndexInFile(rocksDBServerConfig.isRocksDBStoreIndexInFile());
       tableConfig.setHugePageTlbSize(rocksDBServerConfig.getRocksDBHugePageTlbSize());
       tableConfig.setBloomBitsPerKey(rocksDBServerConfig.getRocksDBBloomBitsPerKey());
-      newOptions.setTableFormatConfig(tableConfig);
-      newOptions.setAllowMmapReads(true);
+      options.setTableFormatConfig(tableConfig);
+      options.setAllowMmapReads(true);
     } else {
       // Cache index and bloom filter in block cache
       // and share the same cache across all the RocksDB databases
@@ -157,18 +158,17 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
       tableConfig.setBlockCacheCompressedSize(rocksDBServerConfig.getRocksDBBlockCacheCompressedSizeInBytes());
       tableConfig.setFormatVersion(2); // Latest version
-      newOptions.setTableFormatConfig(tableConfig);
+      options.setTableFormatConfig(tableConfig);
     }
 
     // Memtable options
-    newOptions.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
-    newOptions.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
-    newOptions.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
-    newOptions.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
+    options.setWriteBufferSize(rocksDBServerConfig.getRocksDBMemtableSizeInBytes());
+    options.setMaxWriteBufferNumber(rocksDBServerConfig.getRocksDBMaxMemtableCount());
+    options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
+    options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
 
-    storageEngineOptions.put(storeName, newOptions);
-
-    return newOptions;
+    storageEngineOptions.put(storeName, options);
+    return options;
   }
 
   @Override
@@ -177,7 +177,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     final String storeName = storeConfig.getStoreName();
     try {
       if (!storageEngineMap.containsKey(storeName)) {
-        Options storeOptions = getOptionsForStore(storeName);
+        Options storeOptions = getStoreOptions(storeName);
         storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, storeOptions, rocksDBPath));
       }
       return storageEngineMap.get(storeName);
@@ -207,7 +207,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     LOGGER.info("Closing RocksDBStorageEngineFactory");
     storageEngineMap.forEach( (storeName, storageEngine) -> {
       storageEngine.close();
-      getOptionsForStore(storeName).close();
+      getStoreOptions(storeName).close();
     });
     storageEngineMap.clear();
     storageEngineOptions.clear();
@@ -225,7 +225,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       LOGGER.info("Started removing RocksDB storage engine for store: " + storeName);
       storageEngineMap.get(storeName).drop();
       storageEngineMap.remove(storeName);
-      getOptionsForStore(storeName).close();
+      getStoreOptions(storeName).close();
       storageEngineOptions.remove(storeName);
       LOGGER.info("Finished removing RocksDB storage engine for store: " + storeName);
     } else {

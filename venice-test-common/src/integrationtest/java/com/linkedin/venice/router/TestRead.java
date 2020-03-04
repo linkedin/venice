@@ -110,9 +110,9 @@ public abstract class TestRead {
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
-    // By default, the storage engine is BDB, and we would like test ROCKS_DB here as well.
+    // By default, the storage engine is ROCKS_DB, and we would like test BDB here as well.
     Properties serverProperties = new Properties();
-    serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, ROCKS_DB);
+    serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, BDB);
     serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true); // test parallel lookup
     serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 3);
     Properties serverFeatureProperties = new Properties();

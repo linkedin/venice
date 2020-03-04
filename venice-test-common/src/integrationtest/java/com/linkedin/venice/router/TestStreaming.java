@@ -100,9 +100,9 @@ public class TestStreaming {
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(1, 2, 0, 2, 100, true, false);
 
-    // By default, the storage engine is BDB, and we would like test ROCKS_DB here as well.
+    // By default, the storage engine is ROCKS_DB, and we would like test BDB here as well.
     Properties serverProperties = new Properties();
-    serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, ROCKS_DB);
+    serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, BDB);
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
     veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);

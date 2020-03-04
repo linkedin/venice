@@ -2,9 +2,11 @@ package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.Arrays;
+
 import org.rocksdb.CompactionStyle;
 import org.rocksdb.CompressionType;
+
+import java.util.Arrays;
 
 
 public class RocksDBServerConfig {
@@ -86,12 +88,12 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_MAX_BYTES_FOR_LEVEL_BASE = "rocksdb.max.bytes.for.level.base";
 
-  public static String ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED = "rocksdb.plain.table.format.enabled";
-  public static String ROCKSDB_STORE_INDEX_IN_FILE = "rocksdb.store.index.in.file";
-  public static String ROCKSDB_HUGE_PAGE_TLB_SIZE = "rocksdb.huge.page.tlb.size";
-  public static String ROCKSDB_BLOOM_BITS_PER_KEY = "rocksdb.bloom.bits.per.key";
-  public static String ROCKSDB_HASH_TABLE_RATIO = "rocksdb.hash.table.ratio";
-
+  public static final String ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED = "rocksdb.plain.table.format.enabled";
+  public static final String ROCKSDB_STORE_INDEX_IN_FILE = "rocksdb.store.index.in.file";
+  public static final String ROCKSDB_HUGE_PAGE_TLB_SIZE = "rocksdb.huge.page.tlb.size";
+  public static final String ROCKSDB_BLOOM_BITS_PER_KEY = "rocksdb.bloom.bits.per.key";
+  public static final String ROCKSDB_HASH_TABLE_RATIO = "rocksdb.hash.table.ratio";
+  public static final String ROCKSDB_MAX_OPEN_FILES = "rocksdb.max.open.files";
 
   /**
    * Comments from rocksdb c++ code:
@@ -151,9 +153,10 @@ public class RocksDBServerConfig {
   private final int rocksDBBloomBitsPerKey;
 
   private final long rocksDBTotalMemtableUsageCapInBytes;
+  private final int maxOpenFiles;
+
 
   public RocksDBServerConfig(VeniceProperties props) {
-
     // Do not use Direct IO for reads by default
     this.rocksDBUseDirectReads = props.getBoolean(ROCKSDB_OPTIONS_USE_DIRECT_READS,false);
 
@@ -212,6 +215,7 @@ public class RocksDBServerConfig {
     this.rocksDBBloomBitsPerKey = props.getInt(ROCKSDB_BLOOM_BITS_PER_KEY, 10);
 
     this.rocksDBTotalMemtableUsageCapInBytes = props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024l); // 2GB
+    this.maxOpenFiles = props.getInt(ROCKSDB_MAX_OPEN_FILES, -1);
   }
 
   public boolean getRocksDBUseDirectReads() {
@@ -287,18 +291,24 @@ public class RocksDBServerConfig {
   public boolean isRocksDBPlainTableFormatEnabled() {
     return rocksDBPlainTableFormatEnabled;
   }
+
   public boolean isRocksDBStoreIndexInFile() {
     return rocksDBStoreIndexInFile;
   }
+
   public int getRocksDBHugePageTlbSize() {
     return rocksDBHugePageTlbSize;
   }
+
   public int getRocksDBBloomBitsPerKey() {
     return rocksDBBloomBitsPerKey;
   }
 
-
   public long getRocksDBTotalMemtableUsageCapInBytes() {
     return rocksDBTotalMemtableUsageCapInBytes;
+  }
+
+  public int getMaxOpenFiles() {
+    return maxOpenFiles;
   }
 }
