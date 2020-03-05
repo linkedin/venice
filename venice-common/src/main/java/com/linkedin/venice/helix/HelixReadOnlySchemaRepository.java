@@ -85,32 +85,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    */
   private void fetchStoreSchemaIfNotInCache(String storeName) {
     if (storeRepository.hasStore(storeName) && !schemaMap.containsKey(storeName)) {
-      /**
-       * Use {@link VeniceConcurrentHashMap#computeIfAbsent} here instead of {@link #schemaLock} to avoid the complication of
-       * readlock/writelock switching/degrading.
-       * You can get more details from the 'CachedData' example in {@link ReentrantReadWriteLock}.
-       */
-      schemaMap.computeIfAbsent(storeName, k -> {
-        // Gradually warm up
-        logger.info("Try to fetch schema data for store: " + storeName);
-        // If the local cache doesn't have the schema entry for this store,
-        // it could be added recently, and we need to add/monitor it locally
-        SchemaData schemaData = new SchemaData(storeName);
-
-        // Fetch key schema
-        accessor.subscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
-        schemaData.setKeySchema(accessor.getKeySchema(storeName));
-
-        // Fetch value schema
-        accessor.subscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
-        accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
-
-        //Fetch derived schemas if they are existing
-        accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
-        accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
-
-        return schemaData;
-      });
+      populateSchemaMap(storeName);
     }
   }
 
@@ -389,14 +364,51 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   /**
    * Refer to {@link HelixReadOnlySchemaRepository#clear()}
    *
-   * This function will only clear the local cache/watches,
-   * and the query operations will warm up local cache gradually.
+   * This function will clear the local cache/watches, and populates the schemaMap from schemaRepository.
    */
   @Override
   public void refresh() {
     clear();
     // subscribe is thread safe method.
     zkClient.subscribeStateChanges(zkStateListener);
+    schemaMap.clear();
+    List<Store> stores = storeRepository.getAllStores();
+    for (Store store : stores) {
+      String storeName = store.getName();
+      populateSchemaMap(storeName);
+    }
+  }
+
+  /**
+   * Use {@link VeniceConcurrentHashMap#computeIfAbsent} here instead of {@link #schemaLock} to avoid the complication of
+   * readlock/writelock switching/degrading.
+   * You can get more details from the 'CachedData' example in {@link ReentrantReadWriteLock}.
+   */
+  private void populateSchemaMap(String storeName) {
+    schemaMap.computeIfAbsent(storeName, k -> {
+      // Gradually warm up
+      logger.info("Try to fetch schema data for store: " + storeName);
+      // If the local cache doesn't have the schema entry for this store,
+      // it could be added recently, and we need to add/monitor it locally
+      SchemaData schemaData = new SchemaData(storeName);
+
+      // Fetch key schema
+      // Since key schema are not mutated (not even the child zk path) there is no need to set watches
+      accessor.subscribeKeySchemaCreationChange(storeName, keySchemaChildListener);
+      schemaData.setKeySchema(accessor.getKeySchema(storeName));
+
+      // Fetch value schema
+      accessor.subscribeValueSchemaCreationChange(storeName, valueSchemaChildListener);
+      accessor.getAllValueSchemas(storeName).forEach(schemaData::addValueSchema);
+
+      //Fetch derived schemas if they are existing
+      Store store = storeRepository.getStore(storeName);
+      if (store.isWriteComputationEnabled()) {
+        accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
+        accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+      }
+      return schemaData;
+    });
   }
 
   /**
@@ -453,6 +465,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    */
   @Override
   public void handleStoreCreated(Store store) {
+
   }
 
   /**
@@ -466,7 +479,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
 
   @Override
   public void handleStoreChanged(Store store) {
-
+    String storeName = store.getName();
+    SchemaData schemaData = schemaMap.get(storeName);
+    if (null == schemaData) { // Should not happen, safety check for rare race condition.
+      populateSchemaMap(storeName);
+    }
+    if (store.isWriteComputationEnabled()) {
+      accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
+      accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
+    }
   }
 
   private class KeySchemaChildListener extends SchemaChildListener {
