@@ -75,6 +75,7 @@ public class TestHelixReadOnlySchemaRepository {
     // create store first
     createStore(storeName);
     Assert.assertNull(schemaRORepo.getKeySchema(storeName));
+
     // Query key schema again after setting up key schema
     String keySchemaStr = "\"string\"";
     schemaRWRepo.initKeySchema(storeName, keySchemaStr);

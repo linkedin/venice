@@ -110,14 +110,14 @@ public class HelixSchemaAccessor {
     logger.info("Added derived schema: " + derivedSchemaEntry.toString() + "for store: " + storeName);
   }
 
-  public void subscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
-    schemaAccessor.subscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
-    logger.info("Subscribe key schema child changes for store: " + storeName);
-  }
-
   public void unsubscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
     schemaAccessor.unsubscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
     logger.info("Unsubscribe key schema child changes for store: " + storeName);
+  }
+
+  public void subscribeKeySchemaCreationChange(String storeName, IZkChildListener childListener) {
+    schemaAccessor.subscribeChildChanges(getKeySchemaParentPath(storeName), childListener);
+    logger.info("Subscribe key schema child changes for store: " + storeName);
   }
 
   public void subscribeValueSchemaCreationChange(String storeName, IZkChildListener childListener) {
