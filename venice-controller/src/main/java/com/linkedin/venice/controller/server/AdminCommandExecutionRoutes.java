@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import java.util.Optional;
+import org.apache.http.HttpStatus;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerRoute.EXECUTION;
@@ -26,6 +27,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       // Only allow whitelist users to run this command
       if (!isWhitelistUsers(request)) {
+        response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());
         return AdminSparkServer.mapper.writeValueAsString(responseObject);
       }
@@ -58,6 +60,7 @@ public class AdminCommandExecutionRoutes extends AbstractRoute {
       response.type(HttpConstants.JSON);
       // Only allow whitelist users to run this command
       if (!isWhitelistUsers(request)) {
+        response.status(HttpStatus.SC_FORBIDDEN);
         responseObject.setError("Only admin users are allowed to run " + request.url());
         return AdminSparkServer.mapper.writeValueAsString(responseObject);
       }
