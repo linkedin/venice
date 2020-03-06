@@ -2227,11 +2227,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             /**
-             * The parent controller makes sure that in the UpdateStore kafka message, partitionerClass, partitionerParams
-             * and amplificationFactor will be updated together, thus here we just need to check if partitionerClass is set in the UpdateStore message.
+             * If either of these three fields is not present, we should use default value to construct correct PartitionerConfig.
              */
-            if (partitionerClass.isPresent()) {
-                PartitionerConfig partitionerConfig = new PartitionerConfig(partitionerClass.get(), partitionerParams.get(), amplificationFactor.get());
+            if (partitionerClass.isPresent() || partitionerParams.isPresent() || amplificationFactor.isPresent()) {
+                PartitionerConfig partitionerConfig = new PartitionerConfig();
+                partitionerClass.ifPresent(partitionerConfig::setPartitionerClass);
+                partitionerParams.ifPresent(partitionerConfig::setPartitionerParams);
+                amplificationFactor.ifPresent(partitionerConfig::setAmplificationFactor);
+
                 storeMetadataUpdate(clusterName, storeName, store -> {
                     // Cannot change the partitioner config if store is a hybrid store.
                     if (!store.getPartitionerConfig().equals(partitionerConfig) && store.isHybrid()) {
