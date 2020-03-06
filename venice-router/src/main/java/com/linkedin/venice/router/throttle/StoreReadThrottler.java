@@ -69,8 +69,6 @@ public class StoreReadThrottler {
 
   public synchronized void updateStorageNodesThrottlers(PartitionAssignment partitionAssignment) {
     this.currentVersion = Version.parseVersionFromKafkaTopicName(partitionAssignment.getTopic());
-    logger.info("Updating throttlers for each storage node. Store: " + storeName + " currentVersion:" + currentVersion);
-
     // Calculated the latest quota for each storage node.
     Map<String, Long> storageNodeQuotaMap = new HashMap<>();
     long partitionQuota = localQuota / partitionAssignment.getExpectedNumberOfPartitions();
@@ -111,8 +109,9 @@ public class StoreReadThrottler {
       }
     }
 
-    logger.info("Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted
-        + "throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
+    if (addedOrUpdated[0] != 0 || deleted != 0) {
+      logger.info("Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted + " throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
+    }
   }
 
   /**
