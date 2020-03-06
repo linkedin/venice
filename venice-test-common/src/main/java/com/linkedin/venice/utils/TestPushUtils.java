@@ -74,6 +74,16 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
+  public static final String INT_INT_SCHEMA_STRING = "{" +
+      "  \"namespace\" : \"example.avro\",  " +
+      "  \"type\": \"record\",   " +
+      "  \"name\": \"IntToInt\",     " +
+      "  \"fields\": [           " +
+      "       { \"name\": \"id\", \"type\": \"int\"},  " +
+      "       { \"name\": \"name\", \"type\": \"int\"}  " +
+      "  ] " +
+      " } ";
+
   public static final String STRING_SCHEMA = "\"string\"";
 
   public static File getTempDataDirectory() {
@@ -113,6 +123,24 @@ public class TestPushUtils {
             user.put("name", name + i);
             user.put("age", i);
             writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_int2int.avro";
+    } else {
+      fileName = "simple_int2int";
+    }
+    return writeAvroFile(parentDir, fileName, INT_INT_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          for (int i = 1; i <= 100; ++i) {
+            GenericRecord i2i = new GenericData.Record(recordSchema);
+            i2i.put("id", i);
+            i2i.put("name", i);
+            writer.append(i2i);
           }
         });
   }

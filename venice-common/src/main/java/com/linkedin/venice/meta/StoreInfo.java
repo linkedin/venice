@@ -19,6 +19,7 @@ public class StoreInfo {
     storeInfo.setOwner(store.getOwner());
     storeInfo.setCurrentVersion(store.getCurrentVersion());
     storeInfo.setPartitionCount(store.getPartitionCount());
+    storeInfo.setPartitionerConfig(store.getPartitionerConfig());
     storeInfo.setEnableStoreWrites(store.isEnableWrites());
     storeInfo.setEnableStoreReads(store.isEnableReads());
     storeInfo.setStorageQuotaInByte(store.getStorageQuotaInByte());

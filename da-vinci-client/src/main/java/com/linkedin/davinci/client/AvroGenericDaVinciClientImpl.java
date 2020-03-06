@@ -152,6 +152,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     boolean isChunked = kafkaStoreIngestionService.isStoreVersionChunked(topic);
     CompressionStrategy compressionStrategy = kafkaStoreIngestionService.getStoreVersionCompressionStrategy(topic);
     ValueRecord valueRecord = SingleGetChunkingAdapter.get(store, partitionId, keyBytes, isChunked, null);
+    if (valueRecord == null) {
+      return CompletableFuture.completedFuture(null);
+    }
     ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(valueRecord.getDataInBytes()));
     RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
     return CompletableFuture.completedFuture(deserializer.deserialize(data));

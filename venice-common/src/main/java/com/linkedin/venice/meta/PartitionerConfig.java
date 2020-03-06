@@ -40,6 +40,18 @@ public class PartitionerConfig {
     return this.amplificationFactor;
   }
 
+  public void setAmplificationFactor(int amplificationFactor) {
+    this.amplificationFactor = amplificationFactor;
+  }
+
+  public void setPartitionerClass(String partitionerClass) {
+    this.partitionerClass = partitionerClass;
+  }
+
+  public void setPartitionerParams(Map<String, String> partitionerParams) {
+    this.partitionerParams = partitionerParams;
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) return true;
