@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.http.HttpStatus;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -35,6 +36,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -61,6 +63,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -83,6 +86,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -111,6 +115,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -138,6 +143,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -174,6 +180,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -197,6 +204,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -220,6 +228,7 @@ public class NodesAndReplicas extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }

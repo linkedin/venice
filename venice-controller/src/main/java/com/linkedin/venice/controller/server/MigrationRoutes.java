@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import java.util.Optional;
+import org.apache.http.HttpStatus;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -24,6 +25,7 @@ public class MigrationRoutes extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           strategyResponse.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(strategyResponse);
         }
@@ -42,6 +44,7 @@ public class MigrationRoutes extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           updateResponse.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(updateResponse);
         }

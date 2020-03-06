@@ -17,6 +17,7 @@ import java.util.Optional;
 import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.specific.SpecificDatumReader;
+import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import spark.Route;
@@ -97,7 +98,8 @@ public class JobRoutes extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("You don't have permission to kill this push job; please grant write ACL for yourself.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
@@ -123,6 +125,7 @@ public class JobRoutes extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -158,6 +161,7 @@ public class JobRoutes extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           controllerResponse.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
         }

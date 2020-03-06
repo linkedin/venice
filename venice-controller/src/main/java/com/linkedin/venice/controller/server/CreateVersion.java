@@ -51,7 +51,8 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("Write ACL is not set up properly; please refer to Venice ACL wiki to define and deploy ACL in the right fabrics.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);
@@ -177,6 +178,7 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -219,6 +221,7 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("ACL failed for request " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
@@ -246,7 +249,8 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Also allow whitelist users to run this command
         if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
-          responseObject.setError("ACL failed for request " + request.url());
+          response.status(HttpStatus.SC_FORBIDDEN);
+          responseObject.setError("You don't have permission to end this push job; please grant write ACL for yourself.");
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
@@ -277,6 +281,7 @@ public class CreateVersion extends AbstractRoute {
       try {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
+          response.status(HttpStatus.SC_FORBIDDEN);
           responseObject.setError("Only admin users are allowed to run " + request.url());
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
