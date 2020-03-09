@@ -125,6 +125,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     options.setBytesPerSync(rocksDBServerConfig.getRocksDBBytesPerSync());
     options.setUseDirectReads(rocksDBServerConfig.getRocksDBUseDirectReads());
     options.setMaxOpenFiles(rocksDBServerConfig.getMaxOpenFiles());
+    options.setTargetFileSizeBase(rocksDBServerConfig.getTargetFileSizeInBytes());
 
     options.setWriteBufferManager(writeBufferManager);
     options.setSstFileManager(sstFileManager);
