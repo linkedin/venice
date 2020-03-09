@@ -96,6 +96,11 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_MAX_OPEN_FILES = "rocksdb.max.open.files";
 
   /**
+   * Target file size, and this will only apply to hybrid store since batch-only push from H2V is using SSTFileWriter directly.
+   */
+  public static final String ROCKSDB_TARGET_FILE_SIZE_IN_BYTES = "rocksdb.target.file.size.in.bytes";
+
+  /**
    * Comments from rocksdb c++ code:
    *
    * Allows OS to incrementally sync files to disk while they are being
@@ -154,6 +159,8 @@ public class RocksDBServerConfig {
 
   private final long rocksDBTotalMemtableUsageCapInBytes;
   private final int maxOpenFiles;
+
+  private final int targetFileSizeInBytes;
 
 
   public RocksDBServerConfig(VeniceProperties props) {
@@ -216,6 +223,8 @@ public class RocksDBServerConfig {
 
     this.rocksDBTotalMemtableUsageCapInBytes = props.getSizeInBytes(ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES, 2 * 1024 * 1024 * 1024l); // 2GB
     this.maxOpenFiles = props.getInt(ROCKSDB_MAX_OPEN_FILES, -1);
+
+    this.targetFileSizeInBytes = props.getInt(ROCKSDB_TARGET_FILE_SIZE_IN_BYTES, 64 * 1024 * 1024); // default: 64MB
   }
 
   public boolean getRocksDBUseDirectReads() {
@@ -310,5 +319,9 @@ public class RocksDBServerConfig {
 
   public int getMaxOpenFiles() {
     return maxOpenFiles;
+  }
+
+  public int getTargetFileSizeInBytes() {
+    return targetFileSizeInBytes;
   }
 }
