@@ -22,9 +22,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
-
-import org.apache.commons.io.IOUtils;
-
 import java.io.File;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -39,6 +36,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.commons.io.IOUtils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -646,6 +645,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public String createStore(int keyCount) throws Exception {
     int nextVersionId = 1;
     return createStore(IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
+  }
+
+  public String createStore(int keyCount, GenericRecord record) throws Exception {
+    return createStore(DEFAULT_KEY_SCHEMA, record.getSchema().toString(),
+        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record))
+      );
   }
 
   public String createStore(Stream<Map.Entry> batchData) throws Exception {
