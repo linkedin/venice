@@ -84,7 +84,9 @@ public enum Arg {
   HELP("help", "h", false, "Show usage"),
   FORCE("force", "f", false, "Force execute this operation"),
   INCLUDE_SYSTEM_STORES("include-system-stores", "iss", true, "Include internal stores maintained by the system."),
-  SSL_CONFIG_PATH("ssl-config-path", "scp", true, "SSl config file path");
+  SSL_CONFIG_PATH("ssl-config-path", "scp", true, "SSl config file path"),
+  STORE_TYPE("store-type", "st", true, "the type of the stores. The support type are 'hybrid_only', 'hybrid_or_incremental', 'all'");
+
 
   private final String argName;
   private final String first;

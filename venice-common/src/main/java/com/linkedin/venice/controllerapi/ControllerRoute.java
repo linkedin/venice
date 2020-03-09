@@ -27,7 +27,7 @@ public enum ControllerRoute {
       AUTO_SUPERSET_SCHEMA_FOR_READ_COMPUTE_STORE_ENABLED, INCREMENTAL_PUSH_ENABLED, BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, HYBRID_STORE_DISK_QUOTA_ENABLED,
       REGULAR_VERSION_ETL_ENABLED, FUTURE_VERSION_ETL_ENABLED, ETLED_PROXY_USER_ACCOUNT),
   SET_VERSION("/set_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
-  ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
+  ENABLE_STORE("/enable_store", HttpMethod.POST, Arrays.asList(NAME, ControllerApiConstants.STORE_TYPE, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
   DELETE_ALL_VERSIONS("/delete_all_versions", HttpMethod.POST, Arrays.asList(NAME)),
   DELETE_OLD_VERSION("/delete_old_version", HttpMethod.POST, Arrays.asList(NAME, VERSION)),
 
@@ -83,7 +83,11 @@ public enum ControllerRoute {
 
   SEND_PUSH_JOB_DETAILS("/send_push_job_details", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION, PUSH_JOB_DETAILS)),
 
-  ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT));
+  ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
+
+  LIST_LF_STORES("/list_lf_stores", HttpMethod.GET, Arrays.asList()),
+
+  ENABLE_LF_MODEL("/enable_lf_model", HttpMethod.POST, Arrays.asList(STORE_TYPE, STATUS));
 
   private final String path;
   private final HttpMethod httpMethod;

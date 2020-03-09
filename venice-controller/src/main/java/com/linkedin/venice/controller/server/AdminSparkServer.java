@@ -211,6 +211,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(UPLOAD_PUSH_JOB_STATUS.getPath(), jobRoutes.uploadPushJobStatus(admin));
     httpService.post(SEND_PUSH_JOB_DETAILS.getPath(), jobRoutes.sendPushJobDetails(admin));
 
+    httpService.get(LIST_LF_STORES.getPath(), storesRoutes.getLFModelStores(admin));
+    httpService.post(ENABLE_LF_MODEL.getPath(), storesRoutes.enableLFModelForStores(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();
     if (e != null) {

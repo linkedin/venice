@@ -37,5 +37,5 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     return AdminSparkServer.mapper.writeValueAsString(veniceResponse);
   }
 
-  public abstract void internalHandle(Request request, T veniceRepsonse);
+  public abstract void internalHandle(Request request, T veniceResponse);
 }

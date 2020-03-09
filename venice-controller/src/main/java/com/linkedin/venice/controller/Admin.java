@@ -203,6 +203,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible);
 
+    void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled);
+
     //TODO: using Optional here is a bit of cumbersome, might want to change it if we find better way to pass those params.
     void updateStore(String clusterName,
                      String storeName,

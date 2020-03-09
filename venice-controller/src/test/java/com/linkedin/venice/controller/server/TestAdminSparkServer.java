@@ -62,6 +62,8 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.meta.LeaderFollowerEnabled.*;
+
 
 public class TestAdminSparkServer {
   /**
@@ -751,6 +753,36 @@ public class TestAdminSparkServer {
         PushJobStatus.SUCCESS, 1000, "test-push-id", "");
     // expected to fail because the push job status topic/store is not created (no parent controller in the cluster).
     Assert.assertEquals(jobStatusUploadResponse.isError(), true);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void controllerClientCanSetLeaderFollowerModelInTheCluster() {
+    String storeName = TestUtils.getUniqueString("controllerClientCanSetLeaderFollowerModel");
+    controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+
+
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true));
+    Assert.assertEquals(storeName, controllerClient.listLFStores().getStores()[0]);
+    controllerClient.enableLFModel(false, ALL.toString());
+    Assert.assertEquals(0, controllerClient.listLFStores().getStores().length);
+
+    //set the store to be incremental push enabled store
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setIncrementalPushEnabled(true)
+        .setLeaderFollowerModel(true));
+    //if only hybrid stores are L/F disabled, incremental push stores shouldn't be affect
+    controllerClient.enableLFModel(false, HYBRID_ONLY.toString());
+    Assert.assertEquals(storeName, controllerClient.listLFStores().getStores()[0]);
+    controllerClient.enableLFModel(false, HYBRID_OR_INCREMENTAL.toString());
+    Assert.assertEquals(0, controllerClient.listLFStores().getStores().length);
+
+    //set the store to be hybrid store
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setHybridOffsetLagThreshold(1000l)
+        .setHybridRewindSeconds(1000l)
+        .setLeaderFollowerModel(true));
+    controllerClient.enableLFModel(false, HYBRID_ONLY.toString());
+    Assert.assertEquals(0, controllerClient.listLFStores().getStores().length);
   }
 
   private void deleteStore(String storeName) {
