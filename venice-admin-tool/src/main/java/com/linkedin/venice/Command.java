@@ -151,7 +151,13 @@ public enum Command {
   END_MIGRATION("end-migration", "Send this command to complete store migration",
       new Arg[] {URL, STORE, CLUSTER_SRC, CLUSTER_DEST}),
   SEND_END_OF_PUSH("send-end-of-push", "Send this message after Samza grandfathering job to close offline batch push",
-      new Arg[] {URL, CLUSTER, STORE, VERSION});
+      new Arg[] {URL, CLUSTER, STORE, VERSION}),
+  LIST_LF_STORES("list-lf-stores", "list all stores that use leader/follower model",
+      new Arg[] {URL, CLUSTER}),
+  ENABLE_LF_MODEL("enable-lf-model", "enable leader/follower model for certain stores based on the param",
+      new Arg[] {URL, CLUSTER, STORE_TYPE}),
+  DISABLE_LF_MODEL("disable-lf-model", "disable leader/follower model for certain stores based on the param",
+      new Arg[] {URL, CLUSTER, STORE_TYPE});
 
   private final String commandName;
   private final String description;

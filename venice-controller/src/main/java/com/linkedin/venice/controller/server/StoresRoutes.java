@@ -4,7 +4,7 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
-import com.linkedin.venice.controllerapi.ChildAwareResponse;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -34,11 +34,10 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+import static com.linkedin.venice.meta.LeaderFollowerEnabled.*;
 
 
 public class StoresRoutes extends AbstractRoute {
-  private static final Logger logger = Logger.getLogger(StoresRoutes.class);
-
   public StoresRoutes(Optional<DynamicAccessController> accessController) {
     super(accessController);
   }
@@ -92,7 +91,6 @@ public class StoresRoutes extends AbstractRoute {
 
   public Route getStore(Admin admin) {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
-
       @Override
       public void internalHandle(Request request, StoreResponse veniceResponse) {
         // No ACL check for getting store metadata
@@ -224,7 +222,6 @@ public class StoresRoutes extends AbstractRoute {
 
   public Route updateStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
@@ -266,7 +263,6 @@ public class StoresRoutes extends AbstractRoute {
 
   public Route setOwner(Admin admin) {
     return new VeniceRouteHandler<OwnerResponse>(OwnerResponse.class) {
-
       @Override
       public void internalHandle(Request request, OwnerResponse veniceResponse) {
         // Only admin users are allowed to update owners; regular user can do it through Nuage
@@ -298,7 +294,6 @@ public class StoresRoutes extends AbstractRoute {
 
   public Route setCurrentVersion(Admin admin) {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
-
       @Override
       public void internalHandle(Request request, VersionResponse veniceResponse) {
         // Only allow whitelist users to run this command
@@ -324,7 +319,6 @@ public class StoresRoutes extends AbstractRoute {
    */
   public Route enableStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
-
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         // Only allow whitelist users to run this command
@@ -348,7 +342,7 @@ public class StoresRoutes extends AbstractRoute {
         } else if (operation.equals(READ_WRITE_OPERATION)) {
           admin.setStoreReadWriteability(cluster, storeName, status);
         } else {
-          throw new VeniceException(OPERATION + " parameter:" + operation + " is invalid.");
+          throw new VeniceException(ControllerApiConstants.STORE_TYPE + " parameter:" + operation + " is invalid.");
         }
       }
     };
@@ -413,7 +407,6 @@ public class StoresRoutes extends AbstractRoute {
 
   public Route getStorageEngineOverheadRatio(Admin admin) {
     return new VeniceRouteHandler<StorageEngineOverheadRatioResponse>(StorageEngineOverheadRatioResponse.class) {
-
       @Override
       public void internalHandle(Request request, StorageEngineOverheadRatioResponse veniceResponse) {
         // No ACL check for getting store metadata
@@ -422,6 +415,69 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
         veniceResponse.setStorageEngineOverheadRatio(admin.getStorageEngineOverheadRatio(request.queryParams(CLUSTER)));
+      }
+    };
+  }
+
+  /*
+   * No ACL check; any user can try to list stores.
+   */
+  public Route getLFModelStores(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, LIST_LF_STORES.getParams(), admin);
+        veniceResponse.setCluster(request.queryParams(CLUSTER));
+        veniceResponse.setName(request.queryParams(NAME));
+
+        List<String> lFEnabledStores = admin.getAllStores(veniceResponse.getCluster()).stream()
+            .filter(store -> store.isLeaderFollowerModelEnabled())
+            .map(Store::getName)
+            .collect(Collectors.toList());
+
+        veniceResponse.setStores(lFEnabledStores.toArray(new String[lFEnabledStores.size()]));
+
+      }
+    };
+  }
+
+  public Route enableLFModelForStores(Admin admin) {
+    return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
+      @Override
+      public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
+
+        AdminSparkServer.validateParams(request, ENABLE_LF_MODEL.getParams(), admin);
+        veniceResponse.setName(request.queryParams(NAME));
+
+        String storeType = request.queryParams(STORE_TYPE);
+
+        String cluster = request.queryParams(CLUSTER);
+
+        List<Store> storeCandidates;
+        if (storeType.equals(HYBRID_ONLY.toString())) {
+          storeCandidates = admin.getAllStores(cluster).stream()
+              .filter(Store::isHybrid)
+              .collect(Collectors.toList());
+        } else if (storeType.equals(HYBRID_OR_INCREMENTAL.toString())) {
+          storeCandidates = admin.getAllStores(cluster).stream()
+              .filter(store -> (store.isHybrid() || store.isIncrementalPushEnabled()))
+              .collect(Collectors.toList());
+        } else if (storeType.equals(ALL.toString())){
+          storeCandidates = admin.getAllStores(cluster);
+        } else {
+          throw new VeniceException("Unsupported store type." + storeType);
+        }
+
+        boolean isLFEnabled = Utils.parseBooleanFromString(request.queryParams(STATUS), "isLFEnabled");
+        storeCandidates.forEach(store -> admin.setLeaderFollowerModelEnabled(cluster, store.getName(), isLFEnabled));
+
+        veniceResponse.setCluster(cluster);
+        veniceResponse.setStores((String []) storeCandidates.toArray());
       }
     };
   }

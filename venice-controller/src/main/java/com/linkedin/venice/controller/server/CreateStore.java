@@ -19,10 +19,10 @@ public class CreateStore extends AbstractRoute {
   public Route addStore(Admin admin) {
     return new VeniceRouteHandler<NewStoreResponse>(NewStoreResponse.class) {
       @Override
-      public void internalHandle(Request request, NewStoreResponse veniceRepsonse) {
+      public void internalHandle(Request request, NewStoreResponse veniceResponse) {
         // Only allow whitelist users to run this command
         if (!isWhitelistUsers(request)) {
-          veniceRepsonse.setError("Only admin users are allowed to run " + request.url());
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
           return;
         }
         AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
@@ -36,9 +36,9 @@ public class CreateStore extends AbstractRoute {
           owner = "";
         }
 
-        veniceRepsonse.setCluster(clusterName);
-        veniceRepsonse.setName(storeName);
-        veniceRepsonse.setOwner(owner);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+        veniceResponse.setOwner(owner);
         admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       }
     };

@@ -334,6 +334,15 @@ public class AdminTool {
         case SEND_END_OF_PUSH:
           sendEndOfPush(cmd);
           break;
+        case LIST_LF_STORES:
+          listLFStores(cmd);
+          break;
+        case ENABLE_LF_MODEL:
+          enableLFModel(cmd);
+          break;
+        case DISABLE_LF_MODEL:
+          disableLFModel(cmd);
+          break;
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -1323,6 +1332,25 @@ public class AdminTool {
     }
 
     ControllerResponse response = controllerClient.writeEndOfPush(storeName, intVersion);
+    printObject(response);
+  }
+
+  private static void listLFStores(CommandLine cmd) {
+    MultiStoreResponse response = controllerClient.listLFStores();
+    printObject(response);
+  }
+
+  private static void enableLFModel(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+
+    MultiStoreResponse response = controllerClient.enableLFModel(true, storeType);
+    printObject(response);
+  }
+
+  private static void disableLFModel(CommandLine cmd) {
+    String storeType = getRequiredArgument(cmd, Arg.STORE_TYPE);
+
+    MultiStoreResponse response = controllerClient.enableLFModel(false, storeType);
     printObject(response);
   }
 

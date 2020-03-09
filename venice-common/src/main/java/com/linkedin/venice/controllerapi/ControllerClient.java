@@ -21,7 +21,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.function.Function;
@@ -633,6 +632,17 @@ public class ControllerClient implements Closeable {
 
   public MultiVersionStatusResponse listBootstrappingVersions() {
     return request(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS, newParams(), MultiVersionStatusResponse.class);
+  }
+
+  public MultiStoreResponse listLFStores() {
+    return request(ControllerRoute.LIST_LF_STORES, newParams(), MultiStoreResponse.class);
+  }
+
+  public MultiStoreResponse enableLFModel(boolean isLFEnabled, String storeType) {
+    QueryParams params = newParams()
+        .add(STATUS, isLFEnabled)
+        .add(STORE_TYPE, storeType);
+    return request(ControllerRoute.ENABLE_LF_MODEL, params, MultiStoreResponse.class);
   }
 
   protected static QueryParams getQueryParamsToDiscoverCluster(String storeName) {

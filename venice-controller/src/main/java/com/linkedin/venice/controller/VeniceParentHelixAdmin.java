@@ -1064,6 +1064,12 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public void setLeaderFollowerModelEnabled(String clusterName, String storeName, boolean leaderFollowerModelEnabled) {
+    //place holder
+    //will add it in the following RB
+  }
+
+  @Override
   public void updateStore(String clusterName,
       String storeName,
       Optional<String> owner,
