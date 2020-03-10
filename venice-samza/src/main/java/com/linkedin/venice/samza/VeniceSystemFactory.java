@@ -59,6 +59,12 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
    */
   public static final String VENICE_PARENT_D2_ZK_HOSTS = "venice.parent.d2.zk.hosts";
 
+  /**
+   * Specifies a list of partitioners venice supported.
+   * It contains a string of concatenated partitioner class names separated by comma.
+   */
+  public static final String VENICE_PARTITIONERS = "venice.partitioners";
+
   // D2 service name for local cluster
   public static final String VENICE_LOCAL_D2_SERVICE = "VeniceController";
   // D2 service name for parent cluster
@@ -112,8 +118,10 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
 
   // Extra `Config` parameter is to ease the internal implementation
   protected SystemProducer createSystemProducer(String veniceD2ZKHost, String veniceD2Service, String storeName,
-      Version.PushType venicePushType, String samzaJobId, Config config, Optional<SSLFactory> sslFactory) {
-    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, this, sslFactory);
+      Version.PushType venicePushType, String samzaJobId, Config config,
+      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
+    return new VeniceSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, this,
+        sslFactory, partitioners);
   }
 
   /**
@@ -157,6 +165,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       sslFactory = Optional.of(SslUtils.getSSLFactory(sslProps, sslFactoryClassName));
     }
 
+    Optional<String> partitioners = Optional.ofNullable(config.get(VENICE_PARTITIONERS));
+
     LOGGER.info("Configs for " + systemName + " producer: ");
     LOGGER.info(prefix + VENICE_STORE + ": " + storeName);
     LOGGER.info(prefix + VENICE_AGGREGATE + ": " + veniceAggregate);
@@ -174,7 +184,8 @@ public class VeniceSystemFactory implements SystemFactory, Serializable {
       veniceD2Service = VENICE_LOCAL_D2_SERVICE;
     }
     LOGGER.info("Will use the following Venice D2 ZK hosts: " + veniceD2ZKHost);
-    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType, samzaJobId, config, sslFactory);
+    SystemProducer systemProducer = createSystemProducer(veniceD2ZKHost, veniceD2Service, storeName, venicePushType,
+        samzaJobId, config, sslFactory, partitioners);
     this.systemProducerStatues.computeIfAbsent(systemProducer, k -> Pair.create(true, false));
     return systemProducer;
   }

@@ -549,8 +549,12 @@ public class TestPushUtils {
     return samzaConfig;
   }
 
-  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName, PushType type) {
+  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice, String storeName, PushType type,
+      Pair<String, String>... optionalConfigs) {
     Map<String, String> samzaConfig = getSamzaProducerConfig(venice, storeName, type);
+    for (Pair<String, String> config : optionalConfigs) {
+      samzaConfig.put(config.getFirst(), config.getSecond());
+    }
     VeniceSystemFactory factory = new VeniceSystemFactory();
     SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
     veniceProducer.start();

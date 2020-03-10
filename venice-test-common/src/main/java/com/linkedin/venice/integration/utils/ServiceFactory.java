@@ -489,7 +489,7 @@ public class ServiceFactory {
     // initialize ClientConfig
     ClientConfig clientConfig = ClientConfig
         .defaultGenericClientConfig(storeName)
-        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
     DaVinciClient<K, V> daVinciClient =
         new AvroGenericDaVinciClientImpl<>(veniceConfigLoader, DaVinciConfig.defaultDaVinciConfig(), clientConfig);

@@ -12,6 +12,7 @@ public class ConstantVenicePartitioner extends VenicePartitioner {
     super(properties);
     partitionId = properties.getInt(CONSTANT_PARTITION);
   }
+
   @Override
   public int getPartitionId(byte[] keyBytes, int numPartitions) {
     return partitionId;

@@ -63,6 +63,7 @@ public class PartitionerConfig {
     if (!partitionerParams.equals(that.partitionerParams)) return false;
     return amplificationFactor == that.amplificationFactor;
   }
+
   @Override
   public int hashCode() {
     int result = partitionerClass.hashCode();

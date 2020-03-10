@@ -88,8 +88,10 @@ public class VeniceSystemProducer implements SystemProducer {
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
-      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory) {
-    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory, sslFactory, Optional.empty(), SystemTime.INSTANCE);
+      Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory,
+      Optional<SSLFactory> sslFactory, Optional<String> partitioners) {
+    this(veniceD2ZKHost, d2ServiceName, storeName, pushType, samzaJobId, factory,
+        sslFactory, partitioners, SystemTime.INSTANCE);
   }
 
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
