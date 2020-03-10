@@ -77,7 +77,7 @@ public class RocksDBStoragePartitionTest {
     Options options = new Options();
     options.setCreateIfMissing(true);
     Map<String, String> inputRecords = generateInput(1000, sorted);
-    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR);
+    RocksDBStoragePartition storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR, null);
     final int syncPerRecords = 100;
     final int interruptedRecord = 345;
     if (sorted) {
@@ -102,7 +102,7 @@ public class RocksDBStoragePartitionTest {
         if (currentRecordNum == interruptedRecord) {
           if (reopenDatabaseDuringInterruption) {
             storagePartition.close();
-            storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR);
+            storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR, null);
           }
           if (sorted) {
             storagePartition.beginBatchWrite(checkpointingInfo);
@@ -141,7 +141,7 @@ public class RocksDBStoragePartitionTest {
     // Re-open it in read/write mode
     storagePartition.close();
     partitionConfig.setDeferredWrite(false);
-    storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR);
+    storagePartition = new RocksDBStoragePartition(partitionConfig, options, DATA_BASE_DIR, null);
     // Test deletion
     String toBeDeletedKey = keyPrefix + 10;
     Assert.assertNotNull(storagePartition.get(toBeDeletedKey.getBytes()));

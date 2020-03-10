@@ -43,7 +43,7 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
 
     service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class));
+        mock(AggVersionedStorageEngineStats.class), null);
     storeConfig = new VeniceStoreConfig(STORE_NAME, serverProperties);
 
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);

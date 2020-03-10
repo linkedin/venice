@@ -41,7 +41,7 @@ public class StorageServiceTest {
     storeConfig.setStorePersistenceType(PersistenceType.BDB);
 
     StorageService service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class));
+        mock(AggVersionedStorageEngineStats.class), null);
 
     BdbStorageEngineFactory factory = (BdbStorageEngineFactory) service.getInternalStorageEngineFactory(storeConfig);
     File directoryPath = factory.getStorePath(storeName);
@@ -152,7 +152,7 @@ public class StorageServiceTest {
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB, 1000);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
     StorageService storageService = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class));
+        mock(AggVersionedStorageEngineStats.class), null);
 
     for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
       String storeName = entry.getKey();
@@ -168,7 +168,7 @@ public class StorageServiceTest {
     int bigPartitionId = 100;
     int existingPartitionId = 0;
     storageService = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class));
+        mock(AggVersionedStorageEngineStats.class), null);
     for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
       String storeName = entry.getKey();
       int partitionNum = entry.getValue();
