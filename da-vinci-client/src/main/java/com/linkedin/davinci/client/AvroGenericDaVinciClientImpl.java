@@ -88,7 +88,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private D2TransportClient d2TransportClient;
   private DaVinciPartitioner partitioner;
   private IngestionController ingestionController;
-  private SchemaReader schemaReader;
 
   public AvroGenericDaVinciClientImpl(
       VeniceConfigLoader veniceConfigLoader,
@@ -199,7 +198,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     services.add(storageMetadataService);
 
     // SchemaReader of Kafka protocol
-    this.schemaReader = ClientFactory.getSchemaReader(
+    SchemaReader schemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)));
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
