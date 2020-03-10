@@ -36,7 +36,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
     service = new StorageService(configLoader, s -> s.toString(), mock(AggVersionedBdbStorageEngineStats.class),
-        mock(AggVersionedStorageEngineStats.class));
+        mock(AggVersionedStorageEngineStats.class), null);
     storeConfig = new VeniceStoreConfig(storeName, serverProperties, PersistenceType.ROCKS_DB);
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();
