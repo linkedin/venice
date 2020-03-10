@@ -10,6 +10,8 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
+import com.linkedin.venice.stats.RocksDBStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
@@ -27,7 +29,6 @@ import java.util.function.Consumer;
 import org.rocksdb.Statistics;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
-import static com.linkedin.venice.store.AbstractStorageEngine.*;
 
 
 /**
@@ -48,8 +49,10 @@ public class StorageService extends AbstractVeniceService {
 
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
 
+  private final RocksDBMemoryStats rocksDBMemoryStats;
+
   public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter,
-      AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats) {
+      AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats, RocksDBMemoryStats rocksDBMemoryStats) {
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
     if (bdbStorageEngineStats != null) {
@@ -59,13 +62,14 @@ public class StorageService extends AbstractVeniceService {
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
     this.storeVersionStateDeleter = storeVersionStateDeleter;
     this.aggVersionedStorageEngineStats = storageEngineStats;
+    this.rocksDBMemoryStats = rocksDBMemoryStats;
     initInternalStorageEngineFactories();
     // Restore all the stores persisted previously
     restoreAllStores(configLoader);
   }
 
   public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats) {
-    this(configLoader, s -> {}, null, storageEngineStats);
+    this(configLoader, s -> {}, null, storageEngineStats, null);
   }
 
   /**
@@ -75,7 +79,7 @@ public class StorageService extends AbstractVeniceService {
   private void initInternalStorageEngineFactories() {
     persistenceTypeToStorageEngineFactoryMap.put(BDB, new BdbStorageEngineFactory(serverConfig));
     persistenceTypeToStorageEngineFactoryMap.put(IN_MEMORY, new InMemoryStorageEngineFactory(serverConfig));
-    persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig));
+    persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig, rocksDBMemoryStats));
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 

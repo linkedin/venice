@@ -31,6 +31,7 @@ import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.DiskHealthStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
@@ -154,11 +155,15 @@ public class VeniceServer {
     // Create ReadOnlyStore/SchemaRepository
     createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
 
+    // TODO: It would be cleaner to come up with a storage engine metric abstraction so we're not passing around so
+    // many objects in constructors
     AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
+    RocksDBMemoryStats rocksDBMemoryStats = new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats");
+
     // create and add StorageService. storeRepository will be populated by StorageService,
     storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
-        bdbStorageEngineStats, storageEngineStats);
+        bdbStorageEngineStats, storageEngineStats, rocksDBMemoryStats);
     services.add(storageService);
 
     // Create stats for RocksDB

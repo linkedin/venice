@@ -1,6 +1,8 @@
 package com.linkedin.venice.store.rocksdb;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.ByteUtils;
@@ -93,7 +95,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   private final boolean readOnly;
 
-  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir) {
+  private final RocksDBMemoryStats rocksDBMemoryStats;
+
+  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir, RocksDBMemoryStats rocksDBMemoryStats) {
     super(storagePartitionConfig.getPartitionId());
 
     // Create the folder for storage partition if it doesn't exist
@@ -110,6 +114,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     this.envOptions = new EnvOptions();
     // Direct write is not efficient when there are a lot of ongoing pushes
     this.envOptions.setUseDirectWrites(false);
+    this.rocksDBMemoryStats = rocksDBMemoryStats;
     try {
       if (this.readOnly) {
         this.rocksDB = RocksDB.openReadOnly(options, fullPathForPartitionDB);
@@ -119,6 +124,8 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
     }
+
+    registerDBStats();
     LOGGER.info("Opened RocksDB for store: " + storeName + ", partition id: " + partitionId + " in "
         + (this.readOnly ? "read only" : "read write") + " mode and " + (this.deferredWrite ? "deferred write" : " non deferred write") + " mode");
   }
@@ -394,6 +401,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     /**
      * The following operations are used to free up memory.
      */
+    deRegisterDBStats();
     rocksDB.close();
     if (null != envOptions) {
       envOptions.close();
@@ -402,6 +410,18 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
       currentSSTFileWriter.close();
     }
     LOGGER.info("RocksDB for store: " + storeName + ", partition: " + partitionId + " was closed");
+  }
+
+  private void registerDBStats() {
+    if(rocksDBMemoryStats != null) {
+      rocksDBMemoryStats.registerPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId), rocksDB);
+    }
+  }
+
+  private void deRegisterDBStats() {
+    if(rocksDBMemoryStats != null) {
+      rocksDBMemoryStats.deregisterPartition(RocksDBUtils.getPartitionDbName(storeName, partitionId));
+    }
   }
 
   /**
