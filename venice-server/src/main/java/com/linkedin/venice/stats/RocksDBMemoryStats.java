@@ -22,7 +22,7 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
   private static final Logger logger = Logger.getLogger(RocksDBMemoryStats.class);
 
   // List of metric domains to emit
-  static final List<String> METRICS_DOMAINS = Arrays.asList(
+  static final List<String> PARTITON_METRIC_DOMAINS = Arrays.asList(
       "rocksdb.num-immutable-mem-table",
       "rocksdb.mem-table-flush-pending",
       "rocksdb.compaction-pending",
@@ -48,15 +48,23 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
       "rocksdb.num-running-flushes",
       "rocksdb.actual-delayed-write-rate",
       "rocksdb.block-cache-capacity",
-      "rocksdb.block-cache-usage",
-      "rocksdb.block-cache-pinned-usage"
+      "rocksdb.block-cache-pinned-usage",
+      "rocksdb.block-cache-usage"
       );
+
+  // metrics emitted on a per instance basis need only be collected once, not aggregated
+  static final List<String> INSTANCE_METRIC_DOMAINS = Arrays.asList(
+      "rocksdb.block-cache-capacity",
+      "rocksdb.block-cache-pinned-usage",
+      "rocksdb.block-cache-usage"
+  );
+
 
   private Map<String, RocksDB> hostedRocksDBPartitions = new ConcurrentHashMap<>();
 
   public RocksDBMemoryStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    for(String metric : METRICS_DOMAINS) {
+    for(String metric : PARTITON_METRIC_DOMAINS) {
       registerSensor(metric, new Gauge(() -> {
         Long total = 0L;
         for(RocksDB dbPartition : hostedRocksDBPartitions.values()) {
@@ -64,6 +72,11 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
             total += Long.parseLong(dbPartition.getProperty(metric));
           } catch (RocksDBException e) {
             logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
+            continue;
+          }
+          if(INSTANCE_METRIC_DOMAINS.contains(metric)) {
+            // Collect this metric once from any available partition and move on
+            break;
           }
         }
         return total;
