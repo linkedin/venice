@@ -3,6 +3,7 @@ package com.linkedin.venice.store.rocksdb;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -20,12 +21,14 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final String rocksDbPath;
   private final String storeDbPath;
   private final Options options;
+  private final RocksDBMemoryStats memoryStats;
 
 
-  public RocksDBStorageEngine(VeniceStoreConfig storeConfig, Options options, String rocksDbPath) {
+  public RocksDBStorageEngine(VeniceStoreConfig storeConfig, Options options, String rocksDbPath, RocksDBMemoryStats rocksDBMemoryStats) {
     super(storeConfig.getStoreName());
     this.rocksDbPath = rocksDbPath;
     this.options = options;
+    this.memoryStats = rocksDBMemoryStats;
 
     // Create store folder if it doesn't exist
     storeDbPath = RocksDBUtils.composeStoreDbDir(this.rocksDbPath, getName());
@@ -65,7 +68,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
 
   @Override
   public RocksDBStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
-    return new RocksDBStoragePartition(storagePartitionConfig, options, rocksDbPath);
+    return new RocksDBStoragePartition(storagePartitionConfig, options, rocksDbPath, memoryStats);
   }
 
   @Override

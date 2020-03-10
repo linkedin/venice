@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 
@@ -70,10 +71,15 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    */
   private final SstFileManager sstFileManager;
 
+  private final RocksDBMemoryStats rocksDBMemoryStats;
 
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
+    this(serverConfig, null);
+  }
+  public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig, RocksDBMemoryStats rocksDBMemoryStats) {
     this.rocksDBServerConfig = serverConfig.getRocksDBServerConfig();
     this.rocksDBPath = serverConfig.getDataBasePath() + File.separator + "rocksdb";
+    this.rocksDBMemoryStats = rocksDBMemoryStats;
 
     /**
      * Shared {@link Env} allows us to share the flush thread pool and compaction thread pool.
@@ -179,7 +185,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     try {
       if (!storageEngineMap.containsKey(storeName)) {
         Options storeOptions = getStoreOptions(storeName);
-        storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, storeOptions, rocksDBPath));
+        storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, storeOptions, rocksDBPath, rocksDBMemoryStats));
       }
       return storageEngineMap.get(storeName);
     } catch (Exception e) {
