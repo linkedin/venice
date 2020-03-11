@@ -24,7 +24,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public class DaVinciClientEndToEndTest {
   private static final Logger logger = Logger.getLogger(DaVinciClientEndToEndTest.class);
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = 60000)
   public void testCustomPartitionerInBatchStore() throws Exception {
     final int partitionId = 1;
 
