@@ -126,6 +126,19 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_TOTAL_MEMTABLE_USAGE_CAP_IN_BYTES = "rocksdb.total.memtable.usage.cap.in.bytes";
 
+  /**
+   * Currently, the max file open thread cnt per open operation is 16 by default.
+   * We could tune this param to reduce the possible maximum thread cnt;
+   */
+  public static final String ROCKSDB_MAX_FILE_OPENING_THREADS = "rocksdb.max.file.opening.threads";
+  /**
+   * Every time, when RocksDB tries to open a database, it will spin up multiple threads to load the file metadata
+   * in parallel, and the application could hit the thread limit issue if there are many RocksDB open operations
+   * at the same time.
+   * The following config is used to throttle the RocksDB open operations.
+   */
+  public static final String ROCKSDB_DB_OPEN_OPERATION_THROTTLE = "rocksdb.db.open.operation.throttle";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -161,6 +174,9 @@ public class RocksDBServerConfig {
   private final int maxOpenFiles;
 
   private final int targetFileSizeInBytes;
+
+  private final int maxFileOpeningThreads;
+  private final int databaseOpenOperationThrottle;
 
 
   public RocksDBServerConfig(VeniceProperties props) {
@@ -225,6 +241,9 @@ public class RocksDBServerConfig {
     this.maxOpenFiles = props.getInt(ROCKSDB_MAX_OPEN_FILES, -1);
 
     this.targetFileSizeInBytes = props.getInt(ROCKSDB_TARGET_FILE_SIZE_IN_BYTES, 64 * 1024 * 1024); // default: 64MB
+
+    this.maxFileOpeningThreads = props.getInt(ROCKSDB_MAX_FILE_OPENING_THREADS, 16);
+    this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
   }
 
   public boolean getRocksDBUseDirectReads() {
@@ -323,5 +342,13 @@ public class RocksDBServerConfig {
 
   public int getTargetFileSizeInBytes() {
     return targetFileSizeInBytes;
+  }
+
+  public int getMaxFileOpeningThreads() {
+    return maxFileOpeningThreads;
+  }
+
+  public int getDatabaseOpenOperationThrottle() {
+    return databaseOpenOperationThrottle;
   }
 }

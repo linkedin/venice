@@ -73,6 +73,11 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
+  /**
+   * Throttler for RocksDB open operations.
+   */
+  private final RocksDBThrottler rocksDBThrottler;
+
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this(serverConfig, null);
   }
@@ -112,6 +117,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
+    this.rocksDBThrottler = new RocksDBThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
   }
 
   public Optional<Statistics> getAggStatistics() {
@@ -135,6 +141,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
 
     options.setWriteBufferManager(writeBufferManager);
     options.setSstFileManager(sstFileManager);
+    options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
+
     /**
      * Disable the stat dump threads, which will create excessive threads, which will eventually crash
      * storage node.
@@ -185,7 +193,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     try {
       if (!storageEngineMap.containsKey(storeName)) {
         Options storeOptions = getStoreOptions(storeName);
-        storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, storeOptions, rocksDBPath, rocksDBMemoryStats));
+        storageEngineMap.put(storeName, new RocksDBStorageEngine(storeConfig, storeOptions, rocksDBPath, rocksDBMemoryStats, rocksDBThrottler));
       }
       return storageEngineMap.get(storeName);
     } catch (Exception e) {

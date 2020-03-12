@@ -96,8 +96,10 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   private final boolean readOnly;
 
   private final RocksDBMemoryStats rocksDBMemoryStats;
+  private final RocksDBThrottler rocksDbThrottler;
 
-  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir, RocksDBMemoryStats rocksDBMemoryStats) {
+  public RocksDBStoragePartition(StoragePartitionConfig storagePartitionConfig, Options options, String dbDir,
+      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler) {
     super(storagePartitionConfig.getPartitionId());
 
     // Create the folder for storage partition if it doesn't exist
@@ -115,13 +117,14 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // Direct write is not efficient when there are a lot of ongoing pushes
     this.envOptions.setUseDirectWrites(false);
     this.rocksDBMemoryStats = rocksDBMemoryStats;
+    this.rocksDbThrottler = rocksDbThrottler;
     try {
       if (this.readOnly) {
-        this.rocksDB = RocksDB.openReadOnly(options, fullPathForPartitionDB);
+        this.rocksDB = rocksDbThrottler.openReadOnly(options, fullPathForPartitionDB);
       } else {
-        this.rocksDB = RocksDB.open(options, fullPathForPartitionDB);
+        this.rocksDB = rocksDbThrottler.open(options, fullPathForPartitionDB);
       }
-    } catch (RocksDBException e) {
+    } catch (RocksDBException|InterruptedException e) {
       throw new VeniceException("Failed to open RocksDB for store: " + storeName + ", partition id: " + partitionId, e);
     }
 
