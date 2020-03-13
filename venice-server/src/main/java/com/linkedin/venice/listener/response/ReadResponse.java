@@ -22,6 +22,9 @@ public abstract class ReadResponse {
   private boolean isStreamingResponse = false;
   private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
   private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
+  private int dotProductCount = 0;
+  private int cosineSimilarityCount = 0;
+  private int hadamardProductCount = 0;
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
@@ -91,6 +94,18 @@ public abstract class ReadResponse {
     this.readComputeSerializationLatency += latency;
   }
 
+  public void incrementDotProductCount() {
+    dotProductCount++;
+  }
+
+  public void incrementCosineSimilarityCount() {
+    cosineSimilarityCount++;
+  }
+
+  public void incrementHadamardProductCount() {
+    hadamardProductCount++;
+  }
+
   public double getReadComputeSerializationLatency() {
     return this.readComputeSerializationLatency;
   }
@@ -121,6 +136,18 @@ public abstract class ReadResponse {
 
   public Optional<List<Integer>> getOptionalValueSizeList() {
     return optionalValueSizeList;
+  }
+
+  public int getDotProductCount() {
+    return dotProductCount;
+  }
+
+  public int getCosineSimilarityCount() {
+    return cosineSimilarityCount;
+  }
+
+  public int getHadamardProductCount() {
+    return hadamardProductCount;
   }
 
   public abstract int getRecordCount();

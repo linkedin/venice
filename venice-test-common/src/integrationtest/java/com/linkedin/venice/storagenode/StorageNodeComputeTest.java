@@ -21,10 +21,13 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
+import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.tehuti.MetricsUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -170,9 +173,10 @@ public class StorageNodeComputeTest {
       // Run multiple rounds
       int rounds = 100;
       int cur = 0;
+      int keyCount = 10;
       while (cur++ < rounds) {
         Set<String> keySet = new HashSet<>();
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < keyCount; ++i) {
           keySet.add(keyPrefix + i);
         }
         keySet.add("unknown_key");
@@ -213,6 +217,14 @@ public class StorageNodeComputeTest {
           Assert.assertEquals(entry.getValue().get("hadamard_product_result"), hadamardProductResult);
         }
       }
+
+      /**
+       * 10 keys, 1 dot product, 1 cosine similarity, 1 hadamard product per request, 100 rounds; considering retries,
+       * compute operation counts should be higher.
+       */
+      Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_dot_product_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
+      Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_cosine_similarity_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
+      Assert.assertTrue(MetricsUtils.getSum("." + storeName + "--compute_hadamard_product_count.Total", veniceCluster.getVeniceServers()) >= rounds * keyCount);
 
       // Check retry requests
       Assert.assertTrue(MetricsUtils.getSum(".total--compute_retry_count.LambdaStat", veniceCluster.getVeniceRouters()) > 0,

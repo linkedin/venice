@@ -107,6 +107,21 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordReadComputeSerializationLatency(latency, assembledMultiChunkLargeValue);
   }
 
+  public void recordDotProductCount(String storeName, int count) {
+    totalStats.recordDotProductCount(count);
+    getStoreStats(storeName).recordDotProductCount(count);
+  }
+
+  public void recordCosineSimilarityCount(String storeName, int count) {
+    totalStats.recordCosineSimilarityCount(count);
+    getStoreStats(storeName).recordCosineSimilarityCount(count);
+  }
+
+  public void recordHadamardProductCount(String storeName, int count) {
+    totalStats.recordHadamardProduct(count);
+    getStoreStats(storeName).recordHadamardProduct(count);
+  }
+
   public void recordKeySizeInByte(String storeName, long keySize) {
     totalStats.recordKeySizeInByte(keySize);
     getStoreStats(storeName).recordKeySizeInByte(keySize);

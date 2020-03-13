@@ -2,6 +2,7 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.CosineSimilarity;
+import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,7 +15,8 @@ import static com.linkedin.venice.compute.ComputeOperationUtils.*;
 public class CosineSimilarityOperator implements ReadComputeOperator {
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context) {
+      Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
+    responseWrapper.incrementCosineSimilarityCount();
     CosineSimilarity cosineSimilarity = (CosineSimilarity) op.operation;
     boolean useV1 = computeRequestVersion == COMPUTE_REQUEST_VERSION_V1;
     try {
