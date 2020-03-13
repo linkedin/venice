@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -114,10 +115,39 @@ public abstract class TopicReplicator {
     if (!store.isHybrid()) {
       throw new VeniceException("Topic replication is only supported for Hybrid Stores.");
     }
+    /**
+     * TopicReplicator is used in child fabrics to create real-time (RT) topic when a child fabric
+     * is ready to start buffer replay but RT topic doesn't exist. This scenario could happen for a
+     * hybrid store when users haven't started any Samza job yet. In this case, RT topic should be
+     * created with proper retention time instead of the default 5 days retention.
+     *
+     * Potential race condition: If both rewind-time update operation and buffer-replay
+     * start at the same time, RT topic might not be created with the expected retention time,
+     * which can be fixed by sending another rewind-time update command.
+     *
+     * TODO: RT topic should be created in both parent and child fabrics when the store is converted to
+     *       hybrid (update store command handling). However, if a store is converted to hybrid when it
+     *       doesn't have any existing version or a correct storage quota, we cannot decide the partition
+     *       number for it.
+     */
     if (!getTopicManager().containsTopic(srcTopicName)) {
       int partitionCount = getTopicManager().getPartitions(destTopicName).size();
       int replicationFactor = getTopicManager().getReplicationFactor(destTopicName);
-      getTopicManager().createTopic(srcTopicName, partitionCount, replicationFactor, false);
+      getTopicManager().createTopic(srcTopicName,
+                                    partitionCount,
+                                    replicationFactor,
+                                    store.getHybridStoreConfig().getRetentionTimeInMs(),
+                                    false, // RT topics are never compacted
+                                    Optional.empty(),
+                                    false);
+    } else {
+      /**
+       * If real-time topic already exists, check whether its retention time is correct.
+       */
+      long topicRetentionTimeInMs = getTopicManager().getTopicRetention(srcTopicName);
+      if (topicRetentionTimeInMs != store.getHybridStoreConfig().getRetentionTimeInMs()) {
+        getTopicManager().updateTopicRetention(srcTopicName, store.getHybridStoreConfig().getRetentionTimeInMs());
+      }
     }
   }
 

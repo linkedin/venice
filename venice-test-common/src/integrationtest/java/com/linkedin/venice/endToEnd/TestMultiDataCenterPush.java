@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -172,6 +173,35 @@ public class TestMultiDataCenterPush {
     });
     Assert.assertTrue(childTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
     Assert.assertTrue(childTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
+
+    /**
+     * In order to speed up integration test, reuse the multi data center cluster for hybrid store RT topic retention time testing
+     */
+    String hybridStoreName = TestUtils.getUniqueString("hybrid_store");
+    Properties pushJobPropsForHybrid = defaultH2VProps(parentController.getControllerUrl(), inputDirPath, hybridStoreName);
+    // Create a hybrid store.
+    createStoreForJob(clusterName, recordSchema, pushJobPropsForHybrid);
+    /**
+     * Set a high rewind time, higher than the default 5 days retention time.
+     */
+    long highRewindTimeInSecond = 30l * Time.SECONDS_PER_DAY; // Rewind time is one month.
+    ControllerClient controllerClientToParent = new ControllerClient(clusterName, parentController.getControllerUrl());
+    controllerClientToParent.updateStore(hybridStoreName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(highRewindTimeInSecond)
+        .setHybridOffsetLagThreshold(10));
+
+    /**
+     * A batch push for hybrid store would trigger the child fabrics to create RT topic.
+     */
+    KafkaPushJob pushJobForHybrid = new KafkaPushJob("Test push job for hybrid", pushJobPropsForHybrid);
+    pushJobForHybrid.run();
+
+    /**
+     * RT topic retention time should be longer than the rewind time.
+     */
+    String realTimeTopic = hybridStoreName + "_rt";
+    long topicRetentionTimeInSecond = TimeUnit.MILLISECONDS.toSeconds(childTopicManager.getTopicRetention(realTimeTopic));
+    Assert.assertTrue(topicRetentionTimeInSecond >= highRewindTimeInSecond);
   }
 
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Failed to create new store version.*")
