@@ -2,6 +2,7 @@ package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
 import com.linkedin.venice.compute.protocol.request.DotProduct;
+import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
@@ -12,7 +13,8 @@ import static com.linkedin.venice.VeniceConstants.*;
 public class DotProductOperator implements ReadComputeOperator {
   @Override
   public void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
-      Map<String, String> computationErrorMap, Map<String, Object> context) {
+      Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper) {
+    responseWrapper.incrementDotProductCount();
     DotProduct dotProduct = (DotProduct) op.operation;
     boolean useV1 = computeRequestVersion == COMPUTE_REQUEST_VERSION_V1;
     try {

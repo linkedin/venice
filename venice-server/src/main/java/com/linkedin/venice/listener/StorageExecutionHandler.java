@@ -510,7 +510,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     // go through all operation
     for (Object operation : operations) {
       ComputeOperation op = (ComputeOperation) operation;
-      computeOperators.get(op.operationType).compute(computeRequestVersion, op, valueRecord, resultRecord, computationErrorMap, globalContext);
+      computeOperators.get(op.operationType).compute(computeRequestVersion, op, valueRecord, resultRecord, computationErrorMap, globalContext, response);
     }
 
     // fill the empty field in result schema

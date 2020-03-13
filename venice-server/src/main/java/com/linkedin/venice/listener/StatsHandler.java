@@ -31,6 +31,9 @@ public class StatsHandler extends ChannelDuplexHandler {
   private double readComputeLatency = -1;
   private double readComputeDeserializationLatency = -1;
   private double readComputeSerializationLatency = -1;
+  private int dotProductCount = 0;
+  private int cosineSimilarityCount = 0;
+  private int hadamardProductCount = 0;
 
   private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
   private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
@@ -139,6 +142,18 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.readComputeSerializationLatency = latency;
   }
 
+  public void setDotProductCount(int count) {
+    this.dotProductCount = count;
+  }
+
+  public void setCosineSimilarityCount(int count) {
+    this.cosineSimilarityCount = count;
+  }
+
+  public void setHadamardProductCount(int count) {
+    this.hadamardProductCount = count;
+  }
+
   public void setStorageExecutionHandlerSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
     this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
   }
@@ -188,6 +203,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       readComputeLatency = -1;
       readComputeDeserializationLatency = -1;
       readComputeSerializationLatency = -1;
+      dotProductCount = 0;
+      cosineSimilarityCount = 0;
+      hadamardProductCount = 0;
 
       optionalKeySizeList = Optional.empty();
       optionalValueSizeList = Optional.empty();
@@ -292,6 +310,15 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (readComputeSerializationLatency >= 0) {
         currentStats.recordReadComputeSerializationLatency(storeName, readComputeSerializationLatency, isAssembledMultiChunkLargeValue());
+      }
+      if (dotProductCount > 0) {
+        currentStats.recordDotProductCount(storeName, dotProductCount);
+      }
+      if (cosineSimilarityCount > 0) {
+        currentStats.recordCosineSimilarityCount(storeName, cosineSimilarityCount);
+      }
+      if (hadamardProductCount > 0) {
+        currentStats.recordHadamardProductCount(storeName, hadamardProductCount);
       }
     }
   }

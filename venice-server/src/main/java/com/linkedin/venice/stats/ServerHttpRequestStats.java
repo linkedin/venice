@@ -9,6 +9,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,6 +43,9 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor readComputeSerializationLatencySensor;
   private final Sensor readComputeSerializationLatencyForSmallValueSensor;
   private final Sensor readComputeSerializationLatencyForLargeValueSensor;
+  private final Sensor dotProductCountSensor;
+  private final Sensor cosineSimilaritySensor;
+  private final Sensor hadamardProductSensor;
 
   private Sensor requestKeySizeSensor;
   private Sensor requestValueSizeSensor;
@@ -143,6 +147,13 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     readComputeSerializationLatencyForSmallValueSensor = getPercentileStatSensor("storage_engine_read_compute_serialization_latency_for_small_value");
     readComputeSerializationLatencyForLargeValueSensor = getPercentileStatSensor("storage_engine_read_compute_serialization_latency_for_large_value");
 
+    /**
+     * Total will reflect counts for the entire server host, while Avg will reflect the counts for each request.
+     */
+    dotProductCountSensor = registerSensor("dot_product_count", new Total(), new Avg());
+    cosineSimilaritySensor = registerSensor("cosine_similarity_count", new Total(), new Avg());
+    hadamardProductSensor = registerSensor("hadamard_product_count", new Total(), new Avg());
+
     if (isKeyValueProfilingEnabled) {
       String requestValueSizeSensorName = "request_value_size";
       requestValueSizeSensor = registerSensor(requestValueSizeSensorName, new Avg(), new Max(),
@@ -239,6 +250,18 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     } else {
       readComputeSerializationLatencyForSmallValueSensor.record(latency);
     }
+  }
+
+  public void recordDotProductCount(int count) {
+    dotProductCountSensor.record(count);
+  }
+
+  public void recordCosineSimilarityCount(int count) {
+    cosineSimilaritySensor.record(count);
+  }
+
+  public void recordHadamardProduct(int count) {
+    hadamardProductSensor.record(count);
   }
 
   public void recordKeySizeInByte(long keySize) {

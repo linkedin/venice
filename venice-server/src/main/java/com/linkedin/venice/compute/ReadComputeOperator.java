@@ -1,12 +1,14 @@
 package com.linkedin.venice.compute;
 
 import com.linkedin.venice.compute.protocol.request.ComputeOperation;
+import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import java.util.Map;
 import org.apache.avro.generic.GenericRecord;
 
 
 public interface ReadComputeOperator {
-  void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord, Map<String, String> computationErrorMap, Map<String, Object> context);
+  void compute(int computeRequestVersion, ComputeOperation op, GenericRecord valueRecord, GenericRecord resultRecord,
+      Map<String, String> computationErrorMap, Map<String, Object> context, ComputeResponseWrapper responseWrapper);
 
   default void putResult(GenericRecord record, String field, boolean useV1, Object legacyResult, Object result) {
     /**
