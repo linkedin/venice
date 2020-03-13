@@ -364,6 +364,9 @@ public class TopicManager implements Closeable {
     return topicRetentions;
   }
 
+  /**
+   * Return topic retention time in MS.
+   */
   public long getTopicRetention(String topicName) {
     Properties topicProperties = getTopicConfig(topicName);
     if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
