@@ -1,3 +1,3 @@
-owners: [ jlliu, xnma, zfan ]
+owners: [ jlliu, xnma, zfan, shuhliu ]
 paths: [ '.*' ]
 whitelist: [ ]
