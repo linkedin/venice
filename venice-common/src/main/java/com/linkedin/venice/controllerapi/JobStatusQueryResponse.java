@@ -14,7 +14,6 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
   private int version;
   private String status;
   private String statusDetails;
-  private boolean availableFinal;
   private Map<String, String> extraInfo;
   private Map<String, String> extraDetails;
 
@@ -83,19 +82,6 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
 
   public void setMessagesAvailable(long messagesAvailable) {
     this.messagesAvailable = messagesAvailable;
-  }
-
-  /**
-   * If the push to Kafka is complete, then the highest offset for each partition is not expected to change.
-   * This boolean indicates that completion.
-   * @return
-   */
-  public boolean isAvailableFinal() {
-    return availableFinal;
-  }
-
-  public void setAvailableFinal(boolean availableFinal) {
-    this.availableFinal = availableFinal;
   }
 
   public Map<String, Long> getPerTaskProgress() {

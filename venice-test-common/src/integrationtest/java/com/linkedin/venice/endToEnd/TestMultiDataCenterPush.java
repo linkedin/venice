@@ -268,6 +268,13 @@ public class TestMultiDataCenterPush {
     KafkaPushJob incrementalPushJob = new KafkaPushJob("Test incremental push job", props);
     incrementalPushJob.run();
 
+    Admin.OfflinePushStatusInfo offlinePushStatusInfo = parentControllers.get(0)
+        .getVeniceAdmin()
+        .getOffLinePushStatus(clusterName, incrementalPushJob.getKafkaTopic(), incrementalPushJob.getIncrementalPushVersion());
+
+    Assert.assertEquals(offlinePushStatusInfo.getExecutionStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
+
+
     //validate the client can read data
     for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
       VeniceMultiClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);

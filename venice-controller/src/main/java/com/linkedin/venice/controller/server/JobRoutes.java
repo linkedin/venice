@@ -18,17 +18,12 @@ import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.http.HttpStatus;
-import org.apache.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class JobRoutes extends AbstractRoute {
-  private static final Logger logger = Logger.getLogger(JobRoutes.class);
-  private static final ObjectMapper objectMapper = new ObjectMapper();
-
   public JobRoutes(Optional<DynamicAccessController> accessController) {
     super(accessController);
   }
@@ -81,9 +76,6 @@ public class JobRoutes extends AbstractRoute {
     responseObject.setStatusDetails(offlineJobStatus.getStatusDetails().orElse(null));
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
     responseObject.setExtraDetails(offlineJobStatus.getExtraDetails());
-
-    //TODO: available offsets finalized
-    responseObject.setAvailableFinal(false);
 
     responseObject.setCluster(cluster);
     responseObject.setName(store);
