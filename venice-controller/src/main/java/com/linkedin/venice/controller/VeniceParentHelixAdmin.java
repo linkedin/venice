@@ -126,10 +126,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private static final String PUSH_JOB_STATUS_STORE_DESCRIPTOR = "push job status store: ";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
-  private static final int VERSION_ID_UNSET = -1;
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
   protected static final int STORE_VERSION_RETENTION_COUNT = 5;
-  public static final int MAX_PUSH_STATUS_PER_STORE_TO_KEEP = 10;
 
   protected final Map<String, Boolean> asyncSetupEnabledMap;
   private final VeniceHelixAdmin veniceHelixAdmin;
@@ -140,7 +138,6 @@ public class VeniceParentHelixAdmin implements Admin {
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Map<String, Lock> perClusterAdminLocks = new ConcurrentHashMap<>();
   private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
-  private long lastTopicCreationTime = -1;
   private final Set<String> executionIdValidatedClusters = new HashSet<>();
   // Only used for setup work which are intended to be short lived and is bounded by the number of venice clusters.
   // Based on JavaDoc "Threads that have not been used for sixty seconds are terminated and removed from the cache."
@@ -154,7 +151,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
-   * 1. For errored topics, {@link #getOffLineJobStatus(String, String, Map, TopicManager)} won't truncate them;
+   * 1. For errored topics, {@link #getOfflineJobProgress(String, String, Map)} won't truncate them;
    * 2. For errored topics, {@link #killOfflinePush(String, String)} won't truncate them;
    * 3. {@link #getTopicForCurrentPushJob(String, String, boolean)} will truncate the errored topics based on
    * {@link #maxErroredTopicNumToKeep};
@@ -1479,22 +1476,22 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager());
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients);
   }
 
   @Override
   public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic, Optional<String> incrementalPushVersion) {
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager(), Optional.empty());
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, incrementalPushVersion);
   }
 
   protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
-    Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, topicManager, Optional.empty());
+    Map<String, ControllerClient> controllerClients) {
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, Optional.empty());
   }
 
   protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
-      Map<String, ControllerClient> controllerClients, TopicManager topicManager, Optional<String> incrementalPushVersion) {
+      Map<String, ControllerClient> controllerClients, Optional<String> incrementalPushVersion) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NEW; // This status is not used for anything... Might make sense to remove it, but anyhow.
     Optional<String> currentReturnStatusDetails = Optional.empty();
@@ -1502,11 +1499,11 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraInfo = new HashMap<>();
     Map<String, String> extraDetails = new HashMap<>();
     int failCount = 0;
-    for (String cluster : childClusters){
+    for (String cluster : childClusters) {
       ControllerClient controllerClient = controllerClients.get(cluster);
       String masterControllerUrl = controllerClient.getMasterControllerUrl();
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
-      if (response.isError()){
+      if (response.isError()) {
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
         statuses.add(ExecutionStatus.UNKNOWN);
@@ -1544,12 +1541,12 @@ public class VeniceParentHelixAdmin implements Admin {
         ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED,
         ExecutionStatus.ARCHIVED);
     Collections.sort(statuses, Comparator.comparingInt(priorityOrderList::indexOf));
-    if (statuses.size() > 0){
+    if (statuses.size() > 0) {
       currentReturnStatus = statuses.get(0);
     }
 
     int successCount = childClusters.size() - failCount;
-    if (! (successCount >= (childClusters.size()/2)+1)) { // Strict majority must be reachable, otherwise keep polling
+    if (! (successCount >= (childClusters.size() / 2) + 1)) { // Strict majority must be reachable, otherwise keep polling
       currentReturnStatus = ExecutionStatus.PROGRESS;
     }
 
@@ -1557,7 +1554,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // If there is a temporary datacenter connection failure, we want H2V to report failure while allowing the push
       // to succeed in remaining datacenters.  If we want to allow the push to succeed in asyc in the remaining datacenter
       // then put the topic delete into an else block under `if (failcount > 0)`
-      if (failCount > 0){
+      if (failCount > 0) {
         currentReturnStatus = ExecutionStatus.ERROR;
         currentReturnStatusDetails = Optional.of(failCount + "/" + childClusters.size() + " DCs unreachable. ");
       }

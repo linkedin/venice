@@ -314,6 +314,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     boolean pbnjAsync;
     double pbnjSamplingRatio;
     boolean isIncrementalPush;
+    Optional<String> incrementalPushVersion = Optional.empty();
     boolean isDuplicateKeyAllowed;
     boolean enablePushJobStatusUpload;
     boolean enableReducerSpeculativeExecution;
@@ -508,7 +509,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
         jc = new JobClient(jobConf);
-        Optional<String> incrementalPushVersion = Optional.empty();
+
         if (pushJobSetting.isIncrementalPush) {
           /**
            * N.B.: For now, we always send control messages directly for incremental pushes, regardless of
@@ -516,10 +517,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
            * sending these types of CM. If/when we add support for that in the controller, then we'll be able
            * to completely stop using the {@link VeniceWriter} from this class.
            */
-          incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
-          getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
+          pushJobSetting.incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
+          getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
           runningJob = jc.runJob(jobConf);
-          getVeniceWriter(versionTopicInfo).broadcastEndOfIncrementalPush(incrementalPushVersion.get(), new HashMap<>());
+          getVeniceWriter(versionTopicInfo).broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
         } else {
           if (pushJobSetting.sendControlMessagesDirectly) {
             getVeniceWriter(versionTopicInfo).broadcastStartOfPush(!pushJobSetting.isMapOnly, storeSetting.isChunkingEnabled, versionTopicInfo.compressionStrategy, new HashMap<>());
@@ -544,7 +545,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.WRITE_COMPLETED.getValue()));
         sendPushJobDetails();
         // Waiting for Venice Backend to complete consumption
-        pollStatusUntilComplete(incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
+        pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
         checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
@@ -1562,6 +1563,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   public long getInputFileDataSize() {
     return inputFileDataSize;
+  }
+
+  public Optional<String> getIncrementalPushVersion() {
+    return pushJobSetting.incrementalPushVersion;
   }
 
   private static Path getLatestPath(Path path, FileSystem fs) throws IOException {
