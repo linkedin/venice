@@ -128,7 +128,6 @@ import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
-import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
@@ -163,8 +162,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Map<String, AdminConsumerService> adminConsumerServices = new ConcurrentHashMap<>();
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
-    public static final long CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS = 1000*300l; // 5min
-    public static final long CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS = 500l;
+    public static final long CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS = 1000*300l; // 5min
+    public static final long CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS = 500l;
     public static final long WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS = 500;
 
     private static final int INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS = 3;
@@ -389,40 +388,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             participantMessageStoreRTTMap.put(clusterName,
                 Version.composeRealTimeTopic(VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName)));
         }
-        waitUnitControllerJoinsCluster(clusterName);
+        waitUntilClusterResourceIsVisibleInEV(clusterName);
     }
 
-    private void waitUnitControllerJoinsCluster(String clusterName) {
-        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
+    private void waitUntilClusterResourceIsVisibleInEV(String clusterName) {
         long startTime = System.currentTimeMillis();
-        try {
-            while (!controllerStateModelFactory.hasJoinedCluster(clusterName)) {
-                // Waiting time out
-                if (System.currentTimeMillis() - startTime >= CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS) {
-                    throw new InterruptedException("Time out when waiting controller join cluster:" + clusterName);
-                }
-                // Check whether enough controller has been assigned.
-                ExternalView externalView =
-                    manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
-                String partitionName = HelixUtils.getPartitionName(clusterName, 0);
-                if (externalView != null && externalView.getStateMap(partitionName) != null) {
-                    int assignedControllerCount = externalView.getStateMap(partitionName).size();
-                    if (assignedControllerCount >= controllerClusterReplica) {
-                        logger.info(
-                            "Do not need to wait, this controller can not join because there is enough controller for cluster:"
-                                + clusterName);
-                        return;
-                    }
-                }
-                // Wait
-                Thread.sleep(CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS);
+        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
+        while (System.currentTimeMillis() - startTime < CONTROLLER_CLUSTER_RESOURCE_EV_TIMEOUT_MS) {
+            ExternalView externalView =
+                manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+            String partitionName = HelixUtils.getPartitionName(clusterName, 0);
+            if (externalView != null && externalView.getStateMap(partitionName) != null
+                && !externalView.getStateMap(partitionName).isEmpty()) {
+                logger.info("External view is available for cluster resource: " + clusterName);
+                return;
             }
-            logger.info("Controller joined the cluster:" + clusterName);
-        } catch (InterruptedException e) {
-            String errorMsg = "Controller can not join the cluster:" + clusterName;
-            logger.error(errorMsg, e);
-            throw new VeniceException(errorMsg, e);
+            try {
+                // Wait
+                Thread.sleep(CONTROLLER_CLUSTER_RESOURCE_EV_CHECK_DELAY_MS);
+            } catch (InterruptedException e) {
+                throw new VeniceException("Failed to verify the external view of cluster resource: " + clusterName, e);
+            }
         }
+        throw new VeniceException("Timed out when waiting for the external view of cluster resource: " + clusterName);
     }
 
     @Override
