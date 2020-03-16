@@ -2,9 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.init.ClusterLeaderInitializationRoutine;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import io.tehuti.metrics.MetricsRepository;
@@ -52,17 +50,10 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   public VeniceDistClusterControllerStateModel createNewStateModel(String resourceName, String partitionName) {
     String veniceClusterName =
         VeniceDistClusterControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
-
-    VeniceControllerClusterConfig clusterConfig = clusterConfigs.getConfigForCluster(veniceClusterName);
-
-    if (clusterConfig == null) {
-      throw new VeniceException("No configuration exists for " + veniceClusterName);
-    }
-
     VeniceDistClusterControllerStateModel model =
-        new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterConfig, storeCleaner,
-            metricsRepository, controllerInitialization, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-            accessController, clusterConfigs.getConfigForCluster(veniceClusterName).isVeniceClusterLeaderHAAS());
+        new VeniceDistClusterControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs,
+            storeCleaner, metricsRepository, controllerInitialization, onlineOfflineTopicReplicator,
+            leaderFollowerTopicReplicator, accessController);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }
@@ -73,22 +64,5 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
   public Collection<VeniceDistClusterControllerStateModel> getAllModels(){
     return clusterToStateModelsMap.values();
-  }
-
-  /**
-   * After start a new venice cluster, judge whether the controller has joined the cluster. After state model becoming
-   * STANDBY or LEADER or ERROR, the controller has joined cluster.
-   */
-  protected boolean hasJoinedCluster(String veniceClusterName) {
-    if (clusterToStateModelsMap.get(veniceClusterName) == null || clusterToStateModelsMap.get(veniceClusterName)
-        .getCurrentState()
-        .equals(HelixState.OFFLINE_STATE)) {
-      return false;
-    }
-    if (clusterToStateModelsMap.get(veniceClusterName).getCurrentState().equals(HelixState.ERROR_STATE)) {
-      throw new VeniceException("Controller for " + veniceClusterName
-          + " is not started, because we met error when doing Helix state transition.");
-    }
-    return true;
   }
 }

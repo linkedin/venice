@@ -6,12 +6,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.SafeHelixManager;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.replication.TopicReplicator;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.NotificationContext;
@@ -37,39 +35,38 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   public static final String PARTITION_SUBFIX = "_0";
   private static Logger logger = Logger.getLogger(VeniceDistClusterControllerStateModel.class);
 
-  private SafeHelixManager controller;
-  private VeniceHelixResources resources;
   private final ZkClient zkClient;
   private final HelixAdapterSerializer adapterSerializer;
+  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final StoreCleaner storeCleaner;
   private final MetricsRepository metricsRepository;
   private final ClusterLeaderInitializationRoutine controllerInitialization;
   private final Optional<DynamicAccessController> accessController;
-  private String clusterName;
+  private final String clusterName;
 
-  private final VeniceControllerClusterConfig clusterConfig;
+  private VeniceControllerConfig clusterConfig;
+  private SafeHelixManager controller;
+  private VeniceHelixResources resources;
 
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
-  private final boolean isStorageClusterHAAS;
 
-  public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      VeniceControllerClusterConfig clusterConfig, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
+  public VeniceDistClusterControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+      VeniceControllerMultiClusterConfig multiClusterConfigs, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
-      boolean isStorageClusterHAAS) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
+    this.clusterName = clusterName;
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
-    this.clusterConfig = clusterConfig;
+    this.multiClusterConfigs = multiClusterConfigs;
     this.storeCleaner = storeCleaner;
     this.metricsRepository = metricsRepository;
     this.controllerInitialization = controllerInitialization;
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
-    this.isStorageClusterHAAS = isStorageClusterHAAS;
   }
 
   /**
@@ -107,8 +104,10 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
-
+      if (clusterConfig == null) {
+        throw new VeniceException("No configuration exists for " + clusterName);
+      }
+      boolean isStorageClusterHAAS = clusterConfig.isVeniceClusterLeaderHAAS();
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming leader from standby for " + clusterName);
       if (controller == null || !controller.isConnected()) {
@@ -134,7 +133,6 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
       String controllerName = message.getTgtName();
 
       logger.info(controllerName + " becoming standby from leader for " + clusterName);
@@ -154,7 +152,6 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
       String controllerName = message.getTgtName();
 
       logger.info(controllerName + " becoming offline from standby for " + clusterName);
@@ -164,7 +161,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, () -> {
-      clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
+      clusterConfig = multiClusterConfigs.getConfigForCluster(clusterName);
       String controllerName = message.getTgtName();
       logger.info(controllerName + " becoming standby from offline for " + clusterName);
     });
@@ -186,7 +183,6 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
 
   @Override
   public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
-    String clusterName = getVeniceClusterNameFromPartitionName(message.getPartitionName());
     String controllerName = message.getTgtName();
 
     logger.error(controllerName + " rollbacks on error for " + clusterName);
