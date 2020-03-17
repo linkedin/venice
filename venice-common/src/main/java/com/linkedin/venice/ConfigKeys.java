@@ -174,6 +174,7 @@ public class ConfigKeys {
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
+  public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
   /**
    * Database sync per bytes for transactional mode.
    * This parameter will impact the sync frequency of database after batch push.
