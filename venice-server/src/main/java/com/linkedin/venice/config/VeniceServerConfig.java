@@ -165,6 +165,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean keyValueProfilingEnabled;
 
+  private final boolean enableDatabaseMemoryStats;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -222,6 +224,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     parallelBatchGetChunkSize = serverProperties.getInt(SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 5);
 
     keyValueProfilingEnabled = serverProperties.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
+    enableDatabaseMemoryStats = serverProperties.getBoolean(SERVER_DATABASE_MEMORY_STATS_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -391,5 +394,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isKeyValueProfilingEnabled() {
     return keyValueProfilingEnabled;
+  }
+
+  public boolean isDatabaseMemoryStatsEnabled() {
+    return enableDatabaseMemoryStats;
   }
 }

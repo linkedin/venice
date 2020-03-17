@@ -67,16 +67,19 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
     for(String metric : PARTITON_METRIC_DOMAINS) {
       registerSensor(metric, new Gauge(() -> {
         Long total = 0L;
-        for(RocksDB dbPartition : hostedRocksDBPartitions.values()) {
-          try {
-            total += Long.parseLong(dbPartition.getProperty(metric));
-          } catch (RocksDBException e) {
-            logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
-            continue;
-          }
-          if(INSTANCE_METRIC_DOMAINS.contains(metric)) {
-            // Collect this metric once from any available partition and move on
-            break;
+        // Lock down the list of RocksDB interfaces while the collection is ongoing
+        synchronized (hostedRocksDBPartitions) {
+          for(RocksDB dbPartition : hostedRocksDBPartitions.values()) {
+            try {
+              total += Long.parseLong(dbPartition.getProperty(metric));
+            } catch (RocksDBException e) {
+              logger.warn(String.format("Could not get rocksDB metric %s with error:", metric), e);
+              continue;
+            }
+            if(INSTANCE_METRIC_DOMAINS.contains(metric)) {
+              // Collect this metric once from any available partition and move on
+              break;
+            }
           }
         }
         return total;
@@ -89,6 +92,11 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
   }
 
   public void deregisterPartition(String partitionName) {
-    hostedRocksDBPartitions.remove(partitionName);
+    // Synchronize on the hosted partitions so that this method does not return while
+    // a metric collection is ongoing.  This prevents venice-server from potentially
+    // closing a RocksDB database while a property is being read.
+    synchronized (hostedRocksDBPartitions) {
+      hostedRocksDBPartitions.remove(partitionName);
+    }
   }
 }

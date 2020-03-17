@@ -159,7 +159,8 @@ public class VeniceServer {
     // many objects in constructors
     AggVersionedBdbStorageEngineStats bdbStorageEngineStats = new AggVersionedBdbStorageEngineStats(metricsRepository, metadataRepo);
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataRepo);
-    RocksDBMemoryStats rocksDBMemoryStats = new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats");
+    RocksDBMemoryStats rocksDBMemoryStats = veniceConfigLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats") : null;
 
     // create and add StorageService. storeRepository will be populated by StorageService,
     storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
