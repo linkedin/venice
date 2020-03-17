@@ -5,10 +5,10 @@ import com.linkedin.avro.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.generic.MapAwareGenericDatumWriter;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
-import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.avro.specific.MapAwareSpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
 import org.apache.log4j.Logger;
 
@@ -27,7 +27,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   public AvroSerializer(Schema schema) {
-    this(new GenericDatumWriter<>(schema), new SpecificDatumWriter(schema));
+    this(new MapAwareGenericDatumWriter(schema), new MapAwareSpecificDatumWriter(schema));
   }
 
   protected AvroSerializer(DatumWriter genericDatumWriter, DatumWriter specificDatumWriter) {
