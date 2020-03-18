@@ -21,13 +21,29 @@ public class TestAvroSchemaUtils {
   }
 
   @Test
+  public void testStringVsAvroString() {
+    String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
+    String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\": {\"type\" : \"string\", \"avro.java.string\" : \"String\"},\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\", \"doc\": \"company name here\"}]}";
+
+    Schema s1 = Schema.parse(schemaStr1);
+    Schema s2 = Schema.parse(schemaStr2);
+
+    Assert.assertFalse(s2.equals(s1));
+    Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2));
+
+    Schema s3 = AvroSchemaUtils.generateSuperSetSchema(s2, s1);
+    Assert.assertNotNull(s3);
+    Assert.assertNotNull(s3.getField("name").schema().getJsonProps());
+  }
+
+  @Test
   public void testCompareWithDifferentOrderFields() {
     String schemaStr1 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\"}]}";
     String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"company\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"name\",\"type\":\"string\"}]}";
 
-
     Schema s1 = Schema.parse(schemaStr1);
     Schema s2 = Schema.parse(schemaStr2);
+
     AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1,s2);
     Assert.assertTrue(AvroSchemaUtils.compareSchemaIgnoreFieldOrder(s1, s2));
   }

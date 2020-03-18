@@ -147,7 +147,7 @@ import java.util.Collection;
     if (store.isSchemaAutoRegisterFromPushJobEnabled()) {
       List<SchemaEntry> matches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, valueSchemas);
 
-      return matches.isEmpty() ? SchemaData.INVALID_VALUE_SCHEMA_ID : getLatestSchemaEntry(storeName, matches).getId();
+      return matches.isEmpty() ? SchemaData.INVALID_VALUE_SCHEMA_ID : getSchemaEntryWithLargestId(matches).getId();
     }
 
     return getValueSchemaIdCanonicalMatch(storeName, valueSchemas, valueSchemaEntry);
@@ -162,26 +162,13 @@ import java.util.Collection;
       } else {
         List<SchemaEntry> exactMatches = AvroSchemaUtils.filterSchemas(valueSchemaEntry, canonicalizedMatches);
         if (exactMatches.isEmpty()) {
-          schemaId = getLatestSchemaEntry(storeName, canonicalizedMatches).getId();
+          schemaId = getSchemaEntryWithLargestId(canonicalizedMatches).getId();
         } else {
-          schemaId = getLatestSchemaEntry(storeName, exactMatches).getId();
+          schemaId = getSchemaEntryWithLargestId(exactMatches).getId();
         }
       }
     }
     return schemaId;
-  }
-
-  private SchemaEntry getLatestSchemaEntry(String storeName, Collection<SchemaEntry> schemas) {
-    Store store = storeRepository.getStore(storeName);
-    if (store.isReadComputationEnabled() && store.getLatestSuperSetValueSchemaId() != -1) {
-      for (SchemaEntry schema : schemas) {
-        if (schema.getId() == store.getLatestSuperSetValueSchemaId()) {
-          return schema;
-        }
-      }
-      throw new VeniceException("Could not find latest value schema for store " + storeName);
-    }
-    return getSchemaEntryWithLargestId(schemas);
   }
 
   private SchemaEntry getSchemaEntryWithLargestId(Collection<SchemaEntry> schemas) {

@@ -80,6 +80,7 @@ public class AvroSchemaUtils {
       case ALTERNATIVE:
         return hasErrors(symbol, ((Symbol.Alternative) symbol).symbols);
       case EXPLICIT_ACTION:
+      case TERMINAL:
         return false;
       case IMPLICIT_ACTION:
         return symbol instanceof Symbol.ErrorAction;
@@ -89,8 +90,6 @@ public class AvroSchemaUtils {
       case ROOT:
       case SEQUENCE:
         return hasErrors(symbol, symbol.production);
-      case TERMINAL:
-        return false;
       default:
         throw new RuntimeException("unknown symbol kind: " + symbol.kind);
     }
@@ -137,7 +136,9 @@ public class AvroSchemaUtils {
     if (s1.getType() != s2.getType()) {
       return false;
     }
-    if (Objects.equals(s1, s2)) {
+
+    // Special handling for String vs Avro string comparision
+    if (Objects.equals(s1, s2) || s1.getType() == Schema.Type.STRING) {
       return true;
     }
     switch (s1.getType()) {
@@ -201,6 +202,12 @@ public class AvroSchemaUtils {
 
     if (Objects.equals(s1, s2)) {
       return s1;
+    }
+
+    // Special handling for String vs Avro string comparision,
+    // return the schema with avro.java.string property for string type
+    if (s1.getType() == Schema.Type.STRING) {
+      return s1.getJsonProps() == null ? s2 : s1;
     }
 
     switch (s1.getType()) {
