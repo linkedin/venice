@@ -887,6 +887,11 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_LEADER_HAAS = "controller.cluster.leader.haas.enabled";
 
   /**
+   * This config defines the source directory for gobblin deltas publisher workflow.
+   */
+  public static final String GOBBLIN_DELTAS_SOURCE_DIR = "gobblin.deltas.source.dir";
+
+  /**
    * This config defines the source directory for ETL publisher workflow.
    */
   public static final String ETL_SNAPSHOT_SOURCE_DIR = "etl.snapshot.source.dir";
@@ -894,7 +899,7 @@ public class ConfigKeys {
   /**
    * This config defines the destination directory for ETL publisher workflow.
    */
-  public static final String ETL_SNAPSHOT_DESTINATION_DIR_PREFIX = "etl.snapshot.destination.dir.prefix";
+  public static final String ETL_DESTINATION_DIR_PREFIX = "etl.destination.dir.prefix";
 
   /**
    * This config defines the store owner's proxy user name for each store.
@@ -910,6 +915,11 @@ public class ConfigKeys {
    * This config defines how many snapshots we keep for one store.
    */
   public static final String ETL_MAX_SNAPSHOTS_TO_KEEP = "etl.max.snapshots.to.keep";
+
+  /**
+   * This config defines how many daily deltas we keep for one store.
+   */
+  public static final String GOBBLIN_MAX_DAILY_DELTAS_TO_KEEP = "gobblin.max.daily.deltas.to.keep";
 
   /**
    * This config defines a list of stores which enabled future etl feature.

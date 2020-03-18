@@ -1,12 +1,13 @@
 package com.linkedin.venice.etl;
 
-import com.linkedin.venice.etl.publisher.VeniceETLPublisher;
+import com.linkedin.venice.etl.publisher.LumosSnapshotsPublisher;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.utils.Time;
 import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.etl.publisher.DataPublisherUtils.*;
 import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 
 
@@ -22,7 +23,7 @@ public class TestETLPublisher {
      */
     properties.setProperty(VENICE_CONTROLLER_URLS, "http://localhost:1736");
     properties.setProperty(FABRIC_NAME, "ei-ltx1");
-    VeniceETLPublisher publisher = new VeniceETLPublisher("testJobId", properties);
+    LumosSnapshotsPublisher publisher = new LumosSnapshotsPublisher("testJobId", properties);
     publisher.run();
   }
 
@@ -30,14 +31,14 @@ public class TestETLPublisher {
   public void testSnapshotFormatUtil() {
     String goodSnapshotFormat1 = "1570183273436-PT-558022380";
     String goodSnapshotFormat2 = "1570269674164-PT-0";
-    Assert.assertTrue(VeniceETLPublisher.isValidSnapshotPath(goodSnapshotFormat1));
-    Assert.assertTrue(VeniceETLPublisher.isValidSnapshotPath(goodSnapshotFormat2));
+    Assert.assertTrue(isValidSnapshotPath(goodSnapshotFormat1));
+    Assert.assertTrue(isValidSnapshotPath(goodSnapshotFormat2));
 
     String badSnapshotFormat1 = "1570183273436-558022380";
     String badSnapshotFormat2 = "PT-558022380";
     String badSnapshotFormat3 = "1570183273436-PT-a";
-    Assert.assertFalse(VeniceETLPublisher.isValidSnapshotPath(badSnapshotFormat1));
-    Assert.assertFalse(VeniceETLPublisher.isValidSnapshotPath(badSnapshotFormat2));
-    Assert.assertFalse(VeniceETLPublisher.isValidSnapshotPath(badSnapshotFormat3));
+    Assert.assertFalse(isValidSnapshotPath(badSnapshotFormat1));
+    Assert.assertFalse(isValidSnapshotPath(badSnapshotFormat2));
+    Assert.assertFalse(isValidSnapshotPath(badSnapshotFormat3));
   }
 }
