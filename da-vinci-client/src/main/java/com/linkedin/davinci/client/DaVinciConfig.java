@@ -1,17 +1,24 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.meta.PersistenceType;
+
 
 public class DaVinciConfig {
   private static final NonLocalReadsPolicy DEFAULT_NON_LOCAL_READS_POLICY = NonLocalReadsPolicy.FAIL_FAST;
   private static final VersionSwapPolicy DEFAULT_VERSION_SWAP_POLICY = VersionSwapPolicy.PER_PARTITION;
+  private static final PersistenceType DEFAULT_PERSISTENCE_TYPE = PersistenceType.ROCKS_DB;
 
-  public static DaVinciConfig defaultDaVinciConfig() {
-    return new DaVinciConfig(DEFAULT_NON_LOCAL_READS_POLICY, DEFAULT_VERSION_SWAP_POLICY);
+  public static DaVinciConfig defaultDaVinciConfig(String dataBasePath) {
+    return new DaVinciConfig(DEFAULT_NON_LOCAL_READS_POLICY, DEFAULT_VERSION_SWAP_POLICY,
+        DEFAULT_PERSISTENCE_TYPE, dataBasePath);
   }
 
-  private DaVinciConfig(NonLocalReadsPolicy nonLocalReadsPolicy, VersionSwapPolicy versionSwapPolicy) {
+  private DaVinciConfig(NonLocalReadsPolicy nonLocalReadsPolicy, VersionSwapPolicy versionSwapPolicy,
+      PersistenceType persistenceType, String dataBasePath) {
     this.nonLocalReadsPolicy = nonLocalReadsPolicy;
     this.versionSwapPolicy = versionSwapPolicy;
+    this.persistenceType = persistenceType;
+    this.dataBasePath = dataBasePath;
   }
 
   /**
@@ -24,6 +31,16 @@ public class DaVinciConfig {
    * A specification of the required level of atomicity for version swaps.
    */
   private VersionSwapPolicy versionSwapPolicy;
+
+  /**
+   * An Enum of persistence types in Venice.
+   */
+  private PersistenceType persistenceType;
+
+  /**
+   * A folder to store data files.
+   */
+  private String dataBasePath;
 
   public DaVinciConfig setNonLocalReadsPolicy(NonLocalReadsPolicy nonLocalReadsPolicy) {
     this.nonLocalReadsPolicy = nonLocalReadsPolicy;
@@ -41,6 +58,22 @@ public class DaVinciConfig {
 
   public VersionSwapPolicy getVersionSwapPolicy() {
     return this.versionSwapPolicy;
+  }
+
+  public void setPersistenceType(PersistenceType persistenceType) {
+    this.persistenceType = persistenceType;
+  }
+
+  public PersistenceType getPersistenceType() {
+    return persistenceType;
+  }
+
+  public void setDataBasePath(String dataBasePath) {
+    this.dataBasePath = dataBasePath;
+  }
+
+  public String getDataBasePath() {
+    return dataBasePath;
   }
 
   enum NonLocalReadsPolicy {

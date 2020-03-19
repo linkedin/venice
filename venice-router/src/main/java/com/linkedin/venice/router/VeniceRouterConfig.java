@@ -84,6 +84,8 @@ public class VeniceRouterConfig {
   private boolean keyValueProfilingEnabled;
   private long leakedFutureCleanupPollIntervalMs;
   private long leakedFutureCleanupThresholdMs;
+  private String kafkaZkAddress;
+  private String kafkaBootstrapServers;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -102,6 +104,8 @@ public class VeniceRouterConfig {
     port = props.getInt(LISTENER_PORT);
     sslPort = props.getInt(LISTENER_SSL_PORT);
     zkConnection = props.getString(ZOOKEEPER_ADDRESS);
+    kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
+    kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     clientTimeoutMs = props.getInt(CLIENT_TIMEOUT, 10000); //10s
     heartbeatTimeoutMs = props.getDouble(HEARTBEAT_TIMEOUT, TimeUnit.MINUTES.toMillis(1)); // 1 minute
     heartbeatCycleMs = props.getLong(HEARTBEAT_CYCLE, TimeUnit.SECONDS.toMillis(5)); // 5 seconds
@@ -444,6 +448,14 @@ public class VeniceRouterConfig {
 
   public long getLeakedFutureCleanupThresholdMs() {
     return leakedFutureCleanupThresholdMs;
+  }
+
+  public String getKafkaZkAddress() {
+    return kafkaZkAddress;
+  }
+
+  public String getKafkaBootstrapServers() {
+    return kafkaBootstrapServers;
   }
 
   /**

@@ -43,10 +43,6 @@ public class ServiceFactory {
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
   private static final boolean DEFAULT_SSL_TO_STORAGE_NODES = false;
   private static final boolean DEFAULT_SSL_TO_KAFKA = false;
-  // DaVinci Config
-  // fields below are dummy value not used
-  private static final int DAVINCI_LISTENER_PORT = 0;
-  private static final String DAVINCI_CLUSTER_NAME = "DaVinciCluster";
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -467,32 +463,16 @@ public class ServiceFactory {
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(
       String storeName, VeniceClusterWrapper cluster) {
+    // initialize DaVinciConfig
     File dataDirectory = TestUtils.getTempDataDirectory();
-    String zkAddress = cluster.getZk().getAddress();
-    VeniceProperties clusterProperties = new PropertyBuilder()
-        // Helix-related config
-        .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
-        // Kafka-related config
-        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, cluster.getKafka().getAddress())
-        .put(ConfigKeys.KAFKA_ZK_ADDRESS, zkAddress)
-        // Other configs
-        .put(ConfigKeys.CLUSTER_NAME, DAVINCI_CLUSTER_NAME)
-        .build();
-    // Generate server.properties in config directory
-    VeniceProperties serverProperties = new PropertyBuilder()
-        .put(ConfigKeys.LISTENER_PORT, DAVINCI_LISTENER_PORT)
-        .put(ConfigKeys.DATA_BASE_PATH, dataDirectory.getAbsolutePath())
-        .build();
-    VeniceProperties serverOverrideProperties = new VeniceProperties(new Properties());
-    VeniceConfigLoader
-        veniceConfigLoader = new VeniceConfigLoader(clusterProperties, serverProperties, serverOverrideProperties);
+    DaVinciConfig daVinciConfig = DaVinciConfig.defaultDaVinciConfig(dataDirectory.getAbsolutePath());
     // initialize ClientConfig
     ClientConfig clientConfig = ClientConfig
         .defaultGenericClientConfig(storeName)
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
     DaVinciClient<K, V> daVinciClient =
-        new AvroGenericDaVinciClientImpl<>(veniceConfigLoader, DaVinciConfig.defaultDaVinciConfig(), clientConfig);
+        new AvroGenericDaVinciClientImpl<>(daVinciConfig, clientConfig);
     daVinciClient.start();
     return daVinciClient;
   }

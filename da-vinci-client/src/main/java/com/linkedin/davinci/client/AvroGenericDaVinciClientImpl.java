@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -9,9 +10,8 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -37,7 +37,9 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
@@ -46,6 +48,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -69,10 +72,8 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private final String storeName;
   private final boolean useFastAvro;
   private final MetricsRepository metricsRepository;
-  private final VeniceConfigLoader veniceConfigLoader;
   private final DaVinciConfig daVinciConfig;
   private final ClientConfig clientConfig;
-  private final D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
   private final List<AbstractVeniceService> services = new ArrayList<>();
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
@@ -85,21 +86,57 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private RecordSerializer<K> keySerializer;
   private DaVinciVersionFinder versionFinder;
-  private D2TransportClient d2TransportClient;
   private DaVinciPartitioner partitioner;
   private IngestionController ingestionController;
 
   public AvroGenericDaVinciClientImpl(
-      VeniceConfigLoader veniceConfigLoader,
       DaVinciConfig daVinciConfig,
       ClientConfig clientConfig) {
-    this.veniceConfigLoader = veniceConfigLoader;
     this.daVinciConfig = daVinciConfig;
     this.clientConfig = clientConfig;
     this.storeName = clientConfig.getStoreName();
     this.useFastAvro = clientConfig.isUseFastAvro();
     this.metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
         .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT_NAME));
+  }
+
+  private D2TransportClient getD2TranspoortClient() {
+    TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
+    if (!(transportClient instanceof D2TransportClient)) {
+      throw new VeniceClientException("Da Vinci only supports D2 client.");
+    }
+    return (D2TransportClient) transportClient;
+  }
+
+  private VeniceConfigLoader buildVeniceConfigLoader() {
+    final D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse;
+    try (D2TransportClient d2TransportClient = getD2TranspoortClient()) {
+      D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
+      d2ServiceDiscoveryResponse = d2ServiceDiscovery.discoverD2Service(d2TransportClient, getStoreName());
+    }
+    String zkAddress = d2ServiceDiscoveryResponse.getZkAddress();
+    String kafkaZkAddress = d2ServiceDiscoveryResponse.getKafkaZkAddress();
+    String kafkaBootstrapServers = d2ServiceDiscoveryResponse.getKafkaBootstrapServers();
+    String clusterName = d2ServiceDiscoveryResponse.getCluster();
+    VeniceProperties clusterProperties = new PropertyBuilder()
+        // Helix-related config
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
+        // Kafka-related config
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
+        .put(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress)
+        // Other configs
+        .put(ConfigKeys.CLUSTER_NAME, clusterName)
+        .put(ConfigKeys.PERSISTENCE_TYPE, daVinciConfig.getPersistenceType())
+        .build();
+    // Generate server.properties in config directory
+    VeniceProperties serverProperties = new PropertyBuilder()
+        .put(ConfigKeys.LISTENER_PORT, 0) // not used by Da Vinci
+        .put(ConfigKeys.DATA_BASE_PATH, daVinciConfig.getDataBasePath())
+        .build();
+    VeniceProperties serverOverrideProperties = new VeniceProperties(new Properties());
+    VeniceConfigLoader
+        veniceConfigLoader = new VeniceConfigLoader(clusterProperties, serverProperties, serverOverrideProperties);
+    return veniceConfigLoader;
   }
 
   @Override
@@ -170,16 +207,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     if (!isntStarted) {
       throw new VeniceClientException("Client is already started!");
     }
-    TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
-    if (!(transportClient instanceof D2TransportClient)) {
-      throw new VeniceClientException("Da Vinci only supports D2 client.");
-    }
-    this.d2TransportClient = (D2TransportClient) transportClient;
-    D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = d2ServiceDiscovery.discoverD2Service(d2TransportClient, getStoreName());
-    d2TransportClient.setServiceName(d2ServiceDiscoveryResponse.getD2Service());
-    VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
-    String clusterName = d2ServiceDiscoveryResponse.getCluster();
-    zkClient = ZkClientFactory.newZkClient(clusterConfig.getZookeeperAddress());
+    VeniceConfigLoader veniceConfigLoader = buildVeniceConfigLoader();
+    String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
+    zkClient = ZkClientFactory.newZkClient(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress());
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "davinci-zk-client"));
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     metadataReposotory = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
@@ -266,7 +296,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     metricsRepository.close();
     zkClient.close();
-    d2TransportClient.close();
     isStarted.set(false);
   }
 

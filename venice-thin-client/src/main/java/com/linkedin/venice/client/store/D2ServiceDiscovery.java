@@ -4,13 +4,17 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
-import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.tehuti.utils.SystemTime;
 import io.tehuti.utils.Time;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
+
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 
 
 /**
@@ -23,12 +27,12 @@ public class D2ServiceDiscovery {
   private final Time time = new SystemTime(); // TODO: Make it injectable if we need to control time via tests.
 
   public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
-    D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = discoverD2Service(client, storeName);
+    D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = discoverD2Service(client, storeName);
     client.setServiceName(d2ServiceDiscoveryResponse.getD2Service());
     return client;
   }
 
-  public D2ServiceDiscoveryResponse discoverD2Service(D2TransportClient client, String storeName) {
+  public D2ServiceDiscoveryResponseV2 discoverD2Service(D2TransportClient client, String storeName) {
     try {
       TransportClientResponse response = null;
       int currentAttempt = 0;
@@ -44,13 +48,15 @@ public class D2ServiceDiscovery {
               + ". Will sleep " + SLEEP_TIME_BETWEEN_ATTEMPTS + " ms and retry.");
           time.sleep(SLEEP_TIME_BETWEEN_ATTEMPTS);
         }
-        CompletableFuture<TransportClientResponse> responseFuture = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName);
+        CompletableFuture<TransportClientResponse> responseFuture = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName,
+            Collections.singletonMap(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED, "true"));
         response = responseFuture.get();
         currentAttempt++;
       }
       byte[] body = response.getBody();
-      ObjectMapper mapper = new ObjectMapper();
-      D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponse.class);
+      ObjectMapper mapper = new ObjectMapper()
+          .configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+      D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponseV2.class);
       if (d2ServiceDiscoveryResponse.isError()) {
         throw new VeniceClientException(
             "Could not found d2 service for store: " + storeName + ". " + d2ServiceDiscoveryResponse.getError());

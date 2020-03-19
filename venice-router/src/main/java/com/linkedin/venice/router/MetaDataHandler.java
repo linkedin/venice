@@ -1,6 +1,7 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -12,10 +13,8 @@ import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
@@ -29,6 +28,7 @@ import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
@@ -44,6 +44,7 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import static com.linkedin.venice.VeniceConstants.*;
+import static com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -67,25 +68,31 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private final RoutingDataRepository routing;
   private final ReadOnlySchemaRepository schemaRepo;
   private final ReadOnlyStoreConfigRepository storeConfigRepo;
-  private final String clusterName;
   private final Map<String, String> clusterToD2Map;
   private final OnlineInstanceFinderDelegator onlineInstanceFinder;
   private final HelixReadOnlyStoreRepository storeRepository;
-
+  private final String clusterName;
+  private final String zkAddress;
+  private final String kafkaZkAddress;
+  private final String kafkaBootstrapServers;
 
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName,
+  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map,
-      OnlineInstanceFinderDelegator onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository){
+      OnlineInstanceFinderDelegator onlineInstanceFinder, HelixReadOnlyStoreRepository storeRepository,
+      String clusterName, String zkAddress, String kafkaZkAddress, String kafkaBootstrapServers) {
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
-    this.clusterName = clusterName;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.storeRepository = storeRepository;
+    this.clusterName = clusterName;
+    this.zkAddress = zkAddress;
+    this.kafkaZkAddress = kafkaZkAddress;
+    this.kafkaBootstrapServers = kafkaBootstrapServers;
   }
 
   @Override
@@ -106,7 +113,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       handleValueSchemaLookup(ctx, helper);
     } else if (VenicePathParser.TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
       // URI: /discover_cluster/${storeName}
-      hanldeD2ServiceLookup(ctx, helper);
+      hanldeD2ServiceLookup(ctx, helper, req.headers());
     } else if (VenicePathParser.TYPE_RESOURCE_STATE.equals(resourceType)) {
       // URI: /resource_state
       handleResourceStateLookup(ctx, helper);
@@ -195,7 +202,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     }
   }
 
-  private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper)
+  private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper, HttpHeaders headers)
       throws IOException {
     String storeName = helper.getResourceName();
     checkResourceName(storeName, "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/${storeName}");
@@ -212,11 +219,23 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
-    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
-    responseObject.setCluster(config.get().getCluster());
-    responseObject.setName(config.get().getStoreName());
-    responseObject.setD2Service(d2Service);
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    if (headers.contains(D2_SERVICE_DISCOVERY_RESPONSE_V2_ENABLED)) {
+      D2ServiceDiscoveryResponseV2 responseObject = new D2ServiceDiscoveryResponseV2();
+      responseObject.setCluster(config.get().getCluster());
+      responseObject.setName(config.get().getStoreName());
+      responseObject.setD2Service(d2Service);
+      responseObject.setZkAddress(zkAddress);
+      responseObject.setKafkaZkAddress(kafkaZkAddress);
+      responseObject.setKafkaBootstrapServers(kafkaBootstrapServers);
+      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    } else {
+      D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
+      responseObject.setCluster(config.get().getCluster());
+      responseObject.setName(config.get().getStoreName());
+      responseObject.setD2Service(d2Service);
+      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    }
+
   }
 
   private void handleResourceStateLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
