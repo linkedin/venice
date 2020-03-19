@@ -358,6 +358,19 @@ public class Utils {
     }
   }
 
+  public static Map<CharSequence, CharSequence> getCharSequenceMapFromStringMap(Map<String, String> stringStringMap) {
+    return new HashMap<>(stringStringMap);
+  }
+
+  public static Map<String, String> getStringMapFromCharSequenceMap(Map<CharSequence, CharSequence> charSequenceMap) {
+    if (charSequenceMap == null) {
+      return null;
+    }
+
+    Map<String, String> ssMap = new HashMap<>();
+    charSequenceMap.forEach((key, value) -> ssMap.put(key.toString(), value.toString()));
+    return ssMap;
+  }
 
   public static String getHelixNodeIdentifier(int port) {
     return Utils.getHostName() + "_" + port;
