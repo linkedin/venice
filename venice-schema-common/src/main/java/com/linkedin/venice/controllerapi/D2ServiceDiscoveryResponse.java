@@ -2,7 +2,6 @@ package com.linkedin.venice.controllerapi;
 
 import org.codehaus.jackson.annotate.JsonIgnore;
 
-
 public class D2ServiceDiscoveryResponse extends ControllerResponse {
   String d2Service;
 

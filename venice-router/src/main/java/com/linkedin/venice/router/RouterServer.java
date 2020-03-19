@@ -388,8 +388,10 @@ public class RouterServer extends AbstractVeniceService {
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, partitionStatusOnlineInstanceFinder);
 
     MetaDataHandler metaDataHandler =
-        new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
-            config.getClusterToD2Map(), onlineInstanceFinder, metadataRepository);
+        new MetaDataHandler(routingDataRepository, schemaRepository, storeConfigRepository,
+            config.getClusterToD2Map(), onlineInstanceFinder, metadataRepository,
+            config.getClusterName(), config.getZkConnection(),
+            config.getKafkaZkAddress(), config.getKafkaBootstrapServers());
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(onlineInstanceFinder,
         config.isStickyRoutingEnabledForSingleGet(),

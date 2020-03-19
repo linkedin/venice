@@ -5,12 +5,10 @@ import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -19,15 +17,15 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
-import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.routerapi.PushStatusResponse;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.routerapi.ResourceStateResponse;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.EmptyHttpHeaders;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpRequest;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +44,9 @@ import static com.linkedin.venice.VeniceConstants.*;
 import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
 
 public class TestMetaDataHandler {
+  private static final String ZK_ADDRESS = "localhost:1234";
+  private static final String KAFKA_ZK_ADDRESS = "localhost:1234";
+  private static final String KAFKA_BOOTSTRAP_SERVERS = "localhost:1234";
   private static ObjectMapper mapper = new ObjectMapper();
 
   public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo)
@@ -61,7 +62,8 @@ public class TestMetaDataHandler {
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
     Store store = TestUtils.createTestStore("testStore", "test", System.currentTimeMillis());
 
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
+    FullHttpRequest httpRequest = Mockito.mock(FullHttpRequest.class);
+    Mockito.doReturn(EmptyHttpHeaders.INSTANCE).when(httpRequest).headers();
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     Mockito.doReturn(store).when(helixReadOnlyStoreRepository).getStore(Mockito.anyString());
     Mockito.doReturn(requestUri).when(httpRequest).uri();
@@ -76,8 +78,9 @@ public class TestMetaDataHandler {
       schemaRepoToUse = schemaRepo;
     }
 
-    MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse, "test-cluster",
-        storeConfigRepository , clusterToD2ServiceMap, onlineInstanceFinder, helixReadOnlyStoreRepository);
+    MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse,
+        storeConfigRepository , clusterToD2ServiceMap, onlineInstanceFinder, helixReadOnlyStoreRepository,
+        "test-cluster", ZK_ADDRESS, KAFKA_ZK_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -391,15 +394,15 @@ public class TestMetaDataHandler {
     String clusterName = "test-cluster";
 
     // Mock Request
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
+    FullHttpRequest httpRequest = Mockito.mock(FullHttpRequest.class);
     Mockito.doReturn("http://myRouterHost:4567/storage/" + storeName + "/abc").when(httpRequest).uri();
 
     // Mock ChannelHandlerContext
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
     HelixReadOnlyStoreRepository helixReadOnlyStoreRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
 
-    MetaDataHandler handler = new MetaDataHandler(null, null, clusterName, null, Collections.emptyMap(), null,
-        helixReadOnlyStoreRepository);
+    MetaDataHandler handler = new MetaDataHandler(null, null, null, Collections.emptyMap(), null,
+        helixReadOnlyStoreRepository,  "test-cluster", ZK_ADDRESS, KAFKA_ZK_ADDRESS, KAFKA_BOOTSTRAP_SERVERS);
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());

@@ -48,7 +48,9 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(CLUSTER_NAME, clusterName)
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
-          .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+          .put(ZOOKEEPER_ADDRESS, zkAddress)
+          .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+          .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, Utils.isNullOrEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName) : clusterToD2)
           // Below configs are to attempt to minimize resource utilization in tests

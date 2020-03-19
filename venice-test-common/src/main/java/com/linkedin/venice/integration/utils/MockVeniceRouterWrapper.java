@@ -40,7 +40,6 @@ import static org.mockito.Mockito.doReturn;
 public class MockVeniceRouterWrapper extends ProcessWrapper {
   static final String SERVICE_NAME = "MockVeniceRouter";
   public static final String CONTROLLER = "http://localhost:1234";
-
   private RouterServer service;
   private final String clusterName;
   private final int port;
@@ -76,7 +75,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
     HelixLiveInstanceMonitor mockLiveInstanceMonitor = Mockito.mock(HelixLiveInstanceMonitor.class);
     doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
-
+    final String kafkaZkAddress = "localhost:1234";
+    final String kafkaBootstrapServers = "localhost:1234";
 
     return (serviceName, port, dataDirectory) -> {
       List<D2Server> d2ServerList;
@@ -91,6 +91,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, zkAddress)
+          .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
+          .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
