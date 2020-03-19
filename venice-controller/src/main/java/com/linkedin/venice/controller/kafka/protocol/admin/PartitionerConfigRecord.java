@@ -3,32 +3,14 @@
  * 
  * DO NOT EDIT DIRECTLY
  */
-package com.linkedin.venice.controller.kafka.protocol.admin;  
+package com.linkedin.venice.controller.kafka.protocol.admin;
+
 @SuppressWarnings("all")
-@org.apache.avro.specific.AvroGenerated
 public class PartitionerConfigRecord extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = new org.apache.avro.Schema.Parser().parse("{\"type\":\"record\",\"name\":\"PartitionerConfigRecord\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"partitionerClass\",\"type\":{\"type\":\"string\",\"avro.java.string\":\"String\"}},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":{\"type\":\"string\",\"avro.java.string\":\"String\"},\"avro.java.string\":\"String\"}},{\"name\":\"amplificationFactor\",\"type\":\"int\"}]}");
-  public static org.apache.avro.Schema getClassSchema() { return SCHEMA$; }
-  @Deprecated public java.lang.String partitionerClass;
-  @Deprecated public java.util.Map<java.lang.String,java.lang.String> partitionerParams;
-  @Deprecated public int amplificationFactor;
-
-  /**
-   * Default constructor.  Note that this does not initialize fields
-   * to their default values from the schema.  If that is desired then
-   * one should use <code>newBuilder()</code>. 
-   */
-  public PartitionerConfigRecord() {}
-
-  /**
-   * All-args constructor.
-   */
-  public PartitionerConfigRecord(java.lang.String partitionerClass, java.util.Map<java.lang.String,java.lang.String> partitionerParams, java.lang.Integer amplificationFactor) {
-    this.partitionerClass = partitionerClass;
-    this.partitionerParams = partitionerParams;
-    this.amplificationFactor = amplificationFactor;
-  }
-
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PartitionerConfigRecord\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"partitionerClass\",\"type\":\"string\"},{\"name\":\"partitionerParams\",\"type\":{\"type\":\"map\",\"values\":\"string\"}},{\"name\":\"amplificationFactor\",\"type\":\"int\"}]}");
+  public java.lang.CharSequence partitionerClass;
+  public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> partitionerParams;
+  public int amplificationFactor;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -43,207 +25,10 @@ public class PartitionerConfigRecord extends org.apache.avro.specific.SpecificRe
   @SuppressWarnings(value="unchecked")
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
-    case 0: partitionerClass = (java.lang.String)value$; break;
-    case 1: partitionerParams = (java.util.Map<java.lang.String,java.lang.String>)value$; break;
+    case 0: partitionerClass = (java.lang.CharSequence)value$; break;
+    case 1: partitionerParams = (java.util.Map<java.lang.CharSequence,java.lang.CharSequence>)value$; break;
     case 2: amplificationFactor = (java.lang.Integer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
-    }
-  }
-
-  /**
-   * Gets the value of the 'partitionerClass' field.
-   */
-  public java.lang.String getPartitionerClass() {
-    return partitionerClass;
-  }
-
-  /**
-   * Sets the value of the 'partitionerClass' field.
-   * @param value the value to set.
-   */
-  public void setPartitionerClass(java.lang.String value) {
-    this.partitionerClass = value;
-  }
-
-  /**
-   * Gets the value of the 'partitionerParams' field.
-   */
-  public java.util.Map<java.lang.String,java.lang.String> getPartitionerParams() {
-    return partitionerParams;
-  }
-
-  /**
-   * Sets the value of the 'partitionerParams' field.
-   * @param value the value to set.
-   */
-  public void setPartitionerParams(java.util.Map<java.lang.String,java.lang.String> value) {
-    this.partitionerParams = value;
-  }
-
-  /**
-   * Gets the value of the 'amplificationFactor' field.
-   */
-  public java.lang.Integer getAmplificationFactor() {
-    return amplificationFactor;
-  }
-
-  /**
-   * Sets the value of the 'amplificationFactor' field.
-   * @param value the value to set.
-   */
-  public void setAmplificationFactor(java.lang.Integer value) {
-    this.amplificationFactor = value;
-  }
-
-  /** Creates a new PartitionerConfigRecord RecordBuilder */
-  public static com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder newBuilder() {
-    return new com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder();
-  }
-  
-  /** Creates a new PartitionerConfigRecord RecordBuilder by copying an existing Builder */
-  public static com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder newBuilder(com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder other) {
-    return new com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder(other);
-  }
-  
-  /** Creates a new PartitionerConfigRecord RecordBuilder by copying an existing PartitionerConfigRecord instance */
-  public static com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder newBuilder(com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord other) {
-    return new com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder(other);
-  }
-  
-  /**
-   * RecordBuilder for PartitionerConfigRecord instances.
-   */
-  public static class Builder extends org.apache.avro.specific.SpecificRecordBuilderBase<PartitionerConfigRecord>
-    implements org.apache.avro.data.RecordBuilder<PartitionerConfigRecord> {
-
-    private java.lang.String partitionerClass;
-    private java.util.Map<java.lang.String,java.lang.String> partitionerParams;
-    private int amplificationFactor;
-
-    /** Creates a new Builder */
-    private Builder() {
-      super(com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.SCHEMA$);
-    }
-    
-    /** Creates a Builder by copying an existing Builder */
-    private Builder(com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder other) {
-      super(other);
-      if (isValidValue(fields()[0], other.partitionerClass)) {
-        this.partitionerClass = data().deepCopy(fields()[0].schema(), other.partitionerClass);
-        fieldSetFlags()[0] = true;
-      }
-      if (isValidValue(fields()[1], other.partitionerParams)) {
-        this.partitionerParams = data().deepCopy(fields()[1].schema(), other.partitionerParams);
-        fieldSetFlags()[1] = true;
-      }
-      if (isValidValue(fields()[2], other.amplificationFactor)) {
-        this.amplificationFactor = data().deepCopy(fields()[2].schema(), other.amplificationFactor);
-        fieldSetFlags()[2] = true;
-      }
-    }
-    
-    /** Creates a Builder by copying an existing PartitionerConfigRecord instance */
-    private Builder(com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord other) {
-            super(com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.SCHEMA$);
-      if (isValidValue(fields()[0], other.partitionerClass)) {
-        this.partitionerClass = data().deepCopy(fields()[0].schema(), other.partitionerClass);
-        fieldSetFlags()[0] = true;
-      }
-      if (isValidValue(fields()[1], other.partitionerParams)) {
-        this.partitionerParams = data().deepCopy(fields()[1].schema(), other.partitionerParams);
-        fieldSetFlags()[1] = true;
-      }
-      if (isValidValue(fields()[2], other.amplificationFactor)) {
-        this.amplificationFactor = data().deepCopy(fields()[2].schema(), other.amplificationFactor);
-        fieldSetFlags()[2] = true;
-      }
-    }
-
-    /** Gets the value of the 'partitionerClass' field */
-    public java.lang.String getPartitionerClass() {
-      return partitionerClass;
-    }
-    
-    /** Sets the value of the 'partitionerClass' field */
-    public com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder setPartitionerClass(java.lang.String value) {
-      validate(fields()[0], value);
-      this.partitionerClass = value;
-      fieldSetFlags()[0] = true;
-      return this; 
-    }
-    
-    /** Checks whether the 'partitionerClass' field has been set */
-    public boolean hasPartitionerClass() {
-      return fieldSetFlags()[0];
-    }
-    
-    /** Clears the value of the 'partitionerClass' field */
-    public com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder clearPartitionerClass() {
-      partitionerClass = null;
-      fieldSetFlags()[0] = false;
-      return this;
-    }
-
-    /** Gets the value of the 'partitionerParams' field */
-    public java.util.Map<java.lang.String,java.lang.String> getPartitionerParams() {
-      return partitionerParams;
-    }
-    
-    /** Sets the value of the 'partitionerParams' field */
-    public com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder setPartitionerParams(java.util.Map<java.lang.String,java.lang.String> value) {
-      validate(fields()[1], value);
-      this.partitionerParams = value;
-      fieldSetFlags()[1] = true;
-      return this; 
-    }
-    
-    /** Checks whether the 'partitionerParams' field has been set */
-    public boolean hasPartitionerParams() {
-      return fieldSetFlags()[1];
-    }
-    
-    /** Clears the value of the 'partitionerParams' field */
-    public com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder clearPartitionerParams() {
-      partitionerParams = null;
-      fieldSetFlags()[1] = false;
-      return this;
-    }
-
-    /** Gets the value of the 'amplificationFactor' field */
-    public java.lang.Integer getAmplificationFactor() {
-      return amplificationFactor;
-    }
-    
-    /** Sets the value of the 'amplificationFactor' field */
-    public com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder setAmplificationFactor(int value) {
-      validate(fields()[2], value);
-      this.amplificationFactor = value;
-      fieldSetFlags()[2] = true;
-      return this; 
-    }
-    
-    /** Checks whether the 'amplificationFactor' field has been set */
-    public boolean hasAmplificationFactor() {
-      return fieldSetFlags()[2];
-    }
-    
-    /** Clears the value of the 'amplificationFactor' field */
-    public com.linkedin.venice.controller.kafka.protocol.admin.PartitionerConfigRecord.Builder clearAmplificationFactor() {
-      fieldSetFlags()[2] = false;
-      return this;
-    }
-
-    @Override
-    public PartitionerConfigRecord build() {
-      try {
-        PartitionerConfigRecord record = new PartitionerConfigRecord();
-        record.partitionerClass = fieldSetFlags()[0] ? this.partitionerClass : (java.lang.String) defaultValue(fields()[0]);
-        record.partitionerParams = fieldSetFlags()[1] ? this.partitionerParams : (java.util.Map<java.lang.String,java.lang.String>) defaultValue(fields()[1]);
-        record.amplificationFactor = fieldSetFlags()[2] ? this.amplificationFactor : (java.lang.Integer) defaultValue(fields()[2]);
-        return record;
-      } catch (Exception e) {
-        throw new org.apache.avro.AvroRuntimeException(e);
-      }
     }
   }
 }

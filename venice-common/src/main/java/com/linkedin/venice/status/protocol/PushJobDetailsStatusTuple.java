@@ -6,7 +6,7 @@
 package com.linkedin.venice.status.protocol;
 
 @SuppressWarnings("all")
-/** 0 => STARTED, 1 => COMPLETED, 2 => ERROR, 3 => NOT_CREATED, 4 => UNKNOWN, 5 => TOPIC_CREATED, 6 => WRITE_TO_KAFKA_COMPLETED, 7 => KILLED */
+/** 0 => STARTED, 1 => COMPLETED, 2 => ERROR, 3 => NOT_CREATED, 4 => UNKNOWN, 5 => TOPIC_CREATED, 6 => WRITE_TO_KAFKA_COMPLETED, 7 => KILLED, 8 => END_OF_PUSH_RECEIVED, 9 => START_OF_INCREMENTAL_PUSH_RECEIVED, 10 => END_OF_INCREMENTAL_PUSH_RECEIVED */
 public class PushJobDetailsStatusTuple extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
   public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobDetailsStatusTuple\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"status\",\"type\":\"int\"},{\"name\":\"timestamp\",\"type\":\"long\"}]}");
   public int status;

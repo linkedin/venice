@@ -370,7 +370,7 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   private Optional<String> getString(String name) {
-    return Optional.ofNullable(params.get(name)).map(String::valueOf);
+    return Optional.ofNullable(params.get(name));
   }
 
   private UpdateStoreQueryParams putStringMap(String name, Map<String, String> value) {

@@ -53,6 +53,7 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 
@@ -1466,8 +1467,8 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
     Assert.assertEquals(updateStore.bootstrapToOnlineTimeoutInHours, 48);
     Assert.assertEquals(updateStore.partitionerConfig.amplificationFactor, 1);
-    Assert.assertEquals(updateStore.partitionerConfig.partitionerParams, testPartitionerParams);
-    Assert.assertEquals(updateStore.partitionerConfig.partitionerClass, "com.linkedin.venice.partitioner.DaVinciPartitioner");
+    Assert.assertEquals(updateStore.partitionerConfig.partitionerParams.toString(), testPartitionerParams.toString());
+    Assert.assertEquals(updateStore.partitionerConfig.partitionerClass.toString(), "com.linkedin.venice.partitioner.DaVinciPartitioner");
     // Disable Access Control
     accessControlled = false;
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));

@@ -31,9 +31,9 @@ import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Utils;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.Callable;
@@ -357,8 +357,8 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.enableReads),
         Optional.of(message.enableWrites),
         Optional.of(message.partitionNum),
-        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.partitionerClass),
-        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.partitionerParams),
+        Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.partitionerClass.toString()),
+        Optional.ofNullable(message.partitionerConfig).map(config -> Utils.getStringMapFromCharSequenceMap(config.partitionerParams)),
         Optional.ofNullable(message.partitionerConfig == null ? null : message.partitionerConfig.amplificationFactor),
         Optional.of(message.storageQuotaInByte),
         Optional.of(message.hybridStoreOverheadBypass),

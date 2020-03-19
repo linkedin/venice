@@ -1134,10 +1134,11 @@ public class VeniceParentHelixAdmin implements Admin {
        * will be read from the original store.
        */
       PartitionerConfigRecord partitionerConfigRecord = new PartitionerConfigRecord();
-      partitionerConfigRecord.setPartitionerClass(partitionerClass.isPresent() ?  partitionerClass.get() : store.getPartitionerConfig().getPartitionerClass());
-      partitionerConfigRecord.setPartitionerParams(partitionerParams.isPresent() ? partitionerParams.get() : store.getPartitionerConfig().getPartitionerParams());
-      partitionerConfigRecord.setAmplificationFactor(amplificationFactor.isPresent() ? amplificationFactor.get() : store.getPartitionerConfig().getAmplificationFactor());
-      setStore.setPartitionerConfig(partitionerConfigRecord);
+      partitionerConfigRecord.partitionerClass = partitionerClass.isPresent() ?  partitionerClass.get() : store.getPartitionerConfig().getPartitionerClass();
+      Map<String, String> ssPartitionerParamsMap = partitionerParams.isPresent() ? partitionerParams.get() : store.getPartitionerConfig().getPartitionerParams();
+      partitionerConfigRecord.partitionerParams = Utils.getCharSequenceMapFromStringMap(ssPartitionerParamsMap);
+      partitionerConfigRecord.amplificationFactor = amplificationFactor.isPresent() ? amplificationFactor.get() : store.getPartitionerConfig().getAmplificationFactor();
+      setStore.partitionerConfig = partitionerConfigRecord;
 
       setStore.enableReads = readability.isPresent() ? readability.get() : store.isEnableReads();
       setStore.enableWrites = writeability.isPresent() ? writeability.get() : store.isEnableWrites();
