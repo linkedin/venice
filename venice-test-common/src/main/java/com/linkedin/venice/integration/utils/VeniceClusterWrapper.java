@@ -647,12 +647,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return createStore(IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, nextVersionId)));
   }
 
-  public String createStore(int keyCount, GenericRecord record) throws Exception {
-    return createStore(DEFAULT_KEY_SCHEMA, record.getSchema().toString(),
-        IntStream.range(0, keyCount).mapToObj(i -> new AbstractMap.SimpleEntry<>(i, record))
-      );
-  }
-
   public String createStore(Stream<Map.Entry> batchData) throws Exception {
     return createStore(DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, batchData);
   }
