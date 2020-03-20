@@ -342,7 +342,7 @@ public class StoresRoutes extends AbstractRoute {
         } else if (operation.equals(READ_WRITE_OPERATION)) {
           admin.setStoreReadWriteability(cluster, storeName, status);
         } else {
-          throw new VeniceException(ControllerApiConstants.STORE_TYPE + " parameter:" + operation + " is invalid.");
+          throw new VeniceException(OPERATION + " parameter:" + operation + " is invalid.");
         }
       }
     };
