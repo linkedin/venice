@@ -1,13 +1,15 @@
 package com.linkedin.venice.controllerapi;
 
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.StoreInfo;
+import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
 
@@ -21,6 +23,8 @@ public class UpdateStoreQueryParams extends QueryParams {
   public UpdateStoreQueryParams() {
     super();
   }
+
+  private ObjectMapper mapper = new ObjectMapper();
 
   /**
    * Useful for store migration
@@ -370,10 +374,25 @@ public class UpdateStoreQueryParams extends QueryParams {
   }
 
   private UpdateStoreQueryParams putStringMap(String name, Map<String, String> value) {
-    return (UpdateStoreQueryParams) add(name, Joiner.on(",").withKeyValueSeparator("=").join(value));
+    try {
+      return (UpdateStoreQueryParams) add(
+          name,
+          mapper.writeValueAsString(value)
+      );
+    } catch (JsonProcessingException e) {
+      throw new VeniceException(e.getMessage());
+    }
   }
 
   private Optional<Map<String, String>> getStringMap(String name) {
-    return Optional.ofNullable(params.get(name)).map(Splitter.on(",").withKeyValueSeparator("=")::split);
+    if (!params.containsKey(name)) {
+      return Optional.empty();
+    } else {
+      try {
+        return Optional.of(mapper.readValue(params.get(name), Map.class));
+      } catch (IOException e) {
+        throw new VeniceException(e.getMessage());
+      }
+    }
   }
 }

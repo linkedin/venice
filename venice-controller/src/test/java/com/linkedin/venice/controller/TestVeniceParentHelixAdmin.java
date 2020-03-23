@@ -1434,7 +1434,6 @@ public class TestVeniceParentHelixAdmin {
     boolean readability = true;
     boolean accessControlled = true;
     Map<String, String> testPartitionerParams = new HashMap<>();
-    testPartitionerParams.put("project", "DaVinci");
 
     parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
         .setIncrementalPushEnabled(false)
@@ -1479,6 +1478,19 @@ public class TestVeniceParentHelixAdmin {
     adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.accessControlled, accessControlled);
+
+    // Update the store twice with the same parameter to make sure get methods in UpdateStoreQueryParams class can work properly.
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
+        .setIncrementalPushEnabled(false)
+        .setPartitionCount(64)
+        .setPartitionerClass("com.linkedin.venice.partitioner.DaVinciPartitioner")
+        .setPartitionerParams(testPartitionerParams)
+        .setReadQuotaInCU(readQuota)
+        .setAccessControlled(accessControlled)
+        .setCompressionStrategy(CompressionStrategy.GZIP)
+        .setHybridRewindSeconds(135l)
+        .setHybridOffsetLagThreshold(2000)
+        .setBootstrapToOnlineTimeoutInHours(48));
   }
 
   @Test
