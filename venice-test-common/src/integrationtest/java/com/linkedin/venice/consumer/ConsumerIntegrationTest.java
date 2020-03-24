@@ -1,6 +1,6 @@
 package com.linkedin.venice.consumer;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -305,7 +305,7 @@ public class ConsumerIntegrationTest {
   public static byte[] serializeNewProtocol(GenericRecord messageFromNewProtocol) {
     try {
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
 
       byteArrayOutputStream.write(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getMagicByte().get());
       byteArrayOutputStream.write((byte) NEW_PROTOCOL_VERSION);

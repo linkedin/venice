@@ -1,6 +1,6 @@
 package org.apache.avro.generic;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
@@ -67,7 +67,7 @@ public class TestMapAwareGenericDatumWriter {
   //helper method that serializes the object
   private byte[] serialize(GenericDatumWriter writer, Map map) throws IOException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
 
     writer.write(map, encoder);
     encoder.flush();

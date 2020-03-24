@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.utils;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
@@ -116,7 +116,7 @@ public class StoreClientTestUtils {
 
   public static byte[] serializeRecord(Object object, Schema schema) throws VeniceClientException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
     GenericDatumWriter<Object> datumWriter = null;
     try {
       datumWriter = new GenericDatumWriter<>(schema);

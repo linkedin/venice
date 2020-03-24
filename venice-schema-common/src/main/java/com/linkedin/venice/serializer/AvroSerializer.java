@@ -1,7 +1,7 @@
 package com.linkedin.venice.serializer;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avro.compatibility.AvroVersion;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
@@ -64,7 +64,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   @Override
   public byte[] serialize(K object) throws VeniceException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
     try {
       write(object, encoder);
       encoder.flush();
@@ -88,7 +88,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output) throws VeniceException {
-    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
     try {
       objects.forEach(object -> {
         try {
