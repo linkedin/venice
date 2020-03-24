@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
@@ -509,7 +509,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       ByteArrayOutputStream output = new ByteArrayOutputStream();
 
       try {
-        Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output);
+        Encoder jsonEncoder = AvroCompatibilityHelper.newJsonEncoder(keySchema, output, false);
         writer.write(keyRecord, jsonEncoder);
         jsonEncoder.flush();
         output.flush();

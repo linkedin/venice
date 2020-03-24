@@ -1,6 +1,6 @@
 package com.linkedin.venice.serialization.avro;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -170,7 +170,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     try {
       // If single-threaded, both the ByteArrayOutputStream and Encoder can be re-used. TODO: explore GC tuning later.
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
 
       // We write according to the latest protocol version.
       if (MAGIC_BYTE_LENGTH == 1) {

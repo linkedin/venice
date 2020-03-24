@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.RecordDeserializer;

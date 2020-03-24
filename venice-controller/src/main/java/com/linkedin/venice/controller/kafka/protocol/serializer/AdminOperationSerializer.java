@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller.kafka.protocol.serializer;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -30,7 +30,7 @@ public class AdminOperationSerializer {
   public byte[] serialize(AdminOperation object) {
     try {
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(byteArrayOutputStream);
+      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
       SPECIFIC_DATUM_WRITER.write(object, encoder);
       encoder.flush();
 

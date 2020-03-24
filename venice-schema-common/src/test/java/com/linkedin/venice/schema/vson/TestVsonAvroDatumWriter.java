@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.vson;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -112,7 +112,7 @@ public class TestVsonAvroDatumWriter {
     VsonAvroDatumWriter writer = new VsonAvroDatumWriter(avroSchema);
 
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = AvroCompatibilityHelper.newBufferedBinaryEncoder(output);
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
     writer.write(valueSupplier.get(), encoder);
     encoder.flush();
 

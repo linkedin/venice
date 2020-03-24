@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.vson;
 
-import com.linkedin.avro.compatibility.AvroCompatibilityHelper;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.serializer.VsonSerializationException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
