@@ -1513,7 +1513,16 @@ public class VeniceParentHelixAdmin implements Admin {
     int failCount = 0;
     for (String cluster : childClusters) {
       ControllerClient controllerClient = controllerClients.get(cluster);
-      String masterControllerUrl = controllerClient.getMasterControllerUrl();
+      String masterControllerUrl = "Unspecified master controller url";
+      try {
+        masterControllerUrl = controllerClient.getMasterControllerUrl();
+      } catch (VeniceException getMasterException) {
+        logger.warn("Couldn't query " + cluster + " for job status of " + kafkaTopic, getMasterException);
+        statuses.add(ExecutionStatus.UNKNOWN);
+        extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
+        extraDetails.put(cluster, "Failed to get master controller url " + getMasterException.getMessage());
+        continue;
+      }
       JobStatusQueryResponse response = controllerClient.queryJobStatus(kafkaTopic, incrementalPushVersion);
       if (response.isError()) {
         failCount += 1;

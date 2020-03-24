@@ -1223,6 +1223,12 @@ public class TestVeniceParentHelixAdmin {
     doReturn(failResponse).when(failClient).queryJobStatus(anyString(), any());
     clientMap.put(null, failClient);
 
+    // Completely failing client that cannot even complete mastership discovery.
+    ControllerClient completelyFailingClient = mock(ControllerClient.class);
+    doReturn(failResponse).when(completelyFailingClient).queryJobStatus(anyString(), any());
+    String completelyFailingExceptionMessage = "Unable to discover master controller";
+    doThrow(new VeniceException(completelyFailingExceptionMessage)).when(completelyFailingClient).getMasterControllerUrl();
+
     // Verify clients work as expected
     for (ExecutionStatus status : ExecutionStatus.values()) {
       Assert.assertEquals(clientMap.get(status).queryJobStatus("topic", Optional.empty())
@@ -1333,6 +1339,21 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("failcluster"), ExecutionStatus.UNKNOWN.toString());
+
+    // 2 problematic fabrics. One is failing completely and one is returning error response. It should still get the
+    // status of other fabrics and return UNKNOWN for the unreachable fabrics.
+    failCompleteMap.clear();
+    failCompleteMap.put("fabric1", clientMap.get(ExecutionStatus.COMPLETED));
+    failCompleteMap.put("fabric2", clientMap.get(ExecutionStatus.COMPLETED));
+    failCompleteMap.put("failFabric", clientMap.get(null));
+    failCompleteMap.put("completelyFailingFabric", completelyFailingClient);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8_v1", failCompleteMap);
+    extraInfo = offlineJobStatus.getExtraInfo();
+    Assert.assertEquals(extraInfo.get("fabric1"), ExecutionStatus.COMPLETED.toString());
+    Assert.assertEquals(extraInfo.get("fabric2"), ExecutionStatus.COMPLETED.toString());
+    Assert.assertEquals(extraInfo.get("failFabric"), ExecutionStatus.UNKNOWN.toString());
+    Assert.assertEquals(extraInfo.get("completelyFailingFabric"), ExecutionStatus.UNKNOWN.toString());
+    Assert.assertTrue(offlineJobStatus.getExtraDetails().get("completelyFailingFabric").contains(completelyFailingExceptionMessage));
 
     Map<String, ControllerClient> errorMap = new HashMap<>();
     errorMap.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
