@@ -101,6 +101,18 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_TARGET_FILE_SIZE_IN_BYTES = "rocksdb.target.file.size.in.bytes";
 
   /**
+   * Page size for huge page for the arena used by the memtable in rocksdb. If <=0, it
+   * won't allocate from huge page but from malloc.
+   * Users are responsible to reserve huge pages for it to be allocated. For
+   * example:
+   *       sysctl -w vm.nr_hugepages=20
+   * See linux doc Documentation/vm/hugetlbpage.txt
+   * If there isn't enough free huge page available, rocksdb will fall back to
+   * malloc.
+   */
+  public static final String ROCKSDB_MEM_TABLE_HUGE_PAGE_SIZE_BYTES = "rocksdb.mem.table.huge.page.size.in.bytes";
+
+  /**
    * Comments from rocksdb c++ code:
    *
    * Allows OS to incrementally sync files to disk while they are being
@@ -159,6 +171,8 @@ public class RocksDBServerConfig {
   private final long rocksDBMaxTotalWalSizeInBytes;
 
   private final long rocksDBMaxBytesForLevelBase;
+
+  private final long rocksDBMemTableHugePageSize;
 
   private final long rocksDBBytesPerSync;
 
@@ -224,6 +238,8 @@ public class RocksDBServerConfig {
     this.rocksDBMaxTotalWalSizeInBytes = props.getSizeInBytes(ROCKSDB_MAX_TOTAL_WAL_SIZE_IN_BYTES, 0l);
 
     this.rocksDBMaxBytesForLevelBase = props.getSizeInBytes(ROCKSDB_MAX_BYTES_FOR_LEVEL_BASE, 2 * 1024 * 1024 * 1024l); // 2GB
+
+    this.rocksDBMemTableHugePageSize = props.getSizeInBytes(ROCKSDB_MEM_TABLE_HUGE_PAGE_SIZE_BYTES, 0);
 
     // https://github.com/facebook/rocksdb/wiki/Set-Up-Options
     this.rocksDBBytesPerSync = props.getSizeInBytes(ROCKSDB_BYTES_PER_SYNC, 1024 * 1024); // 1MB
@@ -300,6 +316,10 @@ public class RocksDBServerConfig {
 
   public long getRocksDBMaxBytesForLevelBase() {
     return rocksDBMaxBytesForLevelBase;
+  }
+
+  public long getMemTableHugePageSize() {
+    return rocksDBMemTableHugePageSize;
   }
 
   public long getRocksDBBytesPerSync() {
