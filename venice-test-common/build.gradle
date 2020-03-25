@@ -34,11 +34,18 @@ sourceSets {
     compileClasspath += main.output
     runtimeClasspath += main.output
   }
+  jmh {
+    java.srcDirs = ['src/jmh/java']
+    compileClasspath += main.output
+    runtimeClasspath += main.output
+  }
 }
 
 configurations {
   integrationTestCompile.extendsFrom testImplementation
   integrationTestRuntime.extendsFrom testRuntime
+  jmhCompile.extendsFrom testImplementation
+  jmhRuntime.extendsFrom testRuntime
 }
 
 def applyConcurrencyConfig(task) {
@@ -128,4 +135,13 @@ dependencies {
     exclude group: 'javax.servlet'
   }
   testImplementation project(':venice-admin-tool')
+
+  jmhCompile 'org.openjdk.jmh:jmh-core:1.19'
+  jmhAnnotationProcessor 'org.openjdk.jmh:jmh-generator-annprocess:1.19'
+
+  task jmh(type: JavaExec, dependsOn: jmhClasses) {
+    main = 'org.openjdk.jmh.Main'
+    classpath = sourceSets.jmh.compileClasspath + sourceSets.jmh.runtimeClasspath
+    classpath += sourceSets.integrationTest.compileClasspath + sourceSets.integrationTest.runtimeClasspath
+  }
 }
