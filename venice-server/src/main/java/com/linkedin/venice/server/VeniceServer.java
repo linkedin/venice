@@ -126,6 +126,9 @@ public class VeniceServer {
      * 2. Check Hostnames like in Voldemort to make sure that local host and ips match up.
      */
 
+    // force out any potential config errors using a wildcard store name
+    veniceConfigLoader.getStoreConfig("");
+
     //create all services
     this.services = createServices();
   }
