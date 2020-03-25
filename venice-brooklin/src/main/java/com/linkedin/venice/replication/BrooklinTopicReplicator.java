@@ -48,6 +48,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   private final String veniceCluster;
   private final String applicationId;
   private static final ObjectMapper mapper = new ObjectMapper();
+  private static final int MAX_DATASTREAM_CREATION_ATTEMPTS = 5;
 
   public static final String TRANSPORT_PROVIDER_NAME = "rawkafkakac";
   public static final String BROOKLIN_CONNECTOR_NAME = "RawKafka";
@@ -182,12 +183,29 @@ public class BrooklinTopicReplicator extends TopicReplicator {
     datastream.setDestination(destination);
     datastream.setTransportProviderName(TRANSPORT_PROVIDER_NAME);
 
-
-    client.createDatastream(datastream);
-    try {
-      client.waitTillDatastreamIsInitialized(datastream.getName(), Duration.ofSeconds(30).toMillis());
-    } catch (InterruptedException e) {
-      logger.warn("Interrupted while waiting for datastream " + name + " to be initialized.", e);
+    /**
+     * Create Brooklin Datastream with retries.
+     */
+    Exception lastException = null;
+    for (int attempt = 1; attempt <= MAX_DATASTREAM_CREATION_ATTEMPTS; ++attempt) {
+      try {
+        client.createDatastream(datastream);
+        client.waitTillDatastreamIsInitialized(datastream.getName(), Duration.ofSeconds(60).toMillis());
+      } catch (Exception e) {
+        lastException = e;
+      }
+      if (null == lastException || client.datastreamExists(name)) {
+        lastException = null;
+        break;
+      }
+    }
+    if (null != lastException) {
+      if (lastException instanceof InterruptedException) {
+        logger.warn("Interrupted while waiting for datastream " + name + " to be initialized.", lastException);
+      } else {
+        logger.error("Error when creating datastream " + name, lastException);
+        throw new VeniceException(lastException);
+      }
     }
   }
 
