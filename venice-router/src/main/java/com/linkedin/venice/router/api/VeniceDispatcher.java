@@ -54,6 +54,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 import javax.annotation.Nonnull;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
@@ -70,6 +71,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * and it is used to clean up the leaked futures in {@link LeakedCompletableFutureCleanupService}.
    */
   private final VeniceConcurrentHashMap<Long, TimedCompletableFuture> responseFutureMap = new VeniceConcurrentHashMap<>();
+  private final VeniceConcurrentHashMap<String, ReentrantLock> storageNodeLockMap = new VeniceConcurrentHashMap<>();
+
   private final AtomicLong uniqueRequestId = new AtomicLong(0);
 
   private static final Set<Integer> PASS_THROUGH_ERROR_CODES = ImmutableSet.of(TOO_MANY_REQUESTS.code());
@@ -213,6 +216,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       VenicePath path) throws RouterException {
 
     String storeName = path.getStoreName();
+    String snID = storageNode.getNodeId();
     RequestType requestType = path.getRequestType();
 
     if (!pendingRequestThrottler.put()) {
@@ -222,7 +226,20 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           SERVICE_UNAVAILABLE,
           "Maximum number of pending request threshold reached! Please contact Venice team.");
     }
-    routerStats.recordPendingRequest(storageNode.getNodeId());
+
+    ReentrantLock lock = storageNodeLockMap.computeIfAbsent(snID, id ->  new ReentrantLock());
+    lock.lock();
+    try {
+      if (routerConfig.isStatefulRouterHealthCheckEnabled()
+          && routerStats.getPendingRequestCount(storageNode.getNodeId()) > routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute()) {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
+            Optional.of(requestType), SERVICE_UNAVAILABLE,
+            "Too many pending request to storage node : " + snID);
+      }
+      routerStats.recordPendingRequest(storageNode.getNodeId());
+    } finally {
+      lock.unlock();
+    }
 
     long startTime = System.nanoTime();
     TimedCompletableFuture<PortableHttpResponse>
