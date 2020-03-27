@@ -748,10 +748,22 @@ public class VeniceParentHelixAdmin implements Admin {
       String existingPushJobId = version.get().getPushJobId();
       if (!existingPushJobId.equals(pushJobId)) {
         if (checkLingeringVersion(store, version.get())) {
-          // Kill the lingering version and allow the new push to start.
-          logger.info("Found lingering topic: " +  currentPushTopic.get() + " with push id: " + existingPushJobId
-              + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
-          killOfflinePush(clusterName, currentPushTopic.get());
+          if (pushType.isIncremental()) {
+            /**
+             * Incremental push shouldn't kill the previous full push, there could be a transient issue that parents couldn't
+             * get the right job states from child colos; once child colos recover, next incremental push should succeed.
+             *
+             * If the previous full push is indeed lingering, users should issue to full push to clean up the lingering job
+             * instead of running incremental push.
+             */
+            throw new VeniceException("Version " + version.get().getNumber() + " is not healthy in Venice backend; please "
+                + "consider running a full batch push for your store: " + storeName + " before running incremental push, "
+                + "or reach out to Venice team.");
+          } else {
+            // Kill the lingering version and allow the new push to start.
+            logger.info("Found lingering topic: " + currentPushTopic.get() + " with push id: " + existingPushJobId + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
+            killOfflinePush(clusterName, currentPushTopic.get());
+          }
         } else {
           throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
               + ". An ongoing push with pushJobId " + existingPushJobId + " and topic " + currentPushTopic

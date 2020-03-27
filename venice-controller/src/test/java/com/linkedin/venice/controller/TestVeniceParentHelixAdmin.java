@@ -91,6 +91,7 @@ public class TestVeniceParentHelixAdmin {
   private static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
 
   private final String clusterName = "test-cluster";
+  private final String coloName = "test-colo";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   private final String zkMetadataNodePath = ZkAdminTopicMetadataAccessor.getAdminTopicMetadataNodePath(clusterName);
   private final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
@@ -140,7 +141,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
-        .put("test-fabric", mock(ControllerClient.class));
+        .put(coloName, mock(ControllerClient.class));
 
     accessor = mock(ParentHelixOfflinePushAccessor.class);
     parentAdmin.setOfflinePushAccessor(accessor);
@@ -166,7 +167,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn(PUSH_JOB_STATUS_STORE_NAME).when(config).getPushJobStatusStoreName();
     doReturn(true).when(config).isParticipantMessageStoreEnabled();
     Map<String, String> childClusterMap = new HashMap<>();
-    childClusterMap.put("test-colo", "localhost");
+    childClusterMap.put(coloName, "localhost");
     doReturn(childClusterMap).when(config).getChildClusterMap();
     return config;
   }
@@ -809,12 +810,31 @@ public class TestVeniceParentHelixAdmin {
   private static class PartialMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
     private ExecutionStatus offlineJobStatus = ExecutionStatus.NOT_CREATED;
 
+    /**
+     * Key: store version
+     * Value: True -> the corresponding push job is killed
+     *        False -> the corresponding push job is still running
+     */
+    private Map<String, Boolean> storeVersionToKillJobStatus = new HashMap<>();
+
     public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
       super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     }
 
     public void setOfflineJobStatus(ExecutionStatus executionStatus) {
       this.offlineJobStatus = executionStatus;
+    }
+
+    @Override
+    public void killOfflinePush(String clusterName, String kafkaTopic) {
+      storeVersionToKillJobStatus.put(kafkaTopic, true);
+    }
+
+    public boolean isJobKilled(String kafkaTopic) {
+      if (storeVersionToKillJobStatus.containsKey(kafkaTopic)) {
+        return storeVersionToKillJobStatus.get(kafkaTopic);
+      }
+      return false;
     }
 
     @Override
@@ -1771,8 +1791,15 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
   }
 
-  @Test
-  public void testAdminCanKillLingeringVersion() {
+  @DataProvider(name = "incrementalPush")
+  public static Object[][] incrementalPush() {
+    return new Object[][] {
+        {false}, {true}
+    };
+  }
+
+  @Test(dataProvider = "incrementalPush")
+  public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     long startTime = System.currentTimeMillis();
     MockTime mockTime = new MockTime(startTime);
@@ -1801,9 +1828,30 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(null)
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
-    Assert.assertEquals(partialMockParentAdmin
-        .incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.BATCH, false, true),
-        newVersion, "Unexpected new version returned by incrementVersionIdempotent");
+    if (isIncrementalPush) {
+      /**
+       * Parent shouldn't allow an incremental push happen on an incompleted batch push;
+       * notice that the batch push might already be completed but is reported as incompleted
+       * due to transient issues. Either way, incremental push should fail.
+       */
+      try {
+        partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.INCREMENTAL, false, true);
+        Assert.fail("Incremental push should fail if the previous batch push is not in COMPLETE state.");
+      } catch (Exception e) {
+        /**
+         * Make sure that parent will not kill previous batch push.
+         */
+        Assert.assertFalse(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
+      }
+    } else {
+      Assert.assertEquals(partialMockParentAdmin
+              .incrementVersionIdempotent(clusterName, storeName, newPushJobId, 3, 3, Version.PushType.BATCH, false, true),
+              newVersion, "Unexpected new version returned by incrementVersionIdempotent");
+      /**
+       * Parent should kill the lingering job.
+       */
+      Assert.assertTrue(partialMockParentAdmin.isJobKilled(version.kafkaTopicName()));
+    }
   }
 
   @Test
