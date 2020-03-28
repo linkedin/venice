@@ -89,6 +89,14 @@ public class RocksDBServerConfig {
   public static final String ROCKSDB_MAX_BYTES_FOR_LEVEL_BASE = "rocksdb.max.bytes.for.level.base";
 
   public static final String ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED = "rocksdb.plain.table.format.enabled";
+
+  /**
+   * Length of the capped prefix extractor used with RocksDB Plain Table. Be cautious when tweaking this config because
+   * it might prevent reading old data written with a different extractor length. Therefore, changing it requires wiping
+   * the server data and offset.
+   */
+  public static final String CAPPED_PREFIX_EXTRACTOR_LENGTH = "rocksdb.capped.prefix.extractor.length";
+
   public static final String ROCKSDB_STORE_INDEX_IN_FILE = "rocksdb.store.index.in.file";
   public static final String ROCKSDB_HUGE_PAGE_TLB_SIZE = "rocksdb.huge.page.tlb.size";
   public static final String ROCKSDB_BLOOM_BITS_PER_KEY = "rocksdb.bloom.bits.per.key";
@@ -191,6 +199,7 @@ public class RocksDBServerConfig {
 
   private final int maxFileOpeningThreads;
   private final int databaseOpenOperationThrottle;
+  private final int cappedPrefixExtractorLength;
 
 
   public RocksDBServerConfig(VeniceProperties props) {
@@ -249,6 +258,10 @@ public class RocksDBServerConfig {
 
     // DO NOT ENABLE except for new stores. https://github.com/facebook/rocksdb/wiki/PlainTable-Format
     this.rocksDBPlainTableFormatEnabled = props.getBoolean(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, false);
+    if (rocksDBPlainTableFormatEnabled && rocksDBUseDirectReads) {
+      throw new VeniceException("Invalid configuration combination, " + ROCKSDB_OPTIONS_USE_DIRECT_READS
+          + " must be disabled to enable " + ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED);
+    }
     this.rocksDBStoreIndexInFile = props.getBoolean(ROCKSDB_STORE_INDEX_IN_FILE, true);
     this.rocksDBHugePageTlbSize = props.getInt(ROCKSDB_HUGE_PAGE_TLB_SIZE, 0);
     this.rocksDBBloomBitsPerKey = props.getInt(ROCKSDB_BLOOM_BITS_PER_KEY, 10);
@@ -260,6 +273,7 @@ public class RocksDBServerConfig {
 
     this.maxFileOpeningThreads = props.getInt(ROCKSDB_MAX_FILE_OPENING_THREADS, 16);
     this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
+    this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
   }
 
   public boolean getRocksDBUseDirectReads() {
@@ -370,5 +384,9 @@ public class RocksDBServerConfig {
 
   public int getDatabaseOpenOperationThrottle() {
     return databaseOpenOperationThrottle;
+  }
+
+  public int getCappedPrefixExtractorLength() {
+    return cappedPrefixExtractorLength;
   }
 }

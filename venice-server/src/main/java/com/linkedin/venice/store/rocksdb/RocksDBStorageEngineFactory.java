@@ -159,6 +159,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       tableConfig.setBloomBitsPerKey(rocksDBServerConfig.getRocksDBBloomBitsPerKey());
       options.setTableFormatConfig(tableConfig);
       options.setAllowMmapReads(true);
+      options.useCappedPrefixExtractor(rocksDBServerConfig.getCappedPrefixExtractorLength());
     } else {
       // Cache index and bloom filter in block cache
       // and share the same cache across all the RocksDB databases
