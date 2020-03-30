@@ -1,7 +1,9 @@
 package org.apache.avro.io;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 
 /**
@@ -13,7 +15,7 @@ import java.nio.ByteBuffer;
  * package-visible.
  */
 public class OptimizedBinaryDecoder extends BinaryDecoder {
-  private byte[] data;
+  private ByteBuffer byteBuffer;
   private int offset;
   private int length;
 
@@ -21,9 +23,15 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   }
 
   @Override
+  BinaryDecoder configure(InputStream in, int bufferSize) {
+    throw new RuntimeException(this.getClass().getSimpleName() + " is not compatible with InputStream!");
+  }
+
+  @Override
   BinaryDecoder configure(byte[] data, int offset, int length) {
     super.configure(data, offset, length);
-    this.data = data;
+    byteBuffer = ByteBuffer.wrap(data, offset, length);
+    byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
     this.offset = offset;
     this.length = length;
     return this;
@@ -36,6 +44,13 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
     int relativeStartPosition = length - bytesLeft;
     int startPosition = offset + relativeStartPosition;
     skipFixed(bytesLength);
-    return ByteBuffer.wrap(data, startPosition, bytesLength);
+    return ByteBuffer.wrap(byteBuffer.array(), startPosition, bytesLength);
+  }
+
+ @Override
+  public float readFloat() throws IOException {
+    float f = byteBuffer.getFloat(getPos());
+    doSkipBytes(Float.BYTES);
+    return f;
   }
 }
