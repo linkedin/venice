@@ -34,6 +34,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private int dotProductCount = 0;
   private int cosineSimilarityCount = 0;
   private int hadamardProductCount = 0;
+  private boolean isRequestTerminatedEarly = false;
 
   private Optional<List<Integer>> optionalKeySizeList = Optional.empty();
   private Optional<List<Integer>> optionalValueSizeList = Optional.empty();
@@ -90,6 +91,10 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   public void setHealthCheck(boolean healthCheck) {
     this.isHealthCheck = healthCheck;
+  }
+
+  public void setRequestTerminatedEarly() {
+    this.isRequestTerminatedEarly = true;
   }
 
   public void setRequestType(RequestType requestType) {
@@ -227,6 +232,10 @@ public class StatsHandler extends ChannelDuplexHandler {
     }
   }
 
+  public long getRequestStartTimeInNS() {
+    return this.startTimeInNS;
+  }
+
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
     ChannelFuture future = ctx.writeAndFlush(msg);
@@ -319,6 +328,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (hadamardProductCount > 0) {
         currentStats.recordHadamardProductCount(storeName, hadamardProductCount);
+      }
+      if (isRequestTerminatedEarly) {
+        currentStats.recordEarlyTerminatedEarlyRequest(storeName);
       }
     }
   }

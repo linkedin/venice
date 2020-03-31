@@ -67,13 +67,17 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         }
         isStreamingResponse = obj.isStreamingResponse();
       } else if (msg instanceof HttpShortcutResponse) {
-        responseStatus = ((HttpShortcutResponse) msg).getStatus();
-        String message = ((HttpShortcutResponse) msg).getMessage();
+        HttpShortcutResponse shortcutResponse = (HttpShortcutResponse)msg;
+        responseStatus = shortcutResponse.getStatus();
+        String message = shortcutResponse.getMessage();
         if (null == message) {
           message = "";
         }
         body = Unpooled.wrappedBuffer(message.getBytes(StandardCharsets.UTF_8));
         contentType = HttpConstants.TEXT_PLAIN;
+        if (shortcutResponse.getStatus().equals(VeniceRequestEarlyTerminationException.getHttpResponseStatus())) {
+          statsHandler.setRequestTerminatedEarly();
+        }
       } else if (msg instanceof DefaultFullHttpResponse){
         ctx.writeAndFlush(msg);
         return;

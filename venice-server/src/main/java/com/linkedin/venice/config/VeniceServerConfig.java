@@ -1,16 +1,24 @@
 package com.linkedin.venice.config;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.queues.FairBlockingQueue;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.config.BlockingQueueType.*;
+
 
 /**
  * class that maintains config very specific to a Venice server
@@ -100,11 +108,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int nettyWorkerThreadCount;
 
-  /**
-   * Whether to use a fair queue for resource isolation in the storage execution handler.  Defaults to true
-   */
-  private final boolean fairStorageExecutionQueue;
-
   private final long databaseSyncBytesIntervalForTransactionalMode;
 
   private final long databaseSyncBytesIntervalForDeferredWriteMode;
@@ -167,6 +170,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final boolean enableDatabaseMemoryStats;
 
+  private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
+
+  private final int databaseLookupQueueCapacity;
+  private final int computeQueueCapacity;
+  private final BlockingQueueType blockingQueueType;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -188,18 +197,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     topicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int) TimeUnit.SECONDS.toMillis(60));
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
     nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
-    /**
-     * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
-     * Disable it by default for now.
-     *
-     * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
-     * to one or two storage nodes randomly. And when we restarted the node with high latency, the high latency could
-     * disappear, but other nodes could start high latency.
-     * After switching to {@link java.util.concurrent.LinkedBlockingQueue}, this issue never happened.
-     *
-     * TODO: figure out the issue with {@link com.linkedin.venice.utils.queues.FairBlockingQueue}.
-     */
-    fairStorageExecutionQueue = serverProperties.getBoolean(SERVER_FAIR_STORAGE_EXECUTION_QUEUE, false);
+
     databaseSyncBytesIntervalForTransactionalMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_TRANSACTIONAL_MODE, 32 * 1024 * 1024); // 32MB
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.90);
@@ -225,6 +223,32 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     keyValueProfilingEnabled = serverProperties.getBoolean(KEY_VALUE_PROFILING_ENABLED, false);
     enableDatabaseMemoryStats = serverProperties.getBoolean(SERVER_DATABASE_MEMORY_STATS_ENABLED, true);
+
+    Map<String, String> storeToEarlyTerminationThresholdMSMapProp = serverProperties.getMap(
+        SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, Collections.emptyMap());
+    storeToEarlyTerminationThresholdMSMap = new HashMap<>();
+    storeToEarlyTerminationThresholdMSMapProp.forEach( (storeName, thresholdStr) -> {
+      storeToEarlyTerminationThresholdMSMap.put(storeName, Integer.parseInt(thresholdStr.trim()));
+    });
+    databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
+    computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
+    /**
+     * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
+     * Disable it by default for now.
+     *
+     * In the test of feature store user case, when we did a rolling bounce of storage nodes, the high latency happened
+     * to one or two storage nodes randomly. And when we restarted the node with high latency, the high latency could
+     * disappear, but other nodes could start high latency.
+     * After switching to {@link java.util.concurrent.LinkedBlockingQueue}, this issue never happened.
+     *
+     * TODO: figure out the issue with {@link com.linkedin.venice.utils.queues.FairBlockingQueue}.
+     */
+    String blockingQueueTypeStr = serverProperties.getString(SERVER_BLOCKING_QUEUE_TYPE, BlockingQueueType.LINKED_BLOCKING_QUEUE.name());
+    try {
+      blockingQueueType = BlockingQueueType.valueOf(blockingQueueTypeStr);
+    } catch (IllegalArgumentException e) {
+      throw new VeniceException("Valid blocking queue options: " + Arrays.toString(BlockingQueueType.values()));
+    }
   }
 
   public int getListenerPort() {
@@ -305,9 +329,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nettyWorkerThreadCount;
   }
 
-  public boolean isFairStorageExecutionQueue() {
-    return fairStorageExecutionQueue;
-  }
   public long getDatabaseSyncBytesIntervalForTransactionalMode() {
     return databaseSyncBytesIntervalForTransactionalMode;
   }
@@ -364,11 +385,23 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return diskHealthCheckServiceEnabled;
   }
 
-  public BlockingQueue<Runnable> getExecutionQueue() {
-    if (isFairStorageExecutionQueue()) {
-      return new FairBlockingQueue<>();
-    } else {
-      return new LinkedBlockingQueue<>();
+  public BlockingQueue<Runnable> getExecutionQueue(int capacity) {
+    switch (blockingQueueType) {
+      case FAIR_BLOCKING_QUEUE:
+        /**
+         * Currently, {@link FairBlockingQueue} doesn't support capacity control.
+         * TODO: add capacity support to {@link FairBlockingQueue}.
+         */
+        return new FairBlockingQueue<>();
+      case LINKED_BLOCKING_QUEUE:
+        return new LinkedBlockingQueue<>(capacity);
+      case ARRAY_BLOCKING_QUEUE:
+        if (capacity == Integer.MAX_VALUE) {
+          throw new VeniceException("Queue capacity must be specified when using " + ARRAY_BLOCKING_QUEUE);
+        }
+        return new ArrayBlockingQueue<>(capacity);
+      default:
+        throw new VeniceException("Unknown blocking queue type: " + blockingQueueType);
     }
   }
 
@@ -398,5 +431,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isDatabaseMemoryStatsEnabled() {
     return enableDatabaseMemoryStats;
+  }
+
+  public Map<String, Integer> getStoreToEarlyTerminationThresholdMSMap() {
+    return storeToEarlyTerminationThresholdMSMap;
+  }
+
+  public int getDatabaseLookupQueueCapacity() {
+    return databaseLookupQueueCapacity;
+  }
+
+  public int getComputeQueueCapacity() {
+    return computeQueueCapacity;
   }
 }

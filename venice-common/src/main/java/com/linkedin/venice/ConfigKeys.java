@@ -170,7 +170,6 @@ public class ConfigKeys {
   public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = "server.source.topic.offset.check.interval.ms";
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
-  public static final String SERVER_FAIR_STORAGE_EXECUTION_QUEUE = "server.fair.storage.execution.queue";
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
@@ -284,6 +283,29 @@ public class ConfigKeys {
    */
   public static final String SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE = "server.parallel.batch.get.chunk.size";
 
+  /**
+   * The request early termination threshold map:
+   * The key will be store name, and the value will be the actual threshold.
+   * This config is temporary, and in the long run, we will ask Venice Client to pass the actual timeout to the backend.
+   */
+  public static final String SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP = "server.store.to.early.termination.threshold.ms.map";
+
+  /**
+   * The following config is used to control the maximum database lookup requests queued, when the queue is full,
+   * server will propagate the back pressure to the caller.
+   */
+  public static final String SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY = "server.database.lookup.queue.capacity";
+
+  /**
+   * Check @{@link #SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY} for the explanation.
+   * The following config is specifically for compute request.
+   */
+  public static final String SERVER_COMPUTE_QUEUE_CAPACITY = "server.compute.queue.capacity";
+
+  /**
+   * Check the available types in {@literal com.linkedin.venice.config.BlockingQueueType}
+   */
+  public static final String SERVER_BLOCKING_QUEUE_TYPE = "server.blocking.queue.type";
 
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent

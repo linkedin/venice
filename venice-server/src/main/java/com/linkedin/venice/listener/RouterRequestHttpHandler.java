@@ -5,6 +5,7 @@ import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
+import com.linkedin.venice.listener.request.RouterRequest;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
 import io.netty.channel.ChannelHandlerContext;
@@ -17,6 +18,8 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 
 import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -31,11 +34,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
   private static final String API_VERSION = "1";
   private final StatsHandler statsHandler;
   private final boolean useFastAvro;
+  private final Map<String, Integer> storeToEarlyTerminationThresholdMSMap;
 
-  public RouterRequestHttpHandler(StatsHandler handler, boolean useFastAvro) {
+  public RouterRequestHttpHandler(StatsHandler handler, boolean useFastAvro, Map<String, Integer> storeToEarlyTerminationThresholdMSMap) {
     super();
     this.statsHandler = handler;
     this.useFastAvro = useFastAvro;
+    this.storeToEarlyTerminationThresholdMSMap = storeToEarlyTerminationThresholdMSMap;
   }
 
   @Override
@@ -49,6 +54,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
     ctx.flush();
   }
 
+  private void setupRequestTimeout(RouterRequest routerRequest) {
+    String storeName = routerRequest.getStoreName();
+    Integer timeoutThresholdInMS = storeToEarlyTerminationThresholdMSMap.get(storeName);
+    if (timeoutThresholdInMS != null) {
+      routerRequest.setRequestTimeoutInNS(statsHandler.getRequestStartTimeInNS() + TimeUnit.MILLISECONDS.toNanos(timeoutThresholdInMS));
+    }
+  }
   @Override
   protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
     try {
@@ -60,11 +72,13 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           if (requestMethod.equals(HttpMethod.GET)) {
             // TODO: evaluate whether we can replace single-get by multi-get
             GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
+            setupRequestTimeout(getRouterRequest);
             statsHandler.setRequestInfo(getRouterRequest);
             ctx.fireChannelRead(getRouterRequest);
           } else if (requestMethod.equals(HttpMethod.POST)) {
             // Multi-get
             MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
+            setupRequestTimeout(multiGetRouterReq);
             statsHandler.setRequestInfo(multiGetRouterReq);
             ctx.fireChannelRead(multiGetRouterReq);
           } else {
@@ -74,6 +88,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
         case COMPUTE: // compute request
           if (req.method().equals(HttpMethod.POST)) {
             ComputeRouterRequestWrapper computeRouterReq = ComputeRouterRequestWrapper.parseComputeRequest(req, useFastAvro);
+            setupRequestTimeout(computeRouterReq);
             statsHandler.setRequestInfo(computeRouterReq);
             ctx.fireChannelRead(computeRouterReq);
           } else {

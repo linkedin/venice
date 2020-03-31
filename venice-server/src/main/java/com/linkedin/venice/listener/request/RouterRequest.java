@@ -8,6 +8,10 @@ import io.netty.handler.codec.http.HttpRequest;
 
 
 public abstract class RouterRequest {
+  // Early request termination is not enabled.
+  public static final long NO_REQUEST_TIMEOUT = -1;
+
+  private long requestTimeoutInNS = NO_REQUEST_TIMEOUT;
   private final boolean isRetryRequest;
   private final String resourceName;
   private final String storeName;
@@ -18,6 +22,10 @@ public abstract class RouterRequest {
     this.isStreamingRequest = StreamingUtils.isStreamingEnabled(request);
     this.resourceName = resourceName;
     this.storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+  }
+
+  public void setRequestTimeoutInNS(long requestTimeoutInNS) {
+    this.requestTimeoutInNS = requestTimeoutInNS;
   }
 
   public String getResourceName() {
@@ -42,5 +50,9 @@ public abstract class RouterRequest {
 
   private static boolean containRetryHeader(HttpRequest request) {
     return request.headers().contains(HttpConstants.VENICE_RETRY);
+  }
+
+  public boolean shouldRequestBeTerminatedEarly() {
+    return requestTimeoutInNS != NO_REQUEST_TIMEOUT && System.nanoTime() > requestTimeoutInNS;
   }
 }
