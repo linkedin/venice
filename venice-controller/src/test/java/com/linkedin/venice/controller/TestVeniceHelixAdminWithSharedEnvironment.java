@@ -14,6 +14,7 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -347,6 +348,16 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         "Should not exceed the max partition.");
     veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
+
+    // test setting amplification factor
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(version.getNumber()).get().getPartitionerConfig().getAmplificationFactor(), 1);
+    final int amplificationFactor = 10;
+    PartitionerConfig partitionerConfig = new PartitionerConfig();
+    partitionerConfig.setAmplificationFactor(amplificationFactor);
+    veniceAdmin.setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
+    Version newVersion = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(),
+        partitionCount, 2);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(newVersion.getNumber()).get().getPartitionerConfig().getAmplificationFactor(), amplificationFactor);
 
     veniceAdmin.setIncrementalPushEnabled(clusterName, storeName, true);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isIncrementalPushEnabled());
