@@ -121,7 +121,8 @@ public class VeniceSystemProducer implements SystemProducer {
             samzaJobId,
             true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
             false, // Samza jobs, including batch ones, are expected to write data out of order
-            partitioners
+            partitioners,
+            Optional.empty()
         )
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);

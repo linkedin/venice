@@ -51,7 +51,7 @@ public class TestRestartRouter {
     cluster.stopVeniceRouter(routerWrapper.getPort());
 
     VersionCreationResponse versionCreationResponse = controllerClient.requestTopicForWrites(storeName, 100,
-        Version.PushType.BATCH, Version.guidBasedDummyPushId(), false, true, Optional.empty());
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), false, true, Optional.empty(), Optional.empty());
     Assert.assertTrue(versionCreationResponse.isError(),
         "Router has already been shutdown, should not handle the request.");
 
@@ -74,7 +74,7 @@ public class TestRestartRouter {
 
     // The restarted router could continue to handle request.
     response = controllerClient.requestTopicForWrites(storeName, 100, Version.PushType.BATCH,
-        Version.guidBasedDummyPushId(), false, true, Optional.empty());
+        Version.guidBasedDummyPushId(), false, true, Optional.empty(), Optional.empty());;
     Assert.assertFalse(response.isError());
     Assert.assertEquals(response.getVersion(), versionNum +1);
 

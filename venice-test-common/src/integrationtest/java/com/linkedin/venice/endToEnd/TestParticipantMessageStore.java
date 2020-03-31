@@ -194,7 +194,7 @@ public class TestParticipantMessageStore {
   private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, String storeName) {
     controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
-        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, Optional.empty());
+        Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, Optional.empty(), Optional.empty());
   }
 
 

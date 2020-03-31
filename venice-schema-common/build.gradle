@@ -51,6 +51,8 @@ dependencies {
 
     implementation libraries.linkedinAvroFastserde
 
+    implementation libraries.zstd
+
     testImplementation project(':venice-test-common')
     testImplementation project(':venice-thin-client')
 }

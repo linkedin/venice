@@ -12,7 +12,9 @@ import java.util.Optional;
  */
 public enum CompressionStrategy {
   NO_OP(0, false),
-  GZIP(1, true);
+  GZIP(1, true),
+  ZSTD(2, true),
+  ZSTD_WITH_DICT(3, true);
 
   private final int value;
   private final boolean compressionEnabled;
