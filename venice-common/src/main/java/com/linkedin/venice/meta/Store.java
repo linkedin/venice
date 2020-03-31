@@ -656,6 +656,8 @@ public class Store {
       version.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
 
       version.setChunkingEnabled(chunkingEnabled);
+
+      version.setPartitionerConfig(partitionerConfig);
     }
 
     versions.add(index, version);

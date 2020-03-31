@@ -1886,6 +1886,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setStorePartitionerConfig(String clusterName, String storeName, PartitionerConfig partitionerConfig) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            // Cannot change the partitioner config if store is a hybrid store.
+            if (!store.getPartitionerConfig().equals(partitionerConfig) && store.isHybrid()) {
+                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partitioner config change in hybrid store is not supported");
+            } else {
+                store.setPartitionerConfig(partitionerConfig);
+                return store;
+            }
+        });
+    }
+
     @Override
     public synchronized void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -2223,15 +2235,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 partitionerParams.ifPresent(partitionerConfig::setPartitionerParams);
                 amplificationFactor.ifPresent(partitionerConfig::setAmplificationFactor);
 
-                storeMetadataUpdate(clusterName, storeName, store -> {
-                    // Cannot change the partitioner config if store is a hybrid store.
-                    if (!store.getPartitionerConfig().equals(partitionerConfig) && store.isHybrid()) {
-                        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partitioner config change in hybrid store is not supported");
-                    } else {
-                        store.setPartitionerConfig(partitionerConfig);
-                        return store;
-                    }
-                });
+                setStorePartitionerConfig(clusterName, storeName, partitionerConfig);
             }
 
             if (storageQuotaInByte.isPresent()) {
