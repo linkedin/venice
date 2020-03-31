@@ -75,7 +75,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * 950 KB for user payload should be conservative enough.
    */
-  private static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
+  public static final int DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES = 950 * 1024;
 
   /**
    * This controls the Kafka producer's close timeout.
@@ -383,15 +383,33 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    *                appended with {@link ChunkedKeySuffix} and the {@link Put} may contain either
    *                chunks or {@link ChunkedValueManifest} records, in addition to regular (small)
    *                values.
+   * @param compressionStrategy the store-version's {@link CompressionStrategy}
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
   public void broadcastStartOfPush(boolean sorted, boolean chunked,
-                                   CompressionStrategy compressionStrategy, Map<String, String> debugInfo) {
+      CompressionStrategy compressionStrategy, Map<String, String> debugInfo) {
+    broadcastStartOfPush(sorted, chunked, compressionStrategy, null, debugInfo);
+  }
+
+  /**
+   * @param sorted whether the messages between 'StartOfPush' control messages and 'EndOfPush' control
+   *               message in current topic partition is lexicographically sorted by key bytes
+   * @param chunked whether the push has chunking support enabled, in which case all keys are to be
+   *                appended with {@link ChunkedKeySuffix} and the {@link Put} may contain either
+   *                chunks or {@link ChunkedValueManifest} records, in addition to regular (small)
+   *                values.
+   * @param compressionStrategy the store-version's {@link CompressionStrategy}
+   * @param compressionDictionary The raw bytes of dictionary used to compress/decompress records.
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastStartOfPush(boolean sorted, boolean chunked,
+      CompressionStrategy compressionStrategy, ByteBuffer compressionDictionary, Map<String, String> debugInfo) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.sorted = sorted;
     startOfPush.chunked = chunked;
     startOfPush.compressionStrategy = compressionStrategy.getValue();
+    startOfPush.compressionDictionary = compressionDictionary;
     controlMessage.controlMessageUnion = startOfPush;
     broadcastControlMessage(controlMessage, debugInfo);
     // Flush start of push message to avoid data message arrives before it.

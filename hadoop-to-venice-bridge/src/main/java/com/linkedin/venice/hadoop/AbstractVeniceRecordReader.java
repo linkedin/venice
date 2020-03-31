@@ -7,8 +7,7 @@ import java.io.Closeable;
 import java.util.Iterator;
 import org.apache.log4j.Logger;
 
-public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> implements Iterable<Pair<byte[], byte[]>>,
-                                                                                    Closeable {
+public abstract class AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> implements Closeable {
   private static final Logger LOGGER = Logger.getLogger(AbstractVeniceRecordReader.class);
 
   protected String topicName;

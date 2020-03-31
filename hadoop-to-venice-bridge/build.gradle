@@ -34,6 +34,8 @@ dependencies {
 
     implementation libraries.azkaban
 
+    implementation libraries.zstd
+
     runtime libraries.commonsConfiguration
     runtime libraries.commonsLang
     runtime libraries.httpCore

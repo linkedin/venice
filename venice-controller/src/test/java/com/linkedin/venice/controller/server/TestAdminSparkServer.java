@@ -167,7 +167,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
 
     // ensure creating a duplicate store throws a http 409, status code isn't exposed in controllerClient
-   CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.empty());
+    CloseableHttpAsyncClient httpClient = HttpClientUtils.getMinimalHttpClient(1,1, Optional.empty());
     httpClient.start();
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
@@ -695,13 +695,13 @@ public class TestAdminSparkServer {
 
     VersionCreationResponse vcr =
         controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.BATCH, pushId,
-            false, true, Optional.empty());
+            false, true, Optional.empty(), Optional.empty());
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));
 
     vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, Version.PushType.STREAM, pushId,
-        false, false, Optional.empty());
+        false, false, Optional.empty(), Optional.empty());
     Assert.assertTrue(vcr.isError(),
         "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
             .writeValueAsString(vcr));
@@ -790,3 +790,4 @@ public class TestAdminSparkServer {
     controllerClient.deleteStore(storeName);
   }
 }
+
