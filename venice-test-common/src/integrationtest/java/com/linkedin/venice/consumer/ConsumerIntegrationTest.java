@@ -305,7 +305,7 @@ public class ConsumerIntegrationTest {
   public static byte[] serializeNewProtocol(GenericRecord messageFromNewProtocol) {
     try {
       ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream, true, null);
+      Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(byteArrayOutputStream);
 
       byteArrayOutputStream.write(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getMagicByte().get());
       byteArrayOutputStream.write((byte) NEW_PROTOCOL_VERSION);

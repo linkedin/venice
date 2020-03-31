@@ -1,11 +1,11 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import  com.linkedin.venice.stats.StoreStats;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 
+import com.linkedin.venice.stats.StoreStats;
 import io.tehuti.metrics.MetricsRepository;
 
 public class AggStoreStats {

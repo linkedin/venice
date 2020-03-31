@@ -63,10 +63,10 @@ public class ListenerService extends AbstractVeniceService {
     bossGroup = new NioEventLoopGroup(1);
     workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
 
-    executor = createThreadPool(serverConfig.getRestServiceStorageThreadNum(), "StorageExecutionThread");
+    executor = createThreadPool(serverConfig.getRestServiceStorageThreadNum(), "StorageExecutionThread", serverConfig.getDatabaseLookupQueueCapacity());
     new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
 
-    computeExecutor = createThreadPool(serverConfig.getServerComputeThreadNum(), "StorageComputeThread");
+    computeExecutor = createThreadPool(serverConfig.getServerComputeThreadNum(), "StorageComputeThread", serverConfig.getComputeQueueCapacity());
     new ThreadPoolStats(metricsRepository, computeExecutor, "storage_compute_thread_pool");
 
     StorageExecutionHandler requestHandler = createRequestHandler(
@@ -111,9 +111,17 @@ public class ListenerService extends AbstractVeniceService {
     shutdown.sync();
   }
 
-  protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix) {
-    return new ThreadPoolExecutor(threadCount, threadCount, 0, TimeUnit.MILLISECONDS,
-        serverConfig.getExecutionQueue(), new DaemonThreadFactory(threadNamePrefix));
+  protected ThreadPoolExecutor createThreadPool(int threadCount, String threadNamePrefix, int capacity) {
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(threadCount, threadCount, 0, TimeUnit.MILLISECONDS,
+        serverConfig.getExecutionQueue(capacity), new DaemonThreadFactory(threadNamePrefix));
+    /**
+     * When the capacity is fully saturated, the scheduled task will be executed in the caller thread.
+     * We will leverage this policy to propagate the back pressure to the caller, so that no more tasks will be
+     * scheduled.
+     */
+    executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+
+    return executor;
   }
 
   protected StorageExecutionHandler createRequestHandler(

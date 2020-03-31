@@ -122,6 +122,11 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordHadamardProduct(count);
   }
 
+  public void recordEarlyTerminatedEarlyRequest(String storeName) {
+    totalStats.recordEarlyTerminatedEarlyRequest();
+    getStoreStats(storeName).recordEarlyTerminatedEarlyRequest();
+  }
+
   public void recordKeySizeInByte(String storeName, long keySize) {
     totalStats.recordKeySizeInByte(keySize);
     getStoreStats(storeName).recordKeySizeInByte(keySize);

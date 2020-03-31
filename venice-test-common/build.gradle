@@ -124,6 +124,7 @@ dependencies {
   implementation libraries.routerApi
   implementation libraries.spark
   implementation libraries.samzaApi
+  implementation libraries.avroMigrationHelper
 
   runtime libraries.commonsConfiguration
   runtime libraries.commonsLang

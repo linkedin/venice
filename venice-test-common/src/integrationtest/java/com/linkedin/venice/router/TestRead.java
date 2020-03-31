@@ -56,6 +56,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.config.BlockingQueueType.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
@@ -114,6 +115,9 @@ public abstract class TestRead {
     Properties serverProperties = new Properties();
     serverProperties.put(ConfigKeys.PERSISTENCE_TYPE, BDB);
     serverProperties.put(ConfigKeys.SERVER_ENABLE_PARALLEL_BATCH_GET, true); // test parallel lookup
+    serverProperties.put(ConfigKeys.SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, 1); // test bounded queue
+    serverProperties.put(ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY, 1);
+    serverProperties.put(ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE, ARRAY_BLOCKING_QUEUE.name());
     serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 3);
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");

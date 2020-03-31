@@ -338,6 +338,13 @@ public class VeniceProperties {
     return getList(key, null);
   }
 
+  public Map<String, String> getMap(String key, Map<String, String> defaultValue) {
+    if (!containsKey(key)) {
+      return defaultValue;
+    }
+    return getMap(key);
+  }
+
   public Map<String, String> getMap(String key) {
     if (!containsKey(key)) {
       throw new UndefinedPropertyException(key);

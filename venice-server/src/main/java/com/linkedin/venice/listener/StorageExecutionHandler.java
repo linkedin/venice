@@ -70,6 +70,8 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+
 
 /***
  * {@link StorageExecutionHandler} will take the incoming {@link RouterRequest}, and delegate the lookup request to
@@ -153,6 +155,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     if (message instanceof RouterRequest) {
       RouterRequest request = (RouterRequest) message;
+      // Check before putting the request to the intermediate queue
+      if (request.shouldRequestBeTerminatedEarly()) {
+        // Try to make the response short
+        VeniceRequestEarlyTerminationException earlyTerminationException = new VeniceRequestEarlyTerminationException(request.getStoreName());
+        context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
+        return;
+      }
       /**
        * For now, we are evaluating whether parallel lookup is good overall or not.
        * Eventually, we either pick up the new parallel implementation or keep the original one, so it is fine
@@ -162,8 +171,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         handleMultiGetRequestInParallel((MultiGetRouterRequestWrapper) request, parallelBatchGetChunkSize)
             .whenComplete( (v, e) -> {
               if (e != null) {
-                String exceptionMessage = ExceptionUtils.stackTraceToString(e);
-                context.writeAndFlush(new HttpShortcutResponse(exceptionMessage, HttpResponseStatus.INTERNAL_SERVER_ERROR));
+                if (e instanceof VeniceRequestEarlyTerminationException) {
+                  VeniceRequestEarlyTerminationException earlyTerminationException = (VeniceRequestEarlyTerminationException)e;
+                  context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
+                } else {
+                  context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+                }
               } else {
                 context.writeAndFlush(v);
               }
@@ -173,9 +186,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
 
       getExecutor(request.getRequestType()).submit(new LabeledRunnable(request.getStoreName(), () -> {
-        double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
-        ReadResponse response;
         try {
+          if (request.shouldRequestBeTerminatedEarly()) {
+            throw new VeniceRequestEarlyTerminationException(request.getStoreName());
+          }
+          double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+          ReadResponse response;
           switch (request.getRequestType()) {
             case SINGLE_GET:
               response = handleSingleGetRequest((GetRouterRequest) request);
@@ -195,8 +211,12 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           }
           context.writeAndFlush(response);
         } catch (Exception e) {
-          String exceptionMessage = ExceptionUtils.stackTraceToString(e);
-          context.writeAndFlush(new HttpShortcutResponse(exceptionMessage, HttpResponseStatus.INTERNAL_SERVER_ERROR));
+          if (e instanceof VeniceRequestEarlyTerminationException) {
+            VeniceRequestEarlyTerminationException earlyTerminationException = (VeniceRequestEarlyTerminationException)e;
+            context.writeAndFlush(new HttpShortcutResponse(earlyTerminationException.getMessage(), earlyTerminationException.getHttpResponseStatus()));
+          } else {
+            context.writeAndFlush(new HttpShortcutResponse(e.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+          }
         }
       }));
 
@@ -282,6 +302,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     for (int cur = 0; cur < splitSize; ++cur) {
       final int finalCur = cur;
       chunkFutures[cur] = CompletableFuture.runAsync(() -> {
+        if (request.shouldRequestBeTerminatedEarly()) {
+          throw new VeniceRequestEarlyTerminationException(request.getStoreName());
+        }
         int startPos = finalCur * parallelChunkSize;
         int endPos = Math.min((finalCur + 1) * parallelChunkSize, totalKeyNum);
         for (int subChunkCur = startPos; subChunkCur < endPos; ++subChunkCur) {

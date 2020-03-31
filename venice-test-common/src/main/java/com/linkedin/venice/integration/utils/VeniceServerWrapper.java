@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.server.VeniceConfigLoader;
-import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.tehuti.MetricsAware;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;

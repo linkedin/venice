@@ -102,7 +102,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     }
 
     ch.pipeline()
-        .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.isComputeFastAvroEnabled()))
+        .addLast(new RouterRequestHttpHandler(statsHandler, serverConfig.isComputeFastAvroEnabled(), serverConfig.getStoreToEarlyTerminationThresholdMSMap()))
         .addLast(quotaEnforcer)
         .addLast(requestHandler)
         .addLast(new ErrorCatchingHandler());
