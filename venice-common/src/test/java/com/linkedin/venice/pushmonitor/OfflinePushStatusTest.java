@@ -22,7 +22,7 @@ public class OfflinePushStatusTest {
     OfflinePushStatus offlinePushStatus =
         new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     Assert.assertEquals(offlinePushStatus.getKafkaTopic(), kafkaTopic);
-    Assert.assertEquals(offlinePushStatus.getNumberOfPartition(), numberOfPartition);
+    Assert.assertEquals(offlinePushStatus.getNumberOfPartitions(), numberOfPartition);
     Assert.assertEquals(offlinePushStatus.getReplicationFactor(), replicationFactor);
     Assert.assertEquals(offlinePushStatus.getCurrentStatus(), STARTED,
         "Once offline push status is created, it should in STARTED status by default.");
