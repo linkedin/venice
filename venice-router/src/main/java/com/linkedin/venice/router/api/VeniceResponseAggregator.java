@@ -1,31 +1,35 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.base.misc.HeaderNames;
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.base.misc.TimeValue;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.ResponseAggregatorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
+import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.streaming.SuccessfulStreamingResponse;
 import com.linkedin.venice.router.streaming.VeniceChunkedResponse;
-import com.linkedin.venice.router.api.path.VenicePath;
-import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.LatencyUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
-
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
-
 import org.apache.log4j.Logger;
 
 import static com.linkedin.ddsstorage.router.api.MetricNames.*;
@@ -85,7 +89,27 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
        * This is necessary since the exception could be thrown when parsing request path.
        * If it happens, here will just return the response, which contains exception stacktrace.
        */
-      return gatheredResponses.get(0);
+      FullHttpResponse response = gatheredResponses.get(0);
+      try {
+        if (response.status().equals(MOVED_PERMANENTLY)) {
+          String errorMsg = response.headers().get(HeaderNames.X_ERROR_MESSAGE);
+          String d2Service = VeniceStoreIsMigratedException.getD2ServiceName(errorMsg);
+          if (!Utils.isNullOrEmpty(d2Service)) {
+            URI uri = new URI(request.uri());
+            uri = new URI("d2", d2Service, uri.getPath(), uri.getQuery(), uri.getFragment());
+            String redirectUri = uri.toString();
+            LOGGER.info("redirect the request to " + redirectUri);
+            response.setStatus(MOVED_PERMANENTLY);
+            response.headers().set(HttpHeaderNames.LOCATION, redirectUri);
+          } else {
+            LOGGER.error("D2 service name is not available for request redirection");
+          }
+        }
+      } catch (URISyntaxException e) {
+        throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(),
+            BAD_REQUEST, "Failed to parse uri");
+      }
+      return response;
     }
 
     // TODO: Need to investigate if any of the early terminations above could cause the in-flight request sensor to "leak"

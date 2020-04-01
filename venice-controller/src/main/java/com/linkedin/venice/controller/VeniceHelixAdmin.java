@@ -3654,7 +3654,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             if (destLatestOnlineVersion.isPresent()) {
                                 logger.info(storeName + " cloned store in " + destClusterName
                                     + " is ready. Will update cluster discovery.");
-                                // Switch read traffic from new clients; existing clients still need redeploy
+                                // Switch read traffic from new clients;
+                                // existing d2 clients will talk to the new cluster automatically
                                 this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
                                 continue;
                             }

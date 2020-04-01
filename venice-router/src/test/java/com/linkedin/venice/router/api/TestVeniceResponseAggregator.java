@@ -1,21 +1,19 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.base.misc.HeaderNames;
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.base.misc.TimeValue;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.MetricNames;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.CompositeByteBuf;
@@ -32,7 +30,6 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.testng.Assert;
-import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -191,5 +188,22 @@ public class TestVeniceResponseAggregator {
     metrics.setMetric(MetricNames.ROUTER_SERVER_TIME.name(), new TimeValue(1, TimeUnit.MILLISECONDS));
     responseAggregator.buildResponse(request, metrics, Arrays.asList(response5));
     verify(mockStatsForMultiGet).recordThrottledRequest(storeName, 1.0);
+  }
+
+  @Test
+  public void testBuildResponseForMigratedStore() {
+    RouterStats mockRouterStat = mock(RouterStats.class);
+    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockRouterStat);
+
+    BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST,
+        "/storage/tesStore", -1, -1);
+    Metrics metrics = new Metrics();
+    List<FullHttpResponse> gatheredResponses = new ArrayList<>();
+    Map<String, String> headers = new HashMap<>();
+    headers.put(HeaderNames.X_ERROR_MESSAGE, "Store: testStore is migrated to cluster testCluster, d2Service testD2Service");
+    FullHttpResponse response = buildFullHttpResponse(MOVED_PERMANENTLY, getResponseContentWithSchemaString("value"), headers);
+    gatheredResponses.add(response);
+    FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
+    Assert.assertEquals(finalResponse.headers().get(HttpHeaderNames.LOCATION), "d2://testD2Service/storage/tesStore");
   }
 }

@@ -10,6 +10,7 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestMethod;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.r2.message.stream.StreamException;
 import com.linkedin.r2.message.stream.StreamRequest;
 import com.linkedin.r2.message.stream.StreamRequestBuilder;
 import com.linkedin.r2.message.stream.StreamResponse;
@@ -20,18 +21,17 @@ import com.linkedin.r2.message.stream.entitystream.ReadHandle;
 import com.linkedin.r2.message.stream.entitystream.Reader;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.schema.SchemaData;
 import java.net.URI;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.log4j.Logger;
-
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-
+import org.apache.commons.httpclient.HttpStatus;
+import org.apache.http.HttpHeaders;
+import org.apache.log4j.Logger;
 
 /**
  * {@link D2Client} based TransportClient implementation.
@@ -90,7 +90,7 @@ public class D2TransportClient extends TransportClient {
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     RequestContext requestContext = new RequestContext();
     requestContext.putLocalAttr(R2Constants.R2_OPERATION, "get"); //required for d2 backup requests
-    d2Client.restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
+    restRequest(request, requestContext, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
@@ -100,7 +100,7 @@ public class D2TransportClient extends TransportClient {
     RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
 
-    d2Client.restRequest(request, getRequestContextForPost(), new D2TransportClientCallback(valueFuture));
+    restRequest(request, getRequestContextForPost(), new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
@@ -133,7 +133,7 @@ public class D2TransportClient extends TransportClient {
       RequestContext requestContext = new RequestContext();
       requestContext.putLocalAttr(com.linkedin.r2.filter.R2Constants.IS_FULL_REQUEST, true);
 
-      d2Client.streamRequest(streamRequest, requestContext, new Callback<StreamResponse>() {
+      streamRequest(streamRequest, requestContext, new Callback<StreamResponse>() {
         @Override
         public void onSuccess(StreamResponse result) {
           Map<String, String> headers = result.getHeaders();
@@ -221,6 +221,88 @@ public class D2TransportClient extends TransportClient {
   private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     String requestUrl = getD2RequestUrl(requestPath);
     return D2ClientUtils.createD2PostRequest(requestUrl, headers, body);
+  }
+
+  private void restRequest(RestRequest request, RequestContext requestContext, Callback<RestResponse> callback) {
+    Callback<RestResponse> redirectCallback = new Callback<RestResponse>() {
+      @Override
+      public void onError(Throwable e) {
+        try {
+          if (e instanceof RestException) {
+            RestResponse response = ((RestException) e).getResponse();
+            int status = response.getStatus();
+            if (status == HttpStatus.SC_MOVED_PERMANENTLY) {
+              String locationHeader = response.getHeader(HttpHeaders.LOCATION);
+              if (locationHeader != null) {
+                URI uri = new URI(locationHeader);
+                // update d2 service
+                d2ServiceName = uri.getAuthority();
+                logger.info("update d2ServiceName to " + d2ServiceName);
+                RestRequest redirectedRequest = request.builder().setURI(uri).build();
+                d2Client.restRequest(redirectedRequest, requestContext.clone(), callback);
+                return;
+              } else {
+                logger.error("location header is null");
+              }
+            }
+          }
+        } catch (Exception ex) {
+          logger.error("cannot redirect request", ex);
+          callback.onError(ex);
+          return;
+        }
+
+        callback.onError(e);
+      }
+
+      @Override
+      public void onSuccess(RestResponse result) {
+        callback.onSuccess(result);
+      }
+    };
+
+    d2Client.restRequest(request, requestContext, redirectCallback);
+  }
+
+  private void streamRequest(StreamRequest request, RequestContext requestContext, Callback<StreamResponse> callback) {
+    Callback<StreamResponse> redirectCallback = new Callback<StreamResponse>() {
+      @Override
+      public void onError(Throwable e) {
+        try {
+          if (e instanceof StreamException) {
+            StreamResponse response = ((StreamException) e).getResponse();
+            int status = response.getStatus();
+            if (status == HttpStatus.SC_MOVED_PERMANENTLY) {
+              String locationHeader = response.getHeader(HttpHeaders.LOCATION);
+              if (locationHeader != null) {
+                URI uri = new URI(locationHeader);
+                // update d2 service
+                d2ServiceName = uri.getAuthority();
+                logger.info("update d2ServiceName to " + d2ServiceName);
+                StreamRequest redirectedRequest = request.builder().setURI(uri).build(request.getEntityStream());
+                d2Client.streamRequest(redirectedRequest, requestContext.clone(), callback);
+                return;
+              } else {
+                logger.error("location header is null");
+              }
+            }
+          }
+        } catch (Exception ex) {
+          logger.error("cannot follow redirection", ex);
+          callback.onError(ex);
+          return;
+        }
+
+        callback.onError(e);
+      }
+
+      @Override
+      public void onSuccess(StreamResponse result) {
+        callback.onSuccess(result);
+      }
+    };
+
+    d2Client.streamRequest(request, requestContext, redirectCallback);
   }
 
   @Override

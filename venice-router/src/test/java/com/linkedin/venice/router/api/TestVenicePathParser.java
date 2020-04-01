@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.VeniceRouterConfig;
@@ -15,6 +16,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
@@ -29,6 +32,7 @@ import static org.mockito.Mockito.*;
  */
 public class TestVenicePathParser {
   private final int TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ = 100;
+  private final Map<String, String> clusterToD2Map = new HashMap<>();
 
   VeniceVersionFinder getVersionFinder(){
     //Mock objects
@@ -38,7 +42,8 @@ public class TestVenicePathParser {
     ReadOnlyStoreRepository mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
-    return new VeniceVersionFinder(mockMetadataRepository, TestVeniceVersionFinder.getDefaultInstanceFinder(), stats);
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+    return new VeniceVersionFinder(mockMetadataRepository, TestVeniceVersionFinder.getDefaultInstanceFinder(), stats, storeConfigRepo, clusterToD2Map);
   }
 
   RouterStats getMockedStats() {
