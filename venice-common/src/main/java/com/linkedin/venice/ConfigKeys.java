@@ -538,6 +538,19 @@ public class ConfigKeys {
   public static final String ROUTER_CONNECTION_TIMEOUT = "router.connection.timeout";
 
   /**
+   * Whether to enable the cleanup of the idle connections to storage node.
+   * Recently, we are seeing latency spike because of new connection setup, and we hope the total available connections will be
+   * more stable by disabling the idle connection cleanup.
+   * The potential long-term solutions could be connection warm-up for HTTP/1.1 or adopting HTTP/2
+   */
+  public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED = "router.idle.connection.to.server.cleanup.enabled";
+
+  /**
+   * The idle threshold for cleaning up the connections to storage node.
+   */
+  public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS = "router.idle.connection.to.server.cleanup.threshold.mins";
+
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */

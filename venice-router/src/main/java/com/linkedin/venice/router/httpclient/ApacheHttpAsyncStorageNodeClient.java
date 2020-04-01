@@ -40,6 +40,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private final VeniceConcurrentHashMap<String, CloseableHttpAsyncClient> hostToClientMap = new VeniceConcurrentHashMap<>();
   private final HttpConnectionPoolStats poolStats;
   private final LiveInstanceMonitor liveInstanceMonitor;
+  private final VeniceRouterConfig routerConfig;
 
   private final boolean perNodeClientEnabled;
   private int ioThreadNumPerClient;
@@ -65,6 +66,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     this.connectionTimeout = config.getConnectionTimeout();
     this.sslFactory = sslFactory;
     this.clientPoolSize = config.getHttpClientPoolSize();
+    this.routerConfig = config;
 
     // Whether to enable DNS cache
     if (config.isDnsCacheEnabled()) {
@@ -139,7 +141,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
 
   private CloseableHttpAsyncClient createAndStartNewClient() {
     CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient,
-        totalMaxConnPerClient, socketTimeout, connectionTimeout, sslFactory, dnsResolver, Optional.of(poolStats));
+        totalMaxConnPerClient, socketTimeout, connectionTimeout, sslFactory, dnsResolver, Optional.of(poolStats),
+        routerConfig.isIdleConnectionToServerCleanupEnabled(), routerConfig.getIdleConnectionToServerCleanupThresholdMins());
     client.start();
     return client;
   }

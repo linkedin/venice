@@ -30,6 +30,8 @@ import static com.linkedin.venice.HttpConstants.*;
 
 
 public class HttpClientUtils {
+  private static final Logger LOGGER = Logger.getLogger(HttpClientUtils.class);
+
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   public static SSLIOSessionStrategy getSslStrategy(SSLEngineComponentFactory sslFactory) {
@@ -41,12 +43,25 @@ public class HttpClientUtils {
   public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal,
       int socketTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
       Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats) {
+    return getMinimalHttpClient(ioThreadNum, maxConnPerRoute, maxConnTotal, socketTimeout, connectionTimeout, sslFactory,
+        dnsResolver, poolStats, true, TimeUnit.HOURS.toMinutes(3));
+  }
+
+  public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal,
+      int socketTimeout, int connectionTimeout, Optional<SSLEngineComponentFactory> sslFactory,
+      Optional<CachedDnsResolver> dnsResolver, Optional<HttpConnectionPoolStats> poolStats, boolean isIdleConnectionToServerCleanupEnabled,
+      long idleConnectionCleanupThresholdMins) {
     PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(ioThreadNum, maxConnPerRoute,
         maxConnTotal, socketTimeout, connectionTimeout, sslFactory, dnsResolver, poolStats);
     if (poolStats.isPresent()) {
       poolStats.get().addConnectionPoolManager(connectionManager);
     }
-    reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
+    if (isIdleConnectionToServerCleanupEnabled) {
+      LOGGER.info("Idle connection to server cleanup is enabled, and the idle threshold is " + idleConnectionCleanupThresholdMins + " mins");
+      reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, idleConnectionCleanupThresholdMins, TimeUnit.MINUTES);
+    } else {
+      LOGGER.info("Idle connection to server cleanup is disabled");
+    }
     return HttpAsyncClients.createMinimal(connectionManager);
   }
 
@@ -175,7 +190,8 @@ public class HttpClientUtils {
    * @return
    */
   public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, 10000, 10000, sslFactory, Optional.empty(), Optional.empty());
+    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, 10000, 10000,
+        sslFactory, Optional.empty(), Optional.empty(), true, TimeUnit.HOURS.toMinutes(3));
   }
 
   /**
