@@ -86,6 +86,8 @@ public class VeniceRouterConfig {
   private long leakedFutureCleanupThresholdMs;
   private String kafkaZkAddress;
   private String kafkaBootstrapServers;
+  private boolean idleConnectionToServerCleanupEnabled;
+  private long idleConnectionToServerCleanupThresholdMins;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -196,6 +198,9 @@ public class VeniceRouterConfig {
 
     leakedFutureCleanupPollIntervalMs = props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_POLL_INTERVAL_MS, TimeUnit.MINUTES.toMillis(1));
     leakedFutureCleanupThresholdMs = props.getLong(ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS, TimeUnit.MINUTES.toMillis(1));
+
+    idleConnectionToServerCleanupEnabled = props.getBoolean(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED, true);
+    idleConnectionToServerCleanupThresholdMins = props.getLong(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS, TimeUnit.HOURS.toMinutes(3));
   }
 
   public String getClusterName() {
@@ -456,6 +461,14 @@ public class VeniceRouterConfig {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public boolean isIdleConnectionToServerCleanupEnabled() {
+    return idleConnectionToServerCleanupEnabled;
+  }
+
+  public long getIdleConnectionToServerCleanupThresholdMins() {
+    return idleConnectionToServerCleanupThresholdMins;
   }
 
   /**
