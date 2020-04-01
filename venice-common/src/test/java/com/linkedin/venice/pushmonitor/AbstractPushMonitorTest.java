@@ -67,7 +67,7 @@ public abstract class AbstractPushMonitorTest {
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
     Assert.assertEquals(pushStatus.getKafkaTopic(), topic);
-    Assert.assertEquals(pushStatus.getNumberOfPartition(), numberOfPartition);
+    Assert.assertEquals(pushStatus.getNumberOfPartitions(), numberOfPartition);
     Assert.assertEquals(pushStatus.getReplicationFactor(), replicationFactor);
     verify(mockAccessor, atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
@@ -87,7 +87,7 @@ public abstract class AbstractPushMonitorTest {
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
     Assert.assertEquals(pushStatus.getKafkaTopic(), topic);
-    Assert.assertEquals(pushStatus.getNumberOfPartition(), numberOfPartition);
+    Assert.assertEquals(pushStatus.getNumberOfPartitions(), numberOfPartition);
     Assert.assertEquals(pushStatus.getReplicationFactor(), replicationFactor);
     verify(mockAccessor, atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);

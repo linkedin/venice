@@ -16,8 +16,6 @@ import java.util.List;
 
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
@@ -105,7 +103,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         case ERROR:
         case COMPLETED:
         case STARTED:
-          List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition());
+          List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartitions());
           pushStatus.setPartitionStatuses(partitionStatuses);
           break;
         default:
@@ -128,7 +126,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       throw new VeniceException(
           "Can not find offline push status in ZK from path:" + getOfflinePushStatusPath(kafkaTopic));
     }
-    offlinePushStatus.setPartitionStatuses(getPartitionStatuses(kafkaTopic, offlinePushStatus.getNumberOfPartition()));
+    offlinePushStatus.setPartitionStatuses(getPartitionStatuses(kafkaTopic, offlinePushStatus.getNumberOfPartitions()));
     return offlinePushStatus;
   }
 
@@ -146,14 +144,14 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
     HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     logger.info("Created offline push status ZNode. Start creating partition statuses.");
-    List<String> partitionPaths = new ArrayList<>(pushStatus.getNumberOfPartition());
-    List<PartitionStatus> partitionStatuses = new ArrayList<>(pushStatus.getNumberOfPartition());
-    for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartition(); partitionId++) {
+    List<String> partitionPaths = new ArrayList<>(pushStatus.getNumberOfPartitions());
+    List<PartitionStatus> partitionStatuses = new ArrayList<>(pushStatus.getNumberOfPartitions());
+    for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartitions(); partitionId++) {
       partitionPaths.add(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId));
       partitionStatuses.add(new PartitionStatus(partitionId));
     }
     HelixUtils.updateChildren(partitionStatusAccessor, partitionPaths, partitionStatuses);
-    logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes for topic : " + pushStatus.getKafkaTopic());
+    logger.info("Created " + pushStatus.getNumberOfPartitions() + " partition status Znodes for topic : " + pushStatus.getKafkaTopic());
   }
 
   @Override
@@ -214,7 +212,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   @Override
   public void subscribePartitionStatusChange(OfflinePushStatus pushStatus, PartitionStatusListener listener) {
     listenerManager.subscribe(pushStatus.getKafkaTopic(), listener);
-    for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartition(); partitionId++) {
+    for (int partitionId = 0; partitionId < pushStatus.getNumberOfPartitions(); partitionId++) {
       partitionStatusAccessor.subscribeDataChanges(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId),
           partitionStatusZkListener);
     }
@@ -222,7 +220,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   @Override
   public void unsubscribePartitionsStatusChange(OfflinePushStatus pushStatus, PartitionStatusListener listener) {
-    unsubscribePartitionsStatusChange(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartition(), listener);
+    unsubscribePartitionsStatusChange(pushStatus.getKafkaTopic(), pushStatus.getNumberOfPartitions(), listener);
   }
 
   @Override

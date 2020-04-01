@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
@@ -23,8 +24,9 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
  * Class stores all the statuses and history of one offline push.
  */
 public class OfflinePushStatus {
+  private static final Logger logger = Logger.getLogger(OfflinePushStatus.class);
   private final String kafkaTopic;
-  private final int numberOfPartition;
+  private final int numberOfPartitions;
   private final int replicationFactor;
   private final OfflinePushStrategy strategy;
 
@@ -40,17 +42,17 @@ public class OfflinePushStatus {
 
   private Map<String, String> pushProperties;
 
-  public OfflinePushStatus(String kafkaTopic, int numberOfPartition, int replicationFactor,
+  public OfflinePushStatus(String kafkaTopic, int numberOfPartitions, int replicationFactor,
       OfflinePushStrategy strategy) {
     this.kafkaTopic = kafkaTopic;
-    this.numberOfPartition = numberOfPartition;
+    this.numberOfPartitions = numberOfPartitions;
     this.replicationFactor = replicationFactor;
     this.strategy = strategy;
     this.pushProperties = new HashMap<>();
     statusHistory = new ArrayList<>();
     addHistoricStatus(currentStatus, incrementalPushVersion);
     partitionIdToStatus = new VeniceConcurrentHashMap<>();
-    for (int i = 0; i < numberOfPartition; i++) {
+    for (int i = 0; i < numberOfPartitions; i++) {
       ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(i, Collections.emptyList());
       partitionIdToStatus.put(i, partitionStatus);
     }
@@ -66,6 +68,11 @@ public class OfflinePushStatus {
       this.statusDetails = newStatusDetails;
       addHistoricStatus(newStatus, incrementalPushVersion);
     } else {
+      if (this.currentStatus.equals(newStatus)) {
+        // State change is redundant.  Just log the event, no need to throw a whole trace.
+        logger.warn(String.format("Redundant push state status received for state %s.  New state details: %s", newStatus,
+            newStatusDetails.orElse("not specified!!")));
+      }
       throw new VeniceException("Can not transit status from:" + currentStatus + " to " + newStatus);
     }
   }
@@ -123,7 +130,7 @@ public class OfflinePushStatus {
   }
 
   public void setPartitionStatus(PartitionStatus partitionStatus, boolean updateDetails) {
-    if (partitionStatus.getPartitionId() < 0 || partitionStatus.getPartitionId() >= numberOfPartition) {
+    if (partitionStatus.getPartitionId() < 0 || partitionStatus.getPartitionId() >= numberOfPartitions) {
       throw new IllegalArgumentException(
           "Received an invalid partition:" + partitionStatus.getPartitionId() + " for topic:" + kafkaTopic);
     }
@@ -154,7 +161,7 @@ public class OfflinePushStatus {
         .count();
 
     if (finishedPartitions > 0) {
-      setStatusDetails(finishedPartitions + "/" + numberOfPartition + " partitions completed.");
+      setStatusDetails(finishedPartitions + "/" + numberOfPartitions + " partitions completed.");
     }
   }
 
@@ -185,7 +192,7 @@ public class OfflinePushStatus {
     if (replicaHistoryList.stream()
         .filter(replicaHistory -> replicaHistory.stream()
             .anyMatch(statusSnapshot -> statusSnapshot.getStatus() == ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED))
-        .count() == (numberOfPartition * replicationFactor)) {
+        .count() == (numberOfPartitions * replicationFactor)) {
       return ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED;
     }
 
@@ -204,8 +211,8 @@ public class OfflinePushStatus {
     return kafkaTopic;
   }
 
-  public int getNumberOfPartition() {
-    return numberOfPartition;
+  public int getNumberOfPartitions() {
+    return numberOfPartitions;
   }
 
   public int getReplicationFactor() {
@@ -269,7 +276,7 @@ public class OfflinePushStatus {
   }
 
   public OfflinePushStatus clonePushStatus() {
-    OfflinePushStatus clonePushStatus = new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+    OfflinePushStatus clonePushStatus = new OfflinePushStatus(kafkaTopic, numberOfPartitions, replicationFactor, strategy);
     clonePushStatus.setCurrentStatus(currentStatus);
     clonePushStatus.setStatusDetails(statusDetails.orElse(null));
     // Status history is append-only. So here we don't need to deep copy each object in this list. Simply copy the list
@@ -362,7 +369,7 @@ public class OfflinePushStatus {
 
     OfflinePushStatus that = (OfflinePushStatus) o;
 
-    if (numberOfPartition != that.numberOfPartition) {
+    if (numberOfPartitions != that.numberOfPartitions) {
       return false;
     }
     if (replicationFactor != that.replicationFactor) {
@@ -395,7 +402,7 @@ public class OfflinePushStatus {
   @Override
   public int hashCode() {
     int result = kafkaTopic.hashCode();
-    result = 31 * result + numberOfPartition;
+    result = 31 * result + numberOfPartitions;
     result = 31 * result + replicationFactor;
     result = 31 * result + strategy.hashCode();
     result = 31 * result + currentStatus.hashCode();
@@ -411,7 +418,7 @@ public class OfflinePushStatus {
   public String toString() {
     return "OfflinePushStatus{" +
         "kafkaTopic='" + kafkaTopic + '\'' +
-        ", numberOfPartition=" + numberOfPartition +
+        ", numberOfPartition=" + numberOfPartitions +
         ", replicationFactor=" + replicationFactor +
         ", strategy=" + strategy +
         ", currentStatus=" + currentStatus +
