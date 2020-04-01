@@ -400,8 +400,11 @@ public class RouterServer extends AbstractVeniceService {
         healthMonitor);
 
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(
-        metadataRepository, onlineInstanceFinder,
-        new StaleVersionStats(metricsRepository, "stale_version"));
+        metadataRepository,
+        onlineInstanceFinder,
+        new StaleVersionStats(metricsRepository, "stale_version"),
+        storeConfigRepository,
+        config.getClusterToD2Map());
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
         routerStats, metadataRepository, config);
 

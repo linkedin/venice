@@ -3,14 +3,20 @@ package com.linkedin.venice.router.api;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.utils.Utils;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
@@ -20,15 +26,19 @@ public class VeniceVersionFinder {
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
+  private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
+  private final Map<String, String> clusterToD2Map;
   private ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
 
   private OnlineInstanceFinder onlineInstanceFinder;
 
   public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
-      StaleVersionStats stats) {
+      StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map) {
     this.metadataRepository = metadataRepository;
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.stats = stats;
+    this.storeConfigRepo = storeConfigRepo;
+    this.clusterToD2Map = clusterToD2Map;
   }
 
   public int getVersion(String store) throws VeniceException {
@@ -38,6 +48,14 @@ public class VeniceVersionFinder {
      */
     Store veniceStore = metadataRepository.getStore(store);
     if (null == veniceStore){
+      Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(store);
+      if (config.isPresent()) {
+        String newCluster = config.get().getCluster();
+        if (!Utils.isNullOrEmpty(newCluster)) {
+          String d2Service = clusterToD2Map.get(newCluster);
+          throw new VeniceStoreIsMigratedException(store, newCluster, d2Service);
+        }
+      }
       throw new VeniceNoStoreException(store);
     }
     if (!veniceStore.isEnableReads()) {

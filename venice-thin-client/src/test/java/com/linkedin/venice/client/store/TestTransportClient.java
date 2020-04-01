@@ -1,27 +1,29 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.common.callback.Callback;
+import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.r2.message.rest.RestException;
+import com.linkedin.r2.message.rest.RestRequest;
+import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.r2.message.rest.RestResponseBuilder;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
-
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.r2.message.rest.RestRequest;
-import com.linkedin.common.callback.Callback;
-import com.linkedin.r2.message.rest.RestResponse;
+import org.apache.http.HttpHeaders;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.mockito.ArgumentCaptor;
+import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
-import org.mockito.ArgumentCaptor;
-import org.testng.Assert;
-
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.Test;
-
 public class TestTransportClient {
   private static String SERVICE_NAME = "test-service";
-  private static String TEST_REQUEST = "test-request";
+  private static String UPDATED_SERVICE_NAME = "test-service-2";
+  private static String TEST_REQUEST = "storage/test-store";
 
   private static String D2_PREFIX = "d2://";
   private static String HTTP_PREFIX = "http://";
@@ -32,7 +34,7 @@ public class TestTransportClient {
   private HttpTransportClient httpTransportClient;
   private CloseableHttpAsyncClient mockHttpClient;
 
-  @BeforeClass
+  @BeforeMethod
   public void setUpTransportClient() {
     mockD2Client = mock(D2Client.class);
     d2TransportClient = new D2TransportClient(SERVICE_NAME, mockD2Client);
@@ -41,7 +43,7 @@ public class TestTransportClient {
     httpTransportClient = new HttpTransportClient(HTTP_PREFIX + SERVICE_NAME, mockHttpClient);
   }
 
-  @AfterClass
+  @AfterMethod
   public void cleanUp() {
     d2TransportClient.close();
     httpTransportClient.close();
@@ -64,5 +66,28 @@ public class TestTransportClient {
     verify(mockHttpClient).execute(httpRequestCaptor.capture(), any());
     Assert.assertEquals(HTTP_PREFIX + SERVICE_NAME + "/" + TEST_REQUEST,
         httpRequestCaptor.getValue().getURI().toString());
+  }
+
+  @Test
+  public void testD2TransportClientHandlesRedirect() {
+    RestResponse restResponse = new RestResponseBuilder()
+        .setStatus(HttpStatus.SC_MOVED_PERMANENTLY)
+        .setHeader(HttpHeaders.LOCATION, D2_PREFIX + UPDATED_SERVICE_NAME + "/" + TEST_REQUEST)
+        .build();
+    RestException restException = new RestException(restResponse);
+    doAnswer(invocation -> {
+      Callback<RestResponse> callback = invocation.getArgument(2);
+      callback.onError(restException);
+      return null;
+    }).when(mockD2Client).restRequest(any(), any(), any());
+
+    d2TransportClient.get(TEST_REQUEST);
+    ArgumentCaptor<RestRequest> d2RequestCaptor = ArgumentCaptor.forClass(RestRequest.class);
+
+    verify(mockD2Client, times(2)).restRequest(d2RequestCaptor.capture(), any(), any());
+    Assert.assertEquals(D2_PREFIX + SERVICE_NAME + "/" + TEST_REQUEST,
+        d2RequestCaptor.getAllValues().get(0).getURI().toString());
+    Assert.assertEquals(D2_PREFIX + UPDATED_SERVICE_NAME + "/" + TEST_REQUEST,
+        d2RequestCaptor.getAllValues().get(1).getURI().toString());
   }
 }

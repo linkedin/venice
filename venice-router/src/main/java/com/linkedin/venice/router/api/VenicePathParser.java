@@ -7,18 +7,19 @@ import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
-import com.linkedin.venice.router.stats.RouterStats;
-import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.api.path.VeniceComputePath;
-import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.Utils;
@@ -187,6 +188,10 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       stats.recordRequest(storeName);
       stats.recordRequestSize(storeName, path.getRequestSize());
     } catch (VeniceException e) {
+      if (e instanceof VeniceStoreIsMigratedException) {
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
+            MOVED_PERMANENTLY, e.getMessage());
+      }
       // log the store/version not exist error and add track it in the unhealthy request metric
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.empty(),
           BAD_REQUEST, e.getMessage());
