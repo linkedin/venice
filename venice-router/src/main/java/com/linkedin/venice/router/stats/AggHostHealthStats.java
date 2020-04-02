@@ -47,4 +47,9 @@ public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> 
     totalStats.recordLeakedPendingRequestCount();
     getHostStats(hostName).recordLeakedPendingRequestCount();
   }
+
+  public void recordPendingRequestUnhealthyDuration(String hostName, double duration) {
+    totalStats.recordUnhealthyPendingQueueDuration(duration);
+    getHostStats(hostName).recordUnhealthyPendingQueueDuration(duration);
+  }
 }

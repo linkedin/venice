@@ -1,10 +1,15 @@
 package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
+import io.tehuti.metrics.stats.OccurrenceRate;
+import io.tehuti.metrics.stats.SampledTotal;
 
 
 /**
@@ -17,6 +22,8 @@ public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor unhealthyHostHeartBeatFailure;
   private final Sensor pendingRequestCount;
   private final Sensor leakedPendingRequestCount;
+  private final Sensor unhealthyPendingQueueDuration;
+  private final Sensor unhealthyPendingRateSensor;
 
   public HostHealthStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -27,6 +34,8 @@ public class HostHealthStats extends AbstractVeniceStats {
     this.unhealthyHostHeartBeatFailure = registerSensor("unhealthy_host_heart_beat_failure", new Count());
     this.pendingRequestCount = registerSensor("pending_request_count", new Max());
     this.leakedPendingRequestCount = registerSensor("leaked_pending_request_count", new Count());
+    this.unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration", new Avg(), new Min(), new Max(), new SampledTotal());;
+    this.unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue", new OccurrenceRate());
   }
 
   public void recordUnhealthyHostOfflineInstance() {
@@ -51,5 +60,10 @@ public class HostHealthStats extends AbstractVeniceStats {
 
   public void recordLeakedPendingRequestCount() {
     leakedPendingRequestCount.record();
+  }
+
+  public void recordUnhealthyPendingQueueDuration(double duration) {
+    unhealthyPendingRateSensor.record();
+    unhealthyPendingQueueDuration.record(duration);
   }
 }

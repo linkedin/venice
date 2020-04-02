@@ -840,6 +840,12 @@ public class ConfigKeys {
   public static final String ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE = "router.unhealthy.pending.connection.threshold.per.host";
 
   /**
+   * This is the threshold for pending request queue depth per storage node after which router resumes sending requests once a storage node
+   * which was previously marked unhealthy due to high ROUTER_UNHEALTHY_PENDING_CONNECTION_THRESHOLD_PER_ROUTE
+   */
+  public static final String ROUTER_PENDING_CONNECTION_RESUME_THRESHOLD_PER_ROUTE = "router.pending.connection.resume.threshold.per.host";
+
+  /**
    * Enables HttpAsyncClient allocation per storage node.
    */
   public static final String ROUTER_PER_NODE_CLIENT_ENABLED = "router.per.node.client.enabled";

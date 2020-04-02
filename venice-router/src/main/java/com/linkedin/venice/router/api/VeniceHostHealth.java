@@ -5,6 +5,8 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
+import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentSkipListSet;
 import org.apache.log4j.Logger;
@@ -14,19 +16,23 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private static final Logger logger = Logger.getLogger(VeniceHostHealth.class);
   private final int maxPendingConnectionPerHost;
+  private final int routerPendingConnResumeThreshold;
   private final boolean statefulRouterHealthCheckEnabled;
   private Set<String> slowPartitionHosts = new ConcurrentSkipListSet<>();
   protected Set<String> unhealthyHosts = new ConcurrentSkipListSet<>();
+  private Map<String, Long> pendingRequestUnhealthyTimeMap = new VeniceConcurrentHashMap<>();
+
 
   private final LiveInstanceMonitor liveInstanceMonitor;
   private RouteHttpRequestStats routeHttpRequestStats;
   private final AggHostHealthStats aggHostHealthStats;
 
   public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats,
-      boolean statefulRouterHealthCheckEnabled, int maxPendingConnectionPerHost, AggHostHealthStats aggHostHealthStats) {
+      boolean statefulRouterHealthCheckEnabled, int maxPendingConnectionPerHost, int routerPendingConnResumeThreshold,  AggHostHealthStats aggHostHealthStats) {
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.statefulRouterHealthCheckEnabled = statefulRouterHealthCheckEnabled;
     this.maxPendingConnectionPerHost = maxPendingConnectionPerHost;
+    this.routerPendingConnResumeThreshold = routerPendingConnResumeThreshold;
     this.liveInstanceMonitor = liveInstanceMonitor;
     this.aggHostHealthStats = aggHostHealthStats;
   }
@@ -81,7 +87,8 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
       aggHostHealthStats.recordUnhealthyHostSlowPartition(nodeId);
       return false;
     }
-    if (checkPendingRequestCount(instance.getNodeId())) {
+    if (isPendingRequestQueueUnhealthy(instance.getNodeId())) {
+      pendingRequestUnhealthyTimeMap.computeIfAbsent(instance.getNodeId(), k -> System.currentTimeMillis());
       aggHostHealthStats.recordUnhealthyHostTooManyPendingRequest(nodeId);
       return false;
     }
@@ -92,10 +99,26 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     return true;
   }
 
-  private boolean checkPendingRequestCount(String nodeId) {
+  private boolean isPendingRequestQueueUnhealthy(String nodeId) {
     long pendingRequestCount = routeHttpRequestStats.getPendingRequestCount(nodeId);
     aggHostHealthStats.recordPendingRequestCount(nodeId, pendingRequestCount);
-    return statefulRouterHealthCheckEnabled && pendingRequestCount > maxPendingConnectionPerHost;
+    if (!statefulRouterHealthCheckEnabled) {
+      return false;
+    }
+    if (pendingRequestUnhealthyTimeMap.containsKey(nodeId)) {
+      if (pendingRequestCount > routerPendingConnResumeThreshold) {
+        return true;
+      } else {
+        Long unhealthyStartTime = pendingRequestUnhealthyTimeMap.remove(nodeId);
+        if (unhealthyStartTime != null) {
+          long duration = System.currentTimeMillis() - unhealthyStartTime;
+          routeHttpRequestStats.recordUnhealthyQueueDuration(nodeId, duration);
+          aggHostHealthStats.recordPendingRequestUnhealthyDuration(nodeId, duration);
+        }
+        return false;
+      }
+    }
+    return pendingRequestCount > maxPendingConnectionPerHost;
   }
 
   private static String hostPartitionString(Instance host, String partition){
