@@ -92,6 +92,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final RouterStats<AggRouterHttpRequestStats> perStoreStatsByType;
 
   private final AggHostHealthStats aggHostHealthStats;
+  private final long routerUnhealthyPendingConnThresholdPerRoute;
 
   private final RecordSerializer<MultiGetResponseRecordV1> multiGetResponseRecordSerializer =
       SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
@@ -109,6 +110,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       RouteHttpRequestStats routerStats,
       AggHostHealthStats aggHostHealthStats) {
     this.routerConfig = config;
+    this.routerUnhealthyPendingConnThresholdPerRoute = routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute();
     this.storeRepository = storeRepository;
     this.routerCache = routerCache;
     this.cacheHitRequestThrottleWeight = config.getCacheHitRequestThrottleWeight();
@@ -185,7 +187,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
 
     // sendRequest completes future either immediately in the calling thread context or on the executor
-    sendRequest(storageNode, path).whenComplete((response, throwable) -> {
+    sendRequest(storageNode, path, retryFuture).whenComplete((response, throwable) -> {
       try {
         int statusCode = response != null ? response.getStatusCode() : HttpStatus.SC_INTERNAL_SERVER_ERROR;
         if (!retryFuture.isCancelled() && RETRIABLE_ERROR_CODES.contains(statusCode)) {
@@ -211,9 +213,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     });
   }
 
-  protected CompletableFuture<PortableHttpResponse> sendRequest(
-      Instance storageNode,
-      VenicePath path) throws RouterException {
+  protected CompletableFuture<PortableHttpResponse> sendRequest(Instance storageNode, VenicePath path,
+      AsyncPromise<HttpResponseStatus> retryFuture) throws RouterException {
 
     String storeName = path.getStoreName();
     String snID = storageNode.getNodeId();
@@ -226,24 +227,30 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
           SERVICE_UNAVAILABLE,
           "Maximum number of pending request threshold reached! Please contact Venice team.");
     }
+    long startTime = System.nanoTime();
+    TimedCompletableFuture<PortableHttpResponse>
+        responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
 
     ReentrantLock lock = storageNodeLockMap.computeIfAbsent(snID, id ->  new ReentrantLock());
     lock.lock();
     try {
+      long pendingRequestCount = routerStats.getPendingRequestCount(storageNode.getNodeId());
       if (routerConfig.isStatefulRouterHealthCheckEnabled()
-          && routerStats.getPendingRequestCount(storageNode.getNodeId()) > routerConfig.getRouterUnhealthyPendingConnThresholdPerRoute()) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
-            Optional.of(requestType), SERVICE_UNAVAILABLE,
-            "Too many pending request to storage node : " + snID);
+          && pendingRequestCount > routerUnhealthyPendingConnThresholdPerRoute) {
+        // try to trigger error retry if its not cancelled already. if retry is cancelled throw exception which increases the unhealthy request metric.
+        if (!retryFuture.isCancelled()) {
+          retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
+          responseFuture.completeExceptionally(new VeniceException("Triggering error retry, too many pending request to storage node :" + snID));
+          return responseFuture;
+        } else {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
+              Optional.of(requestType), SERVICE_UNAVAILABLE, "Too many pending request to storage node : " + snID);
+        }
       }
       routerStats.recordPendingRequest(storageNode.getNodeId());
     } finally {
       lock.unlock();
     }
-
-    long startTime = System.nanoTime();
-    TimedCompletableFuture<PortableHttpResponse>
-        responseFuture = new TimedCompletableFuture<>(System.currentTimeMillis(), storageNode.getNodeId());
 
     long requestId = uniqueRequestId.getAndIncrement();
     responseFutureMap.put(requestId, responseFuture);
