@@ -181,7 +181,7 @@ public class RouterRequestThrottlingTest {
     doReturn(true).when(config).isGreedyMultiGetScatter();
 
     // multi-get/compute requests are throttled in VeniceDelegateMode
-    VeniceDelegateMode delegateMode = new VeniceDelegateMode(config);
+    VeniceDelegateMode delegateMode = new VeniceDelegateMode(config, mock(RouterStats.class));
     delegateMode.initReadRequestThrottler(throttler);
 
     VenicePath path = mock(VenicePath.class);

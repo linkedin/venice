@@ -367,7 +367,7 @@ public class RouterServer extends AbstractVeniceService {
 
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
         routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats);
-    scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config));
+    scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config), routerStats);
 
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, config, sslFactoryForRequests);
     heartbeat.startInner();

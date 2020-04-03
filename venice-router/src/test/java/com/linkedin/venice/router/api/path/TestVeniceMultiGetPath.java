@@ -18,6 +18,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -74,7 +75,7 @@ public class TestVeniceMultiGetPath {
     }
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
 
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1);
+    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1, 1);
   }
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*but received.*")
@@ -87,6 +88,27 @@ public class TestVeniceMultiGetPath {
     }
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.of(VeniceMultiGetPath.EXPECTED_PROTOCOL.getProtocolVersion() + 1));
 
-    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1);
+    new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1, 1);
+  }
+
+  @Test
+  public void testAllowedRouteRetry() throws RouterException {
+    String resourceName = TestUtils.getUniqueString("test_store") + "_v1";
+
+    String keyPrefix = "key_";
+    List<ByteBuffer> keys = new ArrayList<>();
+    for (int i = 0; i < 5; ++i) {
+      keys.add(ByteBuffer.wrap((keyPrefix + i).getBytes()));
+    }
+    BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
+
+    VenicePath path = new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, 1);
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
+    Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
+
+    request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
+    path = new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, -1);
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
+    Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
   }
 }

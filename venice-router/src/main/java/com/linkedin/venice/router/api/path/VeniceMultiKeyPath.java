@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -30,20 +31,23 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   protected int keyNum;
   protected final Map<RouterKey, K> routerKeyMap;
   protected final Map<Integer, RouterKey> keyIdxToRouterKey;
+  private final int longTailRetryMaxRouteForMultiKeyReq;
+  private final AtomicInteger currentAllowedRetryRouteCnt = new AtomicInteger(0);
 
-  public VeniceMultiKeyPath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
+  public VeniceMultiKeyPath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
+      int longTailRetryMaxRouteForMultiKeyReq) {
     // HashMap's performance is better than TreeMap
-    this.routerKeyMap = new HashMap<>();
-    this.keyIdxToRouterKey = new HashMap<>();
+    this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new HashMap<>(), new HashMap<>(),
+        longTailRetryMaxRouteForMultiKeyReq);
   }
 
   public VeniceMultiKeyPath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
-      Map<RouterKey, K> routerKeyMap, Map<Integer, RouterKey> keyIdxToRouterKey) {
+      Map<RouterKey, K> routerKeyMap, Map<Integer, RouterKey> keyIdxToRouterKey, int longTailRetryMaxRouteForMultiKeyReq) {
     super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
     this.keyNum = routerKeyMap.size();
     this.routerKeyMap = routerKeyMap;
     this.keyIdxToRouterKey = keyIdxToRouterKey;
+    this.longTailRetryMaxRouteForMultiKeyReq = longTailRetryMaxRouteForMultiKeyReq;
   }
 
   /**
@@ -203,6 +207,22 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   @Override
   public ByteBuf getRequestBody() {
     return Unpooled.wrappedBuffer(serializeRouterRequest());
+  }
+
+  public int getLongTailRetryMaxRouteForMultiKeyReq() {
+    return this.longTailRetryMaxRouteForMultiKeyReq;
+  }
+
+  @Override
+  public boolean isLongTailRetryAllowedForNewRoute() {
+    if (longTailRetryMaxRouteForMultiKeyReq == -1) {
+      // feature is disabled
+      return true;
+    }
+    if (longTailRetryMaxRouteForMultiKeyReq <= 0) {
+      return false;
+    }
+    return currentAllowedRetryRouteCnt.incrementAndGet() <= longTailRetryMaxRouteForMultiKeyReq;
   }
 
   /**

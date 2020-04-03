@@ -42,6 +42,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   // Response decompressor
   private Optional<VeniceResponseDecompressor> responseDecompressor = Optional.empty();
 
+
   public VenicePath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
     this(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, new SystemTime());
   }
@@ -250,6 +251,10 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   public void markStorageNodeAsFast(String fastStorageNode) {
     slowStorageNodeSet.remove(fastStorageNode);
+  }
+
+  public boolean isLongTailRetryAllowedForNewRoute() {
+    return true;
   }
 
   public abstract RequestType getRequestType();

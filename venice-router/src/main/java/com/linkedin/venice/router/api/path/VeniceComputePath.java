@@ -34,9 +34,10 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   private final int computeRequestVersion;
 
   public VeniceComputePath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
-      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs, boolean useFastAvro)
+      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs, boolean useFastAvro,
+      int longTailRetryMaxRouteForMultiKeyReq)
       throws RouterException {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, longTailRetryMaxRouteForMultiKeyReq);
 
     // Get API version
     computeRequestVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
@@ -76,8 +77,9 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
   private VeniceComputePath(String resourceName, Map<RouterKey, ComputeRouterRequestKeyV1> routerKeyMap,
       Map<Integer, RouterKey> keyIdxToRouterKey, ComputeRequestWrapper computeRequestWrapper, byte[] requestContent,
       int computeRequestLengthInBytes, int computeRequestVersion, boolean smartLongTailRetryEnabled,
-      int smartLongTailRetryAbortThresholdMs) {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey);
+      int smartLongTailRetryAbortThresholdMs, int longTailRetryMaxRouteForMultiKeyReq) {
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey,
+        longTailRetryMaxRouteForMultiKeyReq);
     this.computeRequestWrapper = computeRequestWrapper;
     this.requestContent = requestContent;
     this.computeRequestLengthInBytes = computeRequestLengthInBytes;
@@ -113,7 +115,7 @@ public class VeniceComputePath extends VeniceMultiKeyPath<ComputeRouterRequestKe
       Map<Integer, RouterKey> keyIdxToRouterKey) {
     VeniceComputePath subPath = new VeniceComputePath(getResourceName(), routerKeyMap, keyIdxToRouterKey,
         this.computeRequestWrapper, this.requestContent, this.computeRequestLengthInBytes, this.computeRequestVersion,
-        isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs());
+        isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs(), getLongTailRetryMaxRouteForMultiKeyReq());
     subPath.setupRetryRelatedInfo(this);
     return subPath;
   }

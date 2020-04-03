@@ -116,7 +116,7 @@ public class TestVeniceComputePath {
       BasicFullHttpRequest request = getComputeHttpRequest(resourceName, output.toByteArray(), version);
 
       VeniceComputePath computePath =
-          new VeniceComputePath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, false);
+          new VeniceComputePath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, false, 1);
       Assert.assertEquals(computePath.getComputeRequestLengthInBytes(), expectedLength);
 
       ComputeRequestWrapper requestInPath = computePath.getComputeRequest();

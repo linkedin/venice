@@ -296,4 +296,14 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordKeySizeInByte(keySize);
     getStoreStats(storeName).recordKeySizeInByte(keySize);
   }
+
+  public void recordAllowedRetryRequest(String storeName) {
+    totalStats.recordAllowedRetryRequest();
+    getStoreStats(storeName).recordAllowedRetryRequest();
+  }
+
+  public void recordDisallowedRetryRequest(String storeName) {
+    totalStats.recordDisallowedRetryRequest();
+    getStoreStats(storeName).recordDisallowedRetryRequest();
+  }
 }
