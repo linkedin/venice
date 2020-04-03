@@ -37,11 +37,20 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
+
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -54,11 +63,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
 
 
 public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
@@ -83,7 +87,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private StorageEngineMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private RecordSerializer<K> keySerializer;
-  private DaVinciVersionFinder versionFinder;
   private DaVinciPartitioner partitioner;
   private IngestionController ingestionController;
 
@@ -98,7 +101,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT_NAME));
   }
 
-  private D2TransportClient getD2TranspoortClient() {
+  private D2TransportClient getD2TransportClient() {
     TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
     if (!(transportClient instanceof D2TransportClient)) {
       throw new VeniceClientException("Da Vinci only supports D2 client.");
@@ -108,7 +111,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   private VeniceConfigLoader buildVeniceConfigLoader() {
     final D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse;
-    try (D2TransportClient d2TransportClient = getD2TranspoortClient()) {
+    try (D2TransportClient d2TransportClient = getD2TransportClient()) {
       D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
       d2ServiceDiscoveryResponse = d2ServiceDiscovery.discoverD2Service(d2TransportClient, getStoreName());
     }
@@ -165,33 +168,37 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       throw new VeniceClientException("Client is not started.");
     }
 
-    /**
-     * Here we don't know which partition this key belongs to in a version in advance, so we must make sure all partitions this
-     * client subscribes to are available for this latest version.
-     */
-    Version version = versionFinder
-        .getLatestVersion(subscribedPartitions)
-        .orElseThrow(() -> new VeniceClientException("Failed to find a ready store version."));
-    String topic = version.kafkaTopicName();
-    AbstractStorageEngine store = storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
-    if (store == null) {
-      throw new VeniceClientException("Failed to find a ready store version.");
+    // TODO: refactor IngestionController to use StoreBackend directly
+    try (ConcurrentRef<IngestionController.VersionBackend> versionRef =
+             ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
+      if (versionRef.get() == null) {
+        throw new VeniceClientException("Failed to find a ready store version.");
+      }
+
+      Version version = versionRef.get().getVersion();
+      String topic = version.kafkaTopicName();
+      byte[] keyBytes = keySerializer.serialize(key);
+      int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
+
+      // Make sure the partition id is within client's subscription.
+      if (!subscribedPartitions.contains(partitionId)) {
+        throw new VeniceClientException("DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
+      }
+
+      AbstractStorageEngine storageEngine = storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
+      if (storageEngine == null) {
+        throw new VeniceClientException("Failed to find a ready store version.");
+      }
+
+      ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, partitionId, keyBytes, version.isChunkingEnabled(), null);
+      if (valueRecord == null) {
+        return CompletableFuture.completedFuture(null);
+      }
+
+      ByteBuffer data = decompressRecord(version.getCompressionStrategy(), ByteBuffer.wrap(valueRecord.getDataInBytes()));
+      RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
+      return CompletableFuture.completedFuture(deserializer.deserialize(data));
     }
-    byte[] keyBytes = keySerializer.serialize(key);
-    int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
-    // Make sure the partition id is within client's subscription.
-    if (!subscribedPartitions.contains(partitionId)) {
-      throw new VeniceClientException("DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
-    }
-    boolean isChunked = kafkaStoreIngestionService.isStoreVersionChunked(topic);
-    CompressionStrategy compressionStrategy = kafkaStoreIngestionService.getStoreVersionCompressionStrategy(topic);
-    ValueRecord valueRecord = SingleGetChunkingAdapter.get(store, partitionId, keyBytes, isChunked, null);
-    if (valueRecord == null) {
-      return CompletableFuture.completedFuture(null);
-    }
-    ByteBuffer data = decompressRecord(compressionStrategy, ByteBuffer.wrap(valueRecord.getDataInBytes()));
-    RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
-    return CompletableFuture.completedFuture(deserializer.deserialize(data));
   }
 
   @Override
@@ -248,12 +255,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         metadataReposotory,
         storageService,
         kafkaStoreIngestionService);
-
-    versionFinder = new DaVinciVersionFinder(
-        getStoreName(),
-        metadataReposotory,
-        ingestionController,
-        storageService.getStorageEngineRepository());
 
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
