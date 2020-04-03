@@ -10,6 +10,9 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.Utils;
+
+import org.apache.log4j.Logger;
+
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.Map;
@@ -20,7 +23,6 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -53,7 +55,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   protected ConcurrentMap<Integer, P> partitionIdToPartitionMap;
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
-  public static final int METADATA_PARTITION_ID = 100_000_000;
+  public static final int METADATA_PARTITION_ID = 1000_000_000;
 
   public AbstractStorageEngine(String storeName) {
     this.storeName = storeName;
