@@ -60,7 +60,7 @@ public class TestVeniceDispatcher {
 
   @Test(dataProvider = "isNettyClientEnabled")
   public void testErrorRetry(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient);
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -77,12 +77,32 @@ public class TestVeniceDispatcher {
     } finally {
       dispatcher.stop();
     }
+  }
 
+  @Test(dataProvider = "isNettyClientEnabled")
+  public void testErrorRetryOnPendingCheckFail(boolean useNettyClient) {
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, true);
+    try {
+      AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
+      AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
+      List<HttpResponseStatus> successRetries = new ArrayList<>();
+      doAnswer((invocation -> {
+        successRetries.add(invocation.getArgument(0));
+        return null;
+      })).when(mockRetryFuture).setSuccess(any());
+
+      triggerResponse(dispatcher, HttpResponseStatus.OK, mockRetryFuture, mockResponseFuture, () -> {
+        Assert.assertEquals(successRetries.size(), 2);
+        Assert.assertEquals(successRetries.get(0), HttpResponseStatus.INTERNAL_SERVER_ERROR);
+      });
+    } finally {
+      dispatcher.stop();
+    }
   }
 
   @Test(dataProvider = "isNettyClientEnabled")
   public void passesThroughHttp429(boolean useNettyClient) {
-    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient);
+    VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false);
     try {
       AsyncPromise<List<FullHttpResponse>> mockResponseFuture = mock(AsyncPromise.class);
       AsyncPromise<HttpResponseStatus> mockRetryFuture = mock(AsyncPromise.class);
@@ -101,7 +121,7 @@ public class TestVeniceDispatcher {
     }
   }
 
-  private VeniceDispatcher getMockDispatcher(boolean useNettyClient){
+  private VeniceDispatcher getMockDispatcher(boolean useNettyClient, boolean forcePendingCheck){
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(2).when(routerConfig).getHttpClientPoolSize();
     doReturn(10).when(routerConfig).getMaxOutgoingConn();
@@ -109,6 +129,7 @@ public class TestVeniceDispatcher {
     doReturn(10).when(routerConfig).getNettyClientChannelPoolMaxPendingAcquires();
     doReturn(10l).when(routerConfig).getMaxPendingRequest();
     doReturn(false).when(routerConfig).isSslToStorageNodes();
+
     doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupPollIntervalMs();
     doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupThresholdMs();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
@@ -116,6 +137,11 @@ public class TestVeniceDispatcher {
     RouterStats mockRouterStats = mock(RouterStats.class);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     when(mockRouterStats.getStatsByType(any())).thenReturn(mock(AggRouterHttpRequestStats.class));
+    if (forcePendingCheck) {
+      doReturn(true).when(routerConfig).isStatefulRouterHealthCheckEnabled();
+      doReturn(5).when(routerConfig).getRouterUnhealthyPendingConnThresholdPerRoute();
+      doReturn(10l).when(routeHttpRequestStats).getPendingRequestCount(anyString());
+    }
     VeniceHostHealth mockHostHealth = mock(VeniceHostHealth.class);
     LiveInstanceMonitor mockLiveInstanceMonitor = mock(LiveInstanceMonitor.class);
     StorageNodeClient storageNodeClient;
