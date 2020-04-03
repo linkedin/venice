@@ -32,15 +32,17 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   protected static final ReadAvroProtocolDefinition EXPECTED_PROTOCOL = ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1;
 
   public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
-      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) throws RouterException {
-    this(resourceName, request, partitionFinder, maxKeyCount, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, Optional.empty());
+      int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
+      int longTailRetryMaxRouteForMultiKeyReq) throws RouterException {
+    this(resourceName, request, partitionFinder, maxKeyCount, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs,
+        Optional.empty(), longTailRetryMaxRouteForMultiKeyReq);
   }
 
-      public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
+  public VeniceMultiGetPath(String resourceName, BasicFullHttpRequest request, VenicePartitionFinder partitionFinder,
       int maxKeyCount, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
-      Optional<RouterStats<AggRouterHttpRequestStats>> stats)
+      Optional<RouterStats<AggRouterHttpRequestStats>> stats, int longTailRetryMaxRouteForMultiKeyReq)
       throws RouterException {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs);
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, longTailRetryMaxRouteForMultiKeyReq);
 
     // Validate API version
     int apiVersion = Integer.parseInt(request.headers().get(HttpConstants.VENICE_API_VERSION));
@@ -59,8 +61,10 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
 
 
   private VeniceMultiGetPath(String resourceName, Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
-      Map<Integer, RouterKey> keyIdxToRouterKey, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs) {
-    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey);
+      Map<Integer, RouterKey> keyIdxToRouterKey, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
+      int longTailRetryMaxRouteForMultiKeyReq) {
+    super(resourceName, smartLongTailRetryEnabled, smartLongTailRetryAbortThresholdMs, routerKeyMap, keyIdxToRouterKey,
+        longTailRetryMaxRouteForMultiKeyReq);
     setPartitionKeys(routerKeyMap.keySet());
   }
 
@@ -114,7 +118,7 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
   protected VeniceMultiGetPath fixRetryRequestForSubPath(Map<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap,
       Map<Integer, RouterKey> keyIdxToRouterKey) {
     VeniceMultiGetPath subPath = new VeniceMultiGetPath(getResourceName(), routerKeyMap, keyIdxToRouterKey,
-        isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs());
+        isSmartLongTailRetryEnabled(), getSmartLongTailRetryAbortThresholdMs(), getLongTailRetryMaxRouteForMultiKeyReq());
     subPath.setupRetryRelatedInfo(this);
     return subPath;
   }

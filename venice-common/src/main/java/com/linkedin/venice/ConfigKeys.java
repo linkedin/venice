@@ -374,6 +374,17 @@ public class ConfigKeys {
   public static final String ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS = "router.smart.long.tail.retry.abort.threshold.ms";
 
   /**
+   * This config is used to limit the maximum retries in route unit.
+   * In large batch-get/compute cluster, when enabling long-tail retry, in the worst scenarios, Router could trigger a
+   * retry storm since each route could retry independently.
+   * This config is used to specify the maximum retry in route unit.
+   * If the configured value is 1, it means the current request will at most one route.
+   * This could mitigate the latency issue in most of the case since the chance to have multiple slow storage nodes is low,
+   * also even with unlimited retries, it won't help since multiple replicas for the same partition are in a degraded state.
+   */
+  public static final String ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ = "router.long.tail.retry.max.route.for.multi.keys.req";
+
+  /**
    * The max key count allowed in one multi-get request.
    * For now, it is configured in host level, and we could consider to configure it in store level.
    */

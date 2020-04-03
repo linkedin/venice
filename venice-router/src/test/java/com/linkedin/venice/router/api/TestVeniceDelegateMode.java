@@ -210,7 +210,8 @@ public class TestVeniceDelegateMode {
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         new VeniceDelegateModeConfig()
         .withStickyRoutingEnabledForMultiGet(false)
-        .withStickyRoutingEnabledForSingleGet(false)
+        .withStickyRoutingEnabledForSingleGet(false),
+        mock(RouterStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 
@@ -232,7 +233,8 @@ public class TestVeniceDelegateMode {
     scatterMode = new VeniceDelegateMode(
         new VeniceDelegateModeConfig()
         .withStickyRoutingEnabledForSingleGet(true)
-        .withStickyRoutingEnabledForMultiGet(true)
+        .withStickyRoutingEnabledForMultiGet(true),
+        mock(RouterStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
     scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
@@ -270,7 +272,8 @@ public class TestVeniceDelegateMode {
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         new VeniceDelegateModeConfig()
         .withStickyRoutingEnabledForSingleGet(false)
-        .withStickyRoutingEnabledForMultiGet(false)
+        .withStickyRoutingEnabledForMultiGet(false),
+        mock(RouterStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 
@@ -364,7 +367,8 @@ public class TestVeniceDelegateMode {
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         new VeniceDelegateModeConfig()
         .withStickyRoutingEnabledForSingleGet(false)
-        .withStickyRoutingEnabledForMultiGet(false)
+        .withStickyRoutingEnabledForMultiGet(false),
+        mock(RouterStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 
@@ -395,7 +399,8 @@ public class TestVeniceDelegateMode {
     scatterMode = new VeniceDelegateMode(
         new VeniceDelegateModeConfig()
         .withStickyRoutingEnabledForSingleGet(true)
-        .withStickyRoutingEnabledForMultiGet(true)
+        .withStickyRoutingEnabledForMultiGet(true),
+        mock(RouterStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
     finalScatter =
@@ -512,7 +517,8 @@ public class TestVeniceDelegateMode {
     VeniceDelegateMode scatterMode = new VeniceDelegateMode(
         new VeniceDelegateModeConfig()
             .withStickyRoutingEnabledForSingleGet(false)
-            .withStickyRoutingEnabledForMultiGet(true)
+            .withStickyRoutingEnabledForMultiGet(true),
+        mock(RouterStats.class)
     );
     scatterMode.initReadRequestThrottler(throttler);
 

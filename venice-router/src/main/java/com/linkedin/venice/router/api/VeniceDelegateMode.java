@@ -13,6 +13,8 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.Arrays;
@@ -66,12 +68,14 @@ public class VeniceDelegateMode extends ScatterGatherMode {
   private final boolean stickyRoutingEnabledForSingleGet;
   private final boolean stickyRoutingEnabledForMultiGet;
   private final boolean greedyMultiget;
+  private final RouterStats<AggRouterHttpRequestStats> routerStats;
 
-  public VeniceDelegateMode(VeniceDelegateModeConfig config) {
+  public VeniceDelegateMode(VeniceDelegateModeConfig config, RouterStats<AggRouterHttpRequestStats> routerStats) {
     super("VENICE_DELEGATE_MODE", false);
     this.stickyRoutingEnabledForSingleGet = config.isStickyRoutingEnabledForSingleGet();
     this.stickyRoutingEnabledForMultiGet = config.isStickyRoutingEnabledForMultiGet();
     this.greedyMultiget = config.isGreedyMultiGetScatter();
+    this.routerStats = routerStats;
   }
 
   public void initReadRequestThrottler(RouterThrottler requestThrottler) {
@@ -105,6 +109,16 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
           SERVICE_UNAVAILABLE, "The retry request aborted because of delay constraint of smart long-tail retry",
           RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT);
+    }
+    if (venicePath.isRetryRequest()) {
+      // Check whether the retry request is allowed or not according to the max allowed retry route config
+      if (!venicePath.isLongTailRetryAllowedForNewRoute()) {
+        routerStats.getStatsByType(venicePath.getRequestType()).recordDisallowedRetryRequest(storeName);
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+            SERVICE_UNAVAILABLE, "The retry request aborted because there are too many retries for current request");
+      } else {
+        routerStats.getStatsByType(venicePath.getRequestType()).recordAllowedRetryRequest(storeName);
+      }
     }
     ScatterGatherMode scatterMode = null;
     switch (venicePath.getRequestType()) {

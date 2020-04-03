@@ -67,6 +67,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private Sensor keySizeSensor;
   private final AtomicInteger currentInFlightRequest;
   private final Sensor unavailableReplicaStreamingRequestSensor;
+  private final Sensor allowedRetryRequestSensor;
+  private final Sensor disallowedRetryRequestSensor;
 
 
   //QPS metrics
@@ -188,8 +190,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
           TehutiUtils.getPercentileStat(getName(), getFullMetricName(responseSizeSensorName)));
     }
 
-
     currentInFlightRequest = new AtomicInteger();
+
+    allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
+    disallowedRetryRequestSensor = registerSensor("disallowed_retry_request_count", new OccurrenceRate());
   }
 
   /**
@@ -394,5 +398,13 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
      * there is no need to record into the sensor again. We just want to maintain the bookkeeping.
      */
     currentInFlightRequest.decrementAndGet();
+  }
+
+  public void recordAllowedRetryRequest() {
+    allowedRetryRequestSensor.record();
+  }
+
+  public void recordDisallowedRetryRequest() {
+    disallowedRetryRequestSensor.record();
   }
 }

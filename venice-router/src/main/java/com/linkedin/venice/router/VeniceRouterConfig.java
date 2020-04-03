@@ -34,6 +34,7 @@ public class VeniceRouterConfig {
   private TreeMap<Integer, Integer> longTailRetryForBatchGetThresholdMs;
   private boolean smartLongTailRetryEnabled;
   private int smartLongTailRetryAbortThresholdMs;
+  private int longTailRetryMaxRouteForMultiKeyReq;
   private int maxKeyCountInMultiGetReq;
   private int connectionLimit;
   private int httpClientPoolSize;
@@ -119,6 +120,8 @@ public class VeniceRouterConfig {
     // disable smart long tail retry by default
     smartLongTailRetryEnabled = props.getBoolean(ROUTER_SMART_LONG_TAIL_RETRY_ENABLED, false);
     smartLongTailRetryAbortThresholdMs = props.getInt(ROUTER_SMART_LONG_TAIL_RETRY_ABORT_THRESHOLD_MS, 100);
+    // Default: -1 means this feature is not enabled.
+    longTailRetryMaxRouteForMultiKeyReq = props.getInt(ROUTER_LONG_TAIL_RETRY_MAX_ROUTE_FOR_MULTI_KEYS_REQ, -1);
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
     httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
@@ -373,6 +376,10 @@ public class VeniceRouterConfig {
 
   public int getSmartLongTailRetryAbortThresholdMs() {
     return smartLongTailRetryAbortThresholdMs;
+  }
+
+  public int getLongTailRetryMaxRouteForMultiKeyReq() {
+    return longTailRetryMaxRouteForMultiKeyReq;
   }
 
   public StorageNodeClientType getStorageNodeClientType() {

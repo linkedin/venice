@@ -70,9 +70,6 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-
-
 /***
  * {@link StorageExecutionHandler} will take the incoming {@link RouterRequest}, and delegate the lookup request to
  * a thread pool {@link #executor}, which is being shared by all the requests.

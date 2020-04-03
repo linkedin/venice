@@ -1,8 +1,10 @@
-package com.linkedin.venice.stats;
+package com.linkedin.venice.controller.stats;
 
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 
+import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.Gauge;
 import io.tehuti.metrics.MetricsRepository;
 
 import org.apache.log4j.Logger;

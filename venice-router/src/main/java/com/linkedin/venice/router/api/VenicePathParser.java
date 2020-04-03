@@ -119,12 +119,13 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
         if (resourceType.equals(TYPE_STORAGE)) {
           // multi-get request
           path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
-              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(), statsOptional);
+              routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(),
+              statsOptional, routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         } else if (resourceType.equals(TYPE_COMPUTE)) {
           // read compute request
           path = new VeniceComputePath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName),
               routerConfig.isSmartLongTailRetryEnabled(), routerConfig.getSmartLongTailRetryAbortThresholdMs(),
-              routerConfig.isComputeFastAvroEnabled());
+              routerConfig.isComputeFastAvroEnabled(), routerConfig.getLongTailRetryMaxRouteForMultiKeyReq());
         }
       } else {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
