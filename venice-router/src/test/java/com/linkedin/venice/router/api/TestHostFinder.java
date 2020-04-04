@@ -226,7 +226,7 @@ public class TestHostFinder {
    */
   private class VeniceHostHealthTest extends VeniceHostHealth {
     public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats) {
-      super(liveInstanceMonitor, routeHttpRequestStats, false, 10, mock(AggHostHealthStats.class));
+      super(liveInstanceMonitor, routeHttpRequestStats, false, 10, 5, mock(AggHostHealthStats.class));
     }
 
     /**

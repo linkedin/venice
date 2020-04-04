@@ -26,7 +26,7 @@ public class TestVeniceHostHealth {
     String fakePartition = "fake_partition";
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
     VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats,
-        false, 5, mockAggHostHealthStats);
+        false, 5, 2, mockAggHostHealthStats);
     Assert.assertFalse(hostHealth.isHostHealthy(deadInstance, fakePartition), "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
     verify(mockAggHostHealthStats, times(1)).recordUnhealthyHostOfflineInstance(deadInstance.getNodeId());
@@ -50,7 +50,7 @@ public class TestVeniceHostHealth {
 
     String fakePartition = "fake_partition";
     VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats,
-        true, 4, mockAggHostHealthStats);
+        true, 4, 2, mockAggHostHealthStats);
     Assert.assertFalse(hostHealth.isHostHealthy(deadInstance, fakePartition), "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
     Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when it has lots of pending connection.");
