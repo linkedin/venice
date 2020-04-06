@@ -8,6 +8,9 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
+import java.util.AbstractList;
+import java.util.Objects;
+import java.util.RandomAccess;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -660,5 +663,25 @@ public class Utils {
     debugInfo.put("user", getCurrentUser());
 
     return debugInfo;
+  }
+
+  public static List<Float> asUnmodifiableList(float[] array)
+  {
+    Objects.requireNonNull(array);
+    class ResultList extends AbstractList<Float> implements RandomAccess
+    {
+      @Override
+      public Float get(int index)
+      {
+        return array[index];
+      }
+
+      @Override
+      public int size()
+      {
+        return array.length;
+      }
+    };
+    return new ResultList();
   }
 }
