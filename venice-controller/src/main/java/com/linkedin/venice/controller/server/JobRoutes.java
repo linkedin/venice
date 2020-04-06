@@ -115,12 +115,7 @@ public class JobRoutes extends AbstractRoute {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(responseObject);
-        }
+        // No ACL check for uploading push status
         AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
@@ -151,12 +146,7 @@ public class JobRoutes extends AbstractRoute {
       ControllerResponse controllerResponse = new ControllerResponse();
       response.type(HttpConstants.JSON);
       try {
-        // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
-          response.status(HttpStatus.SC_FORBIDDEN);
-          controllerResponse.setError("ACL failed for request " + request.url());
-          return AdminSparkServer.mapper.writeValueAsString(controllerResponse);
-        }
+        // No ACL check for uploading push status
         AdminSparkServer.validateParams(request, SEND_PUSH_JOB_DETAILS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);

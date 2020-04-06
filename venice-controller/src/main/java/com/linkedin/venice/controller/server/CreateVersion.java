@@ -15,6 +15,8 @@ import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.http.HttpStatus;
@@ -32,8 +34,11 @@ import static com.linkedin.venice.meta.Version.PushType;
 public class CreateVersion extends AbstractRoute {
   private static final Logger logger = Logger.getLogger(CreateVersion.class);
 
-  public CreateVersion(Optional<DynamicAccessController> accessController) {
+  private final boolean checkReadMethodForKafka;
+
+  public CreateVersion(Optional<DynamicAccessController> accessController, boolean checkReadMethodForKafka) {
     super(accessController);
+    this.checkReadMethodForKafka = checkReadMethodForKafka;
   }
 
   /**
@@ -50,9 +55,22 @@ public class CreateVersion extends AbstractRoute {
       response.type(HttpConstants.JSON);
       try {
         // Also allow whitelist users to run this command
-        if (!isWhitelistUsers(request) && !hasWriteAccessToTopic(request)) {
+        if (!isWhitelistUsers(request)
+            && (!hasWriteAccessToTopic(request) || (this.checkReadMethodForKafka && !hasReadAccessToTopic(request))))
+        {
           response.status(HttpStatus.SC_FORBIDDEN);
-          responseObject.setError("Write ACL is not set up properly; please refer to Venice ACL wiki to define and deploy ACL in the right fabrics.");
+          String userId = getPrincipalId(request);
+          String storeName = request.queryParams(NAME);
+          List<String> missingMethods = new ArrayList<String>(2);
+          if (!hasWriteAccessToTopic(request)) {
+            missingMethods.add("Write");
+          }
+          if (this.checkReadMethodForKafka && !hasReadAccessToTopic(request)) {
+            missingMethods.add("Read");
+          }
+          String errorMsg = "Missing " + missingMethods + " access permissions to Venice internal Kafka topics. ";
+          errorMsg += "Push terminated, user \"" + userId + "\" does not have proper Write ACL for store: " + storeName + "; please refer to Venice ACL wiki and setup store ACLs.";
+          responseObject.setError(errorMsg);
           return AdminSparkServer.mapper.writeValueAsString(responseObject);
         }
         AdminSparkServer.validateParams(request, REQUEST_TOPIC.getParams(), admin);

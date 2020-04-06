@@ -16,6 +16,8 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 public class AbstractRoute {
   private static final Logger logger = Logger.getLogger(AbstractRoute.class);
 
+  private static final String USER_UNKNOWN = "USER_UNKNOWN";
+
   // A singleton of acl check function against store resource
   private static final ResourceAclCheck getAccessToStore = (cert, resourceName, aclClient) -> {
     return aclClient.hasAccess(cert, resourceName, "GET");
@@ -23,6 +25,10 @@ public class AbstractRoute {
   // A singleton of acl check function against topic resource
   private static final ResourceAclCheck writeAccessToTopic = (cert, resourceName, aclClient) -> {
     return aclClient.hasAccessToTopic(cert, resourceName, "Write");
+  };
+
+  private static final ResourceAclCheck readAccessToTopic = (cert, resourceName, aclClient) -> {
+    return aclClient.hasAccessToTopic(cert, resourceName, "Read");
   };
 
   private final Optional<DynamicAccessController> accessController;
@@ -77,6 +83,30 @@ public class AbstractRoute {
    */
   protected boolean hasWriteAccessToTopic(Request request) {
     return hasAccess(request, writeAccessToTopic);
+  }
+
+  /**
+   * Check whether the user has "Read" method access to the related version topics.
+   */
+  protected boolean hasReadAccessToTopic(Request request) {
+    return hasAccess(request, readAccessToTopic);
+  }
+
+  /**
+   * Get principal Id from request.
+   */
+  protected String getPrincipalId(Request request) {
+    if (!isAclEnabled()) {
+      logger.warn("ACL is not enabled. No certificate could be extracted from request.");
+      return USER_UNKNOWN;
+    }
+    try {
+      X509Certificate certificate = getCertificate(request);
+      return accessController.get().getPrincipalId(certificate);
+    } catch (Exception e) {
+      logger.error("Error when retrieving principal Id from request", e);
+      return USER_UNKNOWN;
+    }
   }
 
   /**
