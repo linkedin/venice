@@ -39,4 +39,11 @@ public interface AccessController {
    * @return true if the client is admin
    */
   boolean isWhitelistUsers(X509Certificate clientCert, String resource, String method);
+
+  /**
+   * Get principal Id from client certificate.
+   * @param clientCert the X509Certificate submitted by client
+   * @return principal Id. (headless account name, service name, LDAP id or group id)
+   */
+  String getPrincipalId(X509Certificate clientCert);
 }

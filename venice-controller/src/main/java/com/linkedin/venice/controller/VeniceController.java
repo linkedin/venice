@@ -73,6 +73,7 @@ public class VeniceController {
         metricsRepository,
         multiClusterConfigs.getClusters(),
         Optional.empty(),
+        false,
         Optional.empty());
     if (sslEnabled) {
       /**
@@ -83,6 +84,7 @@ public class VeniceController {
           controllerService.getVeniceHelixAdmin(),
           metricsRepository, multiClusterConfigs.getClusters(),
           multiClusterConfigs.getSslConfig(),
+          multiClusterConfigs.adminCheckReadMethodForKafka(),
           accessController);
     }
     if (multiClusterConfigs.isParent()) {

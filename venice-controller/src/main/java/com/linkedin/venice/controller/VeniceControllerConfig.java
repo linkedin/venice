@@ -62,12 +62,17 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean earlyDeleteBackUpEnabled;
   private final boolean sendConcurrentTopicDeleteRequestsEnabled;
   private final boolean enableBatchPushFromAdminInChildController;
+  private final boolean adminCheckReadMethodForKafka;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
     this.adminSecurePort = props.getInt(ADMIN_SECURE_PORT);
+    /**
+     * Override the config to false if the "Read" method check is not working as expected.
+     */
+    this.adminCheckReadMethodForKafka = props.getBoolean(ADMIN_CHECK_READ_METHOD_FOR_KAFKA, true);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddress = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
@@ -144,6 +149,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getAdminSecurePort() {
     return adminSecurePort;
+  }
+
+  public boolean adminCheckReadMethodForKafka() {
+    return adminCheckReadMethodForKafka;
   }
 
   public int getControllerClusterReplica() {

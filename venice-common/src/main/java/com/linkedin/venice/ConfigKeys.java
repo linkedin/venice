@@ -24,6 +24,15 @@ public class ConfigKeys {
   public static final String ADMIN_PORT="admin.port";
   public static final String ADMIN_SECURE_PORT="admin.secure.port";
 
+  /**
+   * Whether controller should check "Read" method against Kafka wildcard ACL while users request
+   * for a topic to write.
+   *
+   * By default, the config value should be true, but setting it to false would allow us to release
+   * new version of controller when the "Read" method check is not working as expected.
+   */
+  public static final String ADMIN_CHECK_READ_METHOD_FOR_KAFKA = "admin.check.read.method.for.kafka";
+
   public static final String STATUS_MESSAGE_RETRY_COUNT = "status.message.retry.count";
   public static final String STATUS_MESSAGE_RETRY_DURATION_MS = "status.message.retry.duration.ms";
 

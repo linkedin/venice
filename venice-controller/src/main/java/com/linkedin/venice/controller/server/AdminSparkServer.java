@@ -39,6 +39,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final int port;
   private final Admin admin;
   private final boolean sslEnabled;
+  private final boolean checkReadMethodForKafka;
   private final Optional<SSLConfig> sslConfig;
   private final Optional<DynamicAccessController> accessController;
 
@@ -54,10 +55,11 @@ public class AdminSparkServer extends AbstractVeniceService {
 
 
   public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters,
-      Optional<SSLConfig> sslConfig, Optional<DynamicAccessController> accessController) {
+      Optional<SSLConfig> sslConfig, boolean checkReadMethodForKafka, Optional<DynamicAccessController> accessController) {
     this.port = port;
     this.sslEnabled = sslConfig.isPresent();
     this.sslConfig = sslConfig;
+    this.checkReadMethodForKafka = checkReadMethodForKafka;
     this.accessController = accessController;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
@@ -122,7 +124,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     StoresRoutes storesRoutes = new StoresRoutes(accessController);
     JobRoutes jobRoutes = new JobRoutes(accessController);
     SkipAdminRoute skipAdminRoute = new SkipAdminRoute(accessController);
-    CreateVersion createVersion = new CreateVersion(accessController);
+    CreateVersion createVersion = new CreateVersion(accessController, this.checkReadMethodForKafka);
     CreateStore createStoreRoute = new CreateStore(accessController);
     NodesAndReplicas nodesAndReplicas = new NodesAndReplicas(accessController);
     SchemaRoutes schemaRoutes = new SchemaRoutes(accessController);

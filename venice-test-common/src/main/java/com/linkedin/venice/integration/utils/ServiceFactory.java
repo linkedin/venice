@@ -199,7 +199,7 @@ public class ServiceFactory {
     return getService("MockAdminSparkServer", (serviceName, port) -> {
       Set<String> clusters = new HashSet<String>();
       clusters.add(cluster);
-      AdminSparkServer server = new AdminSparkServer(port, admin, new MetricsRepository(), clusters, Optional.empty(), Optional.empty());
+      AdminSparkServer server = new AdminSparkServer(port, admin, new MetricsRepository(), clusters, Optional.empty(), false, Optional.empty());
       server.start();
       return server;
     });
