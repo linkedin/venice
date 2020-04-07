@@ -55,7 +55,7 @@ public class TestRouterHeartbeat {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
@@ -87,7 +87,7 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
 
     VeniceRouterConfig config = mockVeniceRouterConfig();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
@@ -117,7 +117,7 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 

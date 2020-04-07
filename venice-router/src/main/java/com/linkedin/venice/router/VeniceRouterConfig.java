@@ -90,6 +90,7 @@ public class VeniceRouterConfig {
   private String kafkaBootstrapServers;
   private boolean idleConnectionToServerCleanupEnabled;
   private long idleConnectionToServerCleanupThresholdMins;
+  private long fullPendingQueueServerOORMs;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -207,6 +208,8 @@ public class VeniceRouterConfig {
 
     idleConnectionToServerCleanupEnabled = props.getBoolean(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_ENABLED, true);
     idleConnectionToServerCleanupThresholdMins = props.getLong(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS, TimeUnit.HOURS.toMinutes(3));
+
+    fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0)); // No OOR
   }
 
   public String getClusterName() {
@@ -483,6 +486,10 @@ public class VeniceRouterConfig {
 
   public long getIdleConnectionToServerCleanupThresholdMins() {
     return idleConnectionToServerCleanupThresholdMins;
+  }
+
+  public long getFullPendingQueueServerOORMs() {
+    return fullPendingQueueServerOORMs;
   }
 
   /**

@@ -323,7 +323,7 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, routeHttpRequestStats,
         config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute(),
-        config.getRouterPendingConnResumeThresholdPerRoute(), aggHostHealthStats);
+        config.getRouterPendingConnResumeThresholdPerRoute(), config.getFullPendingQueueServerOORMs(), aggHostHealthStats);
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +
