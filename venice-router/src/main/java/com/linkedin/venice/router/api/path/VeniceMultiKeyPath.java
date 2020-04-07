@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api.path;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoHelixResourceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
@@ -32,7 +33,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
   protected final Map<RouterKey, K> routerKeyMap;
   protected final Map<Integer, RouterKey> keyIdxToRouterKey;
   private final int longTailRetryMaxRouteForMultiKeyReq;
-  private final AtomicInteger currentAllowedRetryRouteCnt = new AtomicInteger(0);
+  private AtomicInteger currentAllowedRetryRouteCnt = new AtomicInteger(0);
 
   public VeniceMultiKeyPath(String resourceName, boolean smartLongTailRetryEnabled, int smartLongTailRetryAbortThresholdMs,
       int longTailRetryMaxRouteForMultiKeyReq) {
@@ -223,6 +224,18 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       return false;
     }
     return currentAllowedRetryRouteCnt.incrementAndGet() <= longTailRetryMaxRouteForMultiKeyReq;
+  }
+
+  @Override
+  protected void setupRetryRelatedInfo(VenicePath originalPath) {
+    super.setupRetryRelatedInfo(originalPath);
+    if (! (originalPath instanceof VeniceMultiKeyPath)) {
+      throw new VeniceException("Expected `VeniceMultiKeyPath` type here, but found: " + originalPath.getClass());
+    }
+    /**
+     * We need to share the {@link #currentAllowedRetryRouteCnt} across all the sub paths.
+     */
+    this.currentAllowedRetryRouteCnt = ((VeniceMultiKeyPath) originalPath).currentAllowedRetryRouteCnt;
   }
 
   /**

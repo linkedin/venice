@@ -78,7 +78,6 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   @Override
   public boolean isHostHealthy(Instance instance, String partitionName) {
     String nodeId = instance.getNodeId();
-
     if (!liveInstanceMonitor.isInstanceAlive(instance)) {
       aggHostHealthStats.recordUnhealthyHostOfflineInstance(nodeId);
       return false;
@@ -90,6 +89,8 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     if (isPendingRequestQueueUnhealthy(instance.getNodeId())) {
       pendingRequestUnhealthyTimeMap.computeIfAbsent(instance.getNodeId(), k -> System.currentTimeMillis());
       aggHostHealthStats.recordUnhealthyHostTooManyPendingRequest(nodeId);
+      // Record the unhealthy node count because of pending queue check
+      aggHostHealthStats.recordUnhealthyHostCountCausedByPendingQueue(pendingRequestUnhealthyTimeMap.size());
       return false;
     }
     if (unhealthyHosts.contains(instance.getUrl())) {

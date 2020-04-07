@@ -110,16 +110,6 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           SERVICE_UNAVAILABLE, "The retry request aborted because of delay constraint of smart long-tail retry",
           RouterExceptionAndTrackingUtils.FailureType.SMART_RETRY_ABORTED_BY_DELAY_CONSTRAINT);
     }
-    if (venicePath.isRetryRequest()) {
-      // Check whether the retry request is allowed or not according to the max allowed retry route config
-      if (!venicePath.isLongTailRetryAllowedForNewRoute()) {
-        routerStats.getStatsByType(venicePath.getRequestType()).recordDisallowedRetryRequest(storeName);
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            SERVICE_UNAVAILABLE, "The retry request aborted because there are too many retries for current request");
-      } else {
-        routerStats.getStatsByType(venicePath.getRequestType()).recordAllowedRetryRequest(storeName);
-      }
-    }
     ScatterGatherMode scatterMode = null;
     switch (venicePath.getRequestType()) {
       case MULTI_GET:
@@ -208,6 +198,17 @@ public class VeniceDelegateMode extends ScatterGatherMode {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
               TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
         }
+      }
+    }
+
+    if (venicePath.isRetryRequest()) {
+      // Check whether the retry request is allowed or not according to the max allowed retry route config
+      if (!venicePath.isLongTailRetryAllowedForNewRoute()) {
+        routerStats.getStatsByType(venicePath.getRequestType()).recordDisallowedRetryRequest(storeName);
+        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+            SERVICE_UNAVAILABLE, "The retry request aborted because there are too many retries for current request");
+      } else {
+        routerStats.getStatsByType(venicePath.getRequestType()).recordAllowedRetryRequest(storeName);
       }
     }
 

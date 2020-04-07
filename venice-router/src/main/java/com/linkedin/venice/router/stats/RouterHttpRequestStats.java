@@ -3,7 +3,6 @@ package com.linkedin.venice.router.stats;
 import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
-import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -69,6 +68,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor unavailableReplicaStreamingRequestSensor;
   private final Sensor allowedRetryRequestSensor;
   private final Sensor disallowedRetryRequestSensor;
+  private final Sensor errorRetryAttemptTriggeredByPendingRequestCheckSensor;
 
 
   //QPS metrics
@@ -194,6 +194,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     allowedRetryRequestSensor = registerSensor("allowed_retry_request_count", new OccurrenceRate());
     disallowedRetryRequestSensor = registerSensor("disallowed_retry_request_count", new OccurrenceRate());
+    errorRetryAttemptTriggeredByPendingRequestCheckSensor = registerSensor("error_retry_attempt_triggered_by_pending_request_check", new OccurrenceRate());
   }
 
   /**
@@ -406,5 +407,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordDisallowedRetryRequest() {
     disallowedRetryRequestSensor.record();
+  }
+
+  public void recordErrorRetryAttemptTriggeredByPendingRequestCheck() {
+    errorRetryAttemptTriggeredByPendingRequestCheckSensor.record();
   }
 }
