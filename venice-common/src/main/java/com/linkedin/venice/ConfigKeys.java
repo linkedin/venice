@@ -593,6 +593,11 @@ public class ConfigKeys {
   public static final String ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS = "router.idle.connection.to.server.cleanup.threshold.mins";
 
   /**
+   * The following config controls how long the server with full pending queue will be taken OOR.
+   */
+  public static final String ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS = "router.full.pending.queue.server.oor.ms";
+
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */
