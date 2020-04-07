@@ -110,7 +110,7 @@ ext.libraries = [ // Groovy map literal
                   rocksdbjni: 'org.rocksdb:rocksdbjni:6.6.4',
 
                   // open source fastserde from avro-util
-                  linkedinAvroFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.1.11'
+                  linkedinAvroFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.1.14'
 ]
 
 subprojects {
