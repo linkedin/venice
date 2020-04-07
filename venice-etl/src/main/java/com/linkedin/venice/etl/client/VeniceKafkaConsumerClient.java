@@ -73,8 +73,9 @@ import static org.apache.gobblin.configuration.ConfigurationKeys.*;
 public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
   private static final Logger logger = Logger.getLogger(VeniceKafkaConsumerClient.class);
 
+  private static final int MAX_ATTEMPTS_FOR_EMPTY_POLLING = 3;
   private static final String KAFKA_CONSUMER_POLLING_TIMEOUT_MS = "kafka.consumer.polling.timeout.ms";
-  private static final int DEFAULT_KAFKA_CONSUMER_POLLING_TIMEOUT_MS = 300000;
+  private static final int DEFAULT_KAFKA_CONSUMER_POLLING_TIMEOUT_MS = 5000; // default 5s
   private final int kafkaConsumerPollingTimeoutMs;
 
   private final String kafkaBoostrapServers;
@@ -325,43 +326,44 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     String topic = partition.getTopicName();
     int partitionId = partition.getId();
     logger.info("Start consuming for topic: " + topic + "; partition: " + partitionId + "; startOffset: " + nextOffset + "; maxOffset: " + maxOffset);
+    /**
+     * Skip the consuming as there is nothing new in the partition topic
+     */
     if (nextOffset >= maxOffset) {
       return null;
     }
-
     TopicPartition topicPartition = new TopicPartition(topic, partitionId);
     this.veniceKafkaConsumer.assign(Arrays.asList(topicPartition));
     this.veniceKafkaConsumer.seek(topicPartition, nextOffset);
 
-    // put filtered results into a new list
-    List<KafkaConsumerRecord> newRecords = new LinkedList<KafkaConsumerRecord>();
+    // put filtered real records into a new list
+    List<KafkaConsumerRecord> nonControlMessageRecords = new LinkedList<KafkaConsumerRecord>();
     int putCount = 0;
     int deleteCount = 0;
     int controlMessageCount = 0;
-    boolean receivedMessageFromKafka = true;
+    int polledEmptyRealRecordsCount = 0;
 
     try {
       do {
         ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = veniceKafkaConsumer.poll(kafkaConsumerPollingTimeoutMs);
         logger.info("Successfully polled " + consumerRecords.count() + " records from Kafka");
-        if (0 == consumerRecords.count()) {
-          receivedMessageFromKafka = false;
-        }
-
         // remove all control message; get key/value byte array from records
         Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> iterator = consumerRecords.iterator();
+        boolean hasRealMessages = false;
+        long lastRecordOffset = -1;
         while (iterator.hasNext()) {
           ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = iterator.next();
+          lastRecordOffset = record.offset();
           KafkaKey key = record.key();
-          // control message should be skip
           KafkaMessageEnvelope value = record.value();
           switch (MessageType.valueOf(value)) {
             case PUT:
+              hasRealMessages = true;
               putCount++;
               Put put = (Put) value.payloadUnion;
               // extract the raw value data
               byte[] valueBytes = put.putValue.array();
-              newRecords.add(
+              nonControlMessageRecords.add(
                   new VeniceKafkaRecord(
                       new ConsumerRecord<byte[], byte[]>(
                           record.topic(),
@@ -375,8 +377,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
               );
               break;
             case DELETE:
+              hasRealMessages = true;
               deleteCount++;
-              newRecords.add(
+              nonControlMessageRecords.add(
                   new VeniceKafkaRecord(
                       new ConsumerRecord<byte[], byte[]>(
                           record.topic(),
@@ -389,6 +392,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
                   )
               );
               break;
+            case UPDATE:
+              throw new VeniceException("Version Topic has UPDATE messages " + topic + " in partition " + partitionId);
+            // control message should be skipped
             case CONTROL_MESSAGE:
               controlMessageCount++;
               break;
@@ -396,7 +402,15 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
               throw new VeniceException("No such type of message: " + MessageType.valueOf(value));
           }
         }
-      } while (newRecords.size() == 0 && receivedMessageFromKafka);
+        // the cases the last poll returns zero records or the polled records doesn't contain any real records
+        if (!hasRealMessages) {
+          polledEmptyRealRecordsCount++;
+        }
+        // stop polling more records if already digested more than max offset
+        if (lastRecordOffset >= maxOffset) {
+          break;
+        }
+      } while (polledEmptyRealRecordsCount <= MAX_ATTEMPTS_FOR_EMPTY_POLLING);
     } catch (Throwable t) {
       logger.error("Exception on polling records", t);
 
@@ -407,9 +421,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
               null, null),0)).iterator();
     }
 
-    logger.info("Return " + newRecords.size() + " records after decoding; put: " + putCount + " records; "
+    logger.info("Return " + nonControlMessageRecords.size() + " records after decoding; put: " + putCount + " records; "
         + "delete: " + deleteCount + " records; control message: " + controlMessageCount + " records");
-    return newRecords.iterator();
+    return nonControlMessageRecords.iterator();
   }
 
   @Override
