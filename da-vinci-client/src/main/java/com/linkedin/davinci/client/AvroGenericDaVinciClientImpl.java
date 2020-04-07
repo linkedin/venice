@@ -63,12 +63,10 @@ import org.apache.log4j.Logger;
 
 public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private static String DAVINCI_CLIENT_NAME = "davinci_client";
-  private static final byte[] BINARY_DECODER_PARAM = new byte[16];
   private static int REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = 1;
   private static int REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS = 1;
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClientImpl.class);
 
-  private final BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(BINARY_DECODER_PARAM, null);
   private final String storeName;
   private final boolean useFastAvro;
   private final MetricsRepository metricsRepository;
