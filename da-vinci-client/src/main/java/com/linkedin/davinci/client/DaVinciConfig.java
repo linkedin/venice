@@ -9,8 +9,8 @@ public class DaVinciConfig {
   private static final PersistenceType DEFAULT_PERSISTENCE_TYPE = PersistenceType.ROCKS_DB;
 
   public static DaVinciConfig defaultDaVinciConfig(String dataBasePath) {
-    return new DaVinciConfig(DEFAULT_NON_LOCAL_READS_POLICY, DEFAULT_VERSION_SWAP_POLICY,
-        DEFAULT_PERSISTENCE_TYPE, dataBasePath);
+    return new DaVinciConfig(DEFAULT_NON_LOCAL_READS_POLICY, DEFAULT_VERSION_SWAP_POLICY, DEFAULT_PERSISTENCE_TYPE,
+        dataBasePath);
   }
 
   private DaVinciConfig(NonLocalReadsPolicy nonLocalReadsPolicy, VersionSwapPolicy versionSwapPolicy,
@@ -76,7 +76,11 @@ public class DaVinciConfig {
     return dataBasePath;
   }
 
-  enum NonLocalReadsPolicy {
+  public DaVinciConfig clone() {
+    return new DaVinciConfig(nonLocalReadsPolicy, versionSwapPolicy, persistenceType, dataBasePath);
+  }
+
+  public enum NonLocalReadsPolicy {
     /**
      * If a read is issued for a non-local partition, it will throw an exception.
      * This is a good policy for applications that expect local access performance
@@ -110,7 +114,7 @@ public class DaVinciConfig {
     SUBSCRIBE_AND_QUERY_REMOTELY;
   }
 
-  enum VersionSwapPolicy {
+  public enum VersionSwapPolicy {
     /**
      * The least stringent level of atomicity. Each subscribed partition can swap
      * independently of others. If over-partitioning is used, this enables the
