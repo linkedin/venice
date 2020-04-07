@@ -52,4 +52,8 @@ public class AggHostHealthStats extends AbstractVeniceAggStats<HostHealthStats> 
     totalStats.recordUnhealthyPendingQueueDuration(duration);
     getHostStats(hostName).recordUnhealthyPendingQueueDuration(duration);
   }
+
+  public void recordUnhealthyHostCountCausedByPendingQueue(int count) {
+    totalStats.recordUnhealthyHostCountCausedByPendingQueue(count);
+  }
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.stats;
 
+import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -10,6 +11,7 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.SampledTotal;
+import java.util.Optional;
 
 
 /**
@@ -24,6 +26,7 @@ public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor leakedPendingRequestCount;
   private final Sensor unhealthyPendingQueueDuration;
   private final Sensor unhealthyPendingRateSensor;
+  private  Optional<Sensor> unhealthyHostCountCausedByPendingQueueSensor = Optional.empty();
 
   public HostHealthStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -36,6 +39,10 @@ public class HostHealthStats extends AbstractVeniceStats {
     this.leakedPendingRequestCount = registerSensor("leaked_pending_request_count", new Count());
     this.unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration", new Avg(), new Min(), new Max(), new SampledTotal());;
     this.unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue", new OccurrenceRate());
+    if (name.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
+      // This is trying to avoid emit unnecessary metrics per route
+      this.unhealthyHostCountCausedByPendingQueueSensor = Optional.of(registerSensor("unhealthy_host_count_caused_by_pending_queue", new Avg(), new Min(), new Max()));
+    }
   }
 
   public void recordUnhealthyHostOfflineInstance() {
@@ -65,5 +72,11 @@ public class HostHealthStats extends AbstractVeniceStats {
   public void recordUnhealthyPendingQueueDuration(double duration) {
     unhealthyPendingRateSensor.record();
     unhealthyPendingQueueDuration.record(duration);
+  }
+
+  public void recordUnhealthyHostCountCausedByPendingQueue(int count) {
+    if (unhealthyHostCountCausedByPendingQueueSensor.isPresent()) {
+      unhealthyHostCountCausedByPendingQueueSensor.get().record(count);
+    }
   }
 }

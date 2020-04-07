@@ -241,6 +241,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         if (!retryFuture.isCancelled()) {
           retryFuture.setSuccess(INTERNAL_SERVER_ERROR);
           responseFuture.completeExceptionally(new VeniceException("Triggering error retry, too many pending request to storage node :" + snID));
+          perStoreStatsByType.getStatsByType(path.getRequestType()).recordErrorRetryAttemptTriggeredByPendingRequestCheck(storeName);
           return responseFuture;
         } else {
           throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName),
