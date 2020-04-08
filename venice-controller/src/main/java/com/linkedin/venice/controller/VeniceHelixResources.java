@@ -144,6 +144,12 @@ public class VeniceHelixResources implements VeniceResource {
 
   @Override
   public void clear() {
+    /**
+     * Also stop monitoring all the pushes; otherwise, the standby controller host will still listen to
+     * push status changes and act on the changes which should have been done by leader controller only,
+     * like broadcasting StartOfBufferReplay/TopicSwitch messages.
+     */
+    pushMonitor.stopAllMonitoring();
     metadataRepository.clear();
     schemaRepository.clear();
     routingDataRepository.clear();

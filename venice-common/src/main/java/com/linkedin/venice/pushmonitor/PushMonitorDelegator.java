@@ -109,7 +109,7 @@ public class PushMonitorDelegator implements PushMonitor {
   @Override
   public void loadAllPushes() {
     logger.info("Load all pushes started for cluster " + clusterName + "'s " + getClass().getSimpleName());
-    lockAllPushMonitorsToLoadPushes();
+    lockAllPushMonitors();
     try {
       List<OfflinePushStatus> offlinePushMonitorStatuses = new ArrayList<>();
       List<OfflinePushStatus> partitionStatusBasedPushMonitorStatuses = new ArrayList<>();
@@ -140,7 +140,7 @@ public class PushMonitorDelegator implements PushMonitor {
     }
   }
 
-  private void lockAllPushMonitorsToLoadPushes() {
+  private void lockAllPushMonitors() {
     offlinePushMonitor.acquirePushMonitorWriteLock();
     partitionStatusBasedPushStatusMonitor.acquirePushMonitorWriteLock();
   }
@@ -156,8 +156,23 @@ public class PushMonitorDelegator implements PushMonitor {
   }
 
   @Override
-  public void stopMonitorOfflinePush(String kafkaTopic) {
-    getPushMonitor(kafkaTopic).stopMonitorOfflinePush(kafkaTopic);
+  public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus) {
+    getPushMonitor(kafkaTopic).stopMonitorOfflinePush(kafkaTopic, deletePushStatus);
+  }
+
+  @Override
+  public void stopAllMonitoring() {
+    logger.info("Stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    lockAllPushMonitors();
+    try {
+      partitionStatusBasedPushStatusMonitor.stopAllMonitoring();
+      offlinePushMonitor.stopAllMonitoring();
+      logger.info("Successfully stopped all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    } catch (Exception e) {
+      logger.error("Error when stopping all monitoring for cluster " + clusterName + "'s " + getClass().getSimpleName());
+    } finally {
+      unlockAllPushMonitors();
+    }
   }
 
   @Override

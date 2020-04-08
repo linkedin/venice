@@ -1487,7 +1487,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
             }
 
-            stopMonitorOfflinePush(clusterName, resourceName);
+            stopMonitorOfflinePush(clusterName, resourceName, true);
             Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
             if (deletedVersion.isPresent()) {
                 // Do not delete topic during store migration
@@ -3466,9 +3466,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             strategy);
     }
 
-    protected void stopMonitorOfflinePush(String clusterName, String topic) {
+    protected void stopMonitorOfflinePush(String clusterName, String topic, boolean deletePushStatus) {
         PushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getPushMonitor();
-        offlinePushMonitor.stopMonitorOfflinePush(topic);
+        offlinePushMonitor.stopMonitorOfflinePush(topic, deletePushStatus);
     }
 
     protected Store checkPreConditionForUpdateStoreMetadata(String clusterName, String storeName) {
