@@ -2,7 +2,8 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
-import junit.framework.Assert;
+
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 

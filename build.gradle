@@ -43,7 +43,7 @@ ext.libraries = [ // Groovy map literal
                   kafkaTest: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion + ':test',
                   kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
                   kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
-                  mockito: 'org.mockito:mockito-core:2.18.3',
+                  mockito: 'org.mockito:mockito-core:3.3.3',
                   netty: 'io.netty:netty-all:4.1.22.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.2.15',
@@ -82,7 +82,7 @@ ext.libraries = [ // Groovy map literal
                   // TODO: move back to open source sparkjava once they fix Jetty SSL.
                   // spark: 'com.sparkjava:spark-core:2.9.1',
                   spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
-                  testng: 'org.testng:testng:6.14.3',
+                  testng: 'org.testng:testng:7.1.1',
                   // TODO remove this linkedin MP dependency, instead depends on the opensource tehuti lib.
                   tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.6',
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl

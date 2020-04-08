@@ -59,7 +59,7 @@ public class RouterRequestThrottlingTest {
   private Store store;
   private ReadOnlyStoreRepository storeRepository;
 
-  @BeforeMethod
+  @BeforeMethod(alwaysRun = true)
   public void setup() {
     // mock a ReadRequestThrottler
     storeName = TestUtils.getUniqueString("store");
@@ -84,7 +84,7 @@ public class RouterRequestThrottlingTest {
     throttler = new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, 2000, stats, 0.0, 1000, 1000);
   }
 
-  @Test (timeOut = 30000)
+  @Test (timeOut = 30000, groups = {"flaky"})
   public void testSingleGetThrottling() throws Exception {
     VeniceRouterConfig routerConfig = mock(VeniceRouterConfig.class);
     doReturn(1.0d).when(routerConfig).getCacheHitRequestThrottleWeight();
