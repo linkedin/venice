@@ -22,6 +22,7 @@ import org.rocksdb.EnvOptions;
 import org.rocksdb.FlushOptions;
 import org.rocksdb.IngestExternalFileOptions;
 import org.rocksdb.Options;
+import org.rocksdb.PlainTableConfig;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileWriter;
@@ -105,7 +106,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // Create the folder for storage partition if it doesn't exist
     this.storeName = storagePartitionConfig.getStoreName();
     this.partitionId = storagePartitionConfig.getPartitionId();
-    this.deferredWrite = storagePartitionConfig.isDeferredWrite();
+    if (options.tableFormatConfig() instanceof PlainTableConfig) {
+      this.deferredWrite = false;
+    } else {
+      this.deferredWrite = storagePartitionConfig.isDeferredWrite();
+    }
     this.readOnly = storagePartitionConfig.isReadOnly();
     this.fullPathForPartitionDB = RocksDBUtils.composePartitionDbDir(dbDir, storeName, partitionId);
     this.fullPathForTempSSTFileDir = RocksDBUtils.composeTempSSTFileDir(dbDir, storeName, partitionId);
@@ -435,6 +440,9 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
+    if (options.tableFormatConfig() instanceof PlainTableConfig) {
+      return readOnly == storagePartitionConfig.isReadOnly();
+    }
     return deferredWrite == storagePartitionConfig.isDeferredWrite() && readOnly == storagePartitionConfig.isReadOnly();
   }
 

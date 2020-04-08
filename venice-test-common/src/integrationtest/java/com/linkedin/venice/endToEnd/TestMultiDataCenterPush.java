@@ -30,7 +30,18 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
 import io.tehuti.Metric;
+
+import org.apache.avro.Schema;
+import org.apache.avro.util.Utf8;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -39,13 +50,6 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -248,7 +252,7 @@ public class TestMultiDataCenterPush {
   @Test(timeOut = TEST_TIMEOUT)
   public void testMultiDataCenterIncrementalPush() throws Exception {
     String clusterName = CLUSTER_NAMES[1];
-    //create a batch push job
+    // create a batch push job
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
@@ -262,7 +266,7 @@ public class TestMultiDataCenterPush {
     KafkaPushJob job = new KafkaPushJob("Test batch push job", props);
     job.run();
 
-    //create a incremental push job
+    // create an incremental push job
     writeSimpleAvroFileWithUserSchema2(inputDir);
     props.setProperty(INCREMENTAL_PUSH, "true");
     KafkaPushJob incrementalPushJob = new KafkaPushJob("Test incremental push job", props);
@@ -271,25 +275,24 @@ public class TestMultiDataCenterPush {
     Admin.OfflinePushStatusInfo offlinePushStatusInfo = parentControllers.get(0)
         .getVeniceAdmin()
         .getOffLinePushStatus(clusterName, incrementalPushJob.getKafkaTopic(), incrementalPushJob.getIncrementalPushVersion());
-
     Assert.assertEquals(offlinePushStatusInfo.getExecutionStatus(), ExecutionStatus.END_OF_INCREMENTAL_PUSH_RECEIVED);
 
-
-    //validate the client can read data
+    // validate the client can read data
     for (int dataCenterIndex = 0; dataCenterIndex < NUMBER_OF_CHILD_DATACENTERS; dataCenterIndex++) {
       VeniceMultiClusterWrapper veniceCluster = childClusters.get(dataCenterIndex);
       String routerUrl = veniceCluster.getClusters().get(clusterName).getRandomRouterURL();
-      try(AvroGenericStoreClient<String, Object> client =
+
+      try (AvroGenericStoreClient<String, Utf8> client =
           ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
         for (int i = 1; i <= 50; ++i) {
-          String expected = "test_name_" + i;
-          String actual = client.get(Integer.toString(i)).get().toString();
+          Utf8 expected = new Utf8("test_name_" + i);
+          Utf8 actual = client.get(Integer.toString(i)).get();
           Assert.assertEquals(actual, expected);
         }
 
         for (int i = 51; i <= 150; ++i) {
-          String expected = "test_name_" + (i * 2);
-          String actual = client.get(Integer.toString(i)).get().toString();
+          Utf8 expected = new Utf8("test_name_" + (i * 2));
+          Utf8 actual = client.get(Integer.toString(i)).get();
           Assert.assertEquals(actual, expected);
         }
       }

@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.meta.PersistenceType.*;
+import static com.linkedin.venice.store.rocksdb.RocksDBServerConfig.*;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -92,6 +93,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100)
           .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .put(PERSISTENCE_TYPE, ROCKS_DB)
+          .put(ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, true)
+          .put(ROCKSDB_OPTIONS_USE_DIRECT_READS, false) // Required by PlainTable format
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
           .put(configProperties);
       if (sslToKafka) {
