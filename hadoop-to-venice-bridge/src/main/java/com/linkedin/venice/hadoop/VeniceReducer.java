@@ -469,13 +469,13 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
           new VeniceVsonMapper() : new VeniceAvroMapper();
       mapper.configure(jobConf);
 
-      this.keySchema = Schema.parse(mapper.getKeySchemaStr());
+      this.keySchema = Schema.parse(mapper.getRecordReader().getKeySchemaStr());
 
-      if (mapper.getKeySerializer() == null) {
+      if (mapper.getRecordReader().getKeySerializer() == null) {
         throw new VeniceException("key serializer can not be null.");
       }
 
-      this.keySerializer = mapper.getKeySerializer();
+      this.keySerializer = mapper.getRecordReader().getKeySerializer();
       this.writer = new GenericDatumWriter(keySchema);
     }
 
