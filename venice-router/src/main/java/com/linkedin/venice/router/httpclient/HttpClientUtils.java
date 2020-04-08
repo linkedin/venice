@@ -176,9 +176,6 @@ public class HttpClientUtils {
     connMgr.setMaxTotal(total);
     connMgr.setDefaultMaxPerRoute(perRoute);
 
-    //TODO: Configurable
-    reapIdleConnections(connMgr, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
-
     return connMgr;
   }
 
