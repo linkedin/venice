@@ -105,7 +105,7 @@ public abstract class AbstractPushMonitorTest {
     monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
-    monitor.stopMonitorOfflinePush(topic);
+    monitor.stopMonitorOfflinePush(topic, true);
     verify(mockAccessor, atLeastOnce()).deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     verify(mockAccessor, atLeastOnce()).unsubscribePartitionsStatusChange(pushStatus, monitor);
     verify(mockRoutingDataRepo, atLeastOnce()).unSubscribeRoutingDataChange(getTopic(), monitor);
@@ -126,7 +126,7 @@ public abstract class AbstractPushMonitorTest {
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
       pushStatus.updateStatus(ExecutionStatus.ERROR);
-      monitor.stopMonitorOfflinePush(topic);
+      monitor.stopMonitorOfflinePush(topic, true);
     }
     // We should keep MAX_ERROR_PUSH_TO_KEEP error push for debug.
     for (int i = 0; i < OfflinePushMonitor.MAX_PUSH_TO_KEEP; i++) {
@@ -138,7 +138,7 @@ public abstract class AbstractPushMonitorTest {
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
     pushStatus.updateStatus(ExecutionStatus.ERROR);
-    monitor.stopMonitorOfflinePush(topic);
+    monitor.stopMonitorOfflinePush(topic, true);
     try {
       monitor.getOfflinePush(Version.composeKafkaTopic(store, 0));
       Assert.fail("Oldest error push should be collected.");

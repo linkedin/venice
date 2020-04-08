@@ -155,7 +155,7 @@ public abstract class AbstractPushMonitor
         if (existingStatus.equals(ExecutionStatus.ERROR)) {
           logger.info("The previous push status for topic: " + kafkaTopic + " is 'ERROR',"
               + " and the new push will clean up the previous 'ERROR' push status");
-          cleanupPushStatus(topicToPushMap.get(kafkaTopic));
+          cleanupPushStatus(topicToPushMap.get(kafkaTopic), true);
         } else {
           throw new VeniceException("Push status has already been created for topic:" + kafkaTopic + " in cluster:" + clusterName);
         }
@@ -173,7 +173,7 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public void stopMonitorOfflinePush(String kafkaTopic) {
+  public void stopMonitorOfflinePush(String kafkaTopic, boolean deletePushStatus) {
     logger.info("Stopping monitoring push on topic:" + kafkaTopic);
     pushMonitorWriteLock.lock();
     try {
@@ -188,9 +188,26 @@ public abstract class AbstractPushMonitor
         String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
         retireOldErrorPushes(storeName);
       } else {
-        cleanupPushStatus(pushStatus);
+        cleanupPushStatus(pushStatus, deletePushStatus);
       }
       logger.info("Stopped monitoring push on topic:" + kafkaTopic);
+    } finally {
+      pushMonitorWriteLock.unlock();
+    }
+  }
+
+  @Override
+  public void stopAllMonitoring() {
+    logger.info("Stopping monitoring push for all topics.");
+    pushMonitorWriteLock.lock();
+    try {
+      for (Map.Entry<String, OfflinePushStatus> entry : topicToPushMap.entrySet()) {
+        String kafkaTopic = entry.getKey();
+        stopMonitorOfflinePush(kafkaTopic, false);
+      }
+      logger.info("Successfully stopped monitoring push for all topics.");
+    } catch (Exception e) {
+      logger.error("Error when stopping monitoring push for all topics", e);
     } finally {
       pushMonitorWriteLock.unlock();
     }
@@ -204,7 +221,7 @@ public abstract class AbstractPushMonitor
           .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
           .collect(Collectors.toList());
 
-      topicList.forEach(topic -> cleanupPushStatus(topicToPushMap.get(topic)));
+      topicList.forEach(topic -> cleanupPushStatus(topicToPushMap.get(topic), true));
     } finally {
       pushMonitorWriteLock.unlock();
     }
@@ -292,11 +309,13 @@ public abstract class AbstractPushMonitor
   /**
    * this is to clear legacy push statuses
    */
-  private void cleanupPushStatus(OfflinePushStatus offlinePushStatus) {
+  private void cleanupPushStatus(OfflinePushStatus offlinePushStatus, boolean deletePushStatus) {
     pushMonitorWriteLock.lock();
     try {
       topicToPushMap.remove(offlinePushStatus.getKafkaTopic());
-      offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+      if (deletePushStatus) {
+        offlinePushAccessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+      }
     } catch (Exception e) {
       logger.warn("Could not delete legacy push status: " + offlinePushStatus.getKafkaTopic(), e);
     } finally {
@@ -333,7 +352,7 @@ public abstract class AbstractPushMonitor
       // Make sure we do boxing; List.remove(primitive int) treats the primitive int as index
       versionNums.remove(Integer.valueOf(errorVersion));
 
-      cleanupPushStatus(errorPushStatus);
+      cleanupPushStatus(errorPushStatus, true);
     }
   }
 
