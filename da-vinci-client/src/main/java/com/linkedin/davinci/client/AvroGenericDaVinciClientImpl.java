@@ -54,6 +54,7 @@ import org.apache.log4j.Logger;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -170,40 +171,68 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     // TODO: refactor IngestionController to use StoreBackend directly
     try (ConcurrentRef<IngestionController.VersionBackend> versionRef =
-             ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
-      if (versionRef.get() == null) {
+              ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
+      if (null == versionRef.get()) {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
-
       Version version = versionRef.get().getVersion();
-      String topic = version.kafkaTopicName();
-      byte[] keyBytes = keySerializer.serialize(key);
-      int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
-
-      // Make sure the partition id is within client's subscription.
-      if (!subscribedPartitions.contains(partitionId)) {
-        throw new VeniceClientException("DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
-      }
-
-      AbstractStorageEngine storageEngine = storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
-      if (storageEngine == null) {
-        throw new VeniceClientException("Failed to find a ready store version.");
-      }
-
-      ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, partitionId, keyBytes, version.isChunkingEnabled(), null);
-      if (valueRecord == null) {
-        return CompletableFuture.completedFuture(null);
-      }
-
-      ByteBuffer data = decompressRecord(version.getCompressionStrategy(), ByteBuffer.wrap(valueRecord.getDataInBytes()));
-      RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
-      return CompletableFuture.completedFuture(deserializer.deserialize(data));
+      V value = getValue(key, version, getStorageEngine(version));
+      return CompletableFuture.completedFuture(value);
     }
   }
 
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
-    throw new UnsupportedOperationException();
+    if (!isStarted()) {
+      throw new VeniceClientException("Client is not started.");
+    }
+
+    // TODO: refactor IngestionController to use StoreBackend directly
+    try (ConcurrentRef<IngestionController.VersionBackend> versionRef =
+              ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
+      if (null == versionRef.get()) {
+        throw new VeniceClientException("Failed to find a ready store version.");
+      }
+      Version version = versionRef.get().getVersion();
+      AbstractStorageEngine storageEngine = getStorageEngine(version);
+
+      Map<K, V> map = new HashMap<>();
+      for (K key : keys) {
+        V value = getValue(key, version, storageEngine);
+        if (value != null) {
+          // The returned map will only contain entries for the keys which have a value associated with them
+          map.put(key, value);
+        }
+      }
+      return CompletableFuture.completedFuture(map);
+    }
+  }
+
+  private AbstractStorageEngine getStorageEngine(Version version) {
+    String topic = version.kafkaTopicName();
+    AbstractStorageEngine storageEngine = storageService.getStorageEngineRepository().getLocalStorageEngine(topic);
+    if (null == storageEngine) {
+      throw new VeniceClientException("Failed to find a ready store version.");
+    }
+    return storageEngine;
+  }
+
+  private V getValue(K key, Version version, AbstractStorageEngine storageEngine) {
+    byte[] keyBytes = keySerializer.serialize(key);
+    int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
+    // Make sure the partition id is within client's subscription.
+    if (!subscribedPartitions.contains(partitionId)) {
+      throw new VeniceClientException(
+          "DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
+    }
+    // TODO: refactor ComputeChunkingAdapter to replace the use of SingleGetChunkingAdapter here
+    ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, partitionId, keyBytes, version.isChunkingEnabled(), null);
+    if (null == valueRecord) {
+      return null;
+    }
+    ByteBuffer data = decompressRecord(version.getCompressionStrategy(), ByteBuffer.wrap(valueRecord.getDataInBytes()));
+    RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
+    return deserializer.deserialize(data);
   }
 
   @Override

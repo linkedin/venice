@@ -14,6 +14,9 @@ import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -106,7 +109,10 @@ public class DaVinciClientTest {
       // subscribe to a partition with data
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+
+        Set<Object> keySet = new HashSet<>();
         for (int i = 0; i < keyCount; i++) {
+          keySet.add(i);
           Object actualValue;
           try {
             actualValue = client.get(i).get();
@@ -114,6 +120,18 @@ public class DaVinciClientTest {
             throw new RuntimeException(e);
           }
           assertEquals(actualValue, i);
+        }
+
+        Map<Object, Object> actualValue;
+        try {
+          actualValue = client.batchGet(keySet).get();
+        } catch (InterruptedException | ExecutionException e) {
+          throw new RuntimeException(e);
+        }
+
+        assertNotNull(actualValue);
+        for (int i = 0; i < keyCount; i++) {
+          assertEquals(actualValue.get(i), i);
         }
       });
     }
