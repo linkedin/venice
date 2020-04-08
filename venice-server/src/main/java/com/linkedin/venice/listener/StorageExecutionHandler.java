@@ -61,6 +61,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.locks.ReentrantLock;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -90,8 +91,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   private static final byte[] BINARY_DECODER_PARAM = new byte[16];
 
   private final DiskHealthCheckService diskHealthCheckService;
-  private final ExecutorService executor;
-  private final ExecutorService computeExecutor;
+  private final ThreadPoolExecutor executor;
+  private final ThreadPoolExecutor computeExecutor;
   private final StorageEngineRepository storageEngineRepository;
   private final ReadOnlySchemaRepository schemaRepo;
   private final MetadataRetriever metadataRetriever;
@@ -110,7 +111,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     }
   };
 
-  public StorageExecutionHandler(ExecutorService executor, ExecutorService computeExecutor,
+  public StorageExecutionHandler(ThreadPoolExecutor executor, ThreadPoolExecutor computeExecutor,
                                  StorageEngineRepository storageEngineRepository, ReadOnlySchemaRepository schemaRepository,
                                  MetadataRetriever metadataRetriever, DiskHealthCheckService healthCheckService,
                                  boolean fastAvroEnabled, boolean parallelBatchGetEnabled, int parallelBatchGetChunkSize, boolean keyValueProfilingEnabled) {
@@ -181,13 +182,14 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         return;
       }
 
-
-      getExecutor(request.getRequestType()).submit(new LabeledRunnable(request.getStoreName(), () -> {
+      final ThreadPoolExecutor executor = getExecutor(request.getRequestType());
+      executor.submit(new LabeledRunnable(request.getStoreName(), () -> {
         try {
           if (request.shouldRequestBeTerminatedEarly()) {
             throw new VeniceRequestEarlyTerminationException(request.getStoreName());
           }
           double submissionWaitTime = LatencyUtils.getLatencyInMS(preSubmissionTimeNs);
+          int queueLen = executor.getQueue().size();
           ReadResponse response;
           switch (request.getRequestType()) {
             case SINGLE_GET:
@@ -203,6 +205,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
               throw new VeniceException("Unknown request type: " + request.getRequestType());
           }
           response.setStorageExecutionSubmissionWaitTime(submissionWaitTime);
+          response.setStorageExecutionQueueLen(queueLen);
           if (request.isStreamingRequest()) {
             response.setStreamingResponse();
           }
@@ -231,7 +234,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  private ExecutorService getExecutor(RequestType requestType) {
+  private ThreadPoolExecutor getExecutor(RequestType requestType) {
     switch (requestType) {
       case SINGLE_GET:
       case MULTI_GET:

@@ -20,6 +20,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.atomic.AtomicReference;
 
 
@@ -62,8 +63,8 @@ public class TestVeniceServer extends VeniceServer {
 
       @Override
       protected StorageExecutionHandler createRequestHandler(
-          ExecutorService executor,
-          ExecutorService computeExecutor,
+          ThreadPoolExecutor executor,
+          ThreadPoolExecutor computeExecutor,
           StorageEngineRepository storageEngineRepository,
           ReadOnlySchemaRepository schemaRepository,
           MetadataRetriever metadataRetriever,

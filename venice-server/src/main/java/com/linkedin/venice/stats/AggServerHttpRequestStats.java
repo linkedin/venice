@@ -72,6 +72,10 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     totalStats.recordStorageExecutionHandlerSubmissionWaitTime(submissionWaitTime);
   }
 
+  public void recordStorageExecutionQueueLen(int len) {
+    totalStats.recordStorageExecutionQueueLen(len);
+  }
+
   public void recordRequestFirstPartLatency(String storeName, double latency) {
     totalStats.recordRequestFirstPartLatency(latency);
     getStoreStats(storeName).recordRequestFirstPartLatency(latency);
