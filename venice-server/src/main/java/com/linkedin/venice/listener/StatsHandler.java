@@ -53,6 +53,7 @@ public class StatsHandler extends ChannelDuplexHandler {
    */
   private boolean statCallbackExecuted = false;
   private double storageExecutionSubmissionWaitTime;
+  private int storageExecutionQueueLen;
 
   /**
    * Normally, one multi-get request will be split into two parts, and it means
@@ -163,6 +164,10 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
   }
 
+  public void setStorageExecutionQueueLen(int storageExecutionQueueLen) {
+    this.storageExecutionQueueLen = storageExecutionQueueLen;
+  }
+
   public boolean isAssembledMultiChunkLargeValue() {
     return multiChunkLargeValueCount > 0;
   }
@@ -201,6 +206,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       statCallbackExecuted = false;
       databaseLookupLatency = -1;
       storageExecutionSubmissionWaitTime = -1;
+      storageExecutionQueueLen = -1;
       requestKeyCount = -1;
       successRequestKeyCount = -1;
       requestSizeInBytes = -1;
@@ -285,6 +291,9 @@ public class StatsHandler extends ChannelDuplexHandler {
       }
       if (storageExecutionSubmissionWaitTime >= 0) {
         currentStats.recordStorageExecutionHandlerSubmissionWaitTime(storageExecutionSubmissionWaitTime);
+      }
+      if (storageExecutionQueueLen >= 0) {
+        currentStats.recordStorageExecutionQueueLen(storageExecutionQueueLen);
       }
       if (multiChunkLargeValueCount > 0) {
         // We only record this metric for requests where large values occurred

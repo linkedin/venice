@@ -125,8 +125,8 @@ public class ListenerService extends AbstractVeniceService {
   }
 
   protected StorageExecutionHandler createRequestHandler(
-      ExecutorService executor,
-      ExecutorService computeExecutor,
+      ThreadPoolExecutor executor,
+      ThreadPoolExecutor computeExecutor,
       StorageEngineRepository storageEngineRepository,
       ReadOnlySchemaRepository schemaRepository,
       MetadataRetriever metadataRetriever,

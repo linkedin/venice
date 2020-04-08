@@ -28,6 +28,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor successRequestKeyCountSensor;
   private final Sensor requestSizeInBytesSensor;
   private final Sensor storageExecutionHandlerSubmissionWaitTime;
+  private final Sensor storageExecutionQueueLenSensor;
 
   private final Sensor requestFirstPartLatencySensor;
   private final Sensor requestSecondPartLatencySensor;
@@ -85,6 +86,7 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
     storageExecutionHandlerSubmissionWaitTime = registerSensor("storage_execution_handler_submission_wait_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("storage_execution_handler_submission_wait_time")),
         new Max(), new Avg());
+    storageExecutionQueueLenSensor = registerSensor("storage_execution_queue_len", new Max(), new Avg());
 
     List<MeasurableStat> largeValueLookupStats = new ArrayList();
 
@@ -211,6 +213,10 @@ public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
 
   public void recordStorageExecutionHandlerSubmissionWaitTime(double submissionWaitTime) {
     storageExecutionHandlerSubmissionWaitTime.record(submissionWaitTime);
+  }
+
+  public void recordStorageExecutionQueueLen(int len) {
+    storageExecutionQueueLenSensor.record(len);
   }
 
   public void recordRequestFirstPartLatency(double latency) {

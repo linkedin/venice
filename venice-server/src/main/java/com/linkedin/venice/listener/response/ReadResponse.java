@@ -17,6 +17,7 @@ public abstract class ReadResponse {
   private double readComputeDeserializationLatency = -1;
   private double readComputeSerializationLatency = -1;
   private double storageExecutionSubmissionWaitTime;
+  private int storageExecutionQueueLen = -1;
   private int multiChunkLargeValueCount = 0;
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
   private boolean isStreamingResponse = false;
@@ -116,6 +117,14 @@ public abstract class ReadResponse {
 
   public void setStorageExecutionSubmissionWaitTime(double storageExecutionSubmissionWaitTime) {
     this.storageExecutionSubmissionWaitTime = storageExecutionSubmissionWaitTime;
+  }
+
+  public int getStorageExecutionQueueLen() {
+    return storageExecutionQueueLen;
+  }
+
+  public void setStorageExecutionQueueLen(int storageExecutionQueueLen) {
+    this.storageExecutionQueueLen = storageExecutionQueueLen;
   }
 
   public void incrementMultiChunkLargeValueCount() {
