@@ -2,9 +2,6 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
@@ -32,34 +29,28 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
     implements Mapper<INPUT_KEY, INPUT_VALUE, BytesWritable, BytesWritable> {
   private static final Logger LOGGER = Logger.getLogger(AbstractVeniceMapper.class);
 
-  protected String topicName;
-
   private boolean isMapperOnly;
   private VeniceReducer reducer = null;
 
-  private VeniceKafkaSerializer keySerializer;
-  private VeniceKafkaSerializer valueSerializer;
+  protected AbstractVeniceRecordReader<INPUT_KEY, INPUT_VALUE> veniceRecordReader;
 
   @Override
   public void map(INPUT_KEY inputKey, INPUT_VALUE inputValue, OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter)
-  throws IOException {
-    Object avroKey = getAvroKey(inputKey, inputValue);
-    Object avroValue = getAvroValue(inputKey, inputValue);
+      throws IOException {
+    byte[] recordKey = veniceRecordReader.getKeyBytes(inputKey, inputValue);
+    byte[] recordValue = veniceRecordReader.getValueBytes(inputKey, inputValue);
 
-    if (avroKey == null) {
+    if (recordKey == null) {
       throw new VeniceException("Mapper received a empty key record");
     }
 
-    if (avroValue == null) {
+    if (recordValue == null) {
       LOGGER.warn("Received null record, skip.");
       if (reporter != null) {
         reporter.incrCounter(COUNTER_GROUP_KAFKA, EMPTY_RECORD, 1);
       }
       return;
     }
-
-    byte[] recordKey = keySerializer.serialize(topicName, avroKey);
-    byte[] recordValue = valueSerializer.serialize(topicName, avroValue);
 
     if (isMapperOnly) {
       reducer.sendMessageToKafka(recordKey, recordValue, reporter);
@@ -75,45 +66,25 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   }
 
   /**
-   * Return an Avro output key
+   * Return a AbstractVeniceRecordReader which will be used to handle all input operations
    */
-  protected abstract Object getAvroKey(INPUT_KEY inputKey, INPUT_VALUE inputValue);
+  AbstractVeniceRecordReader getRecordReader() {
+    if (veniceRecordReader == null) {
+      LOGGER.warn("venice record reader has not been initialized yet. Please call configure().");
+    }
+
+    return veniceRecordReader;
+  }
 
   /**
-   * return an Avro output value
-   */
-  protected abstract Object getAvroValue(INPUT_KEY inputKey, INPUT_VALUE inputValue);
-
-  /**
-   * Return an Avro key schema string that will be used to init key serializer
-   */
-  abstract String getKeySchemaStr();
-
-  /**
-   * Return an Avro value schema string that will be used to init value serializer
-   */
-  abstract String getValueSchemaStr();
-
-  /**
-   * An optional method in case when child classes want to setup anything. It will be called before
+   * An method for child classes to setup record reader and anything custom. It will be called before
    * {@link #configure(VeniceProperties)}
    */
-  protected void configure(VeniceProperties props) {}
+  abstract protected void configure(VeniceProperties props);
 
   @Override
   public void close() throws IOException {
     //no-op
-  }
-
-  /**
-   * This is a helper that will be called in {@link VeniceReducer} to deserialize binary key
-   */
-  VeniceKafkaSerializer getKeySerializer() {
-    if (keySerializer == null) {
-      LOGGER.warn("key serializer has not been initialized yet. Please call configure().");
-    }
-
-    return keySerializer;
   }
 
   @Override
@@ -122,15 +93,14 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
     configure(props);
 
-    this.topicName = props.getString(TOPIC_PROP);
+    if (this.veniceRecordReader == null) {
+      throw new VeniceException("Record reader not initialized");
+    }
 
     this.isMapperOnly = props.getBoolean(VENICE_MAP_ONLY);
     if (isMapperOnly) {
       this.reducer = new VeniceReducer(false);
       reducer.configure(job);
     }
-
-    keySerializer = new VeniceAvroKafkaSerializer(getKeySchemaStr());
-    valueSerializer = new VeniceAvroKafkaSerializer(getValueSchemaStr());
   }
 }
