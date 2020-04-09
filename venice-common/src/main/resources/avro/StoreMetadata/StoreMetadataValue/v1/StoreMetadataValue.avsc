@@ -348,6 +348,16 @@
                       "boolean"
                     ],
                     "default": null
+                  },
+                  {
+                    "name": "nativeReplicationEnabled",
+                    "type": "boolean",
+                    "default": false
+                  },
+                  {
+                    "name": "pushStreamSourceAddress",
+                    "type": ["null", "string"],
+                    "default": null
                   }
                 ]
               }

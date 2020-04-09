@@ -60,7 +60,9 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setAutoSchemaPushJobEnabled(srcStore.isSchemaAutoRegisterFromPushJobEnabled())
             .setAutoSupersetSchemaEnabledFromReadComputeStore(srcStore.isSuperSetSchemaAutoGenerationForReadComputeEnabled())
             .setBackupStrategy(srcStore.getBackupStrategy())
-            .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled());
+            .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
+            .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
+            .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -285,6 +287,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return putBoolean(LEADER_FOLLOWER_MODEL_ENABLED, leaderFollowerModelEnabled);
   }
 
+  public UpdateStoreQueryParams setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
+    return putBoolean(NATIVE_REPLICATION_ENABLED, nativeReplicationEnabled);
+  }
+
+  public UpdateStoreQueryParams setPushStreamSourceAddress(String pushStreamSourceAddress) {
+    return putString(PUSH_STREAM_SOURCE_ADDRESS, pushStreamSourceAddress);
+  }
+
   public Optional<Boolean> getLeaderFollowerModelEnabled() {
     return getBoolean(LEADER_FOLLOWER_MODEL_ENABLED);
   }
@@ -339,6 +349,15 @@ public class UpdateStoreQueryParams extends QueryParams {
   public Optional<String> getETLedProxyUserAccount() {
     return Optional.ofNullable(params.get(ETLED_PROXY_USER_ACCOUNT));
   }
+
+  public Optional<Boolean> getNativeReplicationEnabled() {
+    return getBoolean(NATIVE_REPLICATION_ENABLED);
+  }
+
+  public Optional<String> getPushStreamSourceAddress() {
+    return getString(PUSH_STREAM_SOURCE_ADDRESS);
+  }
+
 
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {

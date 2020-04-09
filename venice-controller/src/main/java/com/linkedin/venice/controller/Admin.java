@@ -248,7 +248,9 @@ public interface Admin extends AutoCloseable, Closeable {
                      Optional<Boolean> hybridStoreDiskQuotaEnabled,
                      Optional<Boolean> regularVersionETLEnabled,
                      Optional<Boolean> futureVersionETLEnabled,
-                     Optional<String> etledProxyUserAccount);
+                     Optional<String> etledProxyUserAccount,
+                     Optional<Boolean> nativeReplicationEnabled,
+                     Optional<String> pushStreamSourceAddress);
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
         updateStore(
@@ -288,7 +290,9 @@ public interface Admin extends AutoCloseable, Closeable {
             params.getHybridStoreDiskQuotaEnabled(),
             params.getRegularVersionETLEnabled(),
             params.getFutureVersionETLEnabled(),
-            params.getETLedProxyUserAccount());
+            params.getETLedProxyUserAccount(),
+            params.getNativeReplicationEnabled(),
+            params.getPushStreamSourceAddress());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);

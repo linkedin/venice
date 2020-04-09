@@ -1118,7 +1118,9 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> hybridStoreDiskQuotaEnabled,
       Optional<Boolean> regularVersionETLEnabled,
       Optional<Boolean> futureVersionETLEnabled,
-      Optional<String> etledUserProxyAccount) {
+      Optional<String> etledUserProxyAccount,
+      Optional<Boolean> nativeReplicationEnabled,
+      Optional<String> pushStreamSourceAddress) {
     acquireLock(clusterName, storeName);
 
     try {
@@ -1141,6 +1143,14 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       setStore.partitionNum = partitionCount.isPresent() ? partitionCount.get() : store.getPartitionCount();
 
+      /**
+       * If the update requests sets nativeReplicationEnabled, the store must already be in leader/follower mode
+       */
+      if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !store.isLeaderFollowerModelEnabled())  {
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for a store which is not leader follower enabled");
+      }
+      setStore.nativeReplicationEnabled = nativeReplicationEnabled.isPresent() ? nativeReplicationEnabled.get() : store.isNativeReplicationEnabled();
+      setStore.pushStreamSourceAddress = pushStreamSourceAddress.isPresent() ? pushStreamSourceAddress.get() : store.getPushStreamSourceAddress();
       /**
        * Prepare the PartitionerConfigRecord object for admin message queue. Only update fields that are set, other fields
        * will be read from the original store.

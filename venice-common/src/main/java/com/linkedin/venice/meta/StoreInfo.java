@@ -49,6 +49,8 @@ public class StoreInfo {
     storeInfo.setLatestSuperSetValueSchemaId(store.getLatestSuperSetValueSchemaId());
     storeInfo.setHybridStoreDiskQuotaEnabled(store.isHybridStoreDiskQuotaEnabled());
     storeInfo.setEtlStoreConfig(store.getEtlStoreConfig());
+    storeInfo.setNativeReplicationEnabled(store.isNativeReplicationEnabled());
+    storeInfo.setPushStreamSourceAddress(store.getPushStreamSourceAddress());
     return storeInfo;
   }
   /**
@@ -188,6 +190,17 @@ public class StoreInfo {
    * for upcoming version.
    */
   private boolean leaderFollowerModelEnabled = false;
+
+  /**
+   * Whether or not native replication should be enabled for this store.  Will only successfully
+   * apply if leaderFollowerModelEnabled is also true either in this update or a previous version of the store
+   */
+  private boolean nativeReplicationEnabled = false;
+
+  /**
+   * Address to the kafka broker which holds the source of truth topic for this store version.
+   */
+  private String pushStreamSourceAddress = "";
 
   /**
    * Strategies to store backup versions of a store.
@@ -497,6 +510,22 @@ public class StoreInfo {
 
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+  }
+
+  public String getPushStreamSourceAddress() {
+    return this.pushStreamSourceAddress;
+  }
+
+  public void setPushStreamSourceAddress(String sourceAddress) {
+    this.pushStreamSourceAddress = sourceAddress;
+  }
+
+  public boolean isNativeReplicationEnabled() {
+    return this.nativeReplicationEnabled;
+  }
+
+  public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
+    this.nativeReplicationEnabled = nativeReplicationEnabled;
   }
 
   public void setLatestSuperSetValueSchemaId(int valueSchemaId) {

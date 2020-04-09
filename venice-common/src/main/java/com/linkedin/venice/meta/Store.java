@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -201,6 +200,17 @@ public class Store {
    * for upcoming version.
    */
   private boolean leaderFollowerModelEnabled = false;
+
+  /**
+   * Whether or not native should be enabled for this store.  Will only successfully
+   * apply if leaderFollowerModelEnabled is also true either in this update or a previous version of the store
+   */
+  private boolean nativeReplicationEnabled = false;
+
+  /**
+   * Address to the kafka broker which holds the source of truth topic for this store version.
+   */
+  private String pushStreamSourceAddress = "";
 
   /**
    * Strategies to store backup versions.
@@ -551,6 +561,23 @@ public class Store {
 
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+  }
+
+
+  public String getPushStreamSourceAddress() {
+    return this.pushStreamSourceAddress;
+  }
+
+  public void setPushStreamSourceAddress(String sourceAddress) {
+    this.pushStreamSourceAddress = sourceAddress;
+  }
+
+  public boolean isNativeReplicationEnabled() {
+    return this.nativeReplicationEnabled;
+  }
+
+  public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
+    this.nativeReplicationEnabled = nativeReplicationEnabled;
   }
 
   public void setBufferReplayForHybridForVersion(int versionNum, boolean enabled) {
