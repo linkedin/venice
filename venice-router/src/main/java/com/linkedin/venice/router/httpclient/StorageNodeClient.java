@@ -9,6 +9,12 @@ import java.util.function.Consumer;
 
 
 public interface StorageNodeClient extends Closeable {
+
+  /**
+   * Start the client and prepare the required resources.
+   */
+  void start();
+
   /**
    * Close the client and release all resources held by the client
    */
