@@ -183,6 +183,12 @@ public class ConfigKeys {
   public static final String SERVER_COMPUTE_THREAD_NUM = "server.compute.thread.num";
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
+
+  /**
+   * Whether to enable epoll in rest service layer.
+   * This will be a best-effort since epoll support is only available in Linux, not Mac.
+   */
+  public static final String SERVER_REST_SERVICE_EPOLL_ENABLED = "server.rest.service.epoll.enabled";
   /**
    * Database sync per bytes for transactional mode.
    * This parameter will impact the sync frequency of database after batch push.
