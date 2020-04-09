@@ -9,9 +9,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,6 +25,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.apache.log4j.Logger;
 
 
 public class IngestionController implements Closeable {
@@ -120,15 +121,9 @@ public class IngestionController implements Closeable {
       return currentVersionRef.acquire();
     }
 
-    public synchronized CompletableFuture subscribe(Set<Integer> partitions) {
+    private synchronized CompletableFuture subscribe(Version version, Set<Integer> partitions) {
       if (currentVersion == null) {
-        Store store = storeRepository.getStoreOrThrow(storeName);
-        Optional<Version> version = store.getVersions().stream().max(Comparator.comparing(Version::getNumber));
-        if (!version.isPresent()) {
-          String msg = "Cannot subscribe to an empty store, storeName=" + storeName;
-          throw new VeniceException(msg);
-        }
-        currentVersion = new VersionBackend(version.get());
+        currentVersion = new VersionBackend(version);
         currentVersionRef.reset(currentVersion);
       }
 
@@ -137,12 +132,14 @@ public class IngestionController implements Closeable {
       return currentVersion.subscribe(partitions).whenComplete((v, t) -> ref.release());
     }
 
+
     // may be called indirectly by readers, so has to be fast
     private void deleteVersion(VersionBackend version) {
       executor.submit(() -> version.delete());
     }
   }
 
+  private static final Logger logger = Logger.getLogger(IngestionController.class);
 
   private final VeniceConfigLoader configLoader;
   private final ReadOnlyStoreRepository storeRepository;
@@ -165,8 +162,30 @@ public class IngestionController implements Closeable {
   }
 
   public synchronized void start() {
-    // TODO: delete obsolete stores and versions from disk
-    // TODO: subscribe to current versions that exist locally
+    for (AbstractStorageEngine<?> storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+      String kafkaTopicName = storageEngine.getName();
+      String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+      if (storeByNameMap.containsKey(storeName)) {
+        // We have discovered the current version for the store, so we will delete all other local versions.
+        storageService.removeStorageEngine(kafkaTopicName);
+      } else {
+        Version version;
+        try {
+          version = findLatestVersion(storeName);
+        } catch (VeniceException e) {
+          // If store does not exists in store repository or store is empty, all local versions should be removed.
+          storageService.removeStorageEngine(kafkaTopicName);
+          continue;
+        }
+        if (version.kafkaTopicName().equals(storageEngine.getName())) {
+          // subscribe() makes sures a current version for the store is determined and stored inside storeByNameMap.
+          subscribe(storeName, version, storageEngine.getPartitionIds());
+        } else {
+          // If the version is not the latest, it should be removed.
+          storageService.removeStorageEngine(kafkaTopicName);
+        }
+      }
+    }
   }
 
   @Override
@@ -195,13 +214,25 @@ public class IngestionController implements Closeable {
 
   public synchronized CompletableFuture<Void> subscribe(String storeName, Set<Integer> partitions) {
     StoreBackend store = storeByNameMap.computeIfAbsent(storeName, StoreBackend::new);
-    return store.subscribe(partitions);
+    return store.subscribe(findLatestVersion(storeName), partitions);
+  }
+
+  public synchronized CompletableFuture<Void> subscribe(String storeName, Version version, Set<Integer> partitions) {
+    StoreBackend store = storeByNameMap.computeIfAbsent(storeName, StoreBackend::new);
+    return store.subscribe(version, partitions);
   }
 
   public synchronized CompletableFuture<Void> unsubscribe(String storeName, Set<Integer> partitions) {
     StoreBackend store = getStoreOrThrow(storeName);
     // TODO: implement StoreBackend::unsubscribe
     return CompletableFuture.completedFuture(null);
+  }
+
+  private Version findLatestVersion(String storeName) {
+    Store store = storeRepository.getStoreOrThrow(storeName);
+    Optional<Version> version = store.getVersions().stream().max(Comparator.comparing(Version::getNumber));
+    version.orElseThrow(() -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName));
+    return version.get();
   }
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
