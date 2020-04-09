@@ -254,25 +254,22 @@ public class ControllerClient implements Closeable {
       if(updateResponse.isError()) {
         // update failed.  Lets clean up and return the error
         if(!this.getStore(storeName).isError()) {
-          this.deleteStore(storeName);
           return updateResponse;
         }
       }
 
-      pushResponse = this.sendEmptyPushAndWait(storeName, pushJobId, storeSize, timeoutInMillis);
+      pushResponse = this.emptyPush(storeName, pushJobId, storeSize);
       if(pushResponse.isError()) {
-        this.deleteStore(storeName);
         return pushResponse;
       }
     } finally {
       if(creationResponse == null || updateResponse == null || pushResponse == null || pushResponse.isError()) {
         // If any step in this process failed (that is, the store was created in some inconsistent state, clean up.
         if(!this.getStore(storeName).isError()) {
-          this.deleteStore(storeName);
+          this.disableAndDeleteStore(storeName);
         }
       }
     }
-
     return creationResponse;
   }
 
@@ -313,6 +310,17 @@ public class ControllerClient implements Closeable {
   public TrackableControllerResponse deleteStore(String storeName) {
     QueryParams params = newParams().add(NAME, storeName);
     return request(ControllerRoute.DELETE_STORE, params, TrackableControllerResponse.class);
+  }
+
+  public ControllerResponse disableAndDeleteStore(String storeName) {
+    UpdateStoreQueryParams updateParams = new UpdateStoreQueryParams()
+            .setEnableWrites(false)
+            .setEnableReads(false);
+    ControllerResponse response = updateStore(storeName, updateParams);
+    if(!response.isError()) {
+      response = deleteStore(storeName);
+    }
+    return response;
   }
 
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
