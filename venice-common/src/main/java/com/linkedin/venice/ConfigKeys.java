@@ -604,6 +604,17 @@ public class ConfigKeys {
   public static final String ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS = "router.full.pending.queue.server.oor.ms";
 
   /**
+   * Connection warming feature for httpasynclient.
+   * So far, it only works when Router starts and runs in http-client-per-route mode, and it will try to warm up {@link #ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE}
+   * connections per route.
+   */
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED = "router.httpasyncclient.connection.warming.enabled";
+
+  /**
+   * When Router starts, for a given route, the following config controls the warming up speed to minimize the impact to storage nodes.
+   */
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS = "router.httpasyncclient.connection.warming.sleep.interval.ms";
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */

@@ -138,6 +138,10 @@ public class NettyStorageNodeClient implements StorageNodeClient  {
     manager = new ChannelPoolManagerImpl(eventLoopGroup, factory, resolver, config.getNettyClientChannelPoolMaxPendingAcquires());
   }
 
+  @Override
+  public void start() {
+    logger.info("Nothing to do during start");
+  }
 
   @Override
   public void close() {

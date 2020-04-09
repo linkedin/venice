@@ -91,6 +91,8 @@ public class VeniceRouterConfig {
   private boolean idleConnectionToServerCleanupEnabled;
   private long idleConnectionToServerCleanupThresholdMins;
   private long fullPendingQueueServerOORMs;
+  private boolean httpasyncclientConnectionWarmingEnabled;
+  private long httpasyncclientConnectionWarmingSleepIntervalMs;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -210,6 +212,8 @@ public class VeniceRouterConfig {
     idleConnectionToServerCleanupThresholdMins = props.getLong(ROUTER_IDLE_CONNECTION_TO_SERVER_CLEANUP_THRESHOLD_MINS, TimeUnit.HOURS.toMinutes(3));
 
     fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0)); // No OOR
+    httpasyncclientConnectionWarmingEnabled = props.getBoolean(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, false);
+    httpasyncclientConnectionWarmingSleepIntervalMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 100); // 100ms
   }
 
   public String getClusterName() {
@@ -490,6 +494,14 @@ public class VeniceRouterConfig {
 
   public long getFullPendingQueueServerOORMs() {
     return fullPendingQueueServerOORMs;
+  }
+
+  public boolean isHttpasyncclientConnectionWarmingEnabled() {
+    return httpasyncclientConnectionWarmingEnabled;
+  }
+
+  public long getHttpasyncclientConnectionWarmingSleepIntervalMs() {
+    return httpasyncclientConnectionWarmingSleepIntervalMs;
   }
 
   /**

@@ -646,6 +646,16 @@ public class RouterServer extends AbstractVeniceService {
       }
       // Should refresh after Helix cluster is setup
       liveInstanceMonitor.refresh();
+      /**
+       * {@link StorageNodeClient#start()} should only be called after {@link liveInstanceMonitor.refresh()} since it only
+       * contains the live instance set after refresh.
+       */
+      try {
+        storageNodeClient.start();
+      } catch (VeniceException e) {
+        logger.error("Encountered issue when starting storage node client", e);
+        System.exit(1);
+      }
 
       // Register current router into ZK.
       routersClusterManager = new ZkRoutersClusterManager(zkClient, adapter, config.getClusterName(),
