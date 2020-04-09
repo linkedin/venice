@@ -119,6 +119,8 @@ public abstract class TestRead {
     serverProperties.put(ConfigKeys.SERVER_COMPUTE_QUEUE_CAPACITY, 1);
     serverProperties.put(ConfigKeys.SERVER_BLOCKING_QUEUE_TYPE, ARRAY_BLOCKING_QUEUE.name());
     serverProperties.put(ConfigKeys.SERVER_PARALLEL_BATCH_GET_CHUNK_SIZE, 3);
+    serverProperties.put(ConfigKeys.SERVER_REST_SERVICE_EPOLL_ENABLED, true);
+    serverProperties.put(ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, "");
     Properties serverFeatureProperties = new Properties();
     serverFeatureProperties.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
     veniceCluster.addVeniceServer(serverFeatureProperties, serverProperties);

@@ -175,6 +175,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int databaseLookupQueueCapacity;
   private final int computeQueueCapacity;
   private final BlockingQueueType blockingQueueType;
+  private final boolean restServiceEpollEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -249,6 +250,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     } catch (IllegalArgumentException e) {
       throw new VeniceException("Valid blocking queue options: " + Arrays.toString(BlockingQueueType.values()));
     }
+
+    restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
   }
 
   public int getListenerPort() {
@@ -443,5 +446,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getComputeQueueCapacity() {
     return computeQueueCapacity;
+  }
+
+  public boolean isRestServiceEpollEnabled() {
+    return restServiceEpollEnabled;
   }
 }

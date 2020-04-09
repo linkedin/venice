@@ -339,7 +339,7 @@ public class VeniceProperties {
   }
 
   public Map<String, String> getMap(String key, Map<String, String> defaultValue) {
-    if (!containsKey(key)) {
+    if (!containsKey(key) || getString(key).trim().isEmpty()) {
       return defaultValue;
     }
     return getMap(key);

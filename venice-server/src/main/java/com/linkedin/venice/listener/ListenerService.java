@@ -16,12 +16,14 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.ServerChannel;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
@@ -33,8 +35,8 @@ public class ListenerService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(ListenerService.class);
 
   private final ServerBootstrap bootstrap;
-  private final EventLoopGroup bossGroup;
-  private final EventLoopGroup workerGroup;
+  private EventLoopGroup bossGroup;
+  private EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
   private final int port;
   private final VeniceServerConfig serverConfig;
@@ -59,10 +61,6 @@ public class ListenerService extends AbstractVeniceService {
     this.serverConfig = serverConfig;
     this.port = serverConfig.getListenerPort();
 
-    //TODO: configurable worker group
-    bossGroup = new NioEventLoopGroup(1);
-    workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
-
     executor = createThreadPool(serverConfig.getRestServiceStorageThreadNum(), "StorageExecutionThread", serverConfig.getDatabaseLookupQueueCapacity());
     new ThreadPoolStats(metricsRepository, executor, "storage_execution_thread_pool");
 
@@ -76,8 +74,26 @@ public class ListenerService extends AbstractVeniceService {
     HttpChannelInitializer channelInitializer = new HttpChannelInitializer(
         storeMetadataRepository, routingRepository, metricsRepository, sslFactory, serverConfig, accessController, requestHandler);
 
+    Class<? extends ServerChannel> serverSocketChannelClass = NioServerSocketChannel.class;
+    boolean epollEnabled = serverConfig.isRestServiceEpollEnabled();
+    if (epollEnabled) {
+      try {
+        bossGroup = new EpollEventLoopGroup(1);
+        workerGroup = new EpollEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
+        serverSocketChannelClass = EpollServerSocketChannel.class;
+        logger.info("Epoll is enabled in Server Rest Service");
+      } catch (LinkageError error) {
+        logger.info("Epoll is only supported on Linux; switching to NIO for Server Rest Service", error);
+        epollEnabled = false;
+      }
+    }
+    if (! epollEnabled) {
+      bossGroup = new NioEventLoopGroup(1);
+      workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
+      serverSocketChannelClass = NioServerSocketChannel.class;
+    }
     bootstrap = new ServerBootstrap();
-    bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
+    bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
         .childHandler(channelInitializer)
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
