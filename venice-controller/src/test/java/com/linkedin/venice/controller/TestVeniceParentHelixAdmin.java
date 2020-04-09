@@ -27,6 +27,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.ParentHelixOfflinePushAccessor;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -53,15 +54,14 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 
+import java.util.Collections;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.Logger;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -107,6 +107,7 @@ public class TestVeniceParentHelixAdmin {
   private VeniceHelixResources resources;
   private Store store;
   private ParentHelixOfflinePushAccessor accessor;
+  private HelixReadOnlyStoreConfigRepository readOnlyStoreConfigRepository;
 
   @BeforeMethod
   public void setupTestCase() {
@@ -124,6 +125,15 @@ public class TestVeniceParentHelixAdmin {
     ExecutionIdAccessor executionIdAccessor = mock(ExecutionIdAccessor.class);
     doReturn(executionIdAccessor).when(internalAdmin).getExecutionIdAccessor();
     doReturn(0L).when(executionIdAccessor).getLastSucceededExecutionId(any());
+
+    // Occassionally the startStoreMigrationMonitor will run and throw NPE's unless the internal
+    // helix admin can proffer a set of StoreConfigRepo.  So we set up mocks for this
+    // that... do a funny thing to get it to leave us alone.  This SHOULD be mocked to return a proper
+    // list of store configs for the sake of correctness, but async scheduled threads can be the bane
+    // of reliable unit tests. TODO: Return a real list of store configs in this mock.
+    readOnlyStoreConfigRepository = mock(HelixReadOnlyStoreConfigRepository.class);
+    doReturn(Collections.emptyList()).when(readOnlyStoreConfigRepository).getAllStoreConfigs();
+    doReturn(readOnlyStoreConfigRepository).when(internalAdmin).getStoreConfigRepo();
 
     store = mock(Store.class);
     doReturn(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION).when(store).getOffLinePushStrategy();
@@ -265,7 +275,9 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> hybridStoreDiskQuotaEnabled,
         Optional<Boolean> regularVersionETLEnabled,
         Optional<Boolean> futureVersionETLEnabled,
-        Optional<String> etledUserProxyAccount) {
+        Optional<String> etledUserProxyAccount,
+        Optional<Boolean> nativeReplicationEnabled,
+        Optional<String> pushStreamSourceAddress) {
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }
@@ -1533,6 +1545,21 @@ public class TestVeniceParentHelixAdmin {
         .setHybridRewindSeconds(135l)
         .setHybridOffsetLagThreshold(2000)
         .setBootstrapToOnlineTimeoutInHours(48));
+
+    // Trying to set nativeReplication to true without setting leader/follower should throw an error
+    Assert.assertThrows(() -> parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationEnabled(readability)));
+
+    // Set leader follower first, and then set up native replication
+    store.setLeaderFollowerModelEnabled(true);
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setNativeReplicationEnabled(true));
+
+    // Verify the correct config was sent via veniceWriter
+    verify(veniceWriter, times(5)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    valueBytes = valueCaptor.getValue();
+    schemaId = schemaCaptor.getValue();
+    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertTrue(updateStore.nativeReplicationEnabled, "Native replication was not set to true after updating the store!");
   }
 
   @Test

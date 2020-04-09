@@ -79,6 +79,9 @@ public class ControllerApiConstants {
   public static final String LEADER_FOLLOWER_MODEL_ENABLED = "leader_follower_model_enabled";
   public static final String INCLUDE_SYSTEM_STORES = "include_system_stores";
 
+  public static final String NATIVE_REPLICATION_ENABLED = "native_replication_enabled";
+  public static final String PUSH_STREAM_SOURCE_ADDRESS = "push_stream_source_address";
+
   public static final String BACKUP_STRATEGY = "backup_strategy";
 
   public static final String AUTO_SCHEMA_REGISTER_FOR_PUSHJOB_ENABLED = "auto_auto_register_for_pushjob_enabled";

@@ -2082,6 +2082,21 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setActiveActiveReplicationEnabled(String clusterName, String storeName,
+        boolean nativeReplicationEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setNativeReplicationEnabled(nativeReplicationEnabled);
+            return store;
+        });
+    }
+
+    public void setPushStreamSourceAddress(String clusterName, String storeName, String pushStreamSourceAddress) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setPushStreamSourceAddress(pushStreamSourceAddress);
+            return store;
+        });
+    }
+
     public void setBackupStrategy(String clusterName, String storeName,
         BackupStrategy backupStrategy) {
         storeMetadataUpdate(clusterName, storeName, store -> {
@@ -2194,7 +2209,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> hybridStoreDiskQuotaEnabled,
         Optional<Boolean> regularVersionETLEnabled,
         Optional<Boolean> futureVersionETLEnabled,
-        Optional<String> etledUserProxyAccount) {
+        Optional<String> etledUserProxyAccount,
+        Optional<Boolean> nativeReplicationEnabled,
+        Optional<String> pushStreamSourceAddress) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
@@ -2350,6 +2367,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (leaderFollowerModelEnabled.isPresent()) {
                 setLeaderFollowerModelEnabled(clusterName, storeName, leaderFollowerModelEnabled.get());
+            }
+
+            if(nativeReplicationEnabled.isPresent()) {
+                if(originalStore.isLeaderFollowerModelEnabled()){
+                    setActiveActiveReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
+                } else {
+                    throw new VeniceException("Native Replication cannot be enabled on a store which does not have leader/follower mode enabled!");
+                }
+            }
+
+            if(pushStreamSourceAddress.isPresent()) {
+                setPushStreamSourceAddress(clusterName, storeName, pushStreamSourceAddress.get());
             }
 
             if (backupStrategy.isPresent()) {

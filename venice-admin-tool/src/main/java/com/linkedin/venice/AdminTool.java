@@ -83,7 +83,6 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
-import org.jetbrains.annotations.NotNull;
 
 import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.VeniceConstants.*;
@@ -634,6 +633,8 @@ public class AdminTool {
     booleanParam(cmd, Arg.REGULAR_VERSION_ETL_ENABLED, p -> params.setRegularVersionETLEnabled(p), argSet);
     booleanParam(cmd, Arg.FUTURE_VERSION_ETL_ENABLED, p -> params.setFutureVersionETLEnabled(p), argSet);
     genericParam(cmd, Arg.ETLED_PROXY_USER_ACCOUNT, s -> s, p -> params.setEtledProxyUserAccount(p), argSet);
+    booleanParam(cmd, Arg.NATIVE_REPLICATION_ENABLED, p -> params.setNativeReplicationEnabled(p), argSet);
+    genericParam(cmd, Arg.PUSH_STREAM_SOURCE_ADDRESS, s -> s, p -> params.setPushStreamSourceAddress(p), argSet);
 
     /**
      * By default when SRE updates storage quota using AdminTool, we will set the bypass as true,

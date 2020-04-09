@@ -393,7 +393,9 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.of(message.hybridStoreDiskQuotaEnabled),
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.regularVersionETLEnabled),
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.futureVersionETLEnabled),
-        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.etledUserProxyAccount.toString()));
+        Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.etledUserProxyAccount.toString()),
+        Optional.ofNullable(message.nativeReplicationEnabled),
+        Optional.ofNullable(message.pushStreamSourceAddress.toString()));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

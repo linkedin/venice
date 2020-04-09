@@ -83,6 +83,16 @@ public class Version implements Comparable<Version> {
   private boolean leaderFollowerModelEnabled = false;
 
   /**
+   * Whether or not native replication is enabled
+   */
+  private boolean nativeReplicationEnabled = false;
+
+  /**
+   * Address to the kafka broker which holds the source of truth topic for this store version.
+   */
+  private String pushStreamSourceAddress = "";
+
+  /**
    * Whether or not to enable buffer replay for hybrid.
    */
   private boolean bufferReplayEnabledForHybrid = true;
@@ -116,11 +126,11 @@ public class Version implements Comparable<Version> {
     this(storeName , number, System.currentTimeMillis(), numberBasedDummyPushId(number), 0, new PartitionerConfig());
   }
 
-  public Version(String storeName, int number, String pushJobId){
+  public Version(String storeName, int number, String pushJobId) {
     this(storeName, number, System.currentTimeMillis(), pushJobId, 0, new PartitionerConfig());
   }
 
-  public Version(String storeName, int number, String pushJobId, int partitionCount){
+  public Version(String storeName, int number, String pushJobId, int partitionCount) {
     this(storeName, number, System.currentTimeMillis(), pushJobId, partitionCount, new PartitionerConfig());
   }
 
@@ -167,8 +177,24 @@ public class Version implements Comparable<Version> {
     return leaderFollowerModelEnabled;
   }
 
+  public boolean isNativeReplicationEnabled() {
+    return nativeReplicationEnabled;
+  }
+
   public void setLeaderFollowerModelEnabled(boolean leaderFollowerModelEnabled) {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
+  }
+
+  private void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
+    this.nativeReplicationEnabled = nativeReplicationEnabled;
+  }
+
+  private String getPushStreamSourceAddress() {
+    return this.pushStreamSourceAddress;
+  }
+
+  private void setPushStreamSourceAddress(String address) {
+    pushStreamSourceAddress = address;
   }
 
   public boolean isBufferReplayEnabledForHybrid() {
@@ -233,6 +259,8 @@ public class Version implements Comparable<Version> {
         ", pushType=" + pushType +
         ", partitionCount=" + partitionCount +
         ", partitionerConfig=" + partitionerConfig +
+        ", nativeReplicationEnabled=" + nativeReplicationEnabled +
+        ", pushStreamSourceAddress=" + pushStreamSourceAddress +
         '}';
   }
 
@@ -281,6 +309,14 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if (nativeReplicationEnabled != version.nativeReplicationEnabled) {
+      return false;
+    }
+
+    if(!pushStreamSourceAddress.equals(version.pushStreamSourceAddress)) {
+      return false;
+    }
+
     if (bufferReplayEnabledForHybrid != version.bufferReplayEnabledForHybrid) {
       return false;
     }
@@ -310,6 +346,8 @@ public class Version implements Comparable<Version> {
     result = 31 * result + compressionStrategy.hashCode();
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
     result = 31 * result + (bufferReplayEnabledForHybrid ? 1: 0);
+    result = 31 * result + (nativeReplicationEnabled ? 1 : 0);
+    result = 31 * result + pushStreamSourceAddress.hashCode();
     result = 31 * result + partitionCount;
     return result;
   }
@@ -330,6 +368,8 @@ public class Version implements Comparable<Version> {
     clonedVersion.setBufferReplayEnabledForHybrid(bufferReplayEnabledForHybrid);
     clonedVersion.setChunkingEnabled(chunkingEnabled);
     clonedVersion.setPushType(pushType);
+    clonedVersion.setNativeReplicationEnabled(nativeReplicationEnabled);
+    clonedVersion.setPushStreamSourceAddress(pushStreamSourceAddress);
     return clonedVersion;
   }
 
