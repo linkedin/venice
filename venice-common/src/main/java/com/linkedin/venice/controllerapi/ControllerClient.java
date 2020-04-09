@@ -233,7 +233,11 @@ public class ControllerClient implements Closeable {
    * @return Either the response from the store creation, OR, the response from the first failed operation for store creation, modification, and push
    */
   public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize) {
+    return createNewStoreWithParameters(storeName, owner, keySchema, valueSchema, updateStoreQueryParams, pushJobId, storeSize, 60000l);
+  }
 
+
+    public ControllerResponse createNewStoreWithParameters(String storeName, String owner, String keySchema, String valueSchema, UpdateStoreQueryParams updateStoreQueryParams, String pushJobId, long storeSize, long timeoutInMillis) {
     NewStoreResponse creationResponse = null;
     ControllerResponse updateResponse = null;
     ControllerResponse pushResponse = null;
@@ -255,7 +259,7 @@ public class ControllerClient implements Closeable {
         }
       }
 
-      pushResponse = this.sendEmptyPushAndWait(storeName, pushJobId, storeSize, 10000L);
+      pushResponse = this.sendEmptyPushAndWait(storeName, pushJobId, storeSize, timeoutInMillis);
       if(pushResponse.isError()) {
         this.deleteStore(storeName);
         return pushResponse;
