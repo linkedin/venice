@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.schema.WriteComputeAdapter;
 import com.linkedin.venice.serializer.AvroGenericDeserializer;
 import com.linkedin.venice.serializer.AvroSerializer;
+import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.nio.ByteBuffer;
@@ -36,7 +37,7 @@ public class IngestionTaskWriteComputeAdapter {
    * and should be handled carefully.
    *
    * @param originalValue original value read from DB. It's can be null if the value is not existent. original
-   *                      value is read via {@link com.linkedin.venice.storage.chunking.ComputeChunkingAdapter#get}
+   *                      value is read via {@link GenericRecordChunkingAdapter#INSTANCE#get()}
    *                      and deserialized by the latest value schema. In some cases, this can be different
    *                      from "valueSchemaId"/"derivedSchemaId".
    * @param writeComputeBytes serialized write-compute operation.

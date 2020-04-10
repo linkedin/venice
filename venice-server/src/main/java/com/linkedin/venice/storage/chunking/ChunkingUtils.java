@@ -83,6 +83,37 @@ public class ChunkingUtils {
         null);
   }
 
+  static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
+      ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      byte[] keyBuffer,
+      ReadResponse response,
+      VALUE reusedValue,
+      BinaryDecoder reusedDecoder,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName) {
+    long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
+    byte[] value = store.get(partition, keyBuffer);
+
+    return getFromStorage(
+        value,
+        databaseLookupStartTimeInNS,
+        adapter,
+        store,
+        partition,
+        response,
+        reusedValue,
+        reusedDecoder,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName);
+  }
+
+
   /**
    * Fetches the value associated with the given key, and potentially re-assembles it, if it is
    * a chunked value.
@@ -94,7 +125,7 @@ public class ChunkingUtils {
    *
    * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
    * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
-   * @see ComputeChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, Optional)
+   * @see GenericRecordChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, Optional)
    */
   static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
@@ -108,9 +139,51 @@ public class ChunkingUtils {
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName) {
-
-    long databaseLookupStartTimeInNS = System.nanoTime();
+    long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
     byte[] value = store.get(partition, keyBuffer);
+
+    return getFromStorage(
+        value,
+        databaseLookupStartTimeInNS,
+        adapter,
+        store,
+        partition,
+        response,
+        reusedValue,
+        reusedDecoder,
+        compressionStrategy,
+        fastAvroEnabled,
+        schemaRepo,
+        storeName);
+  }
+
+  /**
+   * Fetches the value associated with the given key, and potentially re-assembles it, if it is
+   * a chunked value.
+   *
+   * This code makes use of the {@link ChunkingAdapter} interface in order to abstract away the
+   * different needs of the single get, batch get and compute code paths. This function should
+   * not be called directly, from the query code, as it expects the key to be properly formatted
+   * already. Use of one these simpler functions instead:
+   *
+   * @see SingleGetChunkingAdapter#get(AbstractStorageEngine, int, byte[], boolean, ReadResponse)
+   * @see BatchGetChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, ReadResponse)
+   * @see GenericRecordChunkingAdapter#get(AbstractStorageEngine, int, ByteBuffer, boolean, GenericRecord, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String, Optional)
+   */
+  private static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
+      byte[] value,
+      long databaseLookupStartTimeInNS,
+      ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
+      AbstractStorageEngine store,
+      int partition,
+      ReadResponse response,
+      VALUE reusedValue,
+      BinaryDecoder reusedDecoder,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName) {
+
     if (null == value) {
       return null;
     }

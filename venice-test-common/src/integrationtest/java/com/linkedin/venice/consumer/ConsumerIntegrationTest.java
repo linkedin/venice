@@ -62,13 +62,10 @@ public class ConsumerIntegrationTest {
   private static final String TEST_KEY = "key1";
 
   /**
-   * Note that the {@link #NEW_PROTOCOL_VERSION} is not automatically equal to
-   * {@link AvroProtocolDefinition#getCurrentProtocolVersion()} + 1 because there could be additional
-   * schemas in the resources which are not yet activated (compiled) as the current version.
+   * There could be cases where there exists an unreleased schema which conflicts with this new protocol version,
+   * but that should be supported.
    */
-  public static final int NEW_PROTOCOL_VERSION = new KafkaValueSerializer().knownProtocols().stream()
-      .max(Integer::compareTo)
-      .get() + 1;
+  public static final int NEW_PROTOCOL_VERSION = AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.currentProtocolVersion.get() + 1;
 
   public static final Schema NEW_PROTOCOL_SCHEMA;
 

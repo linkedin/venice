@@ -444,6 +444,7 @@ public class Utils {
         protocolSchemaMap.put(version, schema);
         if (schema.equals(protocolDef.getCurrentProtocolVersionSchema())) {
           compiledProtocolVersion = (byte) version;
+          break;
         }
         if (currentProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
           break;

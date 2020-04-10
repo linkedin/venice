@@ -44,7 +44,7 @@ import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.chunking.ChunkingUtils;
-import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
+import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.record.ValueRecord;
@@ -1512,7 +1512,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         long lookupStartTimeInNS = System.nanoTime();
         boolean isChunkedTopic = storageMetadataService.isStoreVersionChunked(topic);
-        GenericRecord originalValue = ComputeChunkingAdapter.get(storageEngineRepository.getLocalStorageEngine(topic), partition,
+        GenericRecord originalValue = GenericRecordChunkingAdapter.INSTANCE.get(storageEngineRepository.getLocalStorageEngine(topic), partition,
             ByteBuffer.wrap(keyBytes), isChunkedTopic, null, null, null,
             storageMetadataService.getStoreVersionCompressionStrategy(topic), serverConfig.isComputeFastAvroEnabled(),
             schemaRepo, storeNameWithoutVersionInfo);

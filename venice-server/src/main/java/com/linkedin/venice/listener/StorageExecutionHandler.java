@@ -35,14 +35,13 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.storage.chunking.BatchGetChunkingAdapter;
-import com.linkedin.venice.storage.chunking.ComputeChunkingAdapter;
+import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
 import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.streaming.StreamingConstants;
 import com.linkedin.venice.streaming.StreamingUtils;
 import com.linkedin.venice.utils.ComputeUtils;
-import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.utils.queues.LabeledRunnable;
@@ -513,7 +512,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       ComputeResponseWrapper response,
       Map<String, Object> globalContext) {
 
-    valueRecord = ComputeChunkingAdapter.get(store, partition, key, isChunked, valueRecord, binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
+    valueRecord = GenericRecordChunkingAdapter.INSTANCE.get(store, partition, key, isChunked, valueRecord, binaryDecoder, response, compressionStrategy, fastAvroEnabled, this.schemaRepo, storeName);
 
     if (null == valueRecord) {
       if (isStreaming) {
