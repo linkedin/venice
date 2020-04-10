@@ -17,7 +17,7 @@ import org.apache.avro.specific.SpecificRecord;
  */
 public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
     extends AbstractAvroStoreClient<K, V> implements AvroSpecificStoreClient<K, V> {
-  private Class<V> valueClass;
+  private final Class<V> valueClass;
 
   public AvroSpecificStoreClientImpl(TransportClient transportClient, ClientConfig clientConfig) {
     this(transportClient, true, clientConfig);

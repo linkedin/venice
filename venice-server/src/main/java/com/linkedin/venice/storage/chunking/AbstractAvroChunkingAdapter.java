@@ -26,17 +26,14 @@ import org.apache.avro.io.DecoderFactory;
 /**
  * Read compute and write compute chunking adapter
  */
-public class ComputeChunkingAdapter implements ChunkingAdapter<ChunkedValueInputStream, GenericRecord> {
-  private static final ComputeChunkingAdapter COMPUTE_CHUNKING_ADAPTER = new ComputeChunkingAdapter();
-
-  /** Singleton */
-  private ComputeChunkingAdapter() {}
+public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<ChunkedValueInputStream, T> {
+  protected abstract RecordDeserializer<T> getDeserializer(String storeName, int schemaId, ReadOnlySchemaRepository schemaRepo, boolean fastAvroEnabled);
 
   @Override
-  public GenericRecord constructValue(
+  public T constructValue(
       int schemaId,
       byte[] fullBytes,
-      GenericRecord reusedValue,
+      T reusedValue,
       BinaryDecoder reusedDecoder,
       ReadResponse response,
       CompressionStrategy compressionStrategy,
@@ -70,10 +67,10 @@ public class ComputeChunkingAdapter implements ChunkingAdapter<ChunkedValueInput
   }
 
   @Override
-  public GenericRecord constructValue(
+  public T constructValue(
       int schemaId,
       ChunkedValueInputStream chunkedValueInputStream,
-      GenericRecord reusedValue,
+      T reusedValue,
       BinaryDecoder reusedDecoder,
       ReadResponse response,
       CompressionStrategy compressionStrategy,
@@ -92,10 +89,10 @@ public class ComputeChunkingAdapter implements ChunkingAdapter<ChunkedValueInput
         storeName);
   }
 
-  private GenericRecord deserialize(
+  private T deserialize(
       int schemaId,
       InputStream inputStream,
-      GenericRecord reusedValue,
+      T reusedValue,
       BinaryDecoder reusedDecoder,
       ReadResponse response,
       CompressionStrategy compressionStrategy,
@@ -106,15 +103,8 @@ public class ComputeChunkingAdapter implements ChunkingAdapter<ChunkedValueInput
     VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
     try (InputStream decompressedInputStream = compressor.decompress(inputStream)) {
       BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(decompressedInputStream, reusedDecoder);
-      Schema writerSchema = schemaRepo.getValueSchema(storeName, schemaId).getSchema();
-      Schema latestValueSchema = schemaRepo.getLatestValueSchema(storeName).getSchema();
-      RecordDeserializer<GenericRecord> deserializer;
-      if (fastAvroEnabled) {
-        deserializer = FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, latestValueSchema);
-      } else {
-        deserializer = ComputableSerializerDeserializerFactory.getComputableAvroGenericDeserializer(writerSchema, latestValueSchema);
-      }
-      GenericRecord record = deserializer.deserialize(reusedValue, decoder);
+      RecordDeserializer<T> deserializer = getDeserializer(storeName, schemaId, schemaRepo, fastAvroEnabled);
+      T record = deserializer.deserialize(reusedValue, decoder);
 
       if (null != response) {
         response.addReadComputeDeserializationLatency(LatencyUtils.getLatencyInMS(deserializeStartTimeInNS));
@@ -127,12 +117,12 @@ public class ComputeChunkingAdapter implements ChunkingAdapter<ChunkedValueInput
     }
   }
 
-  public static GenericRecord get(
+  public T get(
       AbstractStorageEngine store,
       int partition,
       ByteBuffer key,
       boolean isChunked,
-      GenericRecord reusedValue,
+      T reusedValue,
       BinaryDecoder reusedDecoder,
       ReadResponse response,
       CompressionStrategy compressionStrategy,
@@ -142,7 +132,26 @@ public class ComputeChunkingAdapter implements ChunkingAdapter<ChunkedValueInput
     if (isChunked) {
       key = ByteBuffer.wrap(ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key));
     }
-    return ChunkingUtils.getFromStorage(COMPUTE_CHUNKING_ADAPTER, store, partition, key, response, reusedValue,
+    return ChunkingUtils.getFromStorage(this, store, partition, key, response, reusedValue,
+        reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
+  }
+
+  public T get(
+      AbstractStorageEngine store,
+      int partition,
+      byte[] key,
+      boolean isChunked,
+      T reusedValue,
+      BinaryDecoder reusedDecoder,
+      ReadResponse response,
+      CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled,
+      ReadOnlySchemaRepository schemaRepo,
+      String storeName) {
+    if (isChunked) {
+      key = ChunkingUtils.KEY_WITH_CHUNKING_SUFFIX_SERIALIZER.serializeNonChunkedKey(key);
+    }
+    return ChunkingUtils.getFromStorage(this, store, partition, key, response, reusedValue,
         reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
   }
 }

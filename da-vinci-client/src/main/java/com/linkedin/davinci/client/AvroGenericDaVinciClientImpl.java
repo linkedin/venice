@@ -8,8 +8,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,8 +21,6 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
-import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
-import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -34,9 +30,9 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.storage.chunking.SingleGetChunkingAdapter;
+import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
+import com.linkedin.venice.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
@@ -46,13 +42,9 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 
 import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DecoderFactory;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -73,7 +65,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClientImpl.class);
 
   private final String storeName;
-  private final boolean useFastAvro;
+  protected final boolean useFastAvro;
   private final MetricsRepository metricsRepository;
   private final DaVinciConfig daVinciConfig;
   private final ClientConfig clientConfig;
@@ -225,14 +217,19 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       throw new VeniceClientException(
           "DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
     }
-    // TODO: refactor ComputeChunkingAdapter to replace the use of SingleGetChunkingAdapter here
-    ValueRecord valueRecord = SingleGetChunkingAdapter.get(storageEngine, partitionId, keyBytes, version.isChunkingEnabled(), null);
-    if (null == valueRecord) {
-      return null;
-    }
-    ByteBuffer data = decompressRecord(version.getCompressionStrategy(), ByteBuffer.wrap(valueRecord.getDataInBytes()));
-    RecordDeserializer<V> deserializer = getDataRecordDeserializer(valueRecord.getSchemaId());
-    return deserializer.deserialize(data);
+
+    return getChunkingAdapter().get(
+        storageEngine,
+        partitionId,
+        keyBytes,
+        version.isChunkingEnabled(),
+        null, // TODO: Consider extending the API to allow object reuse
+        null,
+        null,
+        version.getCompressionStrategy(),
+        useFastAvro,
+        schemaRepository,
+        storeName);
   }
 
   @Override
@@ -342,10 +339,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     return schemaRepository.getLatestValueSchema(getStoreName()).getSchema();
   }
 
-  public boolean isUseFastAvro() {
-    return useFastAvro;
-  }
-
   /**
    * @return true if the {@link AvroGenericDaVinciClientImpl} and all of its inner services are fully started
    *         false if the {@link AvroGenericDaVinciClientImpl} was not started or if any of its inner services
@@ -355,41 +348,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isStarted());
   }
 
-  private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer data) {
-    try {
-      return CompressorFactory.getCompressor(compressionStrategy).decompress(data);
-    } catch (IOException e) {
-      throw new VeniceClientException(
-          String.format("Unable to decompress the record, compressionStrategy=%d", compressionStrategy.getValue()), e);
-    }
-  }
-
-  private RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException {
-    // Get latest value schema
-    Schema readerSchema = schemaRepository.getLatestValueSchema(storeName).getSchema();
-    if (null == readerSchema) {
-      throw new VeniceClientException("Failed to get latest value schema for store: " + getStoreName());
-    }
-
-    Schema writerSchema = schemaRepository.getValueSchema(storeName, schemaId).getSchema();
-    if (null == writerSchema) {
-      throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
-    }
-
-    /**
-     * The reason to fetch the latest value schema before fetching the writer schema since internally
-     * it will fetch all the available value schemas when no value schema is present in {@link SchemaReader},
-     * which means the latest value schema could be pretty accurate even the following read requests are
-     * asking for older schema versions.
-     *
-     * The reason to fetch latest value schema again after fetching the writer schema is that the new fetched
-     * writer schema could be newer than the cached value schema versions.
-     * When the latest value schema is present in {@link SchemaReader}, the following invocation is very cheap.
-     */
-    if (isUseFastAvro()) {
-      return FastSerializerDeserializerFactory.getFastAvroGenericDeserializer(writerSchema, readerSchema);
-    } else {
-      return SerializerDeserializerFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
-    }
+  protected AbstractAvroChunkingAdapter<V> getChunkingAdapter() {
+    return GenericChunkingAdapter.INSTANCE;
   }
 }
