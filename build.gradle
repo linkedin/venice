@@ -83,7 +83,7 @@ ext.libraries = [ // Groovy map literal
                   // TODO: move back to open source sparkjava once they fix Jetty SSL.
                   // spark: 'com.sparkjava:spark-core:2.9.1',
                   spark: 'com.linkedin.li-sparkjava:li-sparkjava-impl:0.0.2',
-                  testng: 'org.testng:testng:7.1.1',
+                  testng: 'org.testng:testng:6.14.3',
                   // TODO remove this linkedin MP dependency, instead depends on the opensource tehuti lib.
                   tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.6',
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
