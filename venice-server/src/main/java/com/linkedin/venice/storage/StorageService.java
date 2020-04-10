@@ -42,6 +42,7 @@ public class StorageService extends AbstractVeniceService {
 
   private final StorageEngineRepository storageEngineRepository;
   private final VeniceConfigLoader configLoader;
+  private final VeniceServerConfig serverConfig;
 
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
@@ -54,6 +55,7 @@ public class StorageService extends AbstractVeniceService {
   public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter,
       AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats, RocksDBMemoryStats rocksDBMemoryStats) {
     this.configLoader = configLoader;
+    this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
     if (bdbStorageEngineStats != null) {
       this.storageEngineRepository.setAggBdbStorageEngineStats(bdbStorageEngineStats);
@@ -77,7 +79,6 @@ public class StorageService extends AbstractVeniceService {
    * Please add it here if you want to add more.
    */
   private void initInternalStorageEngineFactories() {
-    VeniceServerConfig serverConfig = configLoader.getVeniceServerConfig();
     persistenceTypeToStorageEngineFactoryMap.put(BDB, new BdbStorageEngineFactory(serverConfig));
     persistenceTypeToStorageEngineFactoryMap.put(IN_MEMORY, new InMemoryStorageEngineFactory(serverConfig));
     persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig, rocksDBMemoryStats));
@@ -203,8 +204,10 @@ public class StorageService extends AbstractVeniceService {
       // Clean up the state
       storageEngineRepository.removeLocalStorageEngine(storeName);
 
-      // Clean up the metadata
-      storeVersionStateDeleter.accept(storeName);
+      // Clean up the metadata. We dont need to do this here if the config is enabled, as dropPartition does the offset cleanup also
+      if (!serverConfig.isRocksDBOffsetMetadataEnabled()) {
+        storeVersionStateDeleter.accept(storeName);
+      }
     }
   }
 

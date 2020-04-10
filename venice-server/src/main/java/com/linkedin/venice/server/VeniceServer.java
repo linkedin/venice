@@ -2,6 +2,7 @@ package com.linkedin.venice.server;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -21,7 +22,6 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
-import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -38,7 +38,10 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.DiskHealthCheckService;
 import com.linkedin.venice.storage.MetadataRetriever;
+import com.linkedin.venice.storage.StorageEngineMetadataService;
+import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
@@ -50,7 +53,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
@@ -70,7 +72,9 @@ public class VeniceServer {
   private final List<AbstractVeniceService> services;
 
   private StorageService storageService;
-  private BdbStorageMetadataService storageMetadataService;
+  private StorageMetadataService storageMetadataService;
+  private StorageEngineMetadataService storageEngineMetadataService;
+  private BdbStorageMetadataService bdbMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private LeakedResourceCleaner leakedResourceCleaner;
   private DiskHealthCheckService diskHealthCheckService;
@@ -152,8 +156,8 @@ public class VeniceServer {
 
     // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
-    storageMetadataService = new BdbStorageMetadataService(clusterConfig);
-    services.add(storageMetadataService);
+    bdbMetadataService = new BdbStorageMetadataService(clusterConfig);
+    services.add(bdbMetadataService);
 
     // Create ReadOnlyStore/SchemaRepository
     createHelixStoreAndSchemaRepository(clusterConfig, metricsRepository);
@@ -168,6 +172,16 @@ public class VeniceServer {
     // create and add StorageService. storeRepository will be populated by StorageService,
     storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s),
         bdbStorageEngineStats, storageEngineStats, rocksDBMemoryStats);
+
+    if (veniceConfigLoader.getVeniceServerConfig().isRocksDBOffsetMetadataEnabled()) {
+      logger.info("Server will start with RocksDB offset store enabled");
+      storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+      services.add(storageEngineMetadataService);
+      storageMetadataService = storageEngineMetadataService;
+    } else {
+      storageMetadataService = bdbMetadataService;
+    }
+
     services.add(storageService);
 
     // Create stats for RocksDB
@@ -296,6 +310,19 @@ public class VeniceServer {
     long start = System.currentTimeMillis();
     for (AbstractVeniceService service : services) {
       service.start();
+    }
+
+    List<AbstractStorageEngine> allStorageEngines =
+        storageService.getStorageEngineRepository().getAllLocalStorageEngines();
+    if (veniceConfigLoader.getVeniceServerConfig().isRocksDBOffsetMetadataEnabled()) {
+      for (AbstractStorageEngine storageEngine : allStorageEngines) {
+        logger.info("Bootstrapping offset records from BDB to RocksDB for store : " + storageEngine.getName());
+        storageEngine.bootStrapAndValidateOffsetRecordsFromBDB(bdbMetadataService);
+      }
+    } else {
+      for (AbstractStorageEngine storageEngine : allStorageEngines) {
+        storageEngine.validateMigrationStatus();
+      }
     }
     long end = System.currentTimeMillis();
     logger.info("Startup completed in " + (end - start) + " ms.");

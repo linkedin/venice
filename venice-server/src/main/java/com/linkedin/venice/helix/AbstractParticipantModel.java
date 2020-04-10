@@ -158,6 +158,12 @@ public abstract class AbstractParticipantModel extends StateModel {
     } catch (Exception e) {
       logger.error("Error waiting for partition to stop consuming", e);
     }
+    /**
+     * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
+     * from the topic partition unsubscription.
+     */
+    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), getPartition());
+
     // Catch exception separately to ensure reset consumption offset would be executed for sure.
     try {
       getStorageService().dropStorePartition(getStoreConfig(), getPartition());
@@ -165,11 +171,6 @@ public abstract class AbstractParticipantModel extends StateModel {
       logger.error(
           "Error dropping the partition:" + getPartition() + " in store:" + getStoreConfig().getStoreName());
     }
-    /**
-     * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
-     * from the topic partition unsubscription.
-     */
-    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), getPartition());
   }
 
   /**
