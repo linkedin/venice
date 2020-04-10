@@ -195,7 +195,7 @@ public class PartitionStatusOnlineInstanceFinder
     });
 
     deletedPushStatusList.forEach(pushStatusName -> {
-      int partitionCount = topicToResourceStatus.get(pushStatusName).getNumberOfPartitions();
+      int partitionCount = topicToResourceStatus.get(pushStatusName).getNumberOfPartition();
       topicToResourceStatus.remove(pushStatusName);
       if (isLFModelEnabledForStoreVersion(pushStatusName)) {
         offlinePushAccessor.unsubscribePartitionsStatusChange(pushStatusName, partitionCount, this);
