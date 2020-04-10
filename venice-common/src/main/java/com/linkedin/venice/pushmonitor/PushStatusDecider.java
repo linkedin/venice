@@ -99,7 +99,7 @@ public abstract class PushStatusDecider {
     boolean isAllPartitionCompleted = true;
     boolean isAllPartitionEndOfPushReceived = true;
 
-    if (pushStatus.getPartitionStatuses().size() != pushStatus.getNumberOfPartitions()) {
+    if (pushStatus.getPartitionStatuses().size() != pushStatus.getNumberOfPartition()) {
       isAllPartitionCompleted = false;
       isAllPartitionEndOfPushReceived = false;
     } else {
