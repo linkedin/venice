@@ -1,5 +1,6 @@
 package com.linkedin.venice.store.rocksdb;
 
+import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
@@ -7,6 +8,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
+import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
@@ -26,9 +28,18 @@ import static org.mockito.Mockito.*;
 public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private StorageService service;
   private VeniceStoreConfig storeConfig;
+  private BdbStorageMetadataService bdbStorageMetadataService;
+  private VeniceClusterConfig clusterConfig;
 
   private String storeName;
   private static final int PARTITION_ID = 0;
+
+
+  private BdbStorageMetadataService getOffsetManager(VeniceClusterConfig clusterConfig)   {
+    BdbStorageMetadataService offsetManager = new BdbStorageMetadataService(clusterConfig);
+    offsetManager.start();
+    return offsetManager;
+  }
 
   @Override
   public void createStorageEngineForTest() {
@@ -39,6 +50,10 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
         mock(AggVersionedStorageEngineStats.class), null);
     storeConfig = new VeniceStoreConfig(storeName, serverProperties, PersistenceType.ROCKS_DB);
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
+    VeniceProperties clusterProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY, 1000L);
+
+    clusterConfig = new VeniceClusterConfig(clusterProps);
+    bdbStorageMetadataService = getOffsetManager(clusterConfig);
     createStoreForTest();
   }
 
@@ -156,5 +171,40 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     Assert.assertEquals(persistedPartitionIds.size(), 2);
     Assert.assertTrue(persistedPartitionIds.contains(PARTITION_ID));
     Assert.assertTrue(persistedPartitionIds.contains(METADATA_PARTITION_ID));
+  }
+
+  @Test
+  public void testBDBToRocksDBOffsetBootStrap() throws Exception {
+    AbstractStorageEngine testStorageEngine = getTestStoreEngine();
+    String topic = testStorageEngine.getName();
+    OffsetRecord expectedRecord = null, actualRecord =  null;
+
+    for(int j = 0; j < 2; j ++) {
+      expectedRecord = TestUtils.getOffsetRecord(j);
+      bdbStorageMetadataService.put(testStorageEngine.getName(), PARTITION_ID, expectedRecord);
+    }
+    StoreVersionState storeVersionState = new StoreVersionState();
+    storeVersionState.sorted = true;
+    bdbStorageMetadataService.put(topic, storeVersionState);
+    actualRecord = bdbStorageMetadataService.getLastOffset(topic, PARTITION_ID);
+    storeVersionState = bdbStorageMetadataService.getStoreVersionState(topic).get();
+    testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(bdbStorageMetadataService);
+
+    Optional<OffsetRecord> record = testStoreEngine.getPartitionOffset(PARTITION_ID);
+    Assert.assertEquals(record.get(), actualRecord);
+
+    Optional<StoreVersionState> actualState = testStoreEngine.getStoreVersionState();
+    Assert.assertEquals(actualState.get(), storeVersionState);
+
+    // after validation BDB should be empty
+    Assert.assertFalse(bdbStorageMetadataService.getStoreVersionState(topic).isPresent());
+
+    // calling it again will not bootstrap and validate again.
+    storeVersionState.sorted = false;
+    bdbStorageMetadataService.put(topic, storeVersionState);
+    testStoreEngine.bootStrapAndValidateOffsetRecordsFromBDB(bdbStorageMetadataService);
+
+    bdbStorageMetadataService.stop();
+
   }
 }

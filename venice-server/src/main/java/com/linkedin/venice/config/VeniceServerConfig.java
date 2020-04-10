@@ -176,6 +176,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int computeQueueCapacity;
   private final BlockingQueueType blockingQueueType;
   private final boolean restServiceEpollEnabled;
+  private final boolean enableRocksDBOffsetMetadata;
+
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -233,6 +235,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     });
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
+    enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
+
     /**
      * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
      * Disable it by default for now.
@@ -450,5 +454,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isRestServiceEpollEnabled() {
     return restServiceEpollEnabled;
+  }
+  public boolean isRocksDBOffsetMetadataEnabled() {
+    return enableRocksDBOffsetMetadata;
   }
 }
