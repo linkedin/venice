@@ -217,6 +217,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       dotProductCount = 0;
       cosineSimilarityCount = 0;
       hadamardProductCount = 0;
+      isRequestTerminatedEarly = false;
 
       optionalKeySizeList = Optional.empty();
       optionalValueSizeList = Optional.empty();
