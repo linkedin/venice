@@ -2,15 +2,18 @@ package com.linkedin.davinci.client;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ConcurrentRef;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -61,8 +64,18 @@ public class IngestionController implements Closeable {
       }
     }
 
+    private synchronized boolean isReadyToServe(Set<Integer> partitions) {
+      for (Integer id : partitions) {
+        CompletableFuture future = partitionFutures.get(id);
+        if (future == null || !future.isDone()) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     private synchronized CompletableFuture subscribe(Set<Integer> partitions) {
-      for (int id : partitions) {
+      for (Integer id : partitions) {
         if (id < 0 || id >= version.getPartitionCount()) {
           String msg = "Cannot subscribe to out of bounds partition" +
                            ", kafkaTopic=" + version.kafkaTopicName() +
@@ -73,7 +86,7 @@ public class IngestionController implements Closeable {
       }
 
       List<CompletableFuture> futures = new ArrayList<>(partitions.size());
-      for (int id : partitions) {
+      for (Integer id : partitions) {
         futures.add(subscribePartition(id));
       }
 
@@ -102,42 +115,134 @@ public class IngestionController implements Closeable {
     private StoreBackend(String storeName) {
       storeRepository.getStoreOrThrow(storeName);
       this.storeName = storeName;
+      storeRepository.registerStoreDataChangedListener(storeChangeListener);
     }
 
     private synchronized void close() {
-      if (currentVersion != null) {
-        currentVersion.close();
-        currentVersion = null;
-      }
+      storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
+      currentVersionRef.clear();
+      subscription.clear();
+
       if (futureVersion != null) {
         futureVersion.close();
         futureVersion = null;
       }
-      subscription.clear();
+
+      if (currentVersion != null) {
+        currentVersion.close();
+        currentVersion = null;
+      }
+    }
+
+    private synchronized void delete() {
+      storeByNameMap.remove(storeName);
+
+      storeRepository.unregisterStoreDataChangedListener(storeChangeListener);
       currentVersionRef.clear();
-    }
+      subscription.clear();
 
-    public ConcurrentRef getCurrentVersion() {
-      return currentVersionRef.acquire();
-    }
-
-    private synchronized CompletableFuture subscribe(Version version, Set<Integer> partitions) {
-      if (currentVersion == null) {
-        currentVersion = new VersionBackend(version);
-        currentVersionRef.reset(currentVersion);
+      if (futureVersion != null) {
+        futureVersion.delete();
+        futureVersion = null;
       }
 
-      subscription.addAll(partitions);
-      ConcurrentRef ref = currentVersionRef.acquire();
-      return currentVersion.subscribe(partitions).whenComplete((v, t) -> ref.release());
+      if (currentVersion != null) {
+        currentVersion.delete();
+        currentVersion = null;
+      }
     }
-
 
     // may be called indirectly by readers, so has to be fast
     private void deleteVersion(VersionBackend version) {
       executor.submit(() -> version.delete());
     }
+
+    private synchronized void deleteOldVersions() {
+      if (futureVersion != null) {
+        Store store = storeRepository.getStoreOrThrow(storeName);
+        int versionNumber = futureVersion.getVersion().getNumber();
+        if (!store.getVersion(versionNumber).isPresent()) {
+          futureVersion.delete();
+          futureVersion = null;
+        }
+      }
+    }
+
+    public ReferenceCounted<VersionBackend> getCurrentVersion() {
+      return currentVersionRef.get();
+    }
+
+    private void setCurrentVersion(VersionBackend version) {
+      currentVersion = version;
+      currentVersionRef.set(version);
+    }
+
+    public synchronized CompletableFuture subscribe(Optional<Version> version, Set<Integer> partitions) {
+      if (currentVersion == null) {
+        setCurrentVersion(new VersionBackend(
+            version.orElseGet(
+                () -> getLatestVersion(storeName).orElseThrow(
+                    () -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName)))));
+
+      } else if (version.isPresent()) {
+        throw new VeniceException("Bootstrap version is already selected, storeName=" + storeName +
+                                     ", currentVersion=" + currentVersion.getVersion().kafkaTopicName() +
+                                     ", desiredVersion=" + version.get().kafkaTopicName());
+      }
+
+      subscription.addAll(partitions);
+
+      if (futureVersion != null) {
+        futureVersion.subscribe(partitions).whenComplete((v, t) -> trySwapCurrentVersion());
+      } else if (version.isPresent()) {
+        trySubscribeFutureVersion();
+      }
+
+      ReferenceCounted<VersionBackend> ref = getCurrentVersion();
+      return currentVersion.subscribe(partitions).whenComplete((v, t) -> ref.release());
+    }
+
+    private synchronized void trySubscribeFutureVersion() {
+      if (currentVersion == null || futureVersion != null) {
+        return;
+      }
+
+      Version version = getLatestVersion(storeName).orElse(null);
+      if (version == null || version.getNumber() <= currentVersion.getVersion().getNumber()) {
+        return;
+      }
+
+      futureVersion = new VersionBackend(version);
+      futureVersion.subscribe(subscription).whenComplete((v, t) -> trySwapCurrentVersion());
+    }
+
+    // may be called several times even after version was swapped
+    private synchronized void trySwapCurrentVersion() {
+      if (futureVersion != null && futureVersion.isReadyToServe(subscription)) {
+        setCurrentVersion(futureVersion);
+        futureVersion = null;
+        trySubscribeFutureVersion();
+      }
+    }
+
+    private final StoreDataChangedListener storeChangeListener = new StoreDataChangedListener() {
+      @Override
+      public void handleStoreChanged(Store store) {
+        if (store.getName().equals(storeName)) {
+          deleteOldVersions();
+          trySubscribeFutureVersion();
+        }
+      }
+
+      @Override
+      public void handleStoreDeleted(Store store) {
+        if (store.getName().equals(storeName)) {
+          delete();
+        }
+      }
+    };
   }
+
 
   private static final Logger logger = Logger.getLogger(IngestionController.class);
 
@@ -156,35 +261,31 @@ public class IngestionController implements Closeable {
       StoreIngestionService ingestionService) {
     this.configLoader = configLoader;
     this.storeRepository = storeRepository;
-    this.storageService =  storageService;
+    this.storageService = storageService;
     this.ingestionService = ingestionService;
     ingestionService.addNotifier(ingestionListener);
   }
 
   public synchronized void start() {
-    for (AbstractStorageEngine<?> storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
+    for (AbstractStorageEngine storageEngine : storageService.getStorageEngineRepository().getAllLocalStorageEngines()) {
       String kafkaTopicName = storageEngine.getName();
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopicName);
+
       if (storeByNameMap.containsKey(storeName)) {
         // We have discovered the current version for the store, so we will delete all other local versions.
         storageService.removeStorageEngine(kafkaTopicName);
-      } else {
-        Version version;
-        try {
-          version = findLatestVersion(storeName);
-        } catch (VeniceException e) {
-          // If store does not exists in store repository or store is empty, all local versions should be removed.
-          storageService.removeStorageEngine(kafkaTopicName);
-          continue;
-        }
-        if (version.kafkaTopicName().equals(storageEngine.getName())) {
-          // subscribe() makes sures a current version for the store is determined and stored inside storeByNameMap.
-          subscribe(storeName, version, storageEngine.getPartitionIds());
-        } else {
-          // If the version is not the latest, it should be removed.
-          storageService.removeStorageEngine(kafkaTopicName);
-        }
+        continue;
       }
+
+      Version version = getLatestVersion(storeName).orElseGet(null);
+      if (version == null || version.kafkaTopicName().equals(kafkaTopicName) == false) {
+        // If the version is not the latest, it should be removed.
+        storageService.removeStorageEngine(kafkaTopicName);
+        continue;
+      }
+
+      // subscribe() make sures a current version for the store is determined and stored inside storeByNameMap.
+      subscribe(storeName, version, storageEngine.getPartitionIds());
     }
   }
 
@@ -198,7 +299,9 @@ public class IngestionController implements Closeable {
 
     executor.shutdown();
     try {
-      executor.awaitTermination(60, TimeUnit.SECONDS);
+      if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+        executor.shutdownNow();
+      }
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
@@ -207,19 +310,19 @@ public class IngestionController implements Closeable {
   public StoreBackend getStoreOrThrow(String storeName) {
     StoreBackend store = storeByNameMap.get(storeName);
     if (store == null) {
-      throw new VeniceException("Store is not subscribed, storeName=" + storeName);
+      throw new VeniceNoStoreException(storeName, Optional.of("Store does not locally exist, storeName=" + storeName));
     }
     return store;
   }
 
   public synchronized CompletableFuture<Void> subscribe(String storeName, Set<Integer> partitions) {
     StoreBackend store = storeByNameMap.computeIfAbsent(storeName, StoreBackend::new);
-    return store.subscribe(findLatestVersion(storeName), partitions);
+    return store.subscribe(Optional.empty(), partitions);
   }
 
-  public synchronized CompletableFuture<Void> subscribe(String storeName, Version version, Set<Integer> partitions) {
+  private synchronized CompletableFuture<Void> subscribe(String storeName, Version version, Set<Integer> partitions) {
     StoreBackend store = storeByNameMap.computeIfAbsent(storeName, StoreBackend::new);
-    return store.subscribe(version, partitions);
+    return store.subscribe(Optional.of(version), partitions);
   }
 
   public synchronized CompletableFuture<Void> unsubscribe(String storeName, Set<Integer> partitions) {
@@ -228,16 +331,21 @@ public class IngestionController implements Closeable {
     return CompletableFuture.completedFuture(null);
   }
 
-  private Version findLatestVersion(String storeName) {
-    Store store = storeRepository.getStoreOrThrow(storeName);
-    Optional<Version> version = store.getVersions().stream().max(Comparator.comparing(Version::getNumber));
-    version.orElseThrow(() -> new VeniceException("Cannot subscribe to an empty store, storeName=" + storeName));
-    return version.get();
+  private Optional<Version> getLatestVersion(String storeName) {
+    try {
+      return getLatestVersion(storeRepository.getStoreOrThrow(storeName));
+    } catch (VeniceNoStoreException e) {
+      return Optional.empty();
+    }
+  }
+
+  public static Optional<Version> getLatestVersion(Store store) {
+    return store.getVersions().stream().max(Comparator.comparing(Version::getNumber));
   }
 
   private final VeniceNotifier ingestionListener = new VeniceNotifier() {
     @Override
-    public synchronized void completed(String kafkaTopic, int partitionId, long offset) {
+    public void completed(String kafkaTopic, int partitionId, long offset) {
       VersionBackend version = versionByTopicMap.get(kafkaTopic);
       if (version != null) {
         version.completePartition(partitionId);

@@ -1,9 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
-import com.linkedin.davinci.client.DaVinciClient;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -13,29 +14,29 @@ import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+
+import com.linkedin.davinci.client.DaVinciClient;
+
+import org.apache.commons.io.IOUtils;
+import org.apache.samza.system.SystemProducer;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
-import org.apache.avro.Schema;
-import org.apache.commons.io.IOUtils;
-import org.apache.log4j.Logger;
-import org.apache.samza.system.SystemProducer;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
+
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static org.testng.Assert.*;
 
 
 public class DaVinciClientTest {
-  private static final Logger logger = Logger.getLogger(DaVinciClientTest.class);
-
-  private static final int TEST_TIMEOUT = 15000; // ms
+  private static final int KEY_COUNT = 10;
+  private static final int TEST_TIMEOUT = 15_000; // ms
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
@@ -50,34 +51,46 @@ public class DaVinciClientTest {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testExistingVersionAccess() throws Exception {
-    final int keyCount = 10;
-    String storeName = cluster.createStore(keyCount);
-    try (DaVinciClient<Integer, Integer> client =
-             ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+  public void testBatchStore() throws Exception {
+    String storeName = cluster.createStore(KEY_COUNT);
 
-      Schema.Parser parser = new Schema.Parser();
-      Assert.assertEquals(parser.parse(DEFAULT_KEY_SCHEMA), client.getKeySchema());
-      Assert.assertEquals(parser.parse(DEFAULT_VALUE_SCHEMA), client.getLatestValueSchema());
-
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
       client.subscribeToAllPartitions().get();
-      for (int i = 0; i < keyCount; ++i) {
-        Object value = client.get(i).get();
-        Assert.assertNotNull(value);
-        Assert.assertEquals(value, 1);
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client.get(k).get(), (Integer) 1);
+      }
+
+      for (int i = 0; i < 2; ++i) {
+        Integer expectedValue = cluster.createVersion(storeName, KEY_COUNT);
+        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          for (int k = 0; k < KEY_COUNT; ++k) {
+            assertEquals(client.get(k).get(), expectedValue);
+          }
+        });
+      }
+
+      // test read from a store that was deleted concurrently
+      try (ControllerClient controllerClient = cluster.getControllerClient()) {
+        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName);
+        assertFalse(response.isError(), response.getError());
+
+        TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          assertThrows(VeniceNoStoreException.class, () -> client.get(KEY_COUNT / 3).get());
+        });
       }
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testSystemProducer() throws Exception {
-    final int partitionCount = 2;
-    final int keyCount = 10;
+  public void testHybridStore() throws Exception {
     final int partition = 1;
+    final int partitionCount = 2;
     String storeName = TestUtils.getUniqueString("store");
+
     try (ControllerClient client = cluster.getControllerClient()) {
       client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      client.updateStore(storeName,
+      client.updateStore(
+          storeName,
           new UpdateStoreQueryParams()
               .setHybridRewindSeconds(10)
               .setHybridOffsetLagThreshold(10)
@@ -90,17 +103,18 @@ public class DaVinciClientTest {
       cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
       SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM,
           Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
-      for (int i = 0; i < keyCount; i++) {
+      for (int i = 0; i < KEY_COUNT; i++) {
         TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
       }
       producer.stop();
     }
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-      // subscribe to a partition does not hold any data
+
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      // subscribe to a partition without data
       int emptyPartition = (partition + 1) % partitionCount;
       client.subscribe(Collections.singleton(emptyPartition)).get();
       Utils.sleep(1000);
-      for (int i = 0; i < keyCount; i++) {
+      for (int i = 0; i < KEY_COUNT; i++) {
         final int key = i;
         assertThrows(VeniceClientException.class, () -> client.get(key).get());
       }
@@ -108,30 +122,17 @@ public class DaVinciClientTest {
 
       // subscribe to a partition with data
       client.subscribe(Collections.singleton(partition)).get();
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-
-        Set<Object> keySet = new HashSet<>();
-        for (int i = 0; i < keyCount; i++) {
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        Set<Integer> keySet = new HashSet<>();
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(client.get(i).get(), i);
           keySet.add(i);
-          Object actualValue;
-          try {
-            actualValue = client.get(i).get();
-          } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-          }
-          assertEquals(actualValue, i);
         }
 
-        Map<Object, Object> actualValue;
-        try {
-          actualValue = client.batchGet(keySet).get();
-        } catch (InterruptedException | ExecutionException e) {
-          throw new RuntimeException(e);
-        }
-
-        assertNotNull(actualValue);
-        for (int i = 0; i < keyCount; i++) {
-          assertEquals(actualValue.get(i), i);
+        Map<Integer, Integer> valueMap = client.batchGet(keySet).get();
+        assertNotNull(valueMap);
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(valueMap.get(i), i);
         }
       });
     }

@@ -143,6 +143,8 @@ public class TestUtils {
         if (exponentialBackOff) {
           waitTime = Math.min(waitTime * 2, MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
         }
+      } catch (Exception e) {
+        throw new AssertionError(e);
       }
     }
   }
@@ -177,7 +179,7 @@ public class TestUtils {
   }
 
   public interface NonDeterministicAssertion {
-    void execute() throws AssertionError;
+    void execute() throws Exception;
   }
 
   public static SafeHelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {

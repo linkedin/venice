@@ -33,8 +33,8 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -162,7 +162,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     }
 
     // TODO: refactor IngestionController to use StoreBackend directly
-    try (ConcurrentRef<IngestionController.VersionBackend> versionRef =
+    try (ReferenceCounted<IngestionController.VersionBackend> versionRef =
               ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
       if (null == versionRef.get()) {
         throw new VeniceClientException("Failed to find a ready store version.");
@@ -180,7 +180,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     }
 
     // TODO: refactor IngestionController to use StoreBackend directly
-    try (ConcurrentRef<IngestionController.VersionBackend> versionRef =
+    try (ReferenceCounted<IngestionController.VersionBackend> versionRef =
               ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
       if (null == versionRef.get()) {
         throw new VeniceClientException("Failed to find a ready store version.");
