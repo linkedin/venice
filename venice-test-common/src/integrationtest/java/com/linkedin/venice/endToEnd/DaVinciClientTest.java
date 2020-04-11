@@ -2,32 +2,21 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-
 import com.linkedin.davinci.client.DaVinciClient;
 
-import java.io.File;
-import java.util.HashMap;
-import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -42,9 +31,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
-import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 

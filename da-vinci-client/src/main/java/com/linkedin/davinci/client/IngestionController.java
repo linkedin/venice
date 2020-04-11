@@ -14,6 +14,7 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -85,23 +86,25 @@ public class IngestionController implements Closeable {
         }
       }
 
-      List<CompletableFuture> futures = new ArrayList<>(partitions.size());
-      for (Integer id : partitions) {
-        futures.add(subscribePartition(id));
+      Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, version.getPartitionerConfig().getAmplificationFactor());
+      List<CompletableFuture> futures = new ArrayList<>(subPartitions.size());
+      for (Integer id : subPartitions) {
+        futures.add(subscribeSubPartition(id));
       }
 
       return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
     }
 
-    private synchronized CompletableFuture subscribePartition(int partitionId) {
-      storageService.openStoreForNewPartition(config, partitionId);
-      ingestionService.startConsumption(config, partitionId, false);
-      return partitionFutures.computeIfAbsent(partitionId, k -> new CompletableFuture());
+    private synchronized CompletableFuture subscribeSubPartition(int subPartitionId) {
+      storageService.openStoreForNewPartition(config, subPartitionId);
+      ingestionService.startConsumption(config, subPartitionId, false);
+      return partitionFutures.computeIfAbsent(subPartitionId, k -> new CompletableFuture());
     }
 
-    private synchronized void completePartition(int partitionId) {
-      partitionFutures.computeIfAbsent(partitionId, k -> new CompletableFuture()).complete(null);
+    private synchronized void completeSubPartition(int subPartitionId) {
+      partitionFutures.computeIfAbsent(subPartitionId, k -> new CompletableFuture()).complete(null);
     }
+
   }
 
 
@@ -348,7 +351,7 @@ public class IngestionController implements Closeable {
     public void completed(String kafkaTopic, int partitionId, long offset) {
       VersionBackend version = versionByTopicMap.get(kafkaTopic);
       if (version != null) {
-        version.completePartition(partitionId);
+        version.completeSubPartition(partitionId);
       }
     }
   };

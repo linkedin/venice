@@ -1,5 +1,6 @@
 package com.linkedin.venice.partitioner;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
 
@@ -15,6 +16,9 @@ public class ConstantVenicePartitioner extends VenicePartitioner {
 
   @Override
   public int getPartitionId(byte[] keyBytes, int numPartitions) {
+    if (numPartitions <= partitionId) {
+      throw new VeniceException(String.format("numPartitions must be greater than %d.", partitionId));
+    }
     return partitionId;
   }
 
