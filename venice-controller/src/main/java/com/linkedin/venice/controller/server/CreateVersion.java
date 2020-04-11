@@ -146,7 +146,6 @@ public class CreateVersion extends AbstractRoute {
         if (sortedParam != null) {
           sorted = Utils.parseBooleanFromString(sortedParam, PUSH_IN_SORTED_ORDER);
         }
-
         switch(pushType) {
           case BATCH:
           case INCREMENTAL:

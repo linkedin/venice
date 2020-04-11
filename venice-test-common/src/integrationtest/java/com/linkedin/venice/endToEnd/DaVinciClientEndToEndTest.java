@@ -8,16 +8,18 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Properties;
+import java.util.function.Consumer;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
@@ -28,90 +30,100 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public class DaVinciClientEndToEndTest {
   private static final Logger logger = Logger.getLogger(DaVinciClientEndToEndTest.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
-  private static int NUM_PARTITIONS = 3;
+  private VeniceClusterWrapper cluster;
+
+  @BeforeClass
+  public void setup() {
+    Utils.thisIsLocalhost();
+    cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
+  }
+
+  @AfterClass
+  public void cleanup() {
+    IOUtils.closeQuietly(cluster);
+  }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testCustomPartitionerInBatchStore() throws Exception {
+  public void testCustomPartitioner() throws Exception {
     final int partitionId = 1;
-
-    Utils.thisIsLocalhost();
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 1)) {
-      String storeName = TestUtils.getUniqueString("batch-store");
-
-      // Produce input data.
-      File inputDir = getTempDataDirectory();
-      String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
-
-      // Setup H2V job properties.
-      Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
-      h2vProperties.setProperty(VENICE_PARTITIONERS_PROP, ConstantVenicePartitioner.class.getName());
-
-      // Create & update store for test.
-      try (ControllerClient controllerClient = createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, h2vProperties)) {
-        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setPartitionCount(NUM_PARTITIONS) // Update the partition count to default partition count (3).
-            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-            .setPartitionerParams(
-                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId))
-            )
+    String storeName = TestUtils.getUniqueString("batch-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+        .setPartitionerParams(
+            Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId))
         );
-        Assert.assertFalse(response.isError());
-
-        // Push data through H2V bridge.
-        runH2V(h2vProperties, 1, cluster);
-      }
-
-      try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-        client.subscribe(Collections.singleton(partitionId)).get();
-        for (int i = 1; i <= 100; ++i) {
-          Object value = client.get(i).get();
-          Assert.assertEquals(value, i);
-        }
+    setUpStore(storeName, paramsConsumer,
+        properties -> properties.setProperty(VENICE_PARTITIONERS_PROP, ConstantVenicePartitioner.class.getName()));
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribe(Collections.singleton(partitionId)).get();
+      for (int i = 1; i <= 100; ++i) {
+        Object value = client.get(i).get();
+        Assert.assertEquals(value, i);
       }
     }
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testCustomPartitionerWithDefaultParams() throws Exception {
-    Utils.thisIsLocalhost();
-    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 1)) {
-      String storeName = TestUtils.getUniqueString("batch-store");
-
-      // Produce input data.
-      File inputDir = getTempDataDirectory();
-      String inputDirPath = "file://" + inputDir.getAbsolutePath();
-      writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
-
-      // Setup H2V job properties.
-      Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
-      h2vProperties.setProperty(VENICE_PARTITIONERS_PROP, DefaultVenicePartitioner.class.getName());
-
-      // Create & update store for test.
-      try (ControllerClient controllerClient = createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, h2vProperties)) {
-        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setPartitionCount(NUM_PARTITIONS) // Update the partition count to default partition count (3).
-            .setPartitionerClass(DefaultVenicePartitioner.class.getName())
-            .setPartitionerParams(new HashMap<>())
-            .setAmplificationFactor(1)
-        );
-        Assert.assertFalse(response.isError());
-
-        // Push data through H2V bridge.
-        runH2V(h2vProperties, 1, cluster);
-      }
-
-      try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
-        client.subscribeToAllPartitions().get();
-        for (int i = 1; i <= 100; ++i) {
-          Object value = client.get(i).get();
-          Assert.assertEquals(value, i);
-        }
+    String storeName = TestUtils.getUniqueString("batch-store");
+    setUpStore(storeName, params -> {}, properties -> {});
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribeToAllPartitions().get();
+      for (int i = 1; i <= 100; ++i) {
+        Object value = client.get(i).get();
+        Assert.assertEquals(value, i);
       }
     }
   }
 
-  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testAmplificationFactor() throws Exception {
+    final int partitionId = 1;
+    final int amplificationFactor = 10;
+    String storeName = TestUtils.getUniqueString("batch-store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setAmplificationFactor(amplificationFactor)
+            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setPartitionerParams(
+                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId)));
+    Consumer<Properties> propertiesConsumer = properties ->
+        properties.setProperty(VENICE_PARTITIONERS_PROP, ConstantVenicePartitioner.class.getName());
+    setUpStore(storeName, paramsConsumer, propertiesConsumer);
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribe(Collections.singleton(partitionId)).get();
+      for (int i = 1; i <= 100; ++i) {
+        Object value = client.get(i).get();
+        Assert.assertEquals(value, i);
+      }
+    }
+  }
+
+  public void setUpStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer,
+      Consumer<Properties> propertiesConsumer) throws Exception {
+    // Produce input data.
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    writeSimpleAvroFileWithIntToIntSchema(inputDir, true);
+
+    // Setup H2V job properties.
+    Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
+    propertiesConsumer.accept(h2vProperties);
+    // Create & update store for test.
+    final int numPartitions = 3;
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        .setPartitionCount(numPartitions); // Update the partition count.
+    paramsConsumer.accept(params);
+    try (ControllerClient controllerClient =
+        createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, h2vProperties)) {
+      ControllerResponse response = controllerClient.updateStore(storeName, params);
+      Assert.assertFalse(response.isError(), response.getError());
+
+      // Push data through H2V bridge.
+      runH2V(h2vProperties, 1, cluster);
+    }
+  }
+
+  private static void runH2V(Properties h2vProperties, int expectedVersionNumber, VeniceClusterWrapper cluster) {
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("batch-job-" + expectedVersionNumber);
     KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);

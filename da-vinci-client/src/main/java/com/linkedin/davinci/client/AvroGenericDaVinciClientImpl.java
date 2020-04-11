@@ -23,6 +23,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -37,10 +38,12 @@ import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Objects;
 import java.util.HashSet;
@@ -84,10 +87,10 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private StorageEngineMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private RecordSerializer<K> keySerializer;
-  private DaVinciPartitioner partitioner;
   private IngestionController ingestionController;
   private TransportClient transportClient;
   private AvroGenericStoreClient<K, V> veniceClient;
+  private VenicePartitioner partitioner;
 
   public AvroGenericDaVinciClientImpl(
       DaVinciConfig daVinciConfig,
@@ -236,18 +239,19 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   private V getValue(Version version, K key) {
     byte[] keyBytes = keySerializer.serialize(key);
-    int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
+    int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()
+        * version.getPartitionerConfig().getAmplificationFactor());
     AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
-    if (!storageEngine.containsPartition(partitionId)) {
+    if (!storageEngine.containsPartition(subPartitionId)) {
       if (isRemoteQueryAllowed()) {
         return null;
       }
-      throw new VeniceClientException("Da Vinci client does not contain partition " + partitionId + " in version " + version.getNumber());
+      throw new VeniceClientException("Da Vinci client does not contain partition " + subPartitionId + " in version " + version.getNumber());
     }
 
     return getChunkingAdapter().get(
         storageEngine,
-        partitionId,
+        subPartitionId,
         keyBytes,
         version.isChunkingEnabled(),
         null, // TODO: Consider extending the API to allow object reuse
@@ -300,9 +304,14 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     services.add(kafkaStoreIngestionService);
     this.keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
+
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
     PartitionerConfig partitionerConfig = metadataReposotory.getStore(getStoreName()).getPartitionerConfig();
-    this.partitioner = new DaVinciPartitioner(partitionerConfig);
+    Properties params = new Properties();
+    params.putAll(partitionerConfig.getPartitionerParams());
+    VeniceProperties partitionerProperties = new VeniceProperties(params);
+    this.partitioner = PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
+        partitionerConfig.getAmplificationFactor(), partitionerProperties);
 
     // For now we only support FAIL_FAST and QUERY_REMOTELY. SUBSCRIBE_AND_QUERY_REMOTELY policy is not supported.
     if (isRemoteQueryAllowed()) {

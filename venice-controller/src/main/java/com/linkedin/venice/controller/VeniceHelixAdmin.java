@@ -89,7 +89,7 @@ import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
-import com.linkedin.venice.utils.PartitionCountUtils;
+import com.linkedin.venice.utils.PartitionUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -1057,12 +1057,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             resources.lockForMetadataOperation();
             try {
                 repository.lock();
+                int amplificationFactor;
                 try {
                     Store store = repository.getStore(storeName);
                     if (store == null) {
                         throwStoreDoesNotExist(clusterName, storeName);
                     }
                     backupStrategy = store.getBackupStrategy();
+                    amplificationFactor = store.getPartitionerConfig().getAmplificationFactor();
                     if (versionNumber == VERSION_ID_UNSET) {
                         // No version supplied, generate a new version. This could happen either in the parent
                         // controller or local Samza jobs.
@@ -1079,7 +1081,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // Topic created by Venice Controller is always without Kafka compaction.
                 topicManager.createTopic(
                     version.kafkaTopicName(),
-                    numberOfPartitions,
+                    numberOfPartitions * amplificationFactor,
                     clusterConfig.getKafkaReplicationFactor(),
                     true,
                     false,
@@ -2981,7 +2983,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
         checkControllerMastership(clusterName);
         VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-        return PartitionCountUtils.calculatePartitionCount(clusterName, storeName, storeSize,
+        return PartitionUtils.calculatePartitionCount(clusterName, storeName, storeSize,
             getVeniceHelixResource(clusterName).getMetadataRepository(),
             getVeniceHelixResource(clusterName).getRoutingDataRepository(), config.getPartitionSize(),
             config.getNumberOfPartition(), config.getMaxNumberOfPartition());

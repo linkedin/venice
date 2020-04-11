@@ -1376,7 +1376,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       jobConf.setMapOutputValueClass(BytesWritable.class);
       jobConf.setReducerClass(VeniceReducer.class);
       jobConf.setReduceSpeculativeExecution(pushJobSetting.enableReducerSpeculativeExecution);
-      jobConf.setNumReduceTasks(versionTopicInfo.partitionCount);
+      jobConf.setNumReduceTasks(versionTopicInfo.partitionCount * versionTopicInfo.amplificationFactor);
     }
   }
 
