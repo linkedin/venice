@@ -247,6 +247,10 @@ public class StatsHandler extends ChannelDuplexHandler {
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
     ChannelFuture future = ctx.writeAndFlush(msg);
     future.addListener((result) -> {
+      //reset the StatsHandler for the new request. This is necessary since instances are channel-based
+      // and channels are ready for the future requests as soon as the current has been handled.
+      newRequest = true;
+
       if (responseStatus == null) {
         throw new VeniceException("request status could not be null");
       }
@@ -278,10 +282,6 @@ public class StatsHandler extends ChannelDuplexHandler {
         }
         statCallbackExecuted = true;
       }
-
-      //reset the StatsHandler for the new request. This is necessary since instances are channel-based
-      // and channels are ready for the future requests as soon as the current has been handled.
-      newRequest = true;
     });
   }
 

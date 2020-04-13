@@ -544,10 +544,6 @@ public class VeniceRouterConfig {
             + " should contain two parts separated by '" + retryThresholdSeparator + "'");
       }
       Integer threshold = Integer.parseInt(singleRetryThresholdParts[1]);
-      if (threshold <= 0) {
-        throw new VeniceException("Retry threshold should be positive in single retry threshold config: " +
-            singleRetryThreshold + ", which should contain a positive retry threshold");
-      }
       String[] keyCountRange = singleRetryThresholdParts[0].split(keyRangeSeparator);
       int upperBoundKeyCount = MAX_KEY_COUNT;
       if (keyCountRange.length > 2) {
