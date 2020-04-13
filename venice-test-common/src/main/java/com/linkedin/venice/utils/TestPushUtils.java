@@ -139,6 +139,10 @@ public class TestPushUtils {
   }
 
   public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
+    return writeSimpleAvroFileWithIntToIntSchema(parentDir, fileNameWithAvroSuffix, 100);
+  }
+
+  public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, boolean fileNameWithAvroSuffix, int recordCount) throws IOException {
     String fileName;
     if (fileNameWithAvroSuffix) {
       fileName = "simple_int2int.avro";
@@ -147,7 +151,7 @@ public class TestPushUtils {
     }
     return writeAvroFile(parentDir, fileName, INT_INT_SCHEMA_STRING,
         (recordSchema, writer) -> {
-          for (int i = 1; i <= 100; ++i) {
+          for (int i = 1; i <= recordCount; ++i) {
             GenericRecord i2i = new GenericData.Record(recordSchema);
             i2i.put("id", i);
             i2i.put("name", i);

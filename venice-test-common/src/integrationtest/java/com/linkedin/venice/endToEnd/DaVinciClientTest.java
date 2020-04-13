@@ -4,11 +4,13 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestPushUtils;
@@ -17,8 +19,12 @@ import com.linkedin.venice.utils.Utils;
 
 import com.linkedin.davinci.client.DaVinciClient;
 
+import java.io.File;
+import java.util.HashMap;
+import java.util.Properties;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -30,7 +36,9 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 
@@ -135,6 +143,31 @@ public class DaVinciClientTest {
           assertEquals(valueMap.get(i), i);
         }
       });
+    }
+  }
+
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testBootstrap() throws Exception {
+    String storeName = cluster.createStore(KEY_COUNT);
+    // Specify db base path for clients.
+    String testDataFilePath = TestUtils.getTempDataDirectory().getAbsolutePath();
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, testDataFilePath)) {
+      client.subscribeToAllPartitions().get();
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client.get(k).get(), 1);
+      }
+    }
+
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, testDataFilePath)) {
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client.get(k).get(), 1);
+      }
+    }
+    // Create a new version for testing.
+    cluster.createVersion(storeName, KEY_COUNT);
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, testDataFilePath)) {
+      Assert.assertThrows(VeniceNoStoreException.class, () -> client.get(0).get());
     }
   }
 }

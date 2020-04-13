@@ -476,4 +476,18 @@ public class ServiceFactory {
     daVinciClient.start();
     return daVinciClient;
   }
+
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath) {
+    // initialize DaVinciConfig
+    DaVinciConfig daVinciConfig = DaVinciConfig.defaultDaVinciConfig(dataBasePath);
+    // initialize ClientConfig
+    ClientConfig clientConfig = ClientConfig
+        .defaultGenericClientConfig(storeName)
+        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setVeniceURL(cluster.getZk().getAddress());
+    DaVinciClient<K, V> daVinciClient =
+        new AvroGenericDaVinciClientImpl<>(daVinciConfig, clientConfig);
+    daVinciClient.start();
+    return daVinciClient;
+  }
 }
