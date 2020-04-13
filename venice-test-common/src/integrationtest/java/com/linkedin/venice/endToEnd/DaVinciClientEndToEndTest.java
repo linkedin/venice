@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.Collections;
@@ -26,8 +27,9 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 public class DaVinciClientEndToEndTest {
   private static final Logger logger = Logger.getLogger(DaVinciClientEndToEndTest.class);
+  private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
-  @Test(timeOut = 60000)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testCustomPartitionerInBatchStore() throws Exception {
     final int partitionId = 1;
 
@@ -69,7 +71,7 @@ public class DaVinciClientEndToEndTest {
     }
   }
 
-  @Test(timeOut = 60000)
+  @Test(timeOut = TEST_TIMEOUT)
   public void testCustomPartitionerWithDefaultParams() throws Exception {
     Utils.thisIsLocalhost();
     try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 1)) {
@@ -117,5 +119,4 @@ public class DaVinciClientEndToEndTest {
     cluster.waitVersion(storeName, expectedVersionNumber);
     logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
   }
-
 }

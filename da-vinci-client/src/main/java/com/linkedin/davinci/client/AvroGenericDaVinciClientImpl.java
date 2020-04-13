@@ -71,7 +71,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private final ClientConfig clientConfig;
   private final List<AbstractVeniceService> services = new ArrayList<>();
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
-  private final Set<Integer> subscribedPartitions = VeniceConcurrentHashMap.newKeySet();
 
   private ZkClient zkClient;
   private ReadOnlyStoreRepository metadataReposotory;
@@ -145,13 +144,11 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   @Override
   public CompletableFuture<Void> subscribe(Set<Integer> partitions) {
-    subscribedPartitions.addAll(partitions);
     return ingestionController.subscribe(getStoreName(), partitions);
   }
 
   @Override
   public CompletableFuture<Void> unsubscribe(Set<Integer> partitions) {
-    subscribedPartitions.removeAll(partitions);
     return ingestionController.unsubscribe(getStoreName(), partitions);
   }
 
@@ -212,10 +209,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private V getValue(K key, Version version, AbstractStorageEngine storageEngine) {
     byte[] keyBytes = keySerializer.serialize(key);
     int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
-    // Make sure the partition id is within client's subscription.
-    if (!subscribedPartitions.contains(partitionId)) {
+    if (!storageEngine.containsPartition(partitionId)) {
       throw new VeniceClientException(
-          "DaVinci client does not subscribe to the partition " + partitionId + " in version " + version.getNumber());
+          "Da Vinci client does not contain partition " + partitionId + " in version " + version.getNumber());
     }
 
     return getChunkingAdapter().get(
