@@ -1,6 +1,7 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -9,6 +10,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.EntityUrnPartitioner;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -28,6 +30,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 public class DaVinciClientEndToEndTest {
   private static final Logger logger = Logger.getLogger(DaVinciClientEndToEndTest.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static int NUM_PARTITIONS = 3;
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testCustomPartitionerInBatchStore() throws Exception {
@@ -49,7 +52,7 @@ public class DaVinciClientEndToEndTest {
       // Create & update store for test.
       try (ControllerClient controllerClient = createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, h2vProperties)) {
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setPartitionCount(3) // Update the partition count to default partition count (3).
+            .setPartitionCount(NUM_PARTITIONS) // Update the partition count to default partition count (3).
             .setPartitionerClass(ConstantVenicePartitioner.class.getName())
             .setPartitionerParams(
                 Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId))
@@ -89,7 +92,7 @@ public class DaVinciClientEndToEndTest {
       // Create & update store for test.
       try (ControllerClient controllerClient = createStoreForJob(cluster, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, h2vProperties)) {
         ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
-            .setPartitionCount(3) // Update the partition count to default partition count (3).
+            .setPartitionCount(NUM_PARTITIONS) // Update the partition count to default partition count (3).
             .setPartitionerClass(DefaultVenicePartitioner.class.getName())
             .setPartitionerParams(new HashMap<>())
             .setAmplificationFactor(1)
@@ -105,6 +108,53 @@ public class DaVinciClientEndToEndTest {
         for (int i = 1; i <= 100; ++i) {
           Object value = client.get(i).get();
           Assert.assertEquals(value, i);
+        }
+      }
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testEntityUrnPartitioner() throws Exception {
+    Utils.thisIsLocalhost();
+    try (VeniceClusterWrapper cluster = ServiceFactory.getVeniceCluster(1, 1, 1)) {
+      String storeName = TestUtils.getUniqueString("batch-store");
+
+      // Produce input data.
+      File inputDir = getTempDataDirectory();
+      String inputDirPath = "file://" + inputDir.getAbsolutePath();
+      writeSimpleAvroFileWithStringToStringSchema(inputDir, true);
+
+      // Setup H2V job properties.
+      Properties h2vProperties = defaultH2VProps(cluster, inputDirPath, storeName);
+      h2vProperties.setProperty(VENICE_PARTITIONERS_PROP, EntityUrnPartitioner.class.getName());
+
+      // Create & update store for test.
+      String keySchema = "\"string\"";
+      String valueSchema = "\"string\"";
+      try (ControllerClient controllerClient = createStoreForJob(cluster, keySchema, valueSchema, h2vProperties)) {
+        ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setPartitionCount(NUM_PARTITIONS) // Update the partition count to default partition count (3).
+            .setPartitionerClass(EntityUrnPartitioner.class.getName())
+        );
+        Assert.assertFalse(response.isError());
+
+        // Push data through H2V bridge.
+        runH2V(h2vProperties, 1, cluster);
+      }
+
+      try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+        int subscribedPartition = 0;
+        client.subscribe(Collections.singleton(subscribedPartition)).get();
+        for (int i = 1; i <= 100; ++i) {
+          // client should only be able to get keys that are put to its subscribed partition
+          if (i % NUM_PARTITIONS == subscribedPartition) {
+            Object value = client.get("urn:li:jobPosting:" + i).get();
+            Assert.assertEquals(value.toString(), Integer.toString(i));
+          }
+          else {
+            int finalI = i;
+            Assert.assertThrows(VeniceClientException.class, () -> client.get("urn:li:jobPosting:" + finalI).get());
+          }
         }
       }
     }

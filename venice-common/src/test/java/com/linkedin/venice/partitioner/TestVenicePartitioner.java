@@ -2,6 +2,11 @@ package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+import java.nio.ByteBuffer;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -45,4 +50,38 @@ public class TestVenicePartitioner {
         Assert.assertEquals(partition1, partition2);
 
     }
+
+  @Test
+  public void testEntityUrnPartitioning() {
+    VenicePartitioner vp = new EntityUrnPartitioner();
+
+    long key = 888L;
+    int numPartitions = 16;
+    Schema schema = Schema.parse(
+          "{"
+            + "\"type\":\"record\", "
+            + "\"name\":\"PartitionKey\", "
+            + "\"fields\": ["
+              + "{"
+                + "\"name\":\"entityUrn\", "
+                + "\"type\":\"string\""
+              + "},"
+              + "{"
+                + "\"name\":\"version\", "
+                + "\"type\":\"string\""
+              + "}"
+            + "]"
+          + "}");
+
+    GenericData.Record testRecord = new GenericData.Record(schema);
+    testRecord.put("entityUrn", "urn:li:jobPosting:888");
+    testRecord.put("version", "abc");
+    RecordSerializer<Object> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(schema);
+    byte[] serializedKey = serializer.serialize(testRecord);
+
+    int partition1 = vp.getPartitionId(serializedKey, numPartitions);
+    int partition2 = vp.getPartitionId(ByteBuffer.wrap(serializedKey), numPartitions);
+    Assert.assertEquals(partition1, key % numPartitions);
+    Assert.assertEquals(partition2, key % numPartitions);
+  }
 }
