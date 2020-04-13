@@ -85,6 +85,7 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
+import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Pair;
@@ -96,6 +97,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -974,7 +976,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " for store " + storeName + " in cluster " + clusterName);
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-                getReplicationFactor(clusterName, storeName), true, false, false, true, pushType);
+                getReplicationFactor(clusterName, storeName), true, false, false, true, pushType, null);
             if (store.isMigrating()) {
                 try {
                     StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
@@ -1018,7 +1020,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * without starting ingestion.
      */
     public Version addVersionOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
-        int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType) {
+        int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType, String compressionDictionary) {
         Store store = getStore(clusterName, storeName);
         if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
@@ -1026,7 +1028,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
         return existingVersionToUse.orElseGet(
             () -> addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                false, sendStartOfPush, sorted, false, pushType));
+                false, sendStartOfPush, sorted, false, pushType, compressionDictionary));
     }
 
     /**
@@ -1037,7 +1039,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     private Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
-        boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType) {
+        boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1096,6 +1098,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     );
                 }
 
+                ByteBuffer compressionDictionaryBuffer = null;
+                if (compressionDictionary != null) {
+                    compressionDictionaryBuffer = ByteBuffer.wrap(EncodingUtils.base64DecodeFromString(compressionDictionary));
+                }
+
                 repository.lock();
                 try {
                     Store store = repository.getStore(storeName);
@@ -1127,6 +1134,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             sorted,
                             finalVersion.isChunkingEnabled(),
                             finalVersion.getCompressionStrategy(),
+                            compressionDictionaryBuffer,
                             new HashMap<>());
                         if (pushType.isStreamReprocessing()) {
                             // Send TS message to version topic to inform leader to switch to the stream reprocessing topic
@@ -1204,7 +1212,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
-        int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted) {
+        int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted,
+        String compressionDictionary) {
         checkControllerMastership(clusterName);
         Store store = getStore(clusterName, storeName);
         if (store != null) {
@@ -1218,7 +1227,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                true, sendStartOfPush, sorted, false, pushType);
+                true, sendStartOfPush, sorted, false, pushType, compressionDictionary);
     }
 
     /**

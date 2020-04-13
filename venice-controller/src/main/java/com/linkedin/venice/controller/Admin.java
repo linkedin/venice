@@ -101,11 +101,11 @@ public interface Admin extends AutoCloseable, Closeable {
      * with the same Version object.
      */
     default Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor) {
-        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, Version.PushType.BATCH, false, false);
+        return incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, Version.PushType.BATCH, false, false, null);
     }
 
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
-        int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted);
+        int replicationFactor, Version.PushType pushType, boolean sendStartOfPush, boolean sorted, String compressionDictionary);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

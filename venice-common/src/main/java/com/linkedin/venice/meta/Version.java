@@ -186,7 +186,6 @@ public class Version implements Comparable<Version> {
     this.chunkingEnabled = chunkingEnabled;
   }
 
-
   public String getStoreName() {
     return storeName;
   }
@@ -227,7 +226,7 @@ public class Version implements Comparable<Version> {
         ", createdTime=" + createdTime +
         ", status=" + status +
         ", pushJobId='" + pushJobId + '\'' +
-        ", compressionStrategy='" + compressionStrategy + "\'" +
+        ", compressionStrategy='" + compressionStrategy + '\'' +
         ", leaderFollowerModelEnabled=" + leaderFollowerModelEnabled +
         ", bufferReplayEnabledForHybrid=" + bufferReplayEnabledForHybrid +
         ", pushType=" + pushType +

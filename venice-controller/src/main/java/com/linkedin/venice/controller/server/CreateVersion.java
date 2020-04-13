@@ -154,9 +154,11 @@ public class CreateVersion extends AbstractRoute {
             if (!admin.whetherEnableBatchPushFromAdmin()) {
               throw new VeniceUnsupportedOperationException(pushTypeString, "Please push data to Venice Parent Colo instead");
             }
+            String dictionaryStr = request.queryParams(COMPRESSION_DICTIONARY);
+
             Version version =
                 admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor,
-                   pushType, sendStartOfPush, sorted);
+                   pushType, sendStartOfPush, sorted, dictionaryStr);
 
             // If Version partition count different from calculated partition count use the version count as store count
             // may have been updated later.
