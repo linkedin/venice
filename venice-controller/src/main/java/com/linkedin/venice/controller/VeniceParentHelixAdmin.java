@@ -734,7 +734,7 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
       int numberOfPartitions, int replicationFactor, Version.PushType pushType, boolean sendStartOfPush,
-      boolean sorted) {
+      boolean sorted, String compressionDictionary) {
 
     Optional<String> currentPushTopic = getTopicForCurrentPushJob(clusterName, storeName, pushType.isIncremental());
     if (currentPushTopic.isPresent()) {
@@ -773,7 +773,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
         : veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            sendStartOfPush, sorted, pushType);
+            sendStartOfPush, sorted, pushType, compressionDictionary);
     if (!pushType.isIncremental()) {
       acquireLock(clusterName, storeName);
       try {
