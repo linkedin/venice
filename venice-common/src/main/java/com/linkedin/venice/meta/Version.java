@@ -4,6 +4,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Optional;
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
@@ -292,7 +293,7 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
-    if (!partitionerConfig.equals(version.getPartitionerConfig())) {
+    if (!Objects.equals(partitionerConfig, version.partitionerConfig)) {
       return false;
     }
 
