@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -120,7 +121,8 @@ public class DataPublisherUtils {
    * storeName -> | version_11 -> list of .../hourly/year/month/day/hour/ sorted by timestamp
    *              | ....
    */
-  public static Map<String, StoreFilesInfo> getDeltasPath(String filesPath, FileSystem fs, Comparator comparator)
+  public static Map<String, StoreFilesInfo> getDeltasPath(String filesPath, FileSystem fs,
+      Comparator comparator, Set<String> onDemandETLEnabledStores)
       throws IOException {
     Map<String, StoreFilesInfo> snapshotInfoMap = new HashMap<>();
     Path path = new Path(filesPath);
@@ -136,6 +138,9 @@ public class DataPublisherUtils {
        * gets store name and version
        */
       String storeName = Version.parseStoreFromKafkaTopicName(storeVersion);
+      if (!onDemandETLEnabledStores.contains(storeName)) {
+        continue;
+      }
       int version = Version.parseVersionFromKafkaTopicName(storeVersion);
       StoreFilesInfo snapshotInfo = snapshotInfoMap.get(storeName);
       if (null == snapshotInfo) {
