@@ -939,6 +939,11 @@ public class ConfigKeys {
   public static final String GOBBLIN_MAX_DAILY_DELTAS_TO_KEEP = "gobblin.max.daily.deltas.to.keep";
 
   /**
+   * This config defines a list of stores which enabled on-demand etl.
+   */
+  public static final String ON_DEMAND_ETL_ENABLED_STORES = "on.demand.etl.enabled.stores";
+
+  /**
    * This config defines a list of stores which enabled future etl feature.
    */
   public static final String FUTURE_ETL_ENABLED_STORES = "future.etl.enabled.stores";

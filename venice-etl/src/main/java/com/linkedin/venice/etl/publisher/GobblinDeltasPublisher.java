@@ -4,9 +4,9 @@ import azkaban.jobExecutor.AbstractJob;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.etl.client.VeniceKafkaConsumerClient;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.BufferedWriter;
@@ -23,7 +23,6 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import org.apache.gobblin.runtime.api.JobExecutionDriver;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -40,6 +39,7 @@ import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 /**
  * Gobblin Deltas Publisher is an Azkaban workflow that will publish the latest gobblin delta file
  * for Venice stores to a specified HDFS path.
+ * Only stores which enabled on-demand ETL need to run through this job.
  */
 public class GobblinDeltasPublisher extends AbstractJob {
   private static final Logger logger = Logger.getLogger(GobblinDeltasPublisher.class);
@@ -64,8 +64,8 @@ public class GobblinDeltasPublisher extends AbstractJob {
   private String destinationDirPrefix;
   private FileSystem fs;
   private Map<String, String> ETLStoreToUserName;
+  private Set<String> onDemandETLEnabledStores;
   private Optional<SSLFactory> sslFactory;
-  private Map<Pair<String, String>, JobExecutionDriver> distcpJobFutures;
   private Map<String, ExecutorService> storeNameToExecutors;
 
   public GobblinDeltasPublisher(String jobId, Properties vanillaProps) throws Exception {
@@ -79,6 +79,9 @@ public class GobblinDeltasPublisher extends AbstractJob {
     this.gobblinDeltasSourceDir = props.getString(GOBBLIN_DELTAS_SOURCE_DIR);
     // the prefix directory where we publish the Gobblin deltas
     this.destinationDirPrefix = props.getString(ETL_DESTINATION_DIR_PREFIX);
+    // builds the list of stores which enabled on-demand ETL, and thus need to run this job
+    this.onDemandETLEnabledStores = new HashSet<>();
+    setUpOnDemandETLStores(props, onDemandETLEnabledStores);
     // builds the map from etl store name to venice etl user name
     this.ETLStoreToUserName = new HashMap<>();
     setUpETLStoreToUserName(props, ETLStoreToUserName);
@@ -102,7 +105,7 @@ public class GobblinDeltasPublisher extends AbstractJob {
   @Override
   public void run() throws Exception {
     // Get all latest Gobblin deltas from the source directory
-    Map<String, StoreFilesInfo> storeToDeltasPath = getDeltasPath(gobblinDeltasSourceDir, fs, FILES_COMPARATOR);
+    Map<String, StoreFilesInfo> storeToDeltasPath = getDeltasPath(gobblinDeltasSourceDir, fs, FILES_COMPARATOR, onDemandETLEnabledStores);
 
     // Build ControllerClient, which will be used to determine the current version and potentially future version of each store
     Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(
@@ -253,6 +256,24 @@ public class GobblinDeltasPublisher extends AbstractJob {
       }
     }
     return false;
+  }
+
+  private static void setUpOnDemandETLStores(VeniceProperties props, Set<String> onDemandETLEnabledStore) {
+    /**
+     * In the format of:
+     * "{storeName1},{storeName2}"
+     */
+    String onDemandETLEnabledStores;
+    try {
+      onDemandETLEnabledStores = props.getString(ON_DEMAND_ETL_ENABLED_STORES);
+    } catch (UndefinedPropertyException e) {
+      logger.warn("The config for future-etl-enabled-stores doesn't exist.");
+      return;
+    }
+    String[] tokens = onDemandETLEnabledStores.split(",");
+    for (String token : tokens) {
+      onDemandETLEnabledStore.add(token.trim());
+    }
   }
 
   /**
