@@ -230,7 +230,7 @@ public class GobblinDeltasPublisher extends AbstractJob {
    * @param deltaPath path from source directory. e.g.
    *                  /jobs/voldteei/ETL/VeniceETL/dbchanges/KAFKA/venice_h2v_test_100_v3308/hourly/2019/10/22/13/
    * @param destination part of destionation. e.g. /jobs/veniceetlxxx/dbchanges/venice_h2v_test_100/v3308/hourly/
-   * @return the path to put hour directory. e.g. /jobs/veniceetlxxx/dbchanges/venice_h2v_test_100/v3308/hourly/2019/10/22/
+   * @return the path to put hour directory. e.g. /jobs/veniceetlxxx/dbchanges/venice_h2v_test_100/v3308/hourly/2019/10/22/00
    * @throws IOException
    */
   private Path createDeltaDestinationDir(Path deltaPath, String destination) throws IOException {
@@ -243,7 +243,9 @@ public class GobblinDeltasPublisher extends AbstractJob {
     fs.mkdirs(new Path(destination));
     // Delete old daily folders under month directory in user destination dir
     retireDestinationOldFiles(new Path(destination), fs);
-    Path destinationDir = new Path(destination + "/" + day.getName());
+    destination += "/" + day.getName();
+    fs.mkdirs(new Path(destination));
+    Path destinationDir = new Path(destination + "/" + deltaPath.getName());
     fs.mkdirs(destinationDir);
     return destinationDir;
   }
