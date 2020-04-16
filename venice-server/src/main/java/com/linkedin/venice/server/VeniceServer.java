@@ -22,6 +22,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
+import com.linkedin.venice.listener.StoreValueSchemasCacheService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -221,8 +222,14 @@ public class VeniceServer {
       return routingData;
     });
 
+    /**
+     * Fast schema lookup implmentation for read compute path.
+     */
+    StoreValueSchemasCacheService storeValueSchemasCacheService = new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
+    services.add(storeValueSchemasCacheService);
+
     // create and add ListenerServer for handling GET requests
-    ListenerService listenerService = createListenerService(storageService.getStorageEngineRepository(), metadataRepo, schemaRepo,
+    ListenerService listenerService = createListenerService(storageService.getStorageEngineRepository(), metadataRepo, storeValueSchemasCacheService,
         routingRepositoryFuture, kafkaStoreIngestionService, serverConfig, metricsRepository, sslFactory, accessController, diskHealthCheckService);
     services.add(listenerService);
 
