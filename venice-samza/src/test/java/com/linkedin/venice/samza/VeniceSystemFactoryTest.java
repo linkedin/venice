@@ -12,6 +12,7 @@ import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 
+import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
@@ -79,10 +80,13 @@ public class VeniceSystemFactoryTest {
 
     try (ControllerClient client = cluster.getControllerClient()) {
       client.createNewStore(storeName, "owner", keySchema, valueSchema);
+      // Enable hybrid and write-compute
+      client.updateStore(storeName, new UpdateStoreQueryParams()
+          .setHybridRewindSeconds(10)
+          .setHybridOffsetLagThreshold(10));
+
       // Generate write compute schema
       client.addDerivedSchema(storeName, 1, writeComputeSchema.toString());
-      // Enable hybrid
-      client.updateStore(storeName, new UpdateStoreQueryParams().setHybridRewindSeconds(10).setHybridOffsetLagThreshold(10));
     }
 
     cluster.createVersion(storeName, keySchema, valueSchema, Stream.of());
@@ -126,36 +130,6 @@ public class VeniceSystemFactoryTest {
 
         Object intArrayField = recordFromVenice.get("intArray");
         assertEquals(intArrayField, new GenericData.Array<>(intArraySchema, Collections.singletonList(1)));
-      });
-
-      // Update the record
-      Schema noOpSchema = writeComputeSchema.getField("number").schema().getTypes().get(0);
-      GenericData.Record noOpRecord = new GenericData.Record(noOpSchema);
-
-      GenericData.Record collectionUpdateRecord =
-          new GenericData.Record(writeComputeSchema.getField("intArray").schema().getTypes().get(1));
-      collectionUpdateRecord.put(SET_UNION, Collections.singletonList(2));
-      collectionUpdateRecord.put(SET_DIFF, Collections.singletonList(1));
-
-      GenericRecord partialUpdateRecord = new GenericData.Record(writeComputeSchema);
-      partialUpdateRecord.put("number", noOpRecord);
-      partialUpdateRecord.put("string", "updatedString");
-      partialUpdateRecord.put("intArray", collectionUpdateRecord);
-
-      TestPushUtils.sendStreamingRecord(producer, storeName, "keystring", partialUpdateRecord);
-
-      // Verify the update
-      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        GenericRecord updatedRecord;
-        try {
-          updatedRecord = client.get("keystring").get();
-        } catch (Exception e) {
-          throw new RuntimeException(e);
-        }
-
-        assertEquals(updatedRecord.get("number"), 3.14);
-        assertEquals(updatedRecord.get("string").toString(), "updatedString");
-        assertEquals(updatedRecord.get("intArray"), new GenericData.Array<>(intArraySchema, Collections.singletonList(2)));
       });
 
       // Delete the record

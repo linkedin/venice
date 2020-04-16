@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -84,6 +85,8 @@ public class VeniceSystemProducer implements SystemProducer {
   private final Version.PushType pushType;
   private final Time time;
 
+  private boolean isWriteComputeEnabled = false;
+
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
 
@@ -127,6 +130,10 @@ public class VeniceSystemProducer implements SystemProducer {
     );
     LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
     this.topicName = versionCreationResponse.getKafkaTopic();
+
+    StoreResponse storeResponse = (StoreResponse) controllerRequestWithRetry(
+        () -> this.controllerClient.getStore(storeName));
+    this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
 
     SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
         () -> this.controllerClient.getKeySchema(this.storeName)
@@ -305,6 +312,11 @@ public class VeniceSystemProducer implements SystemProducer {
       if (valueSchemaIdPair.getSecond() == -1) {
         veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
       } else {
+        if(!isWriteComputeEnabled) {
+          throw new SamzaException("Cannot write partial update record to Venice store " + storeName + " "
+              + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
+        }
+        
         veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
       }
     }
