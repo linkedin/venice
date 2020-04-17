@@ -141,61 +141,54 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
     SequenceFile.Reader fileReader;
     private String topic;
     private VeniceVsonRecordReader recordReader;
+    private BytesWritable currentKey = null;
+    private BytesWritable currentValue = null;
+    private boolean currentValueRead = true;
+    private boolean hasNext;
 
     public VsonIterator(SequenceFile.Reader fileReader, String topic, VeniceVsonRecordReader recordReader) {
       this.fileReader = fileReader;
       this.topic = topic;
       this.recordReader = recordReader;
+      try {
+        currentKey = (BytesWritable) fileReader.getKeyClass().newInstance();
+        currentValue = (BytesWritable) fileReader.getValueClass().newInstance();
+      } catch (IllegalAccessException e) {
+        LOGGER.warn("Unable to access class constructor through reflection. Exception: " + e.toString());
+      } catch (InstantiationException e) {
+        LOGGER.warn("Class cannot be instantiated. Exception: " + e.toString());
+      }
     }
 
     @Override
     public boolean hasNext() {
+      if (!currentValueRead) {
+        return hasNext;
+      }
       try {
-        long position = fileReader.getPosition();
-        // TODO: Reuse objects for higher GC efficiency.
-        BytesWritable key = (BytesWritable) fileReader.getKeyClass().newInstance();
-        BytesWritable value = (BytesWritable) fileReader.getValueClass().newInstance();
-        boolean hasNext = fileReader.next(key, value);
-        fileReader.seek(position);
+        hasNext = fileReader.next(currentKey, currentValue);
+        currentValueRead = false;
         return hasNext;
       } catch (IOException e) {
         throw new VeniceException("Encountered exception reading Vson data. Check if "
-            + "the file exists and the data is in Avro format.", e);
-      } catch (IllegalAccessException e) {
-        LOGGER.info("Unable to access class constructor through reflection. Exception: " + e.toString());
-      } catch (InstantiationException e) {
-        LOGGER.info("Class cannot be instantiated. Exception: " + e.toString());
+            + "the file exists and the data is in Vson format.", e);
       }
-      return false;
     }
 
     @Override
     public Pair<byte[], byte[]> next() {
-      try {
-        BytesWritable key = (BytesWritable) fileReader.getKeyClass().newInstance();
-        BytesWritable value = (BytesWritable) fileReader.getValueClass().newInstance();
-        boolean hasNext = fileReader.next(key, value);
-        if (hasNext) {
-          Object avroKey = recordReader.getKeyDeserializer().bytesToAvro(key.getBytes());
-          Object avroValue = recordReader.getValueDeserializer().bytesToAvro(value.getBytes());
-          if (!recordReader.getKeyField().isEmpty()) {
-            avroKey = ((GenericData.Record) avroKey).get(recordReader.getKeyField());
-          }
-          if (!recordReader.getValueField().isEmpty()) {
-            avroValue = ((GenericData.Record) avroValue).get(recordReader.getValueField());
-          }
-          byte[] keyBytes = recordReader.getKeySerializer().serialize(topic, avroKey);
-          byte[] valueBytes = recordReader.getValueSerializer().serialize(topic, avroValue);
-          return Pair.create(keyBytes, valueBytes);
-        }
-      } catch (IllegalAccessException e) {
-        LOGGER.info("Unable to access class constructor through reflection. Exception: " + e.toString());
-      } catch (IOException e) {
-        e.printStackTrace();
-      } catch (InstantiationException e) {
-        LOGGER.info("Class cannot be instantiated. Exception: " + e.toString());
+      currentValueRead = true;
+      Object avroKey = recordReader.getKeyDeserializer().bytesToAvro(currentKey.getBytes());
+      Object avroValue = recordReader.getValueDeserializer().bytesToAvro(currentValue.getBytes());
+      if (!recordReader.getKeyField().isEmpty()) {
+        avroKey = ((GenericData.Record) avroKey).get(recordReader.getKeyField());
       }
-      return null;
+      if (!recordReader.getValueField().isEmpty()) {
+        avroValue = ((GenericData.Record) avroValue).get(recordReader.getValueField());
+      }
+      byte[] keyBytes = recordReader.getKeySerializer().serialize(topic, avroKey);
+      byte[] valueBytes = recordReader.getValueSerializer().serialize(topic, avroValue);
+      return Pair.create(keyBytes, valueBytes);
     }
   }
 }

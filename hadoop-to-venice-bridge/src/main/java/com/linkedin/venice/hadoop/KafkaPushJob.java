@@ -42,7 +42,6 @@ import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
@@ -356,7 +355,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     CompressionStrategy compressionStrategy;
   }
 
-  private StoreSetting storeSetting;
+  protected StoreSetting storeSetting;
 
   protected class ZstdConfig {
     ZstdDictTrainer zstdDictTrainer;
@@ -494,7 +493,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       if (this.storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
         logger.info("Zstd compression enabled for " + pushJobSetting.storeName);
-        this.zstdConfig = getZstdConfig();
+        initZstdConfig();
       }
 
       // Check data size
@@ -1604,9 +1603,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
   }
 
-  protected ZstdConfig getZstdConfig() throws FileNotFoundException, IOException {
-    if (this.zstdConfig != null) {
-      return this.zstdConfig;
+  protected void initZstdConfig() throws IOException {
+    if (zstdConfig != null) {
+      return;
     }
 
     Configuration conf = new Configuration();
@@ -1614,13 +1613,20 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     Path srcPath = new Path(this.inputDirectory);
     FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
-    ZstdConfig zstdConfig = new ZstdConfig();
+    initZstdConfig(fileStatuses.length);
+  }
+
+  protected void initZstdConfig(int numFiles) {
+    if (zstdConfig != null) {
+      return;
+    }
+
+    zstdConfig = new ZstdConfig();
     zstdConfig.dictSize = props.getInt(COMPRESSION_DICTIONARY_SIZE_LIMIT, VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
     zstdConfig.samplingFactor = props.getInt(COMPRESSION_DICTIONARY_SAMPLING_FACTOR, 500);
-    zstdConfig.maxBytesPerFile = (zstdConfig.samplingFactor * zstdConfig.dictSize) / fileStatuses.length;
+    zstdConfig.maxBytesPerFile = (zstdConfig.samplingFactor * zstdConfig.dictSize) / numFiles;
 
     zstdConfig.zstdDictTrainer = new ZstdDictTrainer(zstdConfig.samplingFactor * zstdConfig.dictSize, zstdConfig.dictSize);
-    return zstdConfig;
   }
 
   public String getKafkaTopic() {
