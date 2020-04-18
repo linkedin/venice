@@ -10,14 +10,15 @@ public class DaVinciConfig {
 
   public static DaVinciConfig defaultDaVinciConfig(String dataBasePath) {
     return new DaVinciConfig(DEFAULT_NON_LOCAL_READS_POLICY, DEFAULT_VERSION_SWAP_POLICY, DEFAULT_PERSISTENCE_TYPE,
-        dataBasePath);
+        true, dataBasePath);
   }
 
   private DaVinciConfig(NonLocalReadsPolicy nonLocalReadsPolicy, VersionSwapPolicy versionSwapPolicy,
-      PersistenceType persistenceType, String dataBasePath) {
+      PersistenceType persistenceType, boolean rocksDBPlainTableFormatEnabled, String dataBasePath) {
     this.nonLocalReadsPolicy = nonLocalReadsPolicy;
     this.versionSwapPolicy = versionSwapPolicy;
     this.persistenceType = persistenceType;
+    this.rocksDBPlainTableFormatEnabled = rocksDBPlainTableFormatEnabled;
     this.dataBasePath = dataBasePath;
   }
 
@@ -36,6 +37,11 @@ public class DaVinciConfig {
    * An Enum of persistence types in Venice.
    */
   private PersistenceType persistenceType;
+
+  /**
+   * Whether to use RocksDB PlainTable format or regular format.
+   */
+  private boolean rocksDBPlainTableFormatEnabled;
 
   /**
    * A folder to store data files.
@@ -68,6 +74,14 @@ public class DaVinciConfig {
     return persistenceType;
   }
 
+  public boolean isRocksDBPlainTableFormatEnabled() {
+    return rocksDBPlainTableFormatEnabled;
+  }
+
+  public void setRocksDBPlainTableFormatEnabled(boolean rocksDBPlainTableFormatEnabled) {
+    this.rocksDBPlainTableFormatEnabled = rocksDBPlainTableFormatEnabled;
+  }
+
   public void setDataBasePath(String dataBasePath) {
     this.dataBasePath = dataBasePath;
   }
@@ -77,7 +91,8 @@ public class DaVinciConfig {
   }
 
   public DaVinciConfig clone() {
-    return new DaVinciConfig(nonLocalReadsPolicy, versionSwapPolicy, persistenceType, dataBasePath);
+    return new DaVinciConfig(nonLocalReadsPolicy, versionSwapPolicy, persistenceType, rocksDBPlainTableFormatEnabled,
+        dataBasePath);
   }
 
   public enum NonLocalReadsPolicy {

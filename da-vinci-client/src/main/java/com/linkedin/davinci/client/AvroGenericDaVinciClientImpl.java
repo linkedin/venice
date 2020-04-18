@@ -33,6 +33,7 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.chunking.AbstractAvroChunkingAdapter;
 import com.linkedin.venice.storage.chunking.GenericChunkingAdapter;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
@@ -41,6 +42,7 @@ import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.Objects;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
@@ -108,9 +110,10 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       d2ServiceDiscoveryResponse = d2ServiceDiscovery.discoverD2Service(d2TransportClient, getStoreName());
     }
     String zkAddress = d2ServiceDiscoveryResponse.getZkAddress();
-    String kafkaZkAddress = d2ServiceDiscoveryResponse.getKafkaZkAddress();
-    String kafkaBootstrapServers = d2ServiceDiscoveryResponse.getKafkaBootstrapServers();
-    String clusterName = d2ServiceDiscoveryResponse.getCluster();
+    String kafkaZkAddress = Objects.requireNonNull(d2ServiceDiscoveryResponse.getKafkaZkAddress());
+    String kafkaBootstrapServers = Objects.requireNonNull(d2ServiceDiscoveryResponse.getKafkaBootstrapServers());
+    String clusterName = Objects.requireNonNull(d2ServiceDiscoveryResponse.getCluster());
+
     VeniceProperties clusterProperties = new PropertyBuilder()
         // Helix-related config
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
@@ -125,6 +128,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     VeniceProperties serverProperties = new PropertyBuilder()
         .put(ConfigKeys.LISTENER_PORT, 0) // not used by Da Vinci
         .put(ConfigKeys.DATA_BASE_PATH, daVinciConfig.getDataBasePath())
+        .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.isRocksDBPlainTableFormatEnabled())
         .build();
     VeniceProperties serverOverrideProperties = new VeniceProperties(new Properties());
     VeniceConfigLoader
