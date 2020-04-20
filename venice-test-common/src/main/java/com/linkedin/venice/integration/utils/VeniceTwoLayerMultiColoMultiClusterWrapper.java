@@ -4,15 +4,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
-import org.apache.commons.io.IOUtils;
-
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.io.IOUtils;
 
 
 public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
@@ -33,10 +32,16 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     this.clusters = clusters;
     this.mirrorMakers = mirrorMakers;
   }
-
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, Optional<Integer> zkPort) {
+    return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
+        numberOfServers, numberOfRouters, zkPort, Optional.empty());
+  }
+
+  static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
+      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
+      int numberOfRouters, Optional<Integer> zkPort, Optional<VeniceProperties> veniceProperties) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
@@ -67,12 +72,21 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
     // Create parentControllers for multi-cluster
     for (int i = 0; i < numberOfParentControllers; i++) {
-      VeniceControllerWrapper parentController =
-          ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
-              childControllers,
-              // random controller from each multicluster, in reality this should include all controllers, not just one
-              clusterToD2, false);
-      parentControllers.add(parentController);
+      if (veniceProperties.isPresent()) {
+        VeniceControllerWrapper parentController =
+            ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
+                childControllers,
+                // random controller from each multicluster, in reality this should include all controllers, not just one
+                clusterToD2, false, veniceProperties.get());
+        parentControllers.add(parentController);
+      } else {
+        VeniceControllerWrapper parentController =
+            ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
+                childControllers,
+                // random controller from each multicluster, in reality this should include all controllers, not just one
+                clusterToD2, false);
+        parentControllers.add(parentController);
+      }
     }
 
     // Create MirrorMakers

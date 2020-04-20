@@ -296,10 +296,10 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
   }
 
-  public StoreMigrationResponse migrateStore(String storeName, String srcClusterName) {
+  public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {
     QueryParams params = newParams()
         .add(NAME, storeName)
-        .add(CLUSTER_SRC, srcClusterName);
+        .add(CLUSTER_DEST, destClusterName);
     return request(ControllerRoute.MIGRATE_STORE, params, StoreMigrationResponse.class);
   }
 

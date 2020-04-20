@@ -27,6 +27,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.stats.AdminConsumptionStats;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
@@ -354,6 +355,52 @@ public class AdminExecutionTask implements Callable<Void> {
   private void handleSetStore(UpdateStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
+    if (checkPreConditionForReplicateUpdateStore(clusterName, storeName,
+        message.isMigrating, message.enableReads, message.enableWrites)) {
+      UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+          .setOwner(message.owner.toString())
+          .setEnableReads(message.enableReads)
+          .setEnableWrites(message.enableWrites)
+          .setPartitionCount(message.partitionNum);
+      if (message.partitionerConfig != null) {
+        params.setPartitionerClass(message.partitionerConfig.partitionerClass.toString())
+            .setPartitionerParams(Utils.getStringMapFromCharSequenceMap(message.partitionerConfig.partitionerParams))
+            .setAmplificationFactor(message.partitionerConfig.amplificationFactor);
+      }
+      params.setStorageQuotaInByte(message.storageQuotaInByte)
+          .setHybridStoreOverheadBypass(message.hybridStoreOverheadBypass)
+          .setReadQuotaInCU(message.readQuotaInCU)
+          .setCurrentVersion(message.currentVersion);
+      if (message.hybridStoreConfig != null) {
+        params.setHybridRewindSeconds(message.hybridStoreConfig.rewindTimeInSeconds)
+            .setHybridOffsetLagThreshold(message.hybridStoreConfig.offsetLagThresholdToGoOnline);
+      }
+      params.setAccessControlled(message.accessControlled)
+          .setCompressionStrategy(CompressionStrategy.valueOf(message.compressionStrategy))
+          .setClientDecompressionEnabled(message.clientDecompressionEnabled)
+          .setChunkingEnabled(message.chunkingEnabled)
+          .setSingleGetRouterCacheEnabled(message.singleGetRouterCacheEnabled)
+          .setBatchGetRouterCacheEnabled(message.batchGetRouterCacheEnabled)
+          .setBatchGetLimit(message.batchGetLimit)
+          .setNumVersionsToPreserve(message.numVersionsToPreserve)
+          .setIncrementalPushEnabled(message.incrementalPushEnabled)
+          .setStoreMigration(message.isMigrating)
+          .setWriteComputationEnabled(message.writeComputationEnabled)
+          .setReadComputationEnabled(message.readComputationEnabled)
+          .setBootstrapToOnlineTimeoutInHours(message.bootstrapToOnlineTimeoutInHours)
+          .setLeaderFollowerModel(message.leaderFollowerModelEnabled)
+          .setBackupStrategy(BackupStrategy.fromInt(message.backupStrategy))
+          .setAutoSchemaPushJobEnabled(message.schemaAutoRegisterFromPushJobEnabled)
+          .setAutoSupersetSchemaEnabledFromReadComputeStore(message.superSetSchemaAutoGenerationForReadComputeEnabled)
+          .setHybridStoreDiskQuotaEnabled(message.hybridStoreDiskQuotaEnabled);
+      if (message.ETLStoreConfig != null) {
+        params.setRegularVersionETLEnabled(message.ETLStoreConfig.regularVersionETLEnabled)
+            .setFutureVersionETLEnabled(message.ETLStoreConfig.futureVersionETLEnabled)
+            .setEtledProxyUserAccount(message.ETLStoreConfig.etledUserProxyAccount.toString());
+      }
+      params.setLargestUsedVersionNumber(message.largestUsedVersionNumber);
+      admin.replicateUpdateStore(clusterName, storeName, params);
+    }
     admin.updateStore(clusterName, storeName,
         Optional.of(message.owner.toString()),
         Optional.of(message.enableReads),
@@ -368,7 +415,7 @@ public class AdminExecutionTask implements Callable<Void> {
         message.currentVersion == IGNORED_CURRENT_VERSION
             ? Optional.empty()
             : Optional.of(message.currentVersion),
-        Optional.empty(), // We explicitly forbid setting the largestUsedVersionNumber globally, so it is not included in the admin protocol
+        Optional.ofNullable(message.largestUsedVersionNumber), // Store migration needs to reset largestUsedVersionNumber to trigger bootstrap
         message.hybridStoreConfig == null
             ? Optional.empty()
             : Optional.of(message.hybridStoreConfig.rewindTimeInSeconds),
@@ -426,16 +473,17 @@ public class AdminExecutionTask implements Callable<Void> {
   }
 
   private void handleStoreMigration(MigrateStore message) {
-    if (this.isParentController) {
-      // Parent controller should not process this message again
-      return;
-    }
-
     String srcClusterName = message.srcClusterName.toString();
     String destClusterName = message.destClusterName.toString();
     String storeName = message.storeName.toString();
-
-    admin.migrateStore(srcClusterName, destClusterName, storeName);
+    if (this.isParentController) {
+      // Src and dest parent controllers communicate
+      admin.migrateStore(srcClusterName, destClusterName, storeName);
+    } else {
+      // Child controllers need to update migration src and dest cluster in storeConfig
+      // Otherwise, storeConfig in the fabric won't have src and dest cluster info
+      admin.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+    }
   }
 
   private void handleAbortMigration(AbortMigration message) {
@@ -447,10 +495,6 @@ public class AdminExecutionTask implements Callable<Void> {
   }
 
   private void handleAddVersion(AddVersion message) {
-    if (isParentController) {
-      // No op, parent controller only needs to verify this message was produced successfully.
-      return;
-    }
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     String pushJobId = message.pushJobId.toString();
@@ -458,6 +502,29 @@ public class AdminExecutionTask implements Callable<Void> {
     int numberOfPartitions = message.numberOfPartitions;
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers = message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
+    if (isParentController) {
+      // Parent controllers mirror versions to src/dest clusters
+      admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
+      return;
+    }
     admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
+  }
+
+  private boolean checkPreConditionForReplicateUpdateStore(String clusterName, String storeName,
+      boolean isMigrating, boolean isEnableReads, boolean isEnableWrites) {
+    if (this.isParentController && admin.hasStore(clusterName, storeName)) {
+      Store store = admin.getStore(clusterName, storeName);
+      if (store.isMigrating()) {
+        boolean storeMigrationUpdated = isMigrating != store.isMigrating();
+        boolean readabilityUpdated =  isEnableReads != store.isEnableReads();
+        boolean writeabilityUpdated = isEnableWrites != store.isEnableWrites();
+        if (storeMigrationUpdated || readabilityUpdated || writeabilityUpdated) {
+          // No need to mirror these updates
+          return false;
+        }
+        return true;
+      }
+    }
+    return false;
   }
 }

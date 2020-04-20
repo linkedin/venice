@@ -14,7 +14,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactory;
 import com.linkedin.venice.controller.stats.VeniceHelixAdminStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -57,7 +57,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreGraveyard;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.participant.protocol.KillPushJob;
@@ -332,7 +331,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Start store migration monitor background thread
         storeConfigRepo.refresh();
-        startStoreMigrationMonitor();
+        // This is child controller store migration monitor.
+        // Reusing the monitor in parent controller leads to early cluster discovery update.
+        if (!multiClusterConfigs.isParent()) {
+            startStoreMigrationMonitor();
+        }
     }
 
     private void initLevel1Controller(boolean isParticipantOnly) {
@@ -484,7 +487,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 storeRepo.addStore(newStore);
                 // Create global config for that store.
-                storeConfigAccessor.createConfig(storeName, clusterName);
+                if (!storeConfigAccessor.containsConfig(storeName)) {
+                    storeConfigAccessor.createConfig(storeName, clusterName);
+                }
                 logger.info("Store: " + storeName +
                     " has been created with largestUsedVersionNumber: " + newStore.getLargestUsedVersionNumber());
             } finally {
@@ -589,64 +594,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } finally {
             resources.unlockForMetadataOperation();
         }
-    }
-
-    public synchronized void cloneStore(String srcClusterName, String destClusterName, StoreInfo srcStore,
-        String keySchema, MultiSchemaResponse.Schema[] valueSchemas) {
-        if (srcClusterName.equals(destClusterName)) {
-            throw new VeniceException("Source cluster and destination cluster cannot be the same!");
-        }
-
-        String storeName = srcStore.getName();
-        checkPreConditionForCloneStore(destClusterName, storeName);
-        logger.info("Start cloning store: " + storeName);
-
-        VeniceHelixResources resources = getVeniceHelixResource(destClusterName);
-        HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
-        HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
-
-        // Create new store
-        VeniceControllerClusterConfig config = getVeniceHelixResource(destClusterName).getConfig();
-        Store clonedStore = new Store(storeName, srcStore.getOwner(), System.currentTimeMillis(), config.getPersistenceType(),
-            config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-
-        storeRepo.lock();
-        try {
-            Store existingStore = storeRepo.getStore(storeName);
-            if (existingStore != null) {
-                throwStoreAlreadyExists(destClusterName, storeName);
-            }
-            storeRepo.addStore(clonedStore);
-            logger.info("Cloned store " + storeName + " has been created with largestUsedVersionNumber "
-                + clonedStore.getLargestUsedVersionNumber());
-
-            //check store config
-            if (!storeConfigAccessor.containsConfig(storeName)) {
-                logger.warn("Expecting but cannot find storeConfig for this store " + storeName);
-                storeConfigAccessor.createConfig(storeName, destClusterName);
-            }
-        } finally {
-            storeRepo.unLock();
-        }
-
-        // Copy schemas
-        synchronized (schemaRepo) {
-            // Add key schema
-            new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema); // Check whether key schema is valid. It should, because this is from an existing store.
-            schemaRepo.initKeySchema(storeName, keySchema);
-
-            // Add value schemas
-            for (MultiSchemaResponse.Schema valueSchema : valueSchemas) {
-                new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema.getSchemaStr()); // Check whether value schema is valid. It should, because this is from an existing store.
-                schemaRepo.addValueSchema(storeName, valueSchema.getSchemaStr(), valueSchema.getId());
-            }
-        }
-
-        // Copy remaining properties that will make the cloned store almost identical to the original
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore);
-        this.updateStore(destClusterName, storeName, params);
-
-        logger.info("Completed cloning Store: " + storeName);
     }
 
     private Integer fetchSystemStoreSchemaId(String clusterName, String storeName, String valueSchemaStr) {
@@ -784,20 +731,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Source cluster and destination cluster cannot be the same!");
         }
 
-        // Get original store properties
-        String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
-        ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl, sslFactory);
-        // Update migration src and dest cluster in storeConfig
-        setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+        String destControllerUrl = this.getMasterController(destClusterName).getUrl(false);
+        ControllerClient destControllerClient = new ControllerClient(destClusterName, destControllerUrl, sslFactory);
 
-        UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
-        StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
-        String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
-        MultiSchemaResponse.Schema[] srcValueSchemasResponse = srcControllerClient.getAllValueSchema(storeName).getSchemas();
-        this.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema, srcValueSchemasResponse);
-        // Decrease the largestUsedVersionNumber to trigger bootstrap in destination cluster
-        params.setLargestUsedVersionNumber(0);
-        this.updateStore(destClusterName, storeName, params);   // update cloned store in destination cluster
+        // Get original store properties
+        Store srcStore = this.getStore(srcClusterName, storeName);
+        String keySchema = this.getKeySchema(srcClusterName, storeName).getSchema().toString();
+        List<SchemaEntry> valueSchemaEntries = this.getValueSchemas(srcClusterName, storeName)
+            .stream()
+            .sorted(Comparator.comparingInt(SchemaEntry::getId))
+            .collect(Collectors.toList());
+
+        int schemaNum = valueSchemaEntries.size();
+        // Create a new store in destination cluster
+        destControllerClient.createNewStore(
+            storeName,
+            srcStore.getOwner(),
+            keySchema,
+            valueSchemaEntries.get(0).getSchema().toString());
+        // Add other value schemas
+        for (int i = 1; i < schemaNum; i++) {
+            destControllerClient.addValueSchema(storeName, valueSchemaEntries.get(i).getSchema().toString());
+        }
+
+        // Copy remaining properties that will make the cloned store almost identical to the original
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams(srcStore)
+            .setStoreMigration(true)
+            // Decrease the largestUsedVersionNumber to trigger bootstrap in dest cluster
+            .setLargestUsedVersionNumber(0);
+        destControllerClient.updateStore(storeName, params);
+
+        // Add versions to store in dest cluster and start ingestion.
         List<Version> sourceOnlineVersions = srcStore
             .getVersions()
             .stream()
@@ -806,25 +770,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             .collect(Collectors.toList());
         for (Version version : sourceOnlineVersions) {
             try {
-                int partitionCount = topicManager.getPartitions(version.kafkaTopicName()).size();
+                /**
+                 * Topic manager partitions might be cleaned up in parent controller.
+                 * Get partition count from existing version instead of topic manager.
+                 */
+                int partitionCount = version.getPartitionCount();
                 /**
                  * Remote Kafka is set to null for store migration because version topics at source fabric might be deleted
                  * already; migrated stores should bootstrap by consuming the version topics in its local fabric.
                  */
-                addVersionAndStartIngestion(destClusterName, storeName, version.getPushJobId(), version.getNumber(),
+                destControllerClient.addVersionAndStartIngestion(storeName, version.getPushJobId(), version.getNumber(),
                     partitionCount, version.getPushType(), null);
             } catch (Exception e) {
                 logger.warn("An exception was thrown when attempting to add version and start ingestion for store "
                 + storeName + " and version " + version.getNumber(), e);
             }
         }
-         // Set store migration flag for the original store. Possible race condition where we miss a new push while we
-         // are calling addVersionAndStartIngestion on existing ONLINE versions. However, if we update the store's
-         // migrating status first then we might run into another race condition where for example v3 (the new push) can
-         // be added prior to v1 and v2 (existing versions). Even worse, the source cluster controller could be calling
-         // the destination cluster controller's addVersionAndStartIngestion prior to the store is fully cloned.
-        UpdateStoreQueryParams srcStoreParams = new UpdateStoreQueryParams().setStoreMigration(true);
-        srcControllerClient.updateStore(storeName, srcStoreParams);
     }
 
     @Override
@@ -890,12 +851,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // TODO put them into global store configs.
         boolean isLagecyStore = false;
         if (storeConfigAccessor.containsConfig(storeName)) {
+            StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
             // Controller was trying to delete the old store but failed.
             // Delete again before re-creating.
             // We lock the resource during deletion, so it's impossible to access the store which is being
             // deleted from here. So the only possible case is the deletion failed before.
-            if (!storeConfigAccessor.getStoreConfig(storeName).isDeleting()) {
-                throw new VeniceStoreAlreadyExistsException(storeName);
+            if (!storeConfig.isDeleting()) {
+                // It is ok to create the same store in destination cluster during store migration.
+                if (!clusterName.equals(storeConfig.getMigrationDestCluster())) {
+                    throw new VeniceStoreAlreadyExistsException(storeName);
+                }
             } else {
                 isLagecyStore = true;
             }
@@ -969,8 +934,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     /**
      * This is a wrapper for VeniceHelixAdmin#addVersion but performs additional operations needed for add version invoked
-     * from the admin channel or child controller's endpoint. Therefore, this method is mainly invoked from the admin
-     * task upon processing an add version message and for store migration.
+     * from the admin channel. Therefore, this method is mainly invoked from the admin task upon processing an add
+     * version message.
      */
     @Override
     public void addVersionAndStartIngestion(
@@ -988,6 +953,50 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
                 getReplicationFactor(clusterName, storeName), true, false, false,
                 true, pushType, null, remoteKafkaBootstrapServers);
+        }
+    }
+
+    /**
+     * This method is invoked in parent controllers for store migration.
+     */
+    public void replicateAddVersionAndStartIngestion(
+        String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
+        Version.PushType pushType, String remoteKafkaBootstrapServers) {
+        checkControllerMastership(clusterName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (null == store) {
+            throw new VeniceNoStoreException(storeName, clusterName);
+        }
+        if (versionNumber < store.getLargestUsedVersionNumber()) {
+            logger.info("Ignoring the add version message since version " + versionNumber
+                + " is less than the largestUsedVersionNumber of " + store.getLargestUsedVersionNumber()
+                + " for store " + storeName + " in cluster " + clusterName);
+        } else {
+            if (versionNumber > store.getLargestUsedVersionNumber() && !store.containsVersion(versionNumber)) {
+                resources.lockForMetadataOperation();
+                try {
+                    repository.lock();
+                    try {
+                        Version version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
+                        version.setPushType(pushType);
+                        store.addVersion(version);
+                        // Disable buffer replay for hybrid according to cluster config
+                        if (store.isHybrid() && resources.getConfig().isSkipBufferRelayForHybrid()) {
+                            store.setBufferReplayForHybridForVersion(version.getNumber(), false);
+                            logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
+                                version.getNumber() + " in cluster: " + clusterName);
+                        }
+                        repository.updateStore(store);
+                        logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
+                    } finally {
+                        repository.unLock();
+                    }
+                } finally {
+                    resources.unlockForMetadataOperation();
+                }
+            }
             if (store.isMigrating()) {
                 try {
                     StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
@@ -1020,7 +1029,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     }
                 } catch (Exception e) {
                     logger.warn("Exception thrown when replicating add version for store " + storeName + " and version "
-                    + versionNumber + " as part of store migration", e);
+                        + versionNumber + " as part of store migration", e);
                 }
             }
         }
@@ -2248,14 +2257,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         Store originalStore = originalStoreToBeCloned.cloneStore();
 
-        if (originalStore.isMigrating()) {
-            if (!(storeMigration.isPresent() || readability.isPresent() || writeability.isPresent())) {
-                String errMsg = "This update operation is not allowed during store migration!";
-                logger.warn(errMsg + " Store name: " + storeName);
-                throw new VeniceException(errMsg);
-            }
-        }
-
         Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
             HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
@@ -2453,6 +2454,41 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.error("Successfully rolled back changes to store '" + storeName + "' in cluster: '" + clusterName
                 + "'. Will now throw the original exception (" + e.getClass().getSimpleName() + ").");
             throw e;
+        }
+    }
+
+    /**
+     * This method is invoked in parent controllers for store migration.
+     */
+    public void replicateUpdateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
+        try {
+            StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
+            String destinationCluster = storeConfig.getMigrationDestCluster();
+            String sourceCluster = storeConfig.getMigrationSrcCluster();
+            if (storeConfig.getCluster().equals(destinationCluster)) {
+                // Migration has completed in this colo but the overall migration is still in progress.
+                if (clusterName.equals(destinationCluster)) {
+                    // Mirror new updates back to the source cluster in case we abort migration after completion.
+                    ControllerClient sourceClusterControllerClient =
+                        new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false), sslFactory);
+                    ControllerResponse response = sourceClusterControllerClient.updateStore(storeName, params);
+                    if (response.isError()) {
+                        logger.warn("Replicate new update endpoint call to source cluster: " + sourceCluster
+                            + " failed for store " + storeName + " Error: " + response.getError());
+                    }
+                }
+            } else if (clusterName.equals(sourceCluster)) {
+                ControllerClient destClusterControllerClient =
+                    new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false), sslFactory);
+                ControllerResponse response = destClusterControllerClient.updateStore(storeName, params);
+                if (response.isError()) {
+                    logger.warn("Replicate update store endpoint call to destination cluster: " + destinationCluster
+                        + " failed for store " + storeName + " Error: " + response.getError());
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Exception thrown when replicating new update for store " + storeName
+                + " as part of store migration", e);
         }
     }
 
