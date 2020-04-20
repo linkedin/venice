@@ -10,11 +10,9 @@ import java.util.Properties;
 
 public class DaVinciPartitioner extends VenicePartitioner {
   VenicePartitioner partitioner;
-  int numPartitions;
   int amplificationFactor;
 
   public DaVinciPartitioner(PartitionerConfig partitionerConfig) {
-    this.numPartitions = numPartitions;
     this.amplificationFactor = partitionerConfig.getAmplificationFactor();
     Properties params = new Properties();
     params.putAll(partitionerConfig.getPartitionerParams());

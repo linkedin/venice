@@ -3,6 +3,7 @@ package com.linkedin.davinci.client;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
@@ -16,10 +17,12 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
@@ -38,11 +41,9 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-
 import io.tehuti.metrics.MetricsRepository;
-
 import java.util.Objects;
+import java.util.HashSet;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
@@ -58,6 +59,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
@@ -83,6 +86,8 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private RecordSerializer<K> keySerializer;
   private DaVinciPartitioner partitioner;
   private IngestionController ingestionController;
+  private TransportClient transportClient;
+  private AvroGenericStoreClient<K, V> veniceClient;
 
   public AvroGenericDaVinciClientImpl(
       DaVinciConfig daVinciConfig,
@@ -96,7 +101,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   }
 
   private D2TransportClient getD2TransportClient() {
-    TransportClient transportClient = ClientFactory.getTransportClient(clientConfig);
+    transportClient = ClientFactory.getTransportClient(clientConfig);
     if (!(transportClient instanceof D2TransportClient)) {
       throw new VeniceClientException("Da Vinci only supports D2 client.");
     }
@@ -169,7 +174,11 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
       Version version = versionRef.get().getVersion();
-      V value = getValue(key, version, getStorageEngine(version));
+
+      V value = getValue(version, key);
+      if (value == null && isRemoteQueryAllowed()) {
+        return veniceClient.get(key);
+      }
       return CompletableFuture.completedFuture(value);
     }
   }
@@ -187,18 +196,33 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
       Version version = versionRef.get().getVersion();
-      AbstractStorageEngine storageEngine = getStorageEngine(version);
 
-      Map<K, V> map = new HashMap<>();
+      Set<K> nonLocalKeys = new HashSet<>();
+      Map<K, V> result = new HashMap<>();
       for (K key : keys) {
-        V value = getValue(key, version, storageEngine);
+        V value = getValue(version, key);
         if (value != null) {
           // The returned map will only contain entries for the keys which have a value associated with them
-          map.put(key, value);
+          result.put(key, value);
+        } else {
+          nonLocalKeys.add(key);
         }
       }
-      return CompletableFuture.completedFuture(map);
+
+      if (nonLocalKeys.isEmpty() || !isRemoteQueryAllowed()) {
+        return CompletableFuture.completedFuture(result);
+      }
+
+      return veniceClient.batchGet(nonLocalKeys).thenApply(remoteResult -> {
+        result.putAll(remoteResult);
+        return result;
+      });
+
     }
+  }
+
+  private boolean isRemoteQueryAllowed() {
+    return daVinciConfig.getNonLocalReadsPolicy().equals(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
   }
 
   private AbstractStorageEngine getStorageEngine(Version version) {
@@ -210,12 +234,15 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     return storageEngine;
   }
 
-  private V getValue(K key, Version version, AbstractStorageEngine storageEngine) {
+  private V getValue(Version version, K key) {
     byte[] keyBytes = keySerializer.serialize(key);
     int partitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount());
+    AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
     if (!storageEngine.containsPartition(partitionId)) {
-      throw new VeniceClientException(
-          "Da Vinci client does not contain partition " + partitionId + " in version " + version.getNumber());
+      if (isRemoteQueryAllowed()) {
+        return null;
+      }
+      throw new VeniceClientException("Da Vinci client does not contain partition " + partitionId + " in version " + version.getNumber());
     }
 
     return getChunkingAdapter().get(
@@ -274,7 +301,17 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     this.keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
-    this.partitioner = new DaVinciPartitioner(metadataReposotory.getStore(getStoreName()).getPartitionerConfig());
+    PartitionerConfig partitionerConfig = metadataReposotory.getStore(getStoreName()).getPartitionerConfig();
+    this.partitioner = new DaVinciPartitioner(partitionerConfig);
+
+    // For now we only support FAIL_FAST and QUERY_REMOTELY. SUBSCRIBE_AND_QUERY_REMOTELY policy is not supported.
+    if (isRemoteQueryAllowed()) {
+      // Remote query is only supported for DefaultVenicePartitioner before custom partitioner is supported in Router.
+      if (!partitionerConfig.getPartitionerClass().equals(DefaultVenicePartitioner.class.getName())) {
+        throw new VeniceClientException("Da Vinci remote query is only supported for DefaultVenicePartitioner.");
+      }
+      veniceClient = getAndStartAvroClient(clientConfig);
+    }
 
     ingestionController = new IngestionController(
         veniceConfigLoader,
@@ -302,7 +339,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       logger.info("The client is already stopped, ignoring duplicate attempt.");
       return;
     }
-
     ingestionController.close();
     for (AbstractVeniceService service : Utils.reversed(services)) {
       try {
@@ -313,6 +349,10 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       }
     }
     logger.info("All services stopped");
+
+    if (veniceClient != null) {
+      veniceClient.close();
+    }
 
     if (exceptions.size() > 0) {
       throw new VeniceException(exceptions.get(0));

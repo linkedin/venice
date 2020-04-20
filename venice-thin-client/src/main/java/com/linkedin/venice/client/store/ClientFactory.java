@@ -60,6 +60,14 @@ public class ClientFactory {
     return client;
   }
 
+  public static <K, V> AvroGenericStoreClient<K, V> getAndStartAvroClient(ClientConfig clientConfig) {
+    if (clientConfig.isSpecificClient()) {
+      return ClientFactory.getAndStartSpecificAvroClient(clientConfig);
+    } else {
+      return ClientFactory.getAndStartGenericAvroClient(clientConfig);
+    }
+  }
+
   public static SchemaReader getSchemaReader(ClientConfig clientConfig) {
     AvroGenericStoreClientImpl client =
         new AvroGenericStoreClientImpl<>(getTransportClient(clientConfig), false, clientConfig);
