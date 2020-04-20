@@ -39,7 +39,6 @@ import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -519,7 +518,13 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
-    throw new VeniceUnsupportedOperationException("addVersionAndStartIngestion");
+    acquireLock(clusterName, storeName);
+    try {
+      Version version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
+      sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
+    } finally {
+      releaseLock(clusterName);
+    }
   }
 
   /**
@@ -1129,15 +1134,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
     try {
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
-
-      if (store.isMigrating()) {
-        if (!(storeMigration.isPresent() || readability.isPresent() || writeability.isPresent())) {
-          String errMsg = "This update operation is not allowed during store migration!";
-          logger.warn(errMsg + " Store name: " + storeName);
-          throw new VeniceException(errMsg);
-        }
-      }
-
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
@@ -1255,6 +1251,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.hybridStoreDiskQuotaEnabled = hybridStoreDiskQuotaEnabled.orElse(store.isHybridStoreDiskQuotaEnabled());
 
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(store, regularVersionETLEnabled, futureVersionETLEnabled, etledUserProxyAccount);
+
+      setStore.largestUsedVersionNumber = largestUsedVersionNumber.isPresent() ? largestUsedVersionNumber.get() : store.getLargestUsedVersionNumber();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();
@@ -1980,10 +1978,8 @@ public class VeniceParentHelixAdmin implements Admin {
     migrateStore.storeName = storeName;
 
     // Set src store migration flag
-    String srcControllerUrl = this.getMasterController(srcClusterName).getUrl(false);
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, srcControllerUrl, sslFactory);
     UpdateStoreQueryParams params = new UpdateStoreQueryParams().setStoreMigration(true);
-    srcControllerClient.updateStore(storeName, params);
+    this.updateStore(srcClusterName, storeName, params);
 
     // Update migration src and dest cluster in storeConfig
     veniceHelixAdmin.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
@@ -1992,7 +1988,7 @@ public class VeniceParentHelixAdmin implements Admin {
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.MIGRATE_STORE.getValue();
     message.payloadUnion = migrateStore;
-    sendAdminMessageAndWaitForConsumed(destClusterName, storeName, message);
+    sendAdminMessageAndWaitForConsumed(srcClusterName, storeName, message);
   }
 
   @Override
@@ -2085,21 +2081,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
             if (readyCount == childControllerClients.size()) {
               // All child clusters have completed store migration
-              // Finish off store migration in the parent cluster by creating a clone store
-
-              // Get original store properties
-              ControllerClient srcControllerClient = srcControllerClients.computeIfAbsent(srcClusterName,
-                  src_cluster_name -> new ControllerClient(src_cluster_name,
-                      this.getMasterController(src_cluster_name).getUrl(false), sslFactory));
-              StoreInfo srcStore = srcControllerClient.getStore(storeName).getStore();
-              String srcKeySchema = srcControllerClient.getKeySchema(storeName).getSchemaStr();
-              MultiSchemaResponse.Schema[] srcValueSchemasResponse =
-                  srcControllerClient.getAllValueSchema(storeName).getSchemas();
-
-              // Finally finish off store migration in parent controller
-              veniceHelixAdmin.cloneStore(srcClusterName, destClusterName, srcStore, srcKeySchema,
-                  srcValueSchemasResponse);
-
               logger.info("All child clusters have " + storeName + " cloned store ready in " + destClusterName
                   + ". Will update cluster discovery in parent.");
               veniceHelixAdmin.updateClusterDiscovery(storeName, srcClusterName, destClusterName);

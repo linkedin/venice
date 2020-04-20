@@ -8,7 +8,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
-
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.MockTime;
@@ -18,13 +17,12 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
-import java.io.File;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
-import java.util.Optional;
 
 /**
  * A factory for generating Venice services and external service instances
@@ -188,6 +186,20 @@ public class ServiceFactory {
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
             DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, EMPTY_VENICE_PROPS, clusterToD2, sslToKafka, true));
+  }
+
+  public static VeniceControllerWrapper getVeniceParentController(
+      String[] clusterNames,
+      String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      VeniceControllerWrapper[] childControllers,
+      String clusterToD2,
+      boolean sslToKafka,
+      VeniceProperties properties) {
+    return getStatefulService(
+        VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(clusterNames, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childControllers, properties, clusterToD2, sslToKafka, true));
   }
 
   /**
@@ -380,6 +392,13 @@ public class ServiceFactory {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo,
             numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.of(zkPort)));
+  }
+
+  public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
+      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters, VeniceProperties veniceProperties) {
+    return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
+        VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo,
+            numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.empty(), Optional.of(veniceProperties)));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

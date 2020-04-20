@@ -188,7 +188,7 @@ public class CreateVersion extends AbstractRoute {
   }
 
   /**
-   * This function is only being used by store migration, so it is fine to create version directly in Child Controller.
+   * This function is only being used by store migration parent controllers, which write add version admin message.
    */
   public Route addVersionAndStartIngestion(Admin admin) {
     return (request, response) -> {

@@ -915,7 +915,7 @@ public class AdminTool {
       }
     }
 
-    StoreMigrationResponse storeMigrationResponse = destControllerClient.migrateStore(storeName, srcClusterName);
+    StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(storeName, destClusterName);
     printObject(storeMigrationResponse);
 
     if (storeMigrationResponse.isError()) {

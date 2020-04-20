@@ -4,7 +4,6 @@ import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -28,7 +27,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.apache.log4j.Logger;
 import spark.Request;
 import spark.Route;
 
@@ -119,14 +117,13 @@ public class StoresRoutes extends AbstractRoute {
           return;
         }
         AdminSparkServer.validateParams(request, MIGRATE_STORE.getParams(), admin);
-        String srcClusterName = request.queryParams(CLUSTER_SRC);
-        String destClusterName = request.queryParams(CLUSTER);
+        String srcClusterName = request.queryParams(CLUSTER);
+        String destClusterName = request.queryParams(CLUSTER_DEST);
         String storeName = request.queryParams(NAME);
 
         veniceResponse.setSrcClusterName(srcClusterName);
         veniceResponse.setCluster(destClusterName);
         veniceResponse.setName(storeName);
-
 
         String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
         // Store should belong to src cluster already

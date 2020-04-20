@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionerConfig;
-import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Store;
 import java.io.IOException;
 import java.util.Map;
 import java.util.Optional;
@@ -30,13 +30,12 @@ public class UpdateStoreQueryParams extends QueryParams {
    * Useful for store migration
    * @param srcStore The original store
    */
-  public UpdateStoreQueryParams(StoreInfo srcStore) {
+  public UpdateStoreQueryParams(Store srcStore) {
     // Copy everything except current version number and largest used version number
     // This method must be updated everytime a new store property is introduced
     UpdateStoreQueryParams updateStoreQueryParams =
         new UpdateStoreQueryParams()
             .setStorageQuotaInByte(srcStore.getStorageQuotaInByte())
-            .setHybridStoreOverheadBypass(srcStore.getHybridStoreOverheadBypass())
             .setReadQuotaInCU(srcStore.getReadQuotaInCU())
             .setAccessControlled(srcStore.isAccessControlled())
             .setChunkingEnabled(srcStore.isChunkingEnabled())
@@ -46,12 +45,11 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setOwner(srcStore.getOwner())
             .setCompressionStrategy(srcStore.getCompressionStrategy())
             .setClientDecompressionEnabled(srcStore.getClientDecompressionEnabled())
-            .setEnableReads(srcStore.isEnableStoreReads())
-            .setEnableWrites(srcStore.isEnableStoreWrites())
+            .setEnableReads(srcStore.isEnableReads())
+            .setEnableWrites(srcStore.isEnableWrites())
             .setPartitionCount(srcStore.getPartitionCount())
             .setIncrementalPushEnabled(srcStore.isIncrementalPushEnabled())
             .setNumVersionsToPreserve(srcStore.getNumVersionsToPreserve())
-            .setLargestUsedVersionNumber(srcStore.getLargestUsedVersionNumber())
             .setStoreMigration(srcStore.isMigrating())
             .setWriteComputationEnabled(srcStore.isWriteComputationEnabled())
             .setReadComputationEnabled(srcStore.isReadComputationEnabled())
