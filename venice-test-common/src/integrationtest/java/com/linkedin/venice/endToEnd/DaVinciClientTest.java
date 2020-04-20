@@ -1,6 +1,10 @@
 package com.linkedin.venice.endToEnd;
 
+import com.linkedin.davinci.client.DaVinciConfig;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
@@ -8,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -22,6 +27,7 @@ import com.linkedin.davinci.client.DaVinciClient;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -169,5 +175,55 @@ public class DaVinciClientTest {
     try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, testDataFilePath)) {
       Assert.assertThrows(VeniceNoStoreException.class, () -> client.get(0).get());
     }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testNonLocalRead() throws Exception {
+    String storeName = cluster.createStore(KEY_COUNT);
+    String dataDirectory = TestUtils.getTempDataDirectory().getAbsolutePath();
+    DaVinciConfig daVinciConfig = DaVinciConfig.defaultDaVinciConfig(dataDirectory);
+
+    daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
+    Set<Object> keySet = new HashSet<>();
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig)) {
+      client.subscribe(Collections.singleton(0)).get();
+      // With QUERY_REMOTELY enabled, all key-value pairs should be found.
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(client.get(k).get(), 1);
+        keySet.add(k);
+      }
+
+      Map<Object, Object> valueMap = client.batchGet(keySet).get();
+      assertNotNull(valueMap);
+      for (int k = 0; k < KEY_COUNT; ++k) {
+        assertEquals(valueMap.get(k), 1);
+      }
+    }
+
+    daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.FAIL_FAST);
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig)) {
+      // We only subscribe to 1/3 of the partitions so some data will not be present locally.
+      client.subscribe(Collections.singleton(0)).get();
+      Assert.assertThrows(VeniceClientException.class, () -> client.batchGet(keySet).get());
+    }
+
+
+    // Update the store to use non-default partitioner and it shall fail during initialization even with QUERY_REMOTELY enabled.
+    try (ControllerClient client = cluster.getControllerClient()) {
+      ControllerResponse response = client.updateStore(
+          storeName,
+          new UpdateStoreQueryParams()
+              .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+              .setPartitionerParams(
+                  Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(2))
+              )
+      );
+      if (response.isError()) {
+        Assert.fail(response.getError());
+      }
+    }
+    daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
+    Assert.assertThrows(VeniceClientException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig));
+
   }
 }

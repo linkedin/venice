@@ -466,20 +466,16 @@ public class ServiceFactory {
     // initialize DaVinciConfig
     File dataDirectory = TestUtils.getTempDataDirectory();
     DaVinciConfig daVinciConfig = DaVinciConfig.defaultDaVinciConfig(dataDirectory.getAbsolutePath());
-    // initialize ClientConfig
-    ClientConfig clientConfig = ClientConfig
-        .defaultGenericClientConfig(storeName)
-        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
-        .setVeniceURL(cluster.getZk().getAddress());
-    DaVinciClient<K, V> daVinciClient =
-        new AvroGenericDaVinciClientImpl<>(daVinciConfig, clientConfig);
-    daVinciClient.start();
-    return daVinciClient;
+    return getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig);
   }
 
   public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, String dataBasePath) {
     // initialize DaVinciConfig
     DaVinciConfig daVinciConfig = DaVinciConfig.defaultDaVinciConfig(dataBasePath);
+    return getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig);
+  }
+
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, VeniceClusterWrapper cluster, DaVinciConfig daVinciConfig) {
     // initialize ClientConfig
     ClientConfig clientConfig = ClientConfig
         .defaultGenericClientConfig(storeName)
