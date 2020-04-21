@@ -249,7 +249,7 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(instanceList.get(0), selectedHost, "Sticky routing should select: " + instanceList.get(0));
   }
 
-  @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*Some partition is not available for store.*")
+  @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*not available for store.*")
   public void testScatterWithSingleGetWithNotAvailablePartition() throws RouterException {
     String storeName = TestUtils.getUniqueString("test_store");
     String resourceName = storeName + "_v1";

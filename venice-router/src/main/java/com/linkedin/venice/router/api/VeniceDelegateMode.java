@@ -18,6 +18,7 @@ import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.RouterThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -141,13 +142,20 @@ public class VeniceDelegateMode extends ScatterGatherMode {
         hostHealthMonitor, roles, metrics);
     int offlineRequestNum = scatter.getOfflineRequestCount();
     int onlineRequestNum = scatter.getOnlineRequestCount();
+
     if (offlineRequestNum > 0) {
       // For streaming request do not reject request as long as there is some replica available to serve some keys.
       if (onlineRequestNum != 0 && (venicePath.getRequestType() == MULTI_GET_STREAMING || venicePath.getRequestType() == COMPUTE_STREAMING)) {
         RouterExceptionAndTrackingUtils.recordUnavailableReplicaStreamingRequest(storeName, venicePath.getRequestType());
       } else {
+        Collection<ScatterGatherRequest<H, K>> offlineRequests = scatter.getOfflineRequests();
+        StringBuilder partitions = new StringBuilder();
+
+        for (ScatterGatherRequest scatterGatherRequest : offlineRequests) {
+          partitions.append(scatterGatherRequest.getPartitionsNames());
+        }
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            SERVICE_UNAVAILABLE, "Some partition is not available for store: " + storeName + " with request type: " + venicePath.getRequestType());
+            SERVICE_UNAVAILABLE, "Partitions : " + partitions + " not available for store: " + storeName + " to serve request type: " + venicePath.getRequestType());
       }
     }
 
