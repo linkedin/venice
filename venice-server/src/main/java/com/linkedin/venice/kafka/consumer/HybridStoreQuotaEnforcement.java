@@ -141,10 +141,12 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
                                                 diskQuotaPerPartition);
       }
     } else { /** we have free space for this partition */
-      if (isRTJob()) {
+      /**
+       * Only RT jobs partitions could be resumed
+       */
+      if (isRTJob() && isPartitionPausedIngestion(partition)) {
         resumePartition(partition);
-        logger.info("Space available for store " + storeName + " partition " + partition
-            + ", resumed this partition.");
+        logger.info("Quota available for store " + storeName + " partition " + partition + ", resumed this partition.");
       }
     }
   }
@@ -194,7 +196,7 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
     }
   }
 
-  protected boolean isPartitionOutOfQuota(int partition) {
+  protected boolean isPartitionPausedIngestion(int partition) {
     return pausedPartitions.contains(partition);
   }
 

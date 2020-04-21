@@ -88,7 +88,7 @@ public class HybridStoreQuotaEnforcementTest {
     buildDummyPartitionToSizeMap(5);
     runTest(() -> {
       for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertFalse(quotaEnforcer.isPartitionOutOfQuota(i));
+        Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
       }
     });
   }
@@ -101,7 +101,7 @@ public class HybridStoreQuotaEnforcementTest {
     buildDummyPartitionToSizeMap(10);
     runTest(() -> {
       for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertTrue(quotaEnforcer.isPartitionOutOfQuota(i));
+        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
       }
     });
 
@@ -109,7 +109,7 @@ public class HybridStoreQuotaEnforcementTest {
     buildDummyPartitionToSizeMap(0);
     runTest(() -> {
       for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertTrue(quotaEnforcer.isPartitionOutOfQuota(i));
+        Assert.assertTrue(quotaEnforcer.isPartitionPausedIngestion(i));
       }
     });
 
@@ -118,7 +118,7 @@ public class HybridStoreQuotaEnforcementTest {
     quotaEnforcer.handleStoreChanged(store);
     runTest(()-> {
       for (int i = 1; i <= storePartitionCount; i++) {
-        Assert.assertFalse(quotaEnforcer.isPartitionOutOfQuota(i));
+        Assert.assertFalse(quotaEnforcer.isPartitionPausedIngestion(i));
       }
     });
   }
