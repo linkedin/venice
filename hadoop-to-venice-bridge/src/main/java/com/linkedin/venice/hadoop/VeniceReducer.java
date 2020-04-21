@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -274,11 +275,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     if (CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)) == CompressionStrategy.ZSTD_WITH_DICT) {
       ByteBuffer compressionDictionary = readDictionaryFromKafka();
+      int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
 
       if (compressionDictionary != null && compressionDictionary.limit() > 0) {
         String topicName = props.getString(TOPIC_PROP);
         this.compressor =
-            CompressorFactory.getVersionSpecificCompressor(CompressionStrategy.ZSTD_WITH_DICT, topicName, compressionDictionary.array());
+            CompressorFactory.getVersionSpecificCompressor(CompressionStrategy.ZSTD_WITH_DICT, topicName, compressionDictionary.array(), compressionLevel);
       }
     } else {
       this.compressor =
