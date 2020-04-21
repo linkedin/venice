@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
+import com.github.luben.zstd.Zstd;
 import com.github.luben.zstd.ZstdDictTrainer;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -226,6 +227,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
    * Config to control the thread pool size for HDFS operations.
    */
   public static final String HDFS_OPERATIONS_PARALLEL_THREAD_NUM = "hdfs.operations.parallel.thread.num";
+
+  /**
+   * Config to control the Compression Level for ZSTD Dictionary Compression.
+   */
+  public static final String ZSTD_COMPRESSION_LEVEL = "zstd.compression.level";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
@@ -1320,6 +1326,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     conf.set(TELEMETRY_MESSAGE_INTERVAL, props.getString(TELEMETRY_MESSAGE_INTERVAL, "10000"));
     conf.set(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, props.getString(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS,
         "record-queue-time-avg,request-latency-avg,record-send-rate,byte-rate"));
+
+    conf.set(ZSTD_COMPRESSION_LEVEL, props.getString(ZSTD_COMPRESSION_LEVEL, String.valueOf(Zstd.maxCompressionLevel())));
   }
 
   protected void setupInputFormatConf(JobConf jobConf, SchemaInfo schemaInfo, String inputDirectory) {

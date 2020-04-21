@@ -1,5 +1,6 @@
 package com.linkedin.venice.compression;
 
+import com.github.luben.zstd.Zstd;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.util.Map;
 
@@ -14,7 +15,11 @@ public class CompressorFactory {
   }
 
   public static VeniceCompressor getVersionSpecificCompressor(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary) {
-    return versionSpecificCompressorMap.computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(compressionStrategy, dictionary));
+    return getVersionSpecificCompressor(compressionStrategy, kafkaTopic, dictionary, Zstd.maxCompressionLevel());
+  }
+
+  public static VeniceCompressor getVersionSpecificCompressor(CompressionStrategy compressionStrategy, String kafkaTopic, final byte[] dictionary, int level) {
+    return versionSpecificCompressorMap.computeIfAbsent(kafkaTopic, key -> createCompressorWithDictionary(compressionStrategy, dictionary, level));
   }
 
   public static VeniceCompressor getVersionSpecificCompressor(String kafkaTopic) {
@@ -35,9 +40,9 @@ public class CompressorFactory {
     throw new IllegalArgumentException("unsupported compression strategy: " + compressionStrategy.toString());
   }
 
-  private static VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary) {
+  private static VeniceCompressor createCompressorWithDictionary(CompressionStrategy compressionStrategy, final byte[] dictionary, int level) {
     if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-      return new ZstdWithDictCompressor(dictionary);
+      return new ZstdWithDictCompressor(dictionary, level);
     }
 
     throw new IllegalArgumentException("unsupported compression strategy with dictionary: " + compressionStrategy.toString());

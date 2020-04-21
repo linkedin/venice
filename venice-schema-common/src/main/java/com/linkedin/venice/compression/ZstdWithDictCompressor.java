@@ -12,10 +12,10 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   private ZstdCompressCtx compressor;
   private byte[] dictionary;
 
-  public ZstdWithDictCompressor(final byte[] dictionary) {
+  public ZstdWithDictCompressor(final byte[] dictionary, int level) {
     super(CompressionStrategy.ZSTD_WITH_DICT);
     this.dictionary = dictionary;
-    compressor = new ZstdCompressCtx().loadDict(this.dictionary);
+    compressor = new ZstdCompressCtx().loadDict(this.dictionary).setLevel(level);
   }
 
   @Override
