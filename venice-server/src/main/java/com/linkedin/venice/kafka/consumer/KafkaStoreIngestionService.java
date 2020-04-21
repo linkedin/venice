@@ -33,6 +33,8 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
+import java.util.NavigableMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -44,7 +46,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -83,7 +84,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * A repository mapping each Kafka Topic to it corresponding Ingestion task responsible
    * for consuming messages and making changes to the local store accordingly.
    */
-  private final Map<String, StoreIngestionTask> topicNameToIngestionTaskMap;
+  private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
   private final Optional<SchemaReader> schemaReader;
 
   private final ExecutorService participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
@@ -112,7 +113,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
 
-    this.topicNameToIngestionTaskMap = new ConcurrentHashMap<>();
+    this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.isRunning = new AtomicBoolean(false);
 
     this.veniceConfigLoader = veniceConfigLoader;
@@ -322,6 +323,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           ", maxVersionNumberFromMetadataRepo: " + maxVersionNumberFromMetadataRepo +
           ". Will rely on the topic name's version.");
     }
+    /**
+     * Notice that the version push for maxVersionNumberFromMetadataRepo might be killed already (this code path will
+     * also be triggered after server restarts).
+     */
     int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
     updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
@@ -355,24 +360,34 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * Find the task that matches both the storeName and maximumVersion number, enable metrics emission for this task and
    * update ingestion stats with this task; disable metric emission for all the task that doesn't max version.
    */
-  protected void updateStatsEmission(Map<String, StoreIngestionTask> taskMap, String storeName, int maximumVersion) {
-    taskMap.forEach((topicName, task) -> {
-      if (Version.parseStoreFromKafkaTopicName(topicName).equals(storeName)) {
-        if (Version.parseVersionFromKafkaTopicName(topicName) < maximumVersion) {
-          task.disableMetricsEmission();
-        } else {
-          task.enableMetricsEmission();
-          ingestionStats.updateStoreConsumptionTask(storeName, task);
+  protected void updateStatsEmission(NavigableMap<String, StoreIngestionTask> taskMap, String storeName, int maximumVersion) {
+    String knownMaxVersionTopic = Version.composeKafkaTopic(storeName, maximumVersion);
+    if (taskMap.containsKey(knownMaxVersionTopic)) {
+      taskMap.forEach((topicName, task) -> {
+        if (Version.parseStoreFromKafkaTopicName(topicName).equals(storeName)) {
+          if (Version.parseVersionFromKafkaTopicName(topicName) < maximumVersion) {
+            task.disableMetricsEmission();
+          } else {
+            task.enableMetricsEmission();
+            ingestionStats.updateStoreConsumptionTask(storeName, task);
+          }
         }
-      }
-    });
+      });
+    } else {
+      /**
+       * The version push doesn't exist in this server node at all; it's possible the push for largest version has
+       * already been killed, so instead, emit metrics for the largest known batch push in this node.
+       */
+      updateStatsEmission(taskMap, storeName);
+    }
   }
 
   /**
-   * This function will be invoked when a task is killed; find the task that matches the storeName and has the largest
-   * version number; if the task doesn't enable metric emission, enable it and update store ingestion stats.
+   * This function will go through all known ingestion task in this server node, find the task that matches the
+   * storeName and has the largest version number; if the task doesn't enable metric emission, enable it and
+   * update store ingestion stats.
    */
-  protected void updateStatsEmission(Map<String, StoreIngestionTask> taskMap, String storeName) {
+  protected void updateStatsEmission(NavigableMap<String, StoreIngestionTask> taskMap, String storeName) {
     int maxVersion = -1;
     StoreIngestionTask latestOngoingIngestionTask = null;
     for (Map.Entry<String, StoreIngestionTask> entry : taskMap.entrySet()) {
@@ -387,6 +402,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     if (latestOngoingIngestionTask != null && !latestOngoingIngestionTask.isMetricsEmissionEnabled()) {
       latestOngoingIngestionTask.enableMetricsEmission();
+      /**
+       * Disable the metrics emission for all lower version pushes.
+       */
+      Map.Entry<String, StoreIngestionTask> lowerVersionPush = taskMap.lowerEntry(Version.composeKafkaTopic(storeName, maxVersion));
+      while (lowerVersionPush != null && Version.parseStoreFromKafkaTopicName(lowerVersionPush.getKey()).equals(storeName)) {
+        lowerVersionPush.getValue().disableMetricsEmission();
+        lowerVersionPush = taskMap.lowerEntry(lowerVersionPush.getKey());
+      }
       ingestionStats.updateStoreConsumptionTask(storeName, latestOngoingIngestionTask);
     }
   }

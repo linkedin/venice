@@ -21,9 +21,11 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListMap;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -86,8 +88,15 @@ public class KafkaStoreIngestionServiceTest {
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";
+   /**
+    * Explicitly make max version number higher than the largest version push in ingestion service;
+    * it's possible that user starts the push for version 4 and 5 but the future version pushes fail.
+    *
+    * In this case, ingestion service should emit metrics for the known largest version push in server.
+    */
    int taskNum = 3;
-   Map<String, StoreIngestionTask> topicNameToIngestionTaskMap = Collections.synchronizedMap(new HashMap<> ());
+   int maxVersionNumber = 5;
+   NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
 
    for (int i = 1; i <= taskNum; i ++ ) {
      StoreIngestionTask task = mock(StoreIngestionTask.class);
@@ -97,13 +106,13 @@ public class KafkaStoreIngestionServiceTest {
    topicNameToIngestionTaskMap.put(mockSimilarStoreName + "_v1", mock(StoreIngestionTask.class));
 
    Store mockStore = mock(Store.class);
-   doReturn(3).when(mockStore).getLargestUsedVersionNumber();
+   doReturn(maxVersionNumber).when(mockStore).getLargestUsedVersionNumber();
    doReturn(mockStore).when(mockmetadataRepo).getStore(mockStoreName);
 
    VeniceStoreConfig mockStoreConfig = mock(VeniceStoreConfig.class);
    doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreName();
 
-   kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, 3);
+   kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, maxVersionNumber);
 
 
    String mostRecentTopic = mockStoreName + "_v" +taskNum;
