@@ -497,11 +497,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
       this.storeSetting = getSettingsFromController(controllerClient, pushJobSetting);
 
-      if (this.storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
-        logger.info("Zstd compression enabled for " + pushJobSetting.storeName);
-        initZstdConfig();
-      }
-
       // Check data size
       // TODO: do we actually need this information?
       Pair<SchemaInfo, Long> inputInfoPair = validateInputAndGetSchema(this.inputDirectory, this.props);
@@ -668,6 +663,11 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     if (fileStatuses == null || fileStatuses.length == 0) {
       throw new RuntimeException("No data found at source path: " + srcPath);
+    }
+
+    if (this.storeSetting.compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+      logger.info("Zstd compression enabled for " + pushJobSetting.storeName);
+      initZstdConfig(fileStatuses.length);
     }
 
     SchemaInfo schemaInfo = new SchemaInfo();
@@ -1609,19 +1609,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       logger.info("Found cluster: " + clusterName + " for store: " + setting.storeName);
       return clusterName;
     }
-  }
-
-  protected void initZstdConfig() throws IOException {
-    if (zstdConfig != null) {
-      return;
-    }
-
-    Configuration conf = new Configuration();
-    FileSystem fs = FileSystem.get(conf);
-    Path srcPath = new Path(this.inputDirectory);
-    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
-
-    initZstdConfig(fileStatuses.length);
   }
 
   protected void initZstdConfig(int numFiles) {
