@@ -13,6 +13,7 @@ import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -85,7 +86,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    */
   public void validateMigrationStatus() {
     if (null != partitionIdToPartitionMap.get(METADATA_PARTITION_ID).get(METADATA_MIGRATION_KEY.getBytes())) {
-      throw new VeniceException(String.format("Store %s has previously migrated to RocksDB metadata offset store, but now its set (server.enable.rocksdb.offset.metadata = false) to use BDB. Please delete all the data for this store", storeName));
+      throw new VeniceException(String.format("Store %s has previously migrated to RocksDB metadata offset store, but now its set (server.enable.rocksdb.offset.metadata = false) to use BDB. Please delete all data including offset for this store", storeName));
     }
   }
 
@@ -140,6 +141,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * @param bdbStorageMetadataService
    */
   private void validateBootstrap(BdbStorageMetadataService bdbStorageMetadataService) {
+    Set<Integer> bdbPartitions = new HashSet<>();
     for (Integer partitionId : partitionIdToPartitionMap.keySet()) {
       if (partitionId == METADATA_PARTITION_ID) {
         continue;
@@ -154,6 +156,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
         if (!bdbOffsetRecord.equals(rocksDBOffsetRecord.get())) {
           throw new VeniceException("BDB and RocksDB offset record mismatch, BDB record  :" + bdbOffsetRecord + " rocksdb record " + rocksDBOffsetRecord);
         }
+        bdbPartitions.add(partitionId);
       }
     }
 
@@ -170,10 +173,13 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     }
 
     //all validations passed. clear the BDB offset records
-    for (Integer partitionId : partitionIdToPartitionMap.keySet()) {
+    for (Integer partitionId : bdbPartitions) {
       bdbStorageMetadataService.clearOffset(storeName, partitionId);
     }
-    bdbStorageMetadataService.clearStoreVersionState(storeName);
+
+    if (BDBStoreVersionState.isPresent()) {
+      bdbStorageMetadataService.clearStoreVersionState(storeName);
+    }
   }
 
   /**
