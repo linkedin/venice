@@ -5,6 +5,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import java.util.Map;
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 import java.util.concurrent.Future;
@@ -34,6 +35,11 @@ public class TransformingProducer implements KafkaProducerWrapper {
   public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
     SendMessageParameters parameters = transformer.transform(topic, key, value, partition);
     return baseProducer.sendMessage(parameters.topic, parameters.key, parameters.value, parameters.partition, callback);
+  }
+
+  @Override
+  public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
+    return sendMessage(record.topic(), record.key(), record.value(), record.partition(), callback);
   }
 
   @Override

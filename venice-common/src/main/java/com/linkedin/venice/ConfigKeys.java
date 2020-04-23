@@ -1011,4 +1011,8 @@ public class ConfigKeys {
    */
   public static final String AMPLIFICATION_FACTOR = "amplification.factor";
 
+  /**
+   * A unique id that can represent this instance
+   */
+  public static final String INSTANCE_ID = "instance.id";
 }

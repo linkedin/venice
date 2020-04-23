@@ -585,15 +585,22 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       offsetRecord.setOffset(consumerRecord.offset());
 
       // also update the leader topic offset using the upstream offset in ProducerMetadata
-      if (kafkaValue.producerMetadata.upstreamOffset >= 0) {
-        long newUpstreamOffset = kafkaValue.producerMetadata.upstreamOffset;
+      if (kafkaValue.producerMetadata.upstreamOffset >= 0
+          || (kafkaValue.leaderMetadataFooter != null && kafkaValue.leaderMetadataFooter.upstreamOffset >= 0)) {
+
+        long newUpstreamOffset =
+            kafkaValue.leaderMetadataFooter != null ? kafkaValue.leaderMetadataFooter.upstreamOffset : kafkaValue.producerMetadata.upstreamOffset;
+
         long previousUpstreamOffset = offsetRecord.getLeaderOffset();
+
         /**
          * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
          * issue (multiple leaders producing to the same partition at the same time)
          */
-        if (newUpstreamOffset < previousUpstreamOffset && offsetRecord.getLeaderGUID() != null
-            && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID())) {
+        if ((newUpstreamOffset < previousUpstreamOffset && offsetRecord.getLeaderGUID() != null
+            && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID()))
+          || (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
+            && kafkaValue.leaderMetadataFooter.hostName != offsetRecord.getLeaderHostId())) {
           /**
            * Check whether the data inside rewind message is the same the data inside storage engine; if so,
            * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
@@ -601,10 +608,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
            * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
            * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
            */
-          String logMsg = String.format(consumerTaskId + " received message with upstreamOffset: %ld;"
-              + " but recorded upstreamOffset is: %ld. New GUID: %s; previous producer GUID: %s. "
-              + "Multiple leaders are producing.", newUpstreamOffset, previousUpstreamOffset,
-              GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID), GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
+          String logMsg = String.format(consumerTaskId + " received message with upstreamOffset: %ld;" + " but recorded upstreamOffset is: %ld. New GUID: %s; previous producer GUID: %s. "
+                  + "Multiple leaders are producing.", newUpstreamOffset, previousUpstreamOffset, GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
+              GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
 
           boolean lossy = true;
           try {
@@ -620,9 +626,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                   Put put = (Put) envelope.payloadUnion;
                   if (actualSchemaId == put.schemaId) {
                     // continue if schema Id is the same
-                    if (ByteUtils.equals(put.putValue.array(), put.putValue.position(), actualValue, SCHEMA_HEADER_LENGTH)) {
+                    if (ByteUtils.equals(put.putValue.array(), put.putValue.position(), actualValue,
+                        SCHEMA_HEADER_LENGTH)) {
                       lossy = false;
-                      logMsg += "\nBut this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
+                      logMsg +=
+                          "\nBut this rewound PUT is not lossy because the data in the rewind message is the same as the data inside Venice";
                     }
                   }
                 }
@@ -634,7 +642,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 actualValue = storageEngine.get(consumerRecord.partition(), key.getKey());
                 if (actualValue == null) {
                   lossy = false;
-                  logMsg += "\nBut this rewound DELETE is not lossy because the data in the rewind message is deleted already";
+                  logMsg +=
+                      "\nBut this rewound DELETE is not lossy because the data in the rewind message is deleted already";
                 }
                 break;
               default:
@@ -667,10 +676,17 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
          * Keep updating the upstream offset no matter whether there is a rewind or not; rewind could happen
          * to the true leader when the old leader doesn't stop producing.
          */
-        offsetRecord.setLeaderTopicOffset(kafkaValue.producerMetadata.upstreamOffset);
+        if (kafkaValue.leaderMetadataFooter != null) {
+          offsetRecord.setLeaderTopicOffset(kafkaValue.leaderMetadataFooter.upstreamOffset);
+        } else {
+          offsetRecord.setLeaderTopicOffset(kafkaValue.producerMetadata.upstreamOffset);
+        }
       }
       // update leader producer GUID
       offsetRecord.setLeaderGUID(kafkaValue.producerMetadata.producerGUID);
+      if (kafkaValue.leaderMetadataFooter != null) {
+        offsetRecord.setLeaderHostId(kafkaValue.leaderMetadataFooter.hostName.toString());
+      }
     }
   }
 

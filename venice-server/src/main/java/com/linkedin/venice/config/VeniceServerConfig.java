@@ -179,6 +179,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableRocksDBOffsetMetadata;
 
 
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
