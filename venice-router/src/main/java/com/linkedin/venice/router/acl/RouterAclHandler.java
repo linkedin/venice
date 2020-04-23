@@ -3,11 +3,14 @@ package com.linkedin.venice.router.acl;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.utils.NettyUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -15,7 +18,11 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.security.cert.X509Certificate;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
 import javax.validation.constraints.NotNull;
@@ -26,15 +33,22 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(RouterAclHandler.class);
   private HelixReadOnlyStoreRepository metadataRepository;
   private DynamicAccessController accessController;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepo;
+  private Map<String, String> clusterToD2Map;
 
   public RouterAclHandler(@NotNull DynamicAccessController accessController,
-      @NotNull HelixReadOnlyStoreRepository metadataRepository) {
+      @NotNull HelixReadOnlyStoreRepository metadataRepository,
+      @NotNull HelixReadOnlyStoreConfigRepository storeConfigRepo,
+      @NotNull Map<String, String> clusterToD2Map) {
 
     this.metadataRepository = metadataRepository;
     this.accessController = accessController.init(
         metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
     this.metadataRepository.registerStoreDataChangedListener(
         new AclCreationDeletionListener(accessController));
+
+    this.storeConfigRepo = storeConfigRepo;
+    this.clusterToD2Map = clusterToD2Map;
   }
 
   /**
@@ -141,6 +155,29 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
         }
       }
     } else {
+      // If the store is migrated to another cluster, redirect the request
+      Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
+      if (config.isPresent()) {
+        String newCluster = config.get().getCluster();
+        if (!Utils.isNullOrEmpty(newCluster)) {
+          String d2Service = clusterToD2Map.get(newCluster);
+          if (!Utils.isNullOrEmpty(d2Service)) {
+            try {
+              URI uri = new URI(req.uri());
+              uri = new URI("d2", d2Service, uri.getPath(), uri.getQuery(), uri.getFragment());
+              String redirectUri = uri.toString();
+              logger.info("RouterAclHandler redirects the request to " + redirectUri);
+              NettyUtils.setupResponseAndFlush(HttpResponseStatus.MOVED_PERMANENTLY, new byte[0], false,
+                  redirectUri, ctx);
+              return;
+            } catch (URISyntaxException e) {
+              NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST,
+                  ("Failed to parse uri: " + req.uri()).getBytes(), false, ctx);
+            }
+          }
+        }
+      }
+
       String client = ctx.channel().remoteAddress().toString(); //ip and port
       String errLine = String.format("%s requested %s %s", client, method, req.uri());
       logger.debug("Requested store does not exist: " + errLine);

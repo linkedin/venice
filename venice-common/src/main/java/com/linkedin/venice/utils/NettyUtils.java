@@ -6,9 +6,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.Arrays;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.utils.ExceptionUtils.*;
@@ -20,13 +17,22 @@ public class NettyUtils {
   private static final Logger logger = Logger.getLogger(NettyUtils.class);
 
   public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
-                                     ChannelHandlerContext ctx) {
+      ChannelHandlerContext ctx) {
+    setupResponseAndFlush(status, body, isJson, null, ctx);
+  }
+
+  public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
+                                     String location, ChannelHandlerContext ctx) {
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, status, Unpooled.wrappedBuffer(body));
     try {
       if (isJson) {
         response.headers().set(CONTENT_TYPE, HttpConstants.JSON);
       } else {
         response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
+      }
+
+      if (location != null) {
+        response.headers().set(LOCATION, location);
       }
     } catch (NoSuchMethodError e){ // netty version conflict
       logger.warn("NoSuchMethodError, probably from netty version conflict.  Printing netty on classpath: ", e);

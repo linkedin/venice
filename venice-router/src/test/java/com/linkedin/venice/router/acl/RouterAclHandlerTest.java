@@ -1,9 +1,10 @@
 package com.linkedin.venice.router.acl;
 
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.router.acl.RouterAclHandler;
+import com.linkedin.venice.meta.StoreConfig;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -15,14 +16,13 @@ import io.netty.handler.ssl.SslHandler;
 import java.net.SocketAddress;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
-import java.util.List;
-import java.util.stream.Collectors;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
-import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatcher;
 import org.mockito.stubbing.Answer;
-import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -32,6 +32,8 @@ import static org.mockito.Mockito.*;
 public class RouterAclHandlerTest {
   private DynamicAccessController accessController;
   private HelixReadOnlyStoreRepository metadataRepo;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepo;
+  private Map<String, String> clusterToD2Map;
   private ChannelHandlerContext ctx;
   private HttpRequest req;
   private RouterAclHandler aclHandler;
@@ -47,12 +49,14 @@ public class RouterAclHandlerTest {
   public void setup() throws Exception {
     accessController = mock(DynamicAccessController.class);
     metadataRepo = mock(HelixReadOnlyStoreRepository.class);
+    storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+    clusterToD2Map = new HashMap<>();
     ctx = mock(ChannelHandlerContext.class);
     req = mock(HttpRequest.class);
     store = mock(Store.class);
 
     when(accessController.init(any())).thenReturn(accessController);
-    aclHandler = spy(new RouterAclHandler(accessController, metadataRepo));
+    aclHandler = spy(new RouterAclHandler(accessController, metadataRepo, storeConfigRepo, clusterToD2Map));
 
     when(metadataRepo.getStore(any())).then((Answer<Store>) invocation -> metadataRepo.hasStore("storename") ? store : null);
 
@@ -131,12 +135,28 @@ public class RouterAclHandlerTest {
   @Test
   public void storeMissing() throws Exception {
     _hasStore[0] = false;
+    doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig("storename");
     enumerate(_hasAccess, _hasAcl, _isFailOpen, _isAccessControlled);
 
     verify(ctx, never()).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
     verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
+  }
+
+  @Test
+  public void storeMigrated() throws Exception {
+    _hasStore[0] = false;
+    StoreConfig storeConfig = new StoreConfig("storename");
+    storeConfig.setCluster("destCluster");
+    doReturn(Optional.of(storeConfig)).when(storeConfigRepo).getStoreConfig("storename");
+    clusterToD2Map.put("destCluster", "d2Service");
+    enumerate(_hasAccess, _hasAcl, _isFailOpen, _isAccessControlled);
+
+    verify(ctx, never()).fireChannelRead(req);
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
+    verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
+    verify(ctx, times(16)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.MOVED_PERMANENTLY)));
   }
 
   @Test
