@@ -43,15 +43,6 @@ import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
  */
 public class GobblinDeltasPublisher extends AbstractJob {
   private static final Logger logger = Logger.getLogger(GobblinDeltasPublisher.class);
-  /**
-   * indicating a version number for a store is the current version
-   */
-  private static final String CURRENT_VERSION_SUFFIX = "_current";
-
-  /**
-   * indicating a version number for a store is future version
-   */
-  private static final String FUTURE_VERSION_SUFFIX = "_future";
 
   // Immutable state
   private final VeniceProperties props;
@@ -121,16 +112,17 @@ public class GobblinDeltasPublisher extends AbstractJob {
        * Each batch jobs for two different stores could run in parallel.
        */
       this.storeNameToExecutors.put(storeName, Executors.newSingleThreadExecutor());
+      String destination = destinationDirPrefix;
       if (ETLStoreToUserName.containsKey(storeName)) {
-        destinationDirPrefix += ETLStoreToUserName.get(storeName) + gobblinDbChanges;
+        destination += ETLStoreToUserName.get(storeName) + gobblinDbChanges;
       } else {
-        destinationDirPrefix += props.getString(ETL_STORE_TO_ACCOUNT_NAME_DEFAULT) + gobblinDbChanges;
+        destination += props.getString(ETL_STORE_TO_ACCOUNT_NAME_DEFAULT) + gobblinDbChanges;
       }
-      fs.mkdirs(new Path(destinationDirPrefix));
+      fs.mkdirs(new Path(destination));
       StoreFilesInfo deltaInfo = entry.getValue();
       StoreResponse storeResponse = storeToControllerClient.get(storeName).getStore(storeName);
       StoreInfo storeInfo = storeResponse.getStore();
-      String destinationStorePath = destinationDirPrefix + "/" + storeName;
+      String destinationStorePath = destination + "/" + storeName;
       logger.info("Begin publishing Gobblin deltas for store " + storeName);
       writeMetadata(storeInfo, destinationStorePath, deltaInfo);
       publishVersionDeltas(storeName, deltaInfo, destinationStorePath);
@@ -185,6 +177,7 @@ public class GobblinDeltasPublisher extends AbstractJob {
     br.write("current version : " + currentVersion);
     int futureVersion = deltaInfo.getLargestVersionNumber();
     if (futureVersion > currentVersion) {
+      br.newLine();
       br.write("future version : " + futureVersion);
     }
     br.flush();
@@ -216,6 +209,9 @@ public class GobblinDeltasPublisher extends AbstractJob {
     }
   }
 
+  /**
+   * Creates the directory to the hourly directory [destination]/[storeVersion]/hourly
+   */
   private String createHourlyDeltaDir(int storeVersion, String destination) throws IOException {
     destination += "/v" + storeVersion;
     fs.mkdirs(new Path(destination));
