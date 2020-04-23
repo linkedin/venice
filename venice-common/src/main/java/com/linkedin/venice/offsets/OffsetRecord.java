@@ -180,6 +180,10 @@ public class OffsetRecord {
     this.partitionState.leaderGUID = guid;
   }
 
+  public void setLeaderHostId(String leaderHostId) {
+    this.partitionState.leaderHostId = leaderHostId;
+  }
+
   public String getLeaderTopic() {
     return (partitionState.leaderTopic != null) ? partitionState.leaderTopic.toString() : null;
   }
@@ -190,6 +194,10 @@ public class OffsetRecord {
 
   public GUID getLeaderGUID() {
     return this.partitionState.leaderGUID;
+  }
+
+  public String getLeaderHostId() {
+    return this.partitionState.leaderHostId.toString();
   }
 
   /**

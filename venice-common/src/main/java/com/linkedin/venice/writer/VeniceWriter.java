@@ -35,11 +35,14 @@ import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.avro.util.Utf8;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.errors.TopicAuthorizationException;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.log4j.Logger;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -130,6 +133,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
+  private String writerId;
 
   protected VeniceWriter(
       VeniceProperties props,
@@ -160,6 +164,17 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     this.maxAttemptsWhenTopicMissing = props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
     this.sleepTimeMsWhenTopicMissing = props.getInt(SLEEP_TIME_MS_WHEN_TOPIC_MISSING, DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING);
     this.defaultDebugInfo = Utils.getDebugInfo();
+
+    //if INSTANCE_ID is not set, we'd use "hostname:port" as the default writer id
+    if (props.containsKey(INSTANCE_ID)) {
+      this.writerId = props.getString(INSTANCE_ID);
+    } else {
+      this.writerId = Utils.getHostName();
+
+      if (props.containsKey(LISTENER_PORT)) {
+        this.writerId += ":" + props.getInt(LISTENER_PORT);
+      }
+    }
 
     try {
       this.producer = producerWrapperSupplier.get();
@@ -331,6 +346,25 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     return sendMessage(producerMetadata -> kafkaKey, MessageType.PUT, putPayload, partition, callback, upstreamOffset);
   }
 
+  /**
+   * Write a message with the kafka message envelope (KME) passed in. This allows users re-using existing KME to
+   * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
+   * metadata). It's the "pass-through" mode.
+   */
+  public Future<RecordMetadata> put(K key, KafkaMessageEnvelope kafkaMessageEnvelope, Callback callback, long upstreamOffset) {
+    byte[] serializedKey = keySerializer.serialize(topicName, key);
+    int partition = getPartition(serializedKey);
+
+    LeaderMetadata leaderMetadata = new LeaderMetadata();
+    leaderMetadata.upstreamOffset = upstreamOffset;
+    leaderMetadata.hostName = writerId;
+    kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
+
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
+
+    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelope, partition, callback, false);
+  }
+
   @Override
   public Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback) {
     if (isChunkingEnabled) {
@@ -472,8 +506,16 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   /**
    * Data message like PUT and DELETE should call this API to enable DIV check.
    */
-  private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload, int partition, Callback callback, long upstreamOffset) {
+  private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
+      int partition, Callback callback, long upstreamOffset) {
     return sendMessage(keyProvider, messageType, payload, partition, callback, true, upstreamOffset);
+  }
+
+  private Future<RecordMetadata> sendMessage(KeyProvider keyProvider, MessageType messageType, Object payload,
+      int partition, Callback callback, boolean updateDIV, long upstreamOffset) {
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV, upstreamOffset);
+    kafkaValue.payloadUnion = payload;
+    return sendMessage(keyProvider, kafkaValue, partition, callback, updateDIV);
   }
 
   /**
@@ -510,14 +552,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   private synchronized Future<RecordMetadata> sendMessage(
       KeyProvider keyProvider,
-      MessageType messageType,
-      Object payload,
+      KafkaMessageEnvelope kafkaValue,
       int partition,
       Callback callback,
-      boolean updateDIV,
-      long upstreamOffset) {
-    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(messageType, partition, updateDIV, upstreamOffset);
-    kafkaValue.payloadUnion = payload;
+      boolean updateDIV) {
     KafkaKey key = keyProvider.getKey(kafkaValue.producerMetadata);
     if (updateDIV) {
       segmentsMap.get(partition).addToCheckSum(key, kafkaValue);
@@ -531,6 +569,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
         completableFutureCallBack.callback = new KafkaMessageCallback(key, kafkaValue, logger);
       }
     }
+
     try {
       return producer.sendMessage(topicName, key, kafkaValue, partition, messageCallback);
     } catch (Exception e) {

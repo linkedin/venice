@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 
@@ -65,6 +66,11 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
         return recordMetadata;
       }
     };
+  }
+
+  @Override
+  public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
+      return sendMessage(record.topic(), record.key(), record.value(), record.partition(), callback);
   }
 
   @Override

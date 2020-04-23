@@ -418,7 +418,7 @@ public class TestHybrid {
       // The default behavior would exit the process
       ((VeniceSystemProducer) veniceBatchProducer).setExitMode(SamzaExitMode.NO_OP);
     }
-    for (int i=10; i>=1; i--) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
+    for (int i = 10; i >= 1; i --) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
       sendStreamingRecord(veniceBatchProducer, storeName, i);
     }
 

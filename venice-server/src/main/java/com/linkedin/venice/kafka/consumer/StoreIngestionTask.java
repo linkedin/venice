@@ -1479,7 +1479,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             key -> prependHeaderAndWriteToStorageEngine(topic, partition, key, putValue, put.schemaId),
             (callback, sourceTopicOffset) -> {
               /**
-               * Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
+               * 1. Unfortunately, Kafka does not support fancy array manipulation via {@link ByteBuffer} or otherwise,
                * so we may be forced to do a copy here, if the backing array of the {@link putValue} has padding,
                * which is the case when using {@link com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer}.
                * Since this is in a closure, it is not guaranteed to be invoked.
@@ -1489,9 +1489,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                * Conversely, the {@link LeaderFollowerStoreIngestionTask}, which does invoke it, will.
                *
                * TODO: Evaluate holistically what is the best way to optimize GC for the L/F case.
+               *
+               * 2. Enable venice writer "pass-through" mode if we haven't received EOP yet. In pass through mode,
+               * Leader will reuse upstream producer metadata. This would secures the correctness of DIV states in
+               * followers when the leadership failover happens.
                */
-              byte[] bytesArrayValue = ByteUtils.extractByteArray(putValue);
-              return getVeniceWriter().put(keyBytes, bytesArrayValue, put.schemaId, callback, sourceTopicOffset);
+
+              if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
+                return getVeniceWriter().put(keyBytes, kafkaValue, callback, sourceTopicOffset);
+              }
+
+              return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue),
+                  put.schemaId, callback, sourceTopicOffset);
             });
 
         return valueLen;

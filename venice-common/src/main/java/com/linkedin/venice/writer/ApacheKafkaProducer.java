@@ -164,15 +164,17 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    * */
   @Override
   public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
+    ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic, partition, key, value);
+    return sendMessage(kafkaRecord, callback);
+  }
+
+  @Override
+  public Future<RecordMetadata> sendMessage(ProducerRecord<KafkaKey, KafkaMessageEnvelope> record, Callback callback) {
     try {
-      ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic,
-          partition,
-          key,
-          value);
-      return producer.send(kafkaRecord, callback);
-    } catch (Exception e) {
-      throw new VeniceException("Got an error while trying to produce message into Kafka. Topic: '" + topic +
-          "', partition: " + partition, e);
+      return producer.send(record, callback);
+     }catch (Exception e) {
+      throw new VeniceException(
+          "Got an error while trying to produce message into Kafka. Topic: '" + record.topic() + "', partition: " + record.partition(), e);
     }
   }
 
