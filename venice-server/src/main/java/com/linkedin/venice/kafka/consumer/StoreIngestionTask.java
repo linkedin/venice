@@ -282,25 +282,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (serverConfig.isHybridQuotaEnabled() ||
         metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled()) {
-      /**
-       * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
-       */
-      AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
-      if (isHybridMode() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
-        this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(this,
-                                                                    storageEngine,
-                                                                    metadataRepo.getStore(storeNameWithoutVersionInfo),
-                                                                    topic,
-                                                                    topicManager.getPartitions(topic).size()));
-        this.metadataRepo.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
-        this.subscribedPartitionToSize = Optional.of(new HashMap<>());
-      }
+      buildHybridQuotaEnforcer();
     }
   }
 
   protected void validateState() {
     if (!isRunning()) {
       throw new VeniceException(" Topic " + topic + " is shutting down, no more messages accepted");
+    }
+  }
+
+  protected void buildHybridQuotaEnforcer() {
+    /**
+     * We will enforce hybrid quota only if this is hybrid mode && persistence type is rocks DB
+     */
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(topic);
+    if (isHybridMode() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
+      this.hybridQuotaEnforcer = Optional.of(new HybridStoreQuotaEnforcement(this,
+          storageEngine,
+          metadataRepo.getStore(storeNameWithoutVersionInfo),
+          topic,
+          topicManager.getPartitions(topic).size()));
+      this.metadataRepo.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
+      this.subscribedPartitionToSize = Optional.of(new HashMap<>());
     }
   }
 
@@ -515,7 +519,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Enforces hybrid quota on this batch poll if this is hybrid store and persistence type is rocksDB
      * Even if the records list is empty, we still need to check quota to potentially resume partition
      */
-    if (hybridQuotaEnforcer.isPresent()) {
+    boolean isHybridQuotaEnabled = metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled();
+    if (isHybridQuotaEnabled && !hybridQuotaEnforcer.isPresent()) {
+      buildHybridQuotaEnforcer();
+    }
+    if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent()) {
       refillPartitionToSizeMap(records);
       hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
     }
