@@ -141,6 +141,7 @@ dependencies {
   implementation libraries.avroMigrationHelper
   implementation libraries.linkedinAvroFastserde
   implementation libraries.flatbufferJava
+  implementation libraries.scalaLogging
 
   runtime libraries.commonsConfiguration
   runtime libraries.commonsLang
