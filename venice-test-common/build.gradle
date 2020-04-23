@@ -1,3 +1,16 @@
+import io.netifi.flatbuffers.plugin.tasks.FlatBuffers
+
+plugins {
+  id "io.netifi.flatbuffers" version "1.0.6"
+}
+
+task createFlatBuffers(type: FlatBuffers) {
+  inputDir = file("src/jmh/flatbuffers")
+  outputDir = file("src/jmh/generated/flatbuffers")
+  language = 'java'
+}
+compileJava.dependsOn(createFlatBuffers)
+
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Test Common',
@@ -47,6 +60,7 @@ configurations {
   jmhCompile.extendsFrom testImplementation
   jmhRuntime.extendsFrom testRuntime
 }
+
 
 def applyConcurrencyConfig(task) {
   String forkEveryConfigName = 'integrationTest.forkEvery'
@@ -125,6 +139,8 @@ dependencies {
   implementation libraries.spark
   implementation libraries.samzaApi
   implementation libraries.avroMigrationHelper
+  implementation libraries.linkedinAvroFastserde
+  implementation libraries.flatbufferJava
 
   runtime libraries.commonsConfiguration
   runtime libraries.commonsLang

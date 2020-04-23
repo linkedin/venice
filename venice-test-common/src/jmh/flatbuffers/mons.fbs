@@ -1,0 +1,7 @@
+namespace com.linkedin.venice.benchmark;
+
+table Monster {
+  inventory:[float];
+}
+
+root_type Monster;

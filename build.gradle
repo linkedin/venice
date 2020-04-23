@@ -110,6 +110,9 @@ ext.libraries = [ // Groovy map literal
                   // RocksDB
                   rocksdbjni: 'org.rocksdb:rocksdbjni:6.6.4',
 
+                  // Flatbuffer lib, currently for benchmark only
+                  flatbufferJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
+
                   // open source fastserde from avro-util
                   linkedinAvroFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.1.14'
 ]
