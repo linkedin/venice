@@ -84,7 +84,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    *
    */
   private void fetchStoreSchemaIfNotInCache(String storeName) {
-    if (storeRepository.hasStore(storeName) && !schemaMap.containsKey(storeName)) {
+    if (!storeRepository.hasStore(storeName)) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    if (!schemaMap.containsKey(storeName)) {
       populateSchemaMap(storeName);
     }
   }
@@ -368,15 +371,24 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
    */
   @Override
   public void refresh() {
-    clear();
-    // subscribe is thread safe method.
-    zkClient.subscribeStateChanges(zkStateListener);
-    schemaMap.clear();
-    List<Store> stores = storeRepository.getAllStores();
-    for (Store store : stores) {
-      String storeName = store.getName();
-      populateSchemaMap(storeName);
+    // Should guard the following with write-lock as other-thread could be reading the schema from the map
+    // and might throw VeniceNoStoreException.
+    logger.info("Starting to refresh schema map.");
+    schemaLock.writeLock().lock();
+    try {
+      Set<String> storeNameSet = schemaMap.keySet();
+      storeNameSet.forEach(this::removeStoreSchemaFromLocal);
+      schemaMap.clear();
+      zkClient.subscribeStateChanges(zkStateListener);
+      List<Store> stores = storeRepository.getAllStores();
+      for (Store store : stores) {
+        String storeName = store.getName();
+        populateSchemaMap(storeName);
+      }
+    } finally {
+      schemaLock.writeLock().unlock();
     }
+    logger.info("Finished refreshing schema map.");
   }
 
   /**
@@ -480,10 +492,18 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
   @Override
   public void handleStoreChanged(Store store) {
     String storeName = store.getName();
-    SchemaData schemaData = schemaMap.get(storeName);
-    if (null == schemaData) { // Should not happen, safety check for rare race condition.
-      populateSchemaMap(storeName);
+    SchemaData schemaData;
+    // Keep under readlock as other threads could be updating (refresh) the map.
+    schemaLock.readLock().lock();
+    try {
+      schemaData = schemaMap.get(storeName);
+      if (null == schemaData) { // Should not happen, safety check for rare race condition.
+        populateSchemaMap(storeName);
+      }
+    } finally {
+      schemaLock.readLock().unlock();
     }
+
     if (store.isWriteComputationEnabled()) {
       accessor.subscribeDerivedSchemaCreationChange(storeName, derivedSchemaChildListener);
       accessor.getAllDerivedSchemas(storeName).forEach(schemaData::addDerivedSchema);
