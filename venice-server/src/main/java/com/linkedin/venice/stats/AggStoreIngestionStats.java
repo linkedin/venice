@@ -90,4 +90,29 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
   public void recordTotalBytesReadFromKafkaAsUncompressedSize(long bytes) {
     totalStats.recordBytesReadFromKafkaAsUncompressedSize(bytes);
   }
+
+  public void recordProcessConsumerActionLatency(String storeName, double latency) {
+    totalStats.recordProcessConsumerActionLatency(latency);
+    getStoreStats(storeName).recordProcessConsumerActionLatency(latency);
+  }
+
+  public void recordCheckLongRunningTasksLatency(String storeName, double latency) {
+    totalStats.recordCheckLongRunningTasksLatency(latency);
+    getStoreStats(storeName).recordCheckLongRunningTasksLatency(latency);
+  }
+
+  public void recordQuotaEnforcementLatency(String storeName, double latency) {
+    totalStats.recordQuotaEnforcementLatency(latency);
+    getStoreStats(storeName).recordQuotaEnforcementLatency(latency);
+  }
+
+  public void recordConsumerToQueueLatency(String storeName, double latency) {
+    totalStats.recordConsumerToQueueLatency(latency);
+    getStoreStats(storeName).recordConsumerToQueueLatency(latency);
+  }
+
+  public void recordStorageEnginePutLatency(String storeName, double latency) {
+    totalStats.recordStorageEnginePutLatency(latency);
+    getStoreStats(storeName).recordStorageEnginePutLatency(latency);
+  }
 }

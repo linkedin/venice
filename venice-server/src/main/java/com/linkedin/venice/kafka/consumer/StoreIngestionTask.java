@@ -515,6 +515,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
+    long quotaEnforcementStartTimeInNS = System.nanoTime();
     /**
      * Enforces hybrid quota on this batch poll if this is hybrid store and persistence type is rocksDB
      * Even if the records list is empty, we still need to check quota to potentially resume partition
@@ -527,12 +528,18 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       refillPartitionToSizeMap(records);
       hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
     }
+    if (emitMetrics.get()) {
+      storeIngestionStats.recordQuotaEnforcementLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
+    }
 
     long totalBytesRead = 0;
+    double elapsedTimeForPuttingIntoQueue = 0;
     for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
       // Check schema id availability before putting consumer record to drainer queue
       waitReadyToProcessRecord(record);
+      long queuePutStartTimeInNS = System.nanoTime();
       storeBufferService.putConsumerRecord(record, this); // blocking call
+      elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
       totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
     }
 
@@ -542,7 +549,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     if (emitMetrics.get()) {
       long afterPutTimestamp = System.currentTimeMillis();
-      storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
+      storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, elapsedTimeForPuttingIntoQueue);
+      storeIngestionStats.recordConsumerToQueueLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
     }
 
     /**
@@ -676,6 +684,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Consumes the kafka actions messages in the queue.
    */
   private void processConsumerActions() {
+    long consumerActionStartTimeInNS = System.nanoTime();
     while (!consumerActionsQueue.isEmpty()) {
       // Do not want to remove a message from the queue unless it has been processed.
       ConsumerAction message = consumerActionsQueue.peek();
@@ -693,6 +702,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         }
       }
       consumerActionsQueue.poll();
+    }
+    if (emitMetrics.get()) {
+      storeIngestionStats.recordProcessConsumerActionLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(consumerActionStartTimeInNS));
     }
   }
 
@@ -1431,6 +1443,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     if (logger.isTraceEnabled()) {
       logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " in " +
           (System.nanoTime() - putStartTimeNs) + " ns at " + System.currentTimeMillis());
+    }
+    if (emitMetrics.get()) {
+      storeIngestionStats.recordStorageEnginePutLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(putStartTimeNs));
     }
   }
 

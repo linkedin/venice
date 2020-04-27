@@ -14,3 +14,4 @@ out/
 */target/
 avro_tools
 *.project
+venice-test-common/src/jmh/generated/

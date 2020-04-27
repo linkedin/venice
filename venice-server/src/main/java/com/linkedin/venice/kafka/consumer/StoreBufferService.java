@@ -246,6 +246,14 @@ public class StoreBufferService extends AbstractVeniceService {
     return totalUsage;
   }
 
+  public long getTotalRemainingMemory() {
+    long totalRemaining = 0;
+    for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
+      totalRemaining += queue.remainingMemoryCapacityInByte();
+    }
+    return totalRemaining;
+  }
+
   public long getMaxMemoryUsagePerDrainer() {
     long maxUsage = 0;
     for (MemoryBoundBlockingQueue<QueueNode> queue : blockingQueueArr) {
