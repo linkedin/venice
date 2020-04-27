@@ -57,6 +57,17 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   // Measure the avg/max latency for the actual write computation
   private final Sensor leaderWriteComputeUpdateLatencySensor;
 
+  // Measure the latency in processing consumer actions
+  private final Sensor processConsumerActionLatencySensor;
+  // Measure the latency in checking long running task states, like leader promotion, TopicSwitch
+  private final Sensor checkLongRunningTasksLatencySensor;
+  // Measure the latency in enforcing hybrid store disk quota
+  private final Sensor quotaEnforcementLatencySensor;
+  // Measure the latency from "after polling records from Kafka" to "successfully put records in to drainer queue"
+  private final Sensor consumerToQueueLatencySensor;
+  // Measure the latency in putting data into storage engine
+  private final Sensor storageEnginePutLatencySensor;
+
   public StoreIngestionStats(MetricsRepository metricsRepository,
                              String storeName) {
     super(metricsRepository, storeName);
@@ -70,7 +81,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
     // Measure latency of Kafka consumer poll request and processing returned consumer records
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
-    pollRequestLatencySensor = registerSensor("kafka_poll_request_latency", new Avg());
+    pollRequestLatencySensor = registerSensor("kafka_poll_request_latency", new Avg(), new Max());
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("kafka_poll_result_num", new Avg(), new Total());
     // To measure 'put' latency of consumer records blocking queue
@@ -96,6 +107,12 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     leaderProducerSynchronizeLatencySensor = registerSensor("leader_producer_synchronize_latency", new Avg(), new Max());
     leaderWriteComputeLookUpLatencySensor = registerSensor("leader_write_compute_lookup_latency", new Avg(), new Max());
     leaderWriteComputeUpdateLatencySensor = registerSensor("leader_write_compute_update_latency", new Avg(), new Max());
+
+    processConsumerActionLatencySensor = registerSensor("process_consumer_actions_latency", new Avg(), new Max());
+    checkLongRunningTasksLatencySensor = registerSensor("check_long_running_task_latency", new Avg(), new Max());
+    quotaEnforcementLatencySensor = registerSensor("hybrid_quota_enforcement_latency", new Avg(), new Max());
+    consumerToQueueLatencySensor = registerSensor("consumer_to_queue_latency", new Avg(), new Max());
+    storageEnginePutLatencySensor = registerSensor("storage_engine_put_latency", new Avg(), new Max());
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -177,6 +194,26 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordWriteComputeUpdateLatency(double latency) {
     leaderWriteComputeUpdateLatencySensor.record(latency);
+  }
+
+  public void recordProcessConsumerActionLatency(double latency) {
+    processConsumerActionLatencySensor.record(latency);
+  }
+
+  public void recordCheckLongRunningTasksLatency(double latency) {
+    checkLongRunningTasksLatencySensor.record(latency);
+  }
+
+  public void recordQuotaEnforcementLatency(double latency) {
+    quotaEnforcementLatencySensor.record(latency);
+  }
+
+  public void recordConsumerToQueueLatency(double latency) {
+    consumerToQueueLatencySensor.record(latency);
+  }
+
+  public void recordStorageEnginePutLatency(double latency) {
+    storageEnginePutLatencySensor.record(latency);
   }
 
   private static class StoreIngestionStatsCounter extends LambdaStat {

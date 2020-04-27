@@ -247,6 +247,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected void checkLongRunningTaskState() throws InterruptedException{
+    long checkStartTimeInNS = System.nanoTime();
     for (PartitionConsumptionState partitionConsumptionState : partitionConsumptionStateMap.values()) {
       switch (partitionConsumptionState.getLeaderState()) {
         case IN_TRANSITION_FROM_STANDBY_TO_LEADER:
@@ -394,6 +395,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           // no long running task for follower
           break;
       }
+    }
+    if (emitMetrics.get()) {
+      storeIngestionStats.recordCheckLongRunningTasksLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(checkStartTimeInNS));
     }
   }
 
