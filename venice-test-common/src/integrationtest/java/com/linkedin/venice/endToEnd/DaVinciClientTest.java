@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.davinci.client.DaVinciClient;
 
+import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
@@ -87,28 +88,14 @@ public class DaVinciClientTest {
     final int partition = 1;
     final int partitionCount = 2;
     String storeName = TestUtils.getUniqueString("store");
-
-    try (ControllerClient client = cluster.getControllerClient()) {
-      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
-      client.updateStore(
-          storeName,
-          new UpdateStoreQueryParams()
-              .setHybridRewindSeconds(10)
-              .setHybridOffsetLagThreshold(10)
-              .setPartitionerClass(ConstantVenicePartitioner.class.getName())
-              .setPartitionerParams(
-                  Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
-              )
-              .setPartitionCount(partitionCount)
-      );
-      cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
-      SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM,
-          Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
-      for (int i = 0; i < KEY_COUNT; i++) {
-        TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
-      }
-      producer.stop();
-    }
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setPartitionCount(partitionCount)
+            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setPartitionerParams(
+                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
+            );
+    setUpHybridStore(storeName, paramsConsumer);
 
     try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
       // subscribe to a partition without data
@@ -139,6 +126,32 @@ public class DaVinciClientTest {
     }
   }
 
+  @Test
+  public void testAmplificationFactorInHybridStore() throws Exception {
+    final int partition = 1;
+    final int partitionCount = 2;
+    final int amplificationFactor = 10;
+    String storeName = TestUtils.getUniqueString("store");
+    Consumer<UpdateStoreQueryParams> paramsConsumer =
+        params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setPartitionCount(partitionCount)
+            .setPartitionerClass(ConstantVenicePartitioner.class.getName())
+            .setAmplificationFactor(amplificationFactor)
+            .setPartitionerParams(
+                Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partition))
+            );
+    setUpHybridStore(storeName, paramsConsumer);
+
+    try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribe(Collections.singleton(partition)).get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+    }
+  }
+
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testBootstrap() throws Exception {
@@ -163,6 +176,7 @@ public class DaVinciClientTest {
       Assert.assertThrows(VeniceNoStoreException.class, () -> client.get(0).get());
     }
   }
+
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testNonLocalRead() throws Exception {
@@ -212,5 +226,26 @@ public class DaVinciClientTest {
     daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
     Assert.assertThrows(VeniceClientException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig));
 
+  }
+
+  private void setUpHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(10)
+        .setHybridOffsetLagThreshold(10);
+    paramsConsumer.accept(params);
+    try (ControllerClient client = cluster.getControllerClient()) {
+      client.createNewStore(storeName, "owner", DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA);
+      client.updateStore(
+          storeName,
+          params
+      );
+      cluster.createVersion(storeName, DEFAULT_KEY_SCHEMA, DEFAULT_VALUE_SCHEMA, Stream.of());
+      SystemProducer producer = TestPushUtils.getSamzaProducer(cluster, storeName, Version.PushType.STREAM,
+          Pair.create(VeniceSystemFactory.VENICE_PARTITIONERS, ConstantVenicePartitioner.class.getName()));
+      for (int i = 0; i < KEY_COUNT; i++) {
+        TestPushUtils.sendStreamingRecord(producer, storeName, i, i);
+      }
+      producer.stop();
+    }
   }
 }
