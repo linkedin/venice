@@ -26,6 +26,7 @@ import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -110,6 +111,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       TopicManager topicManager,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
+      AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -118,9 +120,10 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       VeniceServerConfig serverConfig) {
-    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService, notifiers,
-        bandwidthThrottler, recordsThrottler, schemaRepo, metadataRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
-        isCurrentVersion, hybridStoreConfig, isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
+    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService,
+        notifiers, bandwidthThrottler, recordsThrottler, schemaRepo, metadataRepo, topicManager, storeIngestionStats,
+        versionedDIVStats, versionedStorageIngestionStats, storeBufferService, isCurrentVersion, hybridStoreConfig,
+        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
   }
 

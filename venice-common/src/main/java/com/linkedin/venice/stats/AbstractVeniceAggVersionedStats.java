@@ -56,6 +56,10 @@ public abstract class AbstractVeniceAggVersionedStats<STATS, STATS_REPORTER exte
     return getVersionedStats(storeName).getStats(version);
   }
 
+  protected void registerConditionalStats(String storeName) {
+    getVersionedStats(storeName).registerConditionalStats();
+  }
+
   private VeniceVersionedStats<STATS, STATS_REPORTER> getVersionedStats(String storeName) {
     if (!aggStats.containsKey(storeName)) {
       addStore(storeName);

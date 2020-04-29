@@ -24,6 +24,7 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.MetadataRetriever;
@@ -75,6 +76,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ReadOnlyStoreRepository metadataRepo;
 
   private final AggStoreIngestionStats ingestionStats;
+
+  private final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
 
   /**
    * Store buffer service to persist data into local bdb for all the stores.
@@ -135,6 +138,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
     AggVersionedDIVStats versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
+    this.versionedStorageIngestionStats =
+        new AggVersionedStorageIngestionStats(metricsRepository, metadataRepo);
     this.storeBufferService = new StoreBufferService(
         serverConfig.getStoreWriterNumber(),
         serverConfig.getStoreWriterBufferMemoryCapacity(),
@@ -181,6 +186,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setTopicManager(topicManager)
         .setStoreIngestionStats(ingestionStats)
         .setVersionedDIVStats(versionedDIVStats)
+        .setVersionedStorageIngestionStats(versionedStorageIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
@@ -269,7 +275,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
 
     if (consumerExecutorService != null) {
-      consumerExecutorService.shutdownNow();
+      consumerExecutorService.shutdown();
       try {
         consumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
@@ -302,6 +308,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = createConsumerTask(veniceStore, isLeaderFollowerModel);
       topicNameToIngestionTaskMap.put(topic, consumerTask);
+      versionedStorageIngestionStats.setIngestionTask(topic, consumerTask);
       if(!isRunning.get()) {
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
         return;
@@ -370,7 +377,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             task.disableMetricsEmission();
           } else {
             task.enableMetricsEmission();
-            ingestionStats.updateStoreConsumptionTask(storeName, task);
           }
         }
       });
@@ -411,7 +417,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         lowerVersionPush.getValue().disableMetricsEmission();
         lowerVersionPush = taskMap.lowerEntry(lowerVersionPush.getKey());
       }
-      ingestionStats.updateStoreConsumptionTask(storeName, latestOngoingIngestionTask);
     }
   }
 

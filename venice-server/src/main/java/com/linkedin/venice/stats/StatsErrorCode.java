@@ -109,7 +109,12 @@ public enum StatsErrorCode {
    */
   NULL_STORAGE_ENGINE_STATS(-18),
 
-  NOT_SUPPORTED(-19);
+  NOT_SUPPORTED(-19),
+
+  /**
+   * Used by {@link AggVersionedStorageIngestionStats} when the stats reporter fetches a null stats.
+   */
+  NULL_INGESTION_STATS(-20);
 
   public final int code;
 

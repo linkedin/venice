@@ -43,6 +43,13 @@ public class VeniceVersionedStatsReporter<STATS, STATS_REPORTER extends Abstract
     this.totalStatsReporter = statsSupplier.get(metricsRepository, storeName + "_total");
   }
 
+  public void registerConditionalStats() {
+    this.currentStatsReporter.registerConditionalStats();
+    this.futureStatsReporter.registerConditionalStats();
+    this.backupStatsReporter.registerConditionalStats();
+    this.totalStatsReporter.registerConditionalStats();
+  }
+
   public int getCurrentVersion() {
     return currentVersion;
   }
