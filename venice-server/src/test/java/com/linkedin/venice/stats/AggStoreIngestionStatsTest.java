@@ -30,7 +30,6 @@ public class AggStoreIngestionStatsTest {
     StoreIngestionTask task = Mockito.mock(StoreIngestionTask.class);
     Mockito.doReturn(true).when(task).isRunning();
 
-    stats.updateStoreConsumptionTask(STORE_FOO, task);
     stats.recordPollResultNum(STORE_FOO, 1);
     stats.recordPollResultNum(STORE_BAR, 2);
 

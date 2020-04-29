@@ -34,6 +34,10 @@ public class VeniceVersionedStats<STATS, STATS_REPORTER extends AbstractVeniceSt
     return totalStats;
   }
 
+  public void registerConditionalStats() {
+    reporters.registerConditionalStats();
+  }
+
   public int getCurrentVersion() {
     return reporters.getCurrentVersion();
   }

@@ -30,6 +30,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -144,6 +145,7 @@ public class StoreIngestionTaskTest {
   private TopicManager mockTopicManager;
   private AggStoreIngestionStats mockStoreIngestionStats;
   private AggVersionedDIVStats mockVersionedDIVStats;
+  private AggVersionedStorageIngestionStats mockVersionedStorageIngestionStats;
   private StoreIngestionTask storeIngestionTaskUnderTest;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
@@ -236,6 +238,7 @@ public class StoreIngestionTaskTest {
     mockTopicManager = mock(TopicManager.class);
     mockStoreIngestionStats = mock(AggStoreIngestionStats.class);
     mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
+    mockVersionedStorageIngestionStats = mock(AggVersionedStorageIngestionStats.class);
     isCurrentVersion = () -> false;
     hybridStoreConfig = Optional.<HybridStoreConfig>empty();
   }
@@ -369,6 +372,7 @@ public class StoreIngestionTaskTest {
         .setTopicManager(mockTopicManager)
         .setStoreIngestionStats(mockStoreIngestionStats)
         .setVersionedDIVStats(mockVersionedDIVStats)
+        .setVersionedStorageIngestionStats(mockVersionedStorageIngestionStats)
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)

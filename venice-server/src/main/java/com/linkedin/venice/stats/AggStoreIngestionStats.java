@@ -68,10 +68,6 @@ public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestio
     getStoreStats(storeName).recordIngestionFailure();
   }
 
-  public void updateStoreConsumptionTask(String storeName, StoreIngestionTask task) {
-    getStoreStats(storeName).updateStoreConsumptionTask(task);
-  }
-
   public void recordLeaderProducerSynchronizeLatency(String storeName, double latency) {
     totalStats.recordLeaderProducerSynchronizeLatency(latency);
     getStoreStats(storeName).recordLeaderProducerSynchronizeLatency(latency);

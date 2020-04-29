@@ -42,6 +42,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.chunking.ChunkingUtils;
 import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
@@ -142,6 +143,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final Map<GUID, ProducerTracker> producerTrackerMap;
   protected final AggStoreIngestionStats storeIngestionStats;
   protected final AggVersionedDIVStats versionedDIVStats;
+  protected final AggVersionedStorageIngestionStats versionedStorageIngestionStats;
   protected final BooleanSupplier isCurrentVersion;
   protected final Optional<HybridStoreConfig> hybridStoreConfig;
   protected final IngestionNotificationDispatcher notificationDispatcher;
@@ -213,6 +215,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                             TopicManager topicManager,
                             AggStoreIngestionStats storeIngestionStats,
                             AggVersionedDIVStats versionedDIVStats,
+                            AggVersionedStorageIngestionStats versionedStorageIngestionStats,
                             StoreBufferService storeBufferService,
                             BooleanSupplier isCurrentVersion,
                             Optional<HybridStoreConfig> hybridStoreConfig,
@@ -251,6 +254,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
+    this.versionedStorageIngestionStats = versionedStorageIngestionStats;
 
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
@@ -591,6 +595,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     logger.info("Running " + consumerTaskId);
     try {
+      versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeNameWithoutVersionInfo, storeVersion);
       this.consumer = factory.getConsumer(kafkaProps);
       /**
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
@@ -634,6 +639,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
             "Caught InterruptException during ingestion.", interruptException);
         storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
+        if (partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isEndOfPushReceived)) {
+          versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeNameWithoutVersionInfo, storeVersion);
+        }
       }
     } catch (Throwable t) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
@@ -650,6 +658,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             "Caught non-exception Throwable during ingestion in " + getClass().getSimpleName() + "'s run() function.", new VeniceException(t));
       }
       storeIngestionStats.recordIngestionFailure(storeNameWithoutVersionInfo);
+      if (partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isEndOfPushReceived)) {
+        versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeNameWithoutVersionInfo, storeVersion);
+      }
     } finally {
       internalClose();
     }
@@ -1029,6 +1040,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return minZeroLag(offsetLag);
   }
 
+  public long getOffsetLagThreshold() {
+    if (!hybridStoreConfig.isPresent()) {
+      return METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
+    }
+
+    return hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+  }
+
   /**
    * Because of timing considerations, it is possible that some lag metrics could compute negative
    * values. Negative lag does not make sense so the intent is to ease interpretation by applying a
@@ -1047,6 +1066,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Indicate the number of partitions that haven't received SOBR yet. This method is for Hybrid store
    */
   public long getNumOfPartitionsNotReceiveSOBR() {
+    if (!hybridStoreConfig.isPresent()) {
+      return METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      return NO_SUBSCRIBED_PARTITION.code;
+    }
+
     return partitionConsumptionStateMap.values().parallelStream()
         .filter(pcs -> !pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()).count();
   }
@@ -1817,7 +1844,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   /**
    * @return the default way of checking whether a partition is ready to serve or not:
-   *         i.  if completion has been reported, no need to report anything again;
+   *         i.  if completion has been reported, no need to report anything again unless extraDisjunctionCondition is true
    *         ii. if completion hasn't been reported and EndOfPush message has been received,
    *             call {@link StoreIngestionTask#isReadyToServe(PartitionConsumptionState)} to
    *             check whether we can report completion.
@@ -1827,8 +1854,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (extraDisjunctionCondition ||
           (partitionConsumptionState.isEndOfPushReceived() && !partitionConsumptionState.isCompletionReported())) {
         if (isReadyToServe(partitionConsumptionState)) {
-          notificationDispatcher.reportCompleted(partitionConsumptionState);
-          logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " is ready to serve");
+          if (partitionConsumptionState.isCompletionReported()) {
+            // Completion has been reported so extraDisjunctionCondition must be true to enter here.
+            logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " synced offset: "
+                + partitionConsumptionState.getOffsetRecord().getOffset());
+          } else {
+            notificationDispatcher.reportCompleted(partitionConsumptionState);
+            logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " is ready to serve");
+          }
         } else {
           notificationDispatcher.reportProgress(partitionConsumptionState);
         }

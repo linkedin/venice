@@ -13,6 +13,10 @@ public abstract class AbstractVeniceStatsReporter<STATS> extends AbstractVeniceS
 
   protected abstract void registerStats();
 
+  protected void registerConditionalStats() {
+    // default implementation is no-op
+  }
+
   public void setStats(STATS stats) {
     this.stats = stats;
   }

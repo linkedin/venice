@@ -19,6 +19,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
@@ -49,6 +50,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       TopicManager topicManager,
       AggStoreIngestionStats storeIngestionStats,
       AggVersionedDIVStats versionedDIVStats,
+      AggVersionedStorageIngestionStats versionedStorageIngestionStats,
       StoreBufferService storeBufferService,
       BooleanSupplier isCurrentVersion,
       Optional<HybridStoreConfig> hybridStoreConfig,
@@ -57,9 +59,10 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       VeniceServerConfig serverConfig) {
-    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService, notifiers,
-        bandwidthThrottler, recordsThrottler, schemaRepo, storeRepo, topicManager, storeIngestionStats, versionedDIVStats, storeBufferService,
-        isCurrentVersion, hybridStoreConfig, isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
+    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService,
+        notifiers, bandwidthThrottler, recordsThrottler, schemaRepo, storeRepo, topicManager, storeIngestionStats,
+        versionedDIVStats, versionedStorageIngestionStats, storeBufferService, isCurrentVersion, hybridStoreConfig,
+        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
   }
 
   @Override
