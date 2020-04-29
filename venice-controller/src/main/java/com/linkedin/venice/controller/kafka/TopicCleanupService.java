@@ -5,14 +5,15 @@ import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Time;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -58,6 +59,7 @@ public class TopicCleanupService extends AbstractVeniceService {
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private boolean stop = false;
   private boolean isMasterControllerOfControllerCluster = false;
+  private long refreshQueueCycle = Time.MS_PER_MINUTE;
 
   public TopicCleanupService(Admin admin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.admin = admin;
@@ -153,41 +155,57 @@ public class TopicCleanupService extends AbstractVeniceService {
     return allStoreTopics;
   }
 
-
+  /**
+   * The following will delete topics based on their priority. Real-time topics are given higher priority than version topics.
+   * If version topic deletion takes more than certain time it refreshes the entire topic list and start deleting from RT topics again.
+    */
   protected void cleanupVeniceTopics() {
+    PriorityQueue<String> allTopics =  new PriorityQueue<>((s1, s2) -> Version.isRealTimeTopic(s1) ? -1 : 0);
+    populateDeprecatedTopicQueue(allTopics);
+    long refreshTime = System.currentTimeMillis();
+
+    while (!allTopics.isEmpty()) {
+      String topic = allTopics.poll();
+      /**
+       * Until now, we haven't figured out a good way to handle real-time topic cleanup:
+       *     1. If {@link TopicCleanupService} doesn't delete real-time topic, the truncated real-time topic could cause inconsistent data problem
+       *       between parent cluster and prod cluster if the deleted hybrid store gets re-created;
+       *     2. If {@link TopicCleanupService} deletes the real-time topic, it might crash MM if application is still producing to the real-time topic
+       *       in parent cluster;
+       *
+       *     Since Kafka nurse script will automatically kick in if MM crashes (which should still happen very infrequently),
+       *     for the time being, we choose to delete the real-time topic.
+       */
+
+      getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(topic);
+
+      if (!Version.isRealTimeTopic(topic)) {
+       // If Version topic deletion took long time, skip further VT deletion and check if we have new RT topic to delete
+        if (System.currentTimeMillis() - refreshTime > refreshQueueCycle) {
+          allTopics.clear();
+          populateDeprecatedTopicQueue(allTopics);
+          if (allTopics.isEmpty()) {
+            break;
+          }
+          refreshTime = System.currentTimeMillis();
+        }
+      }
+    }
+  }
+
+  private void populateDeprecatedTopicQueue(PriorityQueue<String> topics) {
     Map<String, Map<String, Long>> allStoreTopics = getAllVeniceStoreTopics();
     allStoreTopics.forEach((storeName, topicRetentions) -> {
       String realTimeTopic = Version.composeRealTimeTopic(storeName);
-      /**
-       * Until now, we haven't figured out a good way to handle real-time topic cleanup:
-       * 1. If {@link TopicCleanupService} doesn't delete real-time topic, the truncated real-time topic could cause inconsistent data problem
-       * between parent cluster and prod cluster if the deleted hybrid store gets re-created;
-       * 2. If {@link TopicCleanupService} deletes the real-time topic, it might crash MM if application is still producing to the real-time topic
-       * in parent cluster;
-       *
-       * Since Kafka nurse script will automatically kick in if MM crashes (which should still happen very infrequently),
-       * for the time being, we choose to delete the real-time topic.
-       *
-       * TODO: figure out a better way to handle real-time topic cleanup.
-       */
       if (topicRetentions.containsKey(realTimeTopic)) {
         if (admin.isTopicTruncatedBasedOnRetention(topicRetentions.get(realTimeTopic))) {
-          LOGGER.info("Real-time topic: " + realTimeTopic + " is deprecated, will delete it");
-          getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(realTimeTopic);
-          LOGGER.info("Real-time topic: " + realTimeTopic + " was deleted");
+          topics.offer(realTimeTopic);
         }
         topicRetentions.remove(realTimeTopic);
       }
-
       List<String> oldTopicsToDelete = extractVeniceTopicsToCleanup(topicRetentions);
-
-      if (oldTopicsToDelete.isEmpty()) {
-        LOGGER.debug("Searched for old topics belonging to store '" + storeName + "', and did not find any.");
-      } else {
-        LOGGER.info("Detected the following old topics to delete: " + String.join(", ", oldTopicsToDelete));
-        oldTopicsToDelete.stream()
-            .forEach(t -> getTopicManager().ensureTopicIsDeletedAndBlockWithRetry(t));
-        LOGGER.info("Finished deleting old topics for store '" + storeName + "'.");
+      if (!oldTopicsToDelete.isEmpty()) {
+        topics.addAll(oldTopicsToDelete);
       }
     });
   }
