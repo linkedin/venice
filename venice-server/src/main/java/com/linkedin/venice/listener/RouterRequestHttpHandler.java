@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
@@ -99,6 +100,10 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           statsHandler.setHealthCheck(true);
           HealthCheckRequest healthCheckRequest = new HealthCheckRequest();
           ctx.fireChannelRead(healthCheckRequest);
+          break;
+        case DICTIONARY:
+          DictionaryFetchRequest dictionaryFetchRequest = DictionaryFetchRequest.parseGetHttpRequest(req);
+          ctx.fireChannelRead(dictionaryFetchRequest);
           break;
         default:
           throw new VeniceException("Unrecognized query action");

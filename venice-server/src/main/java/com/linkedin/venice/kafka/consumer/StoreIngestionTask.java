@@ -1073,6 +1073,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newStoreVersionState.sorted = startOfPush.sorted;
       newStoreVersionState.chunked = startOfPush.chunked;
       newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
+      newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
       storageMetadataService.put(topic, newStoreVersionState);
     } else if (storeVersionState.get().sorted != startOfPush.sorted) {
       // Something very wrong is going on ): ...

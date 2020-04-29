@@ -5,6 +5,7 @@ public class HttpConstants {
   public static final String TEXT_HTML = "text/html";
   public static final String JSON = "application/json";
   public static final String AVRO_BINARY = "avro/binary";
+  public static final String BINARY = "application/octet-stream";
 
   private static final String COLON_SLASH_SLASH = "://";
   public static final String HTTP = "http";
