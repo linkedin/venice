@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.ReadResponse;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -79,6 +80,10 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
         if (shortcutResponse.getStatus().equals(VeniceRequestEarlyTerminationException.getHttpResponseStatus())) {
           statsHandler.setRequestTerminatedEarly();
         }
+      } else if (msg instanceof BinaryResponse) {
+        body = ((BinaryResponse) msg).getBody();
+        contentType = HttpConstants.BINARY;
+        responseStatus = ((BinaryResponse) msg).getStatus();
       } else if (msg instanceof DefaultFullHttpResponse){
         ctx.writeAndFlush(msg);
         return;

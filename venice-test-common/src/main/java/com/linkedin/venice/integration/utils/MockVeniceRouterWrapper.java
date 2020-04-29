@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
@@ -58,6 +59,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     Store mockStore = Mockito.mock(Store.class);
     doReturn(true).when(mockStore).isEnableReads();
     doReturn(1).when(mockStore).getCurrentVersion();
+    doReturn(CompressionStrategy.NO_OP).when(mockStore).getCompressionStrategy();
     HelixReadOnlyStoreRepository mockMetadataRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 

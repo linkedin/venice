@@ -13,10 +13,12 @@ import com.linkedin.venice.compute.protocol.request.router.ComputeRouterRequestK
 import com.linkedin.venice.compute.protocol.response.ComputeResponseRecordV1;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.request.ComputeRouterRequestWrapper;
+import com.linkedin.venice.listener.request.DictionaryFetchRequest;
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.request.HealthCheckRequest;
 import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.request.RouterRequest;
+import com.linkedin.venice.listener.response.BinaryResponse;
 import com.linkedin.venice.listener.response.ComputeResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
@@ -226,7 +228,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         context.writeAndFlush(new HttpShortcutResponse("Venice storage node hardware is not healthy!", HttpResponseStatus.INTERNAL_SERVER_ERROR));
         logger.error("Disk is not healthy according to the disk health check service: " + diskHealthCheckService.getErrorMessage());
       }
-
+    } else if (message instanceof DictionaryFetchRequest) {
+      BinaryResponse response = handleDictionaryFetchRequest((DictionaryFetchRequest) message);
+      context.writeAndFlush(response);
     } else {
       context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler",
           HttpResponseStatus.INTERNAL_SERVER_ERROR));
@@ -474,6 +478,13 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         addPartitionOffsetMapping(topic, routerRequestKey.partitionId, partitionIdSet, responseWrapper));
 
     return responseWrapper;
+  }
+
+  private BinaryResponse handleDictionaryFetchRequest(DictionaryFetchRequest request) {
+    String topic = request.getResourceName();
+    ByteBuffer dictionary = metadataRetriever.getStoreVersionCompressionDictionary(topic);
+
+    return new BinaryResponse(dictionary);
   }
 
   private void addPartitionOffsetMapping(String topic, int partitionId, Set<Integer> partitionIdSet,

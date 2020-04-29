@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetManager;
 
+import java.nio.ByteBuffer;
 import java.util.Optional;
 
 /**
@@ -51,5 +52,14 @@ public interface StorageMetadataService extends OffsetManager {
     return getStoreVersionState(topicName)
         .map(storeVersionState -> CompressionStrategy.valueOf(storeVersionState.compressionStrategy))
         .orElse(CompressionStrategy.NO_OP);
+  }
+
+  /**
+   * Tailored function for retrieving version's compression dictionary.
+   */
+  default ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
+    return getStoreVersionState(topicName)
+        .map(storeVersionState -> storeVersionState.compressionDictionary)
+        .orElse(null);
   }
 }

@@ -35,6 +35,7 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import java.util.NavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.nio.ByteBuffer;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -601,5 +602,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public CompressionStrategy getStoreVersionCompressionStrategy(String topicName) {
     return storageMetadataService.getStoreVersionCompressionStrategy(topicName);
+  }
+
+  @Override
+  public ByteBuffer getStoreVersionCompressionDictionary(String topicName) {
+    return storageMetadataService.getStoreVersionCompressionDictionary(topicName);
   }
 }
