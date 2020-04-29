@@ -928,15 +928,15 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage = "Fatal data validation problem with partition " + faultyPartition + ", offset " + record.offset();
+      // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore) during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
         errorMessage += ". Consumption will be halted.";
-      } else {
-        errorMessage += ". Because " + topic + " is the current version, consumption will continue.";
-      }
-      notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
-      if (needToUnsub) {
+        notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(topic, faultyPartition);
+      } else {
+        logger.info(errorMessage + ". However, " + topic
+            + " is the current version or EOP is already received so consumption will continue.");
       }
     } catch (VeniceMessageException | UnsupportedOperationException excp) {
       throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "

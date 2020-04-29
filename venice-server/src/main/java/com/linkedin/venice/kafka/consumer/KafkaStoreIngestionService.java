@@ -211,7 +211,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private StoreIngestionTask createConsumerTask(VeniceStoreConfig veniceStoreConfig, boolean isLeaderFollowerModel) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStoreConfig.getStoreName());
     int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStoreConfig.getStoreName());
-    Store store = metadataRepo.getStore(storeName);
+    Store store = metadataRepo.getStoreOrThrow(storeName);
     Optional<Version> version = store.getVersion(storeVersion);
 
     int attempt = 0;
