@@ -2088,7 +2088,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    public void setActiveActiveReplicationEnabled(String clusterName, String storeName,
+    public void setNativeReplicationEnabled(String clusterName, String storeName,
         boolean nativeReplicationEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setNativeReplicationEnabled(nativeReplicationEnabled);
@@ -2376,11 +2376,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if(nativeReplicationEnabled.isPresent()) {
-                if(originalStore.isLeaderFollowerModelEnabled()){
-                    setActiveActiveReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
-                } else {
+                if(!originalStore.isLeaderFollowerModelEnabled() && nativeReplicationEnabled.get()) {
                     throw new VeniceException("Native Replication cannot be enabled on a store which does not have leader/follower mode enabled!");
                 }
+                setNativeReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
             }
 
             if(pushStreamSourceAddress.isPresent()) {
