@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -25,6 +26,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -43,16 +45,12 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-
 import io.tehuti.metrics.MetricsRepository;
-
-import java.util.HashSet;
-import org.apache.avro.Schema;
-import org.apache.helix.manager.zk.ZkClient;
-import org.apache.log4j.Logger;
-
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,22 +60,33 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClientImpl.class);
-
   private static String CLIENT_NAME = "davinci-client";
 
   protected final DaVinciConfig daVinciConfig;
   protected final ClientConfig clientConfig;
   protected final VeniceProperties backendConfig;
+  private final List<AbstractVeniceService> services = new ArrayList<>();
+  private final AtomicBoolean isStarted = new AtomicBoolean(false);
+  private final ThreadLocal<ReusableObjects> threadLocalReusableObjects = ThreadLocal.withInitial(() -> new ReusableObjects());
 
-  private AvroGenericStoreClient<K, V> veniceClient;
-  private VenicePartitioner partitioner;
-  private RecordSerializer<K> keySerializer;
+  private static class ReusableObjects {
+    final ByteBuffer reusedRawValue = ByteBuffer.allocate(1024 * 1024);
+    final BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(new byte[16], null);
+    final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
+    final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+  }
 
   // TODO: refactor the code and move these to DaVinciBackend
   private ZkClient zkClient;
@@ -88,9 +97,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   private KafkaStoreIngestionService kafkaStoreIngestionService;
   private MetricsRepository metricsRepository;
   private IngestionController ingestionController;
-  private final List<AbstractVeniceService> services = new ArrayList<>();
-  private final AtomicBoolean isStarted = new AtomicBoolean(false);
-
+  private AvroGenericStoreClient<K, V> veniceClient;
+  private VenicePartitioner partitioner;
+  private RecordSerializer<K> keySerializer;
 
   public AvroGenericDaVinciClientImpl(
       DaVinciConfig config,
@@ -168,6 +177,12 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   @Override
   public CompletableFuture<V> get(K key) throws VeniceClientException {
+    return get(key, null);
+  }
+
+  @Override
+  public CompletableFuture<V> get(K key, V reusedValue) throws VeniceClientException {
+
     if (!isStarted()) {
       throw new VeniceClientException("Client is not started.");
     }
@@ -180,8 +195,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       }
       Version version = versionRef.get().getVersion();
 
-      V value = getValue(version, key);
+      V value = getValue(version, key, reusedValue);
       if (value == null && isRemoteQueryAllowed()) {
+        // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
         return veniceClient.get(key);
       }
       return CompletableFuture.completedFuture(value);
@@ -205,11 +221,13 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       Set<K> nonLocalKeys = new HashSet<>();
       Map<K, V> result = new HashMap<>();
       for (K key : keys) {
-        V value = getValue(version, key);
+        // TODO: Consider supporting object re-use for batch get as well.
+        V value = getValue(version, key, null);
         if (value != null) {
           // The returned map will only contain entries for the keys which have a value associated with them
           result.put(key, value);
         } else {
+          // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
           nonLocalKeys.add(key);
         }
       }
@@ -219,6 +237,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       }
 
       return veniceClient.batchGet(nonLocalKeys).thenApply(remoteResult -> {
+        // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
         result.putAll(remoteResult);
         return result;
       });
@@ -239,30 +258,37 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     return storageEngine;
   }
 
-  private V getValue(Version version, K key) {
-    byte[] keyBytes = keySerializer.serialize(key);
+  private V getValue(Version version, K key, V reusedValue) {
+    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+
+    byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+    // TODO: Align the implementation with the design, which expects the following sub partition calculation:
+    // int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()) * version.getPartitionerConfig().getAmplificationFactor()
+    //    + partitioner.getPartitionId(keyBytes, version.getPartitionerConfig().getAmplificationFactor());
     int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()
         * version.getPartitionerConfig().getAmplificationFactor());
     AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
     if (!storageEngine.containsPartition(subPartitionId)) {
       if (isRemoteQueryAllowed()) {
+        // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
         return null;
       }
       throw new VeniceClientException("Da Vinci client does not contain partition " + subPartitionId + " in version " + version.getNumber());
     }
 
     return getChunkingAdapter().get(
+        clientConfig.getStoreName(),
         storageEngine,
         subPartitionId,
         keyBytes,
+        reusableObjects.reusedRawValue,
+        reusedValue,
+        reusableObjects.binaryDecoder,
         version.isChunkingEnabled(),
-        null, // TODO: Consider extending the API to allow object reuse
-        null,
-        null,
         version.getCompressionStrategy(),
         clientConfig.isUseFastAvro(),
         schemaRepository,
-        clientConfig.getStoreName());
+        null);
   }
 
   @Override
@@ -310,8 +336,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         Optional.of(schemaReader),
         Optional.of(clientConfig));
     services.add(kafkaStoreIngestionService);
-
-    keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
+    this.keySerializer = clientConfig.isUseFastAvro()
+        ? FastSerializerDeserializerFactory.getFastAvroGenericSerializer(getKeySchema(), false)
+        : SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema(), false);
 
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
     PartitionerConfig partitionerConfig = storeReposotory.getStore(getStoreName()).getPartitionerConfig();

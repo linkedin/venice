@@ -5,6 +5,7 @@ import com.linkedin.venice.utils.ByteUtils;
 
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.ByteBuffer;
+import java.security.DigestException;
 import org.apache.log4j.Logger;
 
 import java.security.MessageDigest;
@@ -21,13 +22,28 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
   static final Logger logger = Logger.getLogger(DefaultVenicePartitioner.class);
 
   public static final String MD5_HASH_ALGORITHM = "MD5";
-  private static final ThreadLocal<MessageDigest> messageDigestThreadLocal = ThreadLocal.withInitial(() -> {
-    try {
-      return MessageDigest.getInstance(MD5_HASH_ALGORITHM);
-    } catch (NoSuchAlgorithmException e) {
-      throw new VeniceException("Failed to initialize MD5 hash MessageDigest");
+  private static final int MD5_DIGEST_SIZE = 16;
+
+  /**
+   * This class encapsulates the objects and primitives that can be re-used in order to minimize object allocation
+   */
+  private static class PartitionerState {
+    final MessageDigest md;
+    final byte[] digestOutput = new byte[MD5_DIGEST_SIZE];
+    int modulo = 0;
+    int digit = 0;
+    int digestSize = 0;
+
+    PartitionerState() {
+      try {
+        this.md = MessageDigest.getInstance(MD5_HASH_ALGORITHM);
+      } catch (NoSuchAlgorithmException e) {
+        throw new VeniceException("Failed to initialize MD5 hash MessageDigest");
+      }
     }
-  });
+  }
+
+  private static final ThreadLocal<PartitionerState> partitionerState = ThreadLocal.withInitial(() -> new PartitionerState());
 
   public DefaultVenicePartitioner() {
     super();
@@ -38,30 +54,31 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
   }
 
   private int getPartitionId(byte[] keyBytes, int offset, int length, int numPartitions) {
+    PartitionerState ps = partitionerState.get();
 
-    MessageDigest md = messageDigestThreadLocal.get();
-    md.update(keyBytes, offset, length);
-
-    byte[] byteData = md.digest();
-
-    // find partition value from basic modulus algorithm
-    int modulo = 0;
-    int digit = 0;
-    for (int i = 0; i < byteData.length; i++) {
-      // Convert byte (-128..127) to int 0..255
-      digit = byteData[i] & 0xFF;
-      modulo = (modulo * 256 + digit) % numPartitions;
+    ps.md.update(keyBytes, offset, length);
+    try {
+      ps.digestSize = ps.md.digest(ps.digestOutput, 0, ps.digestOutput.length);
+    } catch (Exception e) {
+      throw new VeniceException("Indigestion!", e);
     }
 
-    int partition = Math.abs(modulo % numPartitions);
+    // find partition value from basic modulus algorithm
+    ps.modulo = 0;
+    for (int i = 0; i < ps.digestSize; i++) {
+      // Convert byte (-128..127) to int 0..255
+      ps.digit = ps.digestOutput[i] & 0xFF;
+      ps.modulo = (ps.modulo * 256 + ps.digit) % numPartitions;
+    }
+
+    int partition = Math.abs(ps.modulo % numPartitions);
 
     if (logger.isDebugEnabled()) {
       logger.debug("Choose partitionId " + partition + " out of " + numPartitions);
     }
 
-    md.reset();
+    ps.md.reset();
     return partition;
-
   }
 
   @Override

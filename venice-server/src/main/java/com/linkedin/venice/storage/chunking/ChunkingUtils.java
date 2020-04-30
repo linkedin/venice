@@ -88,29 +88,20 @@ public class ChunkingUtils {
       AbstractStorageEngine store,
       int partition,
       byte[] keyBuffer,
-      ReadResponse response,
+      ByteBuffer reusedRawValue,
       VALUE reusedValue,
       BinaryDecoder reusedDecoder,
+      ReadResponse response,
       CompressionStrategy compressionStrategy,
       boolean fastAvroEnabled,
       ReadOnlySchemaRepository schemaRepo,
       String storeName) {
     long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
-    byte[] value = store.get(partition, keyBuffer);
+    reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
 
     return getFromStorage(
-        value,
-        databaseLookupStartTimeInNS,
-        adapter,
-        store,
-        partition,
-        response,
-        reusedValue,
-        reusedDecoder,
-        compressionStrategy,
-        fastAvroEnabled,
-        schemaRepo,
-        storeName);
+        reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store, partition, response,
+        reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
   }
 
 
@@ -143,18 +134,8 @@ public class ChunkingUtils {
     byte[] value = store.get(partition, keyBuffer);
 
     return getFromStorage(
-        value,
-        databaseLookupStartTimeInNS,
-        adapter,
-        store,
-        partition,
-        response,
-        reusedValue,
-        reusedDecoder,
-        compressionStrategy,
-        fastAvroEnabled,
-        schemaRepo,
-        storeName);
+        value, (null == value ? 0 : value.length), databaseLookupStartTimeInNS, adapter, store, partition,
+        response, reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
   }
 
   /**
@@ -172,6 +153,7 @@ public class ChunkingUtils {
    */
   private static <VALUE, CHUNKS_CONTAINER> VALUE getFromStorage(
       byte[] value,
+      int valueLength,
       long databaseLookupStartTimeInNS,
       ChunkingAdapter<CHUNKS_CONTAINER, VALUE> adapter,
       AbstractStorageEngine store,
@@ -196,7 +178,8 @@ public class ChunkingUtils {
         response.addDatabaseLookupLatency(LatencyUtils.getLatencyInMS(databaseLookupStartTimeInNS));
       }
 
-      return adapter.constructValue(schemaId, value, reusedValue, reusedDecoder, response, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
+      return adapter.constructValue(schemaId, value, valueLength, reusedValue, reusedDecoder, response, compressionStrategy,
+          fastAvroEnabled, schemaRepo, storeName);
     } else if (schemaId != AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
       throw new VeniceException("Found a record with invalid schema ID: " + schemaId);
     }

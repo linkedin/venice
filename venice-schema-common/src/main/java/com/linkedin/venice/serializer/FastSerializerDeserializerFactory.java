@@ -67,4 +67,8 @@ public class FastSerializerDeserializerFactory extends SerializerDeserializerFac
     return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache));
   }
 
+  public static <K> RecordSerializer<K> getFastAvroGenericSerializer(Schema schema, boolean buffered) {
+    return (RecordSerializer<K>) avroFastGenericSerializerMap.computeIfAbsent(schema, (s) -> new FastAvroSerializer<>(s, cache, buffered));
+  }
+
 }

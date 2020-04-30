@@ -3,7 +3,6 @@ package com.linkedin.venice.server;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.Store;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import java.util.ArrayList;
 import java.util.List;
@@ -87,7 +86,7 @@ public class StorageEngineRepository {
 
   public void close() {
     VeniceException lastException = null;
-    for (Store store : localStorageEngines.values()) {
+    for (AbstractStorageEngine store : localStorageEngines.values()) {
       String storeName = store.getName();
       logger.info("Closing storage engine for " + storeName);
       try {

@@ -1099,7 +1099,7 @@ public class StoreIngestionTaskTest {
       });
 
       // Verify that the storage engine got hit with every record.
-      verify(mockAbstractStorageEngine, atLeast(pushedRecords.size())).put(any(), any(), any(ByteBuffer.class));
+      verify(mockAbstractStorageEngine, atLeast(pushedRecords.size())).put(anyInt(), any(), any(ByteBuffer.class));
 
       // Verify that every record hit the storage engine
       pushedRecords.entrySet().stream().forEach(entry -> {

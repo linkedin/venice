@@ -317,7 +317,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository, 
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
       }
-      Store store = storeRepository.getStore(storeName);
+      Store store = storeRepository.getStoreOrThrow(storeName);
       int latestValueSchemaId;
 
       if (store.getLatestSuperSetValueSchemaId() != SchemaData.INVALID_VALUE_SCHEMA_ID) {

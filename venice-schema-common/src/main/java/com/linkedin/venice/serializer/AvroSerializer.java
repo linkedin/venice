@@ -3,9 +3,11 @@ package com.linkedin.venice.serializer;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.MapAwareGenericDatumWriter;
+import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.MapAwareSpecificDatumWriter;
@@ -20,6 +22,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   private static final Logger logger = Logger.getLogger(AvroSerializer.class);
   private final DatumWriter<K> genericDatumWriter;
   private final DatumWriter<K> specificDatumWriter;
+  private final boolean buffered;
 
   static {
     AvroVersion version = AvroCompatibilityHelper.getRuntimeAvroVersion();
@@ -30,9 +33,18 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
     this(new MapAwareGenericDatumWriter(schema), new MapAwareSpecificDatumWriter(schema));
   }
 
+  public AvroSerializer(Schema schema, boolean buffered) {
+    this(new MapAwareGenericDatumWriter(schema), new MapAwareSpecificDatumWriter(schema), buffered);
+  }
+
   protected AvroSerializer(DatumWriter genericDatumWriter, DatumWriter specificDatumWriter) {
+    this(genericDatumWriter, specificDatumWriter, true);
+  }
+
+  protected AvroSerializer(DatumWriter genericDatumWriter, DatumWriter specificDatumWriter, boolean buffered) {
     this.genericDatumWriter = genericDatumWriter;
     this.specificDatumWriter = specificDatumWriter;
+    this.buffered = buffered;
   }
 
   private void write(K object, Encoder encoder) throws IOException {
@@ -63,13 +75,14 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
 
   @Override
   public byte[] serialize(K object) throws VeniceException {
+    return serialize(object, null);
+  }
+
+  @Override
+  public byte[] serialize(K object, BinaryEncoder reusedEncoder) throws VeniceException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
-    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
     try {
-      write(object, encoder);
-      encoder.flush();
-    } catch (IOException e) {
-      throw new VeniceException("Could not serialize the Avro object", e);
+      return serialize(object, reusedEncoder, output);
     } finally {
       if (output != null) {
         try {
@@ -79,7 +92,19 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
         }
       }
     }
-    return output.toByteArray();
+  }
+
+  @Override
+  public byte[] serialize(K object, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException {
+    reusedOutputStream.reset();
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(reusedOutputStream, buffered, reusedEncoder);
+    try {
+      write(object, encoder);
+      encoder.flush();
+    } catch (IOException e) {
+      throw new VeniceException("Could not serialize the Avro object", e);
+    }
+    return reusedOutputStream.toByteArray();
   }
 
   @Override
@@ -88,7 +113,7 @@ public class AvroSerializer<K> implements RecordSerializer<K> {
   }
 
   private byte[] serializeObjects(Iterable<K> objects, ByteArrayOutputStream output) throws VeniceException {
-    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, true, null);
+    Encoder encoder = AvroCompatibilityHelper.newBinaryEncoder(output, buffered, null);
     try {
       objects.forEach(object -> {
         try {

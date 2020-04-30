@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import java.io.File;
 import java.util.HashSet;
@@ -92,9 +91,7 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   @Override
   public void close() {
     if (this.isOpen.compareAndSet(true, false)) {
-      for (AbstractStoragePartition partition : partitionIdToPartitionMap.values()) {
-        partition.close();
-      }
+      forEachPartition(RocksDBStoragePartition::close);
     }
   }
 

@@ -41,7 +41,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private int onDemandDeserializerNumberOfRecordsPerThread = 250;
   private int alwaysOnDeserializerNumberOfThreads = Math.max(Runtime.getRuntime().availableProcessors() / 4, 1);
   private int alwaysOnDeserializerQueueCapacity = 10000;
-  private boolean useFastAvro = false;
+  private boolean useFastAvro = true;
   private boolean retryOnRouterError = false;
 
   // Security settings

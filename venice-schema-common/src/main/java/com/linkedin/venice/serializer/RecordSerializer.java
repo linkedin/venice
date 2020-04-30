@@ -3,12 +3,19 @@ package com.linkedin.venice.serializer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import org.apache.avro.io.BinaryEncoder;
+
 
 public interface RecordSerializer<T> {
 
   byte[] serialize(T object) throws VeniceException;
+
+  byte[] serialize(T object, BinaryEncoder reusedEncoder) throws VeniceException;
+
+  byte[] serialize(T object, BinaryEncoder reusedEncoder, ByteArrayOutputStream reusedOutputStream) throws VeniceException;
 
   byte[] serializeObjects(Iterable<T> objects) throws VeniceException;
 

@@ -11,7 +11,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReflectUtils;

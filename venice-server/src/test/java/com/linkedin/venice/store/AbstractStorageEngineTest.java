@@ -203,7 +203,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   @Test (expectedExceptions = VeniceException.class)
   public void testAdjustStoragePartitionWithUnknownPartitionId() {
     String storeName = testStoreEngine.getName();
-    int unknownPartitionId = partitionId -10000;
+    int unknownPartitionId = partitionId + 10000;
     StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
     testStoreEngine.adjustStoragePartition(partitionConfig);
   }
