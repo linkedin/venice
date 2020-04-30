@@ -169,6 +169,8 @@ public class KafkaStoreIngestionServiceTest {
     toBeDeletedStore.addVersion(new Version(deletedStoreName, 1, "test-job-id"));
     doReturn(mockStore).when(mockmetadataRepo).getStore(storeName);
     doReturn(toBeDeletedStore).when(mockmetadataRepo).getStore(deletedStoreName);
+    doReturn(mockStore).when(mockmetadataRepo).getStoreOrThrow(storeName);
+    doReturn(toBeDeletedStore).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
     VeniceProperties veniceProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.ROCKS_DB);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic1, veniceProperties), 0, false);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 1,
@@ -179,6 +181,7 @@ public class KafkaStoreIngestionServiceTest {
     mockStore.addVersion(new Version(storeName, 2, "test-job-id"));
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(topic2, veniceProperties), 0, false);
     kafkaStoreIngestionService.startConsumption(new VeniceStoreConfig(invalidTopic, veniceProperties), 0, false);
+    doReturn(null).when(mockmetadataRepo).getStoreOrThrow(deletedStoreName);
     doReturn(null).when(mockmetadataRepo).getStore(deletedStoreName);
     assertEquals(kafkaStoreIngestionService.getIngestingTopicsWithVersionStatusNotOnline().size(), 2,
         "Invalid and in flight ingesting topics should be included in the returned set");
