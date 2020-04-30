@@ -32,7 +32,7 @@ public class CreateStoreTest {
         .isMasterController(clusterName);
     // Throws NPE here
     doThrow(new NullPointerException(fakeMessage)).when(admin)
-        .addStore(any(), any(), any(), any(), any());
+        .addStore(any(), any(), any(), any(), any(), anyBoolean());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)
@@ -73,7 +73,7 @@ public class CreateStoreTest {
         .isMasterController(clusterName);
     // Throws NPE here
     doThrow(new Error(fakeMessage)).when(admin)
-        .addStore(any(), any(), any(), any(), any());
+        .addStore(any(), any(), any(), any(), any(), anyBoolean());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)

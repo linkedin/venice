@@ -86,7 +86,7 @@ import static org.mockito.Mockito.*;
 public class TestVeniceParentHelixAdmin {
   private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
-  private static final String PUSH_JOB_STATUS_STORE_NAME = "push-job-status-store";
+  private static final String PUSH_JOB_STATUS_STORE_NAME = String.format(Store.SYSTEM_STORE_FORMAT, "push-job-status-store");
   private static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
 
   private final String clusterName = "test-cluster";
@@ -219,7 +219,11 @@ public class TestVeniceParentHelixAdmin {
     }
 
     @Override
-    public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+    public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema,
+        boolean isSystemStore) {
+      if (!(VeniceSystemStoreUtils.isSystemStore(storeName) && isSystemStore)) {
+        throw new VeniceException("Invalid store name and isSystemStore combination");
+      }
       if (systemStores.containsKey(storeName)) {
         // no op
         return;
