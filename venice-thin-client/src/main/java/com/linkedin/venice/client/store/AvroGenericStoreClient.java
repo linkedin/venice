@@ -33,6 +33,14 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
   CompletableFuture<V> get(K key) throws VeniceClientException;
 
   /**
+   * Similar to {@link #get(Object)} except that it allows passing in a
+   * {@param reusedValue} instance, to minimize GC.
+   */
+  default CompletableFuture<V> get(K key, V reusedValue) throws VeniceClientException {
+    return get(key);
+  }
+
+  /**
    * Get the values associated with the given keys and return them in a map of keys to values.
    * Note that the returned map will only contain entries for the keys which have a value associated
    * with them.

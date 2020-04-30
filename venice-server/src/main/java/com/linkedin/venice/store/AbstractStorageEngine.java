@@ -10,17 +10,18 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
+import com.linkedin.venice.utils.SparseConcurrentList;
 import com.linkedin.venice.utils.Utils;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
@@ -54,7 +55,8 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
 
   protected final AtomicBoolean isOpen;
   protected final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
-  protected ConcurrentMap<Integer, P> partitionIdToPartitionMap;
+  protected final List<P> partitionList;
+  protected P metadataPartition;
 
   // Using a large positive number for metadata partition id instead of -1 can avoid database naming issues.
   public static final int METADATA_PARTITION_ID = 1000_000_000;
@@ -63,7 +65,8 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   public AbstractStorageEngine(String storeName) {
     this.storeName = storeName;
     this.isOpen = new AtomicBoolean(true);
-    this.partitionIdToPartitionMap = new ConcurrentHashMap<>();
+    this.partitionList = new SparseConcurrentList<>();
+    this.metadataPartition = null;
     this.storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   }
 
@@ -74,10 +77,13 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * The implementation should decide when to call this function properly to restore partitions.
    */
   protected synchronized void restoreStoragePartitions() {
+    this.metadataPartition = createStoragePartition(new StoragePartitionConfig(storeName, METADATA_PARTITION_ID));
+
     Set<Integer> partitionIds = getPersistedPartitionIds();
-    partitionIds.forEach(this::addStoragePartition);
-    // Create a new metadata partition in storage engine if no persisted metadata partition found.
-    partitionIdToPartitionMap.computeIfAbsent(METADATA_PARTITION_ID, k -> createStoragePartition(new StoragePartitionConfig(storeName, METADATA_PARTITION_ID)));
+    partitionIds.remove(METADATA_PARTITION_ID);
+    partitionIds.stream()
+        .sorted((o1, o2) -> Integer.compare(o2, o1)) // reverse order
+        .forEach(this::addStoragePartition);
   }
 
   /**
@@ -85,7 +91,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * set to false. For rolling back all the data needs to be wiped clean
    */
   public void validateMigrationStatus() {
-    if (null != partitionIdToPartitionMap.get(METADATA_PARTITION_ID).get(METADATA_MIGRATION_KEY.getBytes())) {
+    if (null != metadataPartition.get(METADATA_MIGRATION_KEY.getBytes())) {
       throw new VeniceException(String.format("Store %s has previously migrated to RocksDB metadata offset store, but now its set (server.enable.rocksdb.offset.metadata = false) to use BDB. Please delete all data including offset for this store", storeName));
     }
   }
@@ -97,7 +103,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    */
   public synchronized void bootStrapAndValidateOffsetRecordsFromBDB(BdbStorageMetadataService bdbStorageMetadataService) {
     // Check if this store has already been migrated to use rocksDB offset store
-    if (null != partitionIdToPartitionMap.get(METADATA_PARTITION_ID).get(METADATA_MIGRATION_KEY.getBytes())) {
+    if (null != metadataPartition.get(METADATA_MIGRATION_KEY.getBytes())) {
       return;
     }
 
@@ -105,7 +111,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     validateBootstrap(bdbStorageMetadataService);
 
     // Set the migration key indicating that the migration is done for this store.
-    partitionIdToPartitionMap.get(METADATA_PARTITION_ID).put(
+    metadataPartition.put(
         METADATA_MIGRATION_KEY.getBytes(),
         METADATA_MIGRATION_VALUE.getBytes()
     );
@@ -120,8 +126,8 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       throw new VeniceException("BDBMetadataService not started");
     }
 
-    for (Integer partitionId : partitionIdToPartitionMap.keySet()) {
-      if (partitionId == METADATA_PARTITION_ID) {
+    for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
+      if (!containsPartition(partitionId)) {
         continue;
       }
       OffsetRecord offsetRecord = bdbStorageMetadataService.getLastOffset(storeName, partitionId);
@@ -142,8 +148,8 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    */
   private void validateBootstrap(BdbStorageMetadataService bdbStorageMetadataService) {
     Set<Integer> bdbPartitions = new HashSet<>();
-    for (Integer partitionId : partitionIdToPartitionMap.keySet()) {
-      if (partitionId == METADATA_PARTITION_ID) {
+    for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
+      if (!containsPartition(partitionId)) {
         continue;
       }
       OffsetRecord bdbOffsetRecord = bdbStorageMetadataService.getLastOffset(storeName, partitionId);
@@ -206,7 +212,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       throw new VeniceException("There is no opened storage partition for store: " + getName() +
       ", partition id: " + partitionId + ", please open it first");
     }
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(partitionId);
+    AbstractStoragePartition partition = this.partitionList.get(partitionId);
     if (partition.verifyConfig(storagePartitionConfig)) {
       logger.info("No adjustment needed for store name: " + getName() + ", partition id: " + partitionId);
       return;
@@ -231,17 +237,17 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   public synchronized void addStoragePartition(StoragePartitionConfig storagePartitionConfig) {
     validateStoreName(storagePartitionConfig);
     int partitionId = storagePartitionConfig.getPartitionId();
-    /**
-     * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
-     * that after the addition of the storage partition:
-     *  1. populate the partition node assignment repository
-     */
+    if (partitionId == METADATA_PARTITION_ID) {
+      throw new StorageInitializationException("The metadata partition is not allowed to be set via this function!");
+    }
+
     if (containsPartition(partitionId)) {
       logger.error("Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getName() +" . This partition already exists!");
       throw new StorageInitializationException("Partition " + partitionId + " of store " + this.getName() + " already exists.");
     }
+
     P partition = createStoragePartition(storagePartitionConfig);
-    partitionIdToPartitionMap.put(partitionId, partition);
+    this.partitionList.set(partitionId, partition);
   }
 
   /**
@@ -268,24 +274,14 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
      * guarantee the drop-partition order in bulk deletion, but if metadata partition get removed first, then it needs not
      * to clear partition offset.
      */
-    if (containsPartition(METADATA_PARTITION_ID) && (partitionId != METADATA_PARTITION_ID)) {
+    if (metadataPartitionCreated() && (partitionId != METADATA_PARTITION_ID)) {
       clearPartitionOffset(partitionId);
     }
 
-    AbstractStoragePartition partition = partitionIdToPartitionMap.remove(partitionId);
+    AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     partition.drop();
 
-    // Make sure we remove the metadata partition before we cleanup the whole storage engine.
-    if ((partitionIdToPartitionMap.size() == 1) && (containsPartition(METADATA_PARTITION_ID))) {
-      // Clear the version metadata state that stores both inside cache and metadata partition of the AbstractStorageEngine.
-      clearStoreVersionState();
-      // Make sure we drop the metadata partition.
-      AbstractStoragePartition metadataPartition = partitionIdToPartitionMap.remove(METADATA_PARTITION_ID);
-      metadataPartition.drop();
-      logger.info("Metadata partition for Store " + storeName + " are removed.");
-    }
-
-    if (partitionIdToPartitionMap.size() == 0) {
+    if (getNumberOfPartitions() == 0) {
       logger.info("All Partitions deleted for Store " + this.getName() );
       /**
        * The reason to invoke {@link #drop} here is that storage engine might need to do some cleanup
@@ -300,7 +296,18 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    */
   public synchronized void drop() {
     logger.info("Started dropping store: " + getName());
-    partitionIdToPartitionMap.forEach( (partitionId, partition) -> dropPartition(partitionId));
+    for (int partitionId = 0; partitionId < partitionList.size(); partitionId++) {
+      if (!containsPartition(partitionId)) {
+        continue;
+      }
+      dropPartition(partitionId);
+    }
+    if (metadataPartitionCreated()) {
+      // Clear the version metadata state that stores both inside cache and metadata partition of the AbstractStorageEngine.
+      clearStoreVersionState();
+      metadataPartition.drop();
+      metadataPartition = null;
+    }
     logger.info("Finished dropping store: " + getName());
   }
 
@@ -309,9 +316,9 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       logger.error("Failed to close a non existing partition: " + partitionId + " Store " + this.getName() );
       return;
     }
-    AbstractStoragePartition partition = partitionIdToPartitionMap.remove(partitionId);
+    AbstractStoragePartition partition = this.partitionList.remove(partitionId);
     partition.close();
-    if(partitionIdToPartitionMap.size() == 0) {
+    if(getNumberOfPartitions() == 0) {
       logger.info("All Partitions closed for Store " + this.getName() );
     }
   }
@@ -332,7 +339,28 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * @return True/False, does the partition exist on this node
    */
   public boolean containsPartition(int partitionId) {
-    return partitionIdToPartitionMap.containsKey(partitionId);
+    return null != this.partitionList.get(partitionId);
+  }
+
+  /**
+   * A function which behaves like {@link Map#size()}, in the sense that it ignores empty
+   * (null) slots in the list.
+   *
+   * @return the number of non-null partitions in {@link #partitionList}
+   */
+  protected long getNumberOfPartitions() {
+    return this.partitionList.stream().filter(p -> null != p).count();
+  }
+
+  protected void forEachPartition(Consumer<P> partitionConsumer) {
+    this.partitionList.forEach(partitionConsumer);
+    if (metadataPartitionCreated()) {
+      partitionConsumer.accept(metadataPartition);
+    }
+  }
+
+  private boolean metadataPartitionCreated() {
+    return null != metadataPartition;
   }
 
   /**
@@ -341,8 +369,10 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * @return partition Ids that are hosted in the current Storage Engine.
    */
   public synchronized Set<Integer> getPartitionIds() {
-    // Filter out metadata partition id as it is an internal concept for AbstractStorageEngine.
-    return partitionIdToPartitionMap.keySet().stream().filter(s -> s != METADATA_PARTITION_ID).collect(Collectors.toSet());
+    return this.partitionList.stream()
+        .filter(p -> null != p)
+        .map(p -> p.partitionId)
+        .collect(Collectors.toSet());
   }
 
   /**
@@ -374,7 +404,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     adjustStoragePartition(storagePartitionConfig);
   }
 
-  protected void validatePartitionForKey(Integer logicalPartitionId, Object key, String operationType) {
+  protected void validatePartitionForKey(int logicalPartitionId, Object key, String operationType) {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage = operationType + " request failed. Invalid partition id: "
@@ -384,15 +414,15 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     }
   }
 
-  public void put(Integer logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
+  public void put(int logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, key, "Put");
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
     partition.put(key, value);
   }
 
-  public void put(Integer logicalPartitionId, byte[] key, ByteBuffer value) throws VeniceException {
+  public void put(int logicalPartitionId, byte[] key, ByteBuffer value) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, key, "Put");
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
     partition.put(key, value);
   }
 
@@ -400,26 +430,27 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * Put the offset associated with the partitionId into the metadata partition.
    */
   public void putPartitionOffset(int partitionId, OffsetRecord offsetRecord) {
-    if (!partitionIdToPartitionMap.containsKey(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionIdToPartitionMap.");
+    if (!containsPartition(partitionId)) {
+      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
     }
-    partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
-        .put(
-            composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes(),
-            offsetRecord.toBytes()
-        );
+    metadataPartition.put(
+        composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes(),
+        offsetRecord.toBytes()
+    );
   }
 
   /**
    * Retrieve the offset associated with the partitionId from the metadata partition.
    */
   public Optional<OffsetRecord> getPartitionOffset(int partitionId) {
-    if (!partitionIdToPartitionMap.containsKey(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionIdToPartitionMap.");
+    if (!containsPartition(partitionId)) {
+      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
+    }
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
     }
     byte[] key = composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes();
-    byte[] value = partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
-        .get(key);
+    byte[] value = metadataPartition.get(key);
     if (null == value) {
       return Optional.empty();
     }
@@ -430,28 +461,26 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
    * Clear the offset associated with the partitionId in the metadata partition.
    */
   public void clearPartitionOffset(int partitionId) {
-    if (!partitionIdToPartitionMap.containsKey(partitionId)) {
-      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionIdToPartitionMap.");
+    if (!containsPartition(partitionId)) {
+      throw new IllegalArgumentException("partitionId " + partitionId + " does not exist in partitionList.");
     }
     if (partitionId == METADATA_PARTITION_ID) {
       throw new IllegalArgumentException("Metadata partition id should not be used as argument in clearPartitionOffset.");
     }
-    if (!partitionIdToPartitionMap.containsKey(METADATA_PARTITION_ID)) {
-      throw new VeniceException("Metadata partition does not exist in partitionIdToPartitionMap.");
+    if (!metadataPartitionCreated()) {
+      throw new StorageInitializationException("Metadata partition not created!");
     }
-    partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
-        .delete(composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes());
+    metadataPartition.delete(composeMetadataPartitionKey(PARTITION_METADATA_PREFIX, partitionId).getBytes());
   }
 
   /**
    * Put the store version state into the metadata partition.
    */
   public void putStoreVersionState(StoreVersionState record) {
-    partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
-        .put(
-            VERSION_METADATA_KEY.getBytes(),
-            storeVersionStateSerializer.serialize(getName(), record)
-        );
+    metadataPartition.put(
+        VERSION_METADATA_KEY.getBytes(),
+        storeVersionStateSerializer.serialize(getName(), record)
+    );
   }
 
   /**
@@ -463,8 +492,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
     if (storeVersionState != null) {
       return Optional.of(storeVersionState);
     }
-    byte[] value = partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
-        .get(VERSION_METADATA_KEY.getBytes());
+    byte[] value = metadataPartition.get(VERSION_METADATA_KEY.getBytes());
     if (null == value) {
       return Optional.empty();
     }
@@ -480,8 +508,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   public void clearStoreVersionState() {
     // Delete the cached store version state.
     storeVersionStateCache.set(null);
-    partitionIdToPartitionMap.get(METADATA_PARTITION_ID)
-        .delete(VERSION_METADATA_KEY.getBytes());
+    metadataPartition.delete(VERSION_METADATA_KEY.getBytes());
   }
 
   /**
@@ -501,22 +528,27 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
   }
 
 
-  public void delete(Integer logicalPartitionId, byte[] key) throws VeniceException {
+  public void delete(int logicalPartitionId, byte[] key) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, key, "Delete");
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
     partition.delete(key);
   }
 
-  public byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException {
+  public byte[] get(int logicalPartitionId, byte[] key) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, key, "Get");
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
     return partition.get(key);
   }
 
-  @Override
-  public byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException {
+  public ByteBuffer get(int logicalPartitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException {
+    validatePartitionForKey(logicalPartitionId, key, "Get");
+    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
+    return partition.get(key, valueToBePopulated);
+  }
+
+  public byte[] get(int logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException {
     validatePartitionForKey(logicalPartitionId, keyBuffer, "Get");
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    AbstractStoragePartition partition = this.partitionList.get(logicalPartitionId);
     return partition.get(keyBuffer);
   }
 
@@ -525,7 +557,7 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
       logger.warn("Partition " + partitionId + " doesn't exist, no sync operation will be executed");
       return Collections.emptyMap();
     }
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(partitionId);
+    AbstractStoragePartition partition = this.partitionList.get(partitionId);
     return partition.sync();
   }
 
@@ -539,16 +571,16 @@ public abstract class AbstractStorageEngine<P extends AbstractStoragePartition> 
 
   // for test purpose
   public AbstractStoragePartition getStoragePartition(int partitionId) {
-    if (!this.partitionIdToPartitionMap.containsKey(partitionId)) {
+    if (!containsPartition(partitionId)) {
       throw new VeniceException("Partition: " + partitionId + " of store: " + getName() + " doesn't exist");
     }
-    return this.partitionIdToPartitionMap.get(partitionId);
+    return this.partitionList.get(partitionId);
   }
 
   public abstract long getStoreSizeInBytes();
 
   public long getPartitionSizeInBytes(int partitionId) {
-    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(partitionId);
+    AbstractStoragePartition partition = this.partitionList.get(partitionId);
     return partition.getPartitionSizeInBytes();
   }
 

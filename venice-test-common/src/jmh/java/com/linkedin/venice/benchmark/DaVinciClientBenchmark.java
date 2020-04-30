@@ -18,6 +18,7 @@ import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
@@ -25,6 +26,7 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.profile.GCProfiler;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
@@ -64,14 +66,21 @@ public class DaVinciClientBenchmark {
       " } ";
 
   private VeniceClusterWrapper cluster;
-  private DaVinciClient<Object, Object> client;
+  private DaVinciClient<Long, GenericRecord> client;
   private GenericRecord record;
+  private long[] keys = new long[queryCount];
 
   @Param({"1", "10", "100"})
+//  @Param({"2500"})
   protected String valueLength;
 
   @Param({"FLOAT_VECTOR", "SPARSE_VECTOR"})
+//  @Param({"FLOAT_VECTOR"})
   protected String valueType;
+
+  @Param({"true"})
+//  @Param({"true", "false"})
+  protected boolean assertions;
 
   @Setup
   public void setup() throws Exception {
@@ -88,7 +97,17 @@ public class DaVinciClientBenchmark {
     }
 
     client = getGenericAvroDaVinciClient(storeName, cluster);
-    client.subscribeToAllPartitions().get(30, TimeUnit.SECONDS);
+    client.subscribeToAllPartitions().get(60, TimeUnit.SECONDS);
+
+    // Trying to close as much as possible of the stuff we don't need to minimize interference...
+    cluster.getVeniceServers().forEach(veniceServerWrapper -> veniceServerWrapper.close());
+    cluster.getVeniceRouters().forEach(veniceRouterWrapper -> veniceRouterWrapper.close());
+    cluster.getVeniceControllers().forEach(veniceControllerWrapper -> veniceControllerWrapper.close());
+
+    long key = 11;
+    for (int i = 0; i < queryCount; ++i) {
+      keys[i] = (key * 31) % recordCount;
+    }
   }
 
   @TearDown
@@ -98,17 +117,24 @@ public class DaVinciClientBenchmark {
   }
 
   @Benchmark
+  @OperationsPerInvocation(queryCount)
   public void randomReadQueries() throws ExecutionException, InterruptedException {
-    long key = 11;
+    GenericRecord value = null;
+    int intValueLength = Integer.parseInt(valueLength);
+    String fieldName = "value";
     for (int i = 0; i < queryCount; ++i) {
-      GenericRecord value = (GenericRecord)(client.get(key).get());
-      Assert.assertEquals(Integer.parseInt(valueLength), ((List<Float>)value.get("value")).size());
-      key = (key * 31) % recordCount;
+      value = client.get(keys[i], value).get();
+      if (assertions) {
+        Assert.assertEquals(((List<Float>)value.get(fieldName)).size(), intValueLength);
+      }
     }
   }
 
   public static void main(String[] args) throws Exception {
-    Options opt = new OptionsBuilder().include(DaVinciClientBenchmark.class.getSimpleName()).build();
+    Options opt = new OptionsBuilder()
+        .include(DaVinciClientBenchmark.class.getSimpleName())
+        .addProfiler(GCProfiler.class)
+        .build();
     new Runner(opt).run();
   }
 

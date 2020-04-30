@@ -61,6 +61,9 @@ public class Version implements Comparable<Version> {
    * Version number.
    */
   private final int number;
+
+  @JsonIgnore
+  private final String kafkaTopicName;
   /**
    * Time when this version was created.
    */
@@ -147,6 +150,7 @@ public class Version implements Comparable<Version> {
     this.pushJobId = pushJobId == null ? numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
     this.partitionCount = partitionCount;
     this.partitionerConfig = partitionerConfig;
+    this.kafkaTopicName = composeKafkaTopic(storeName, number);
   }
 
   public int getNumber() {
@@ -383,7 +387,7 @@ public class Version implements Comparable<Version> {
    */
   @JsonIgnore
   public String kafkaTopicName() {
-    return composeKafkaTopic(storeName,number);
+    return kafkaTopicName;
   }
 
   public static String parseStoreFromKafkaTopicName(@NotNull String kafkaTopic) {

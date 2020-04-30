@@ -45,7 +45,7 @@ import static org.testng.Assert.*;
 
 public class DaVinciClientTest {
   private static final int KEY_COUNT = 10;
-  private static final int TEST_TIMEOUT = 20_000; // ms
+  private static final int TEST_TIMEOUT = 60_000; // ms
   private VeniceClusterWrapper cluster;
 
   @BeforeClass

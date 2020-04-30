@@ -447,7 +447,9 @@ public class TestHybrid {
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()));
     for (int i = 1; i < 10; i++){
       String key = Integer.toString(i);
-      Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
+      Object value = client.get(key).get();
+      Assert.assertNotNull(value);
+      Assert.assertEquals(value.toString(), "stream_" + key);
     }
     Assert.assertTrue(client.get(Integer.toString(11)).get() == null, "This record should not be found");
 

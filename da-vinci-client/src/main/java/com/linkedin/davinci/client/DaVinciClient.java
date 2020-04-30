@@ -1,5 +1,6 @@
 package com.linkedin.davinci.client;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -11,6 +12,7 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
  * @param <V>
  */
 public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
+
   /**
    * Ingest the entire data locally.
    *

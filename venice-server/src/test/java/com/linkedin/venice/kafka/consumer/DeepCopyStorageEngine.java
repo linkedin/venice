@@ -96,7 +96,7 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public void put(Integer logicalPartitionId, byte[] key, byte[] value) {
+  public void put(int logicalPartitionId, byte[] key, byte[] value) {
     this.delegate.put(logicalPartitionId, key, value);
   }
 
@@ -108,7 +108,7 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
    * @param value
    */
   @Override
-  public void put(Integer logicalPartitionId, byte[] key, ByteBuffer value) {
+  public void put(int logicalPartitionId, byte[] key, ByteBuffer value) {
     ByteBuffer deepCopyByteBuffer = ByteBuffer.allocate(value.remaining());
     // Record the original position for recovery
     deepCopyByteBuffer.mark();
@@ -121,17 +121,17 @@ public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStorage
   }
 
   @Override
-  public void delete(Integer logicalPartitionId, byte[] key) {
+  public void delete(int logicalPartitionId, byte[] key) {
     this.delegate.delete(logicalPartitionId, key);
   }
 
   @Override
-  public byte[] get(Integer logicalPartitionId, byte[] key) {
+  public byte[] get(int logicalPartitionId, byte[] key) {
     return this.delegate.get(logicalPartitionId, key);
   }
 
   @Override
-  public byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) {
+  public byte[] get(int logicalPartitionId, ByteBuffer keyBuffer) {
     return this.delegate.get(logicalPartitionId, keyBuffer);
   }
 

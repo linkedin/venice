@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import com.sleepycat.je.Environment;
 import java.util.HashSet;
@@ -74,9 +73,7 @@ public class BdbStorageEngine extends AbstractStorageEngine<BdbStoragePartition>
 
   public void close() {
     if (this.isOpen.compareAndSet(true, false)) {
-      for (AbstractStoragePartition partition : partitionIdToPartitionMap.values()) {
-        partition.close();
-      }
+      forEachPartition(BdbStoragePartition::close);
     }
   }
 

@@ -39,6 +39,11 @@ public abstract class AbstractStoragePartition {
    */
   public abstract byte[] get(byte[] key);
 
+  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
+    // Naive default impl is not optimized... only storage engines that support the optimization implement it.
+    return ByteBuffer.wrap(get(key));
+  }
+
   public abstract byte[] get(ByteBuffer key);
 
   /**

@@ -66,6 +66,10 @@ public class SerializerDeserializerFactory {
     return avroGenericSerializerMap.computeIfAbsent(schema, key -> new AvroSerializer(key));
   }
 
+  public static <K> RecordSerializer<K> getAvroGenericSerializer(Schema schema, boolean buffered) {
+    return avroGenericSerializerMap.computeIfAbsent(schema, key -> new AvroSerializer(key, buffered));
+  }
+
   public static <K> RecordSerializer<K> getVsonSerializer(Schema schema) {
     return vsonGenericSerializerMap.computeIfAbsent(schema, key -> new VsonAvroGenericSerializer<> (key));
   }

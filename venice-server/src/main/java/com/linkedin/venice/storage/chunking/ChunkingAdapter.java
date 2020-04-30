@@ -24,7 +24,7 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * @param fullBytes includes both the schema ID header and the payload
    *
    * The following parameters can be ignored, by implementing {@link #constructValue(int, byte[])}:
-   *
+   *@param bytesLength
    * @param reusedValue a previous instance of {@type VALUE} to be re-used in order to minimize GC
    * @param reusedDecoder a previous instance of {@link BinaryDecoder} to be re-used in order to minimize GC
    * @param response the response returned by the query path, which carries certain metrics to be recorded at the end
@@ -32,27 +32,19 @@ public interface ChunkingAdapter<CHUNKS_CONTAINER, VALUE> {
    * @param fastAvroEnabled whether to use fast-avro or not
    * @param schemaRepo handle from which to retrieve read and write schemas
    * @param storeName to deal with
-   *
-   * TODO: Consider whether we really need this API. We could instead always use the chunked approach,
-   *       even if there is just a single small chunk.
+*
+* TODO: Consider whether we really need this API. We could instead always use the chunked approach,
    */
-  default VALUE constructValue(
-      int schemaId,
-      byte[] fullBytes,
-      VALUE reusedValue,
-      BinaryDecoder reusedDecoder,
-      ReadResponse response,
-      CompressionStrategy compressionStrategy,
-      boolean fastAvroEnabled,
-      ReadOnlySchemaRepository schemaRepo,
-      String storeName) {
+  default VALUE constructValue(int schemaId, byte[] fullBytes, int bytesLength, VALUE reusedValue,
+      BinaryDecoder reusedDecoder, ReadResponse response, CompressionStrategy compressionStrategy,
+      boolean fastAvroEnabled, ReadOnlySchemaRepository schemaRepo, String storeName) {
     return constructValue(schemaId, fullBytes);
   }
 
   /**
    * This function can be implemented by the adapters which need fewer parameters.
    *
-   * @see #constructValue(int, byte[], Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
+   * @see #constructValue(int, byte[], int, Object, BinaryDecoder, ReadResponse, CompressionStrategy, boolean, ReadOnlySchemaRepository, String)
    */
   default VALUE constructValue(int schemaId, byte[] fullBytes) {
     throw new VeniceException("Not implemented.");

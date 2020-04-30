@@ -293,6 +293,26 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public ByteBuffer get(byte[] key, ByteBuffer valueToBePopulated) {
+    try {
+      int size = rocksDB.get(key, valueToBePopulated.array());
+      if (size == RocksDB.NOT_FOUND) {
+        return null;
+      } else if (size > valueToBePopulated.capacity()) {
+        logger.warn("Will allocate a new ByteBuffer because a value of " + size
+            + " bytes was retrieved, which is larger than valueToBePopulated.capacity(): " + valueToBePopulated.capacity());
+        valueToBePopulated = ByteBuffer.allocate(size);
+        size = rocksDB.get(key, valueToBePopulated.array());
+      }
+      valueToBePopulated.position(0);
+      valueToBePopulated.limit(size);
+      return valueToBePopulated;
+    } catch (RocksDBException e) {
+      throw new VeniceException("Failed to get value from store: " + storeName + ", partition id: " + partitionId, e);
+    }
+  }
+
+  @Override
   public byte[] get(ByteBuffer keyBuffer) {
     /**
      * The reason to create a new byte array to contain the key is that the overhead to create/release

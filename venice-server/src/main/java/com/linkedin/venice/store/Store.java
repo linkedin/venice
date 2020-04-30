@@ -1,6 +1,7 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.io.Closeable;
 import java.nio.ByteBuffer;
 
 
@@ -14,7 +15,12 @@ import java.nio.ByteBuffer;
  *    invoke the appropriate underlying APIs as necessary.
  */
 
-public interface Store extends QueryStore {
+public interface Store extends Closeable {
+
+  /**
+   * @return The name of the Store
+   */
+  String getName();
 
   /**
    * Associate the value with the key in this store
@@ -29,11 +35,9 @@ public interface Store extends QueryStore {
    * @param value  The value associated with the key
    * @throws VeniceException
    */
-  void put(Integer logicalPartitionId, byte[] key, byte[] value)
-      throws VeniceException;
+  void put(int logicalPartitionId, byte[] key, byte[] value) throws VeniceException;
 
-  void put(Integer logicalPartitionId, byte[] key, ByteBuffer value)
-    throws VeniceException;
+  void put(int logicalPartitionId, byte[] key, ByteBuffer value) throws VeniceException;
 
   /**
    * Delete entry corresponding to the given key
@@ -42,17 +46,27 @@ public interface Store extends QueryStore {
    * @param key  The key to delete
    * @throws VeniceException
    */
-  void delete(Integer logicalPartitionId, byte[] key)
-      throws VeniceException;
+  void delete(int logicalPartitionId, byte[] key) throws VeniceException;
+
+  ByteBuffer get(int logicalPartitionId, byte[] key, ByteBuffer valueToBePopulated) throws VeniceException;
+
+  byte[] get(int logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException;
 
   /**
+   * Get the value associated with the given key
    *
    * @param logicalPartitionId Id of the logical partition where this key belongs
    * @param key The key to check for
-   * @return
+   * @return The value associated with the key or an empty list if no values are found.
    * @throws VeniceException
    */
-  byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException;
+  byte[] get(int logicalPartitionId, byte[] key) throws VeniceException;
 
-  byte[] get(Integer logicalPartitionId, ByteBuffer keyBuffer) throws VeniceException;
+  /**
+   * Close the store.
+   *
+   * @throws VeniceException If closing fails.
+   */
+  void close() throws VeniceException;
+
 }

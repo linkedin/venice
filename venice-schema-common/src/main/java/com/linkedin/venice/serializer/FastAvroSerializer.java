@@ -15,4 +15,8 @@ public class FastAvroSerializer<K> extends AvroSerializer<K> {
   public FastAvroSerializer(Schema schema, FastSerdeCache cache) {
     super(new FastGenericDatumWriter<>(schema, cache), new FastSpecificDatumWriter<>(schema, cache));
   }
+
+  public FastAvroSerializer(Schema schema, FastSerdeCache cache, boolean buffered) {
+    super(new FastGenericDatumWriter<>(schema, cache), new FastSpecificDatumWriter<>(schema, cache), buffered);
+  }
 }
