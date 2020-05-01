@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.StaleVersionStats;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
@@ -23,13 +24,13 @@ import org.apache.log4j.Logger;
 
 public class VeniceVersionFinder {
   private static final Logger logger = Logger.getLogger(VeniceVersionFinder.class);
+  private static final RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
   private final ReadOnlyStoreRepository metadataRepository;
   private final StaleVersionStats stats;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
   private ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
-
   private OnlineInstanceFinder onlineInstanceFinder;
 
   public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
@@ -80,8 +81,10 @@ public class VeniceVersionFinder {
     if (anyOfflinePartitions(kafkaTopic)) {
       VersionStatus lastCurrentVersionStatus = veniceStore.getVersionStatus(lastCurrentVersion.get(store));
       if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
-        logger.warn(
-            "Offline partitions for new active version " + kafkaTopic + ", continuing to serve previous version: " + lastCurrentVersion.get(store));
+        String message =  "Some partitions are offline for new active version " + kafkaTopic + ", continuing to serve previous version: " + lastCurrentVersion.get(store);
+        if (!filter.isRedundantException(message)) {
+          logger.warn(message);
+        }
         stats.recordStale(metadataCurrentVersion, lastCurrentVersion.get(store));
         return lastCurrentVersion.get(store);
       } else {
@@ -112,7 +115,10 @@ public class VeniceVersionFinder {
           logger.warn("Failed to get partition assignment for logging purposes for resource: " + kafkaTopic, e);
           partitionAssignment = "unknown";
         }
-        logger.warn("No online replicas for partition " + p + " of " + kafkaTopic + ", partition assignment: " + partitionAssignment);
+        String message = "No online replica exists for partition " + p + " of " + kafkaTopic + ", partition assignment: " + partitionAssignment;
+        if (!filter.isRedundantException(message)) {
+          logger.warn(message);
+        }
         return true;
       }
     }
