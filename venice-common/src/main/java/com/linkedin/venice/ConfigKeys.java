@@ -1015,4 +1015,14 @@ public class ConfigKeys {
    * A unique id that can represent this instance
    */
   public static final String INSTANCE_ID = "instance.id";
+
+  /**
+   * Maximum time allowed for router to download dictionary from Storage nodes.
+   */
+  public static final String ROUTER_DICTIONARY_RETRIEVAL_TIME_MS = "router.dictionary.retrieval.time.ms";
+
+  /**
+   * Number of threads that the Router will use to wait for dictionary to download from storage nodes and process it.
+   */
+  public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
 }

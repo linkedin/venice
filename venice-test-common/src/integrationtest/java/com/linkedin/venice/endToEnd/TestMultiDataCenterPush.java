@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
@@ -261,7 +262,7 @@ public class TestMultiDataCenterPush {
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, false, false, true);
+    createStoreForJob(clusterName, keySchemaStr, valueSchemaStr, props, CompressionStrategy.NO_OP, false, true);
 
     KafkaPushJob job = new KafkaPushJob("Test batch push job", props);
     job.run();

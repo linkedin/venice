@@ -4,6 +4,8 @@ import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -68,12 +70,14 @@ public class VeniceResponseDecompressor {
   private final RouterStats<AggRouterHttpRequestStats> routerStats;
   private final String storeName;
   private final int version;
+  private final String kafkaTopic;
 
   public VeniceResponseDecompressor(boolean decompressOnClient, RouterStats<AggRouterHttpRequestStats> routerStats, BasicFullHttpRequest request, String storeName, int version) {
     this.routerStats = routerStats;
     this.clientCompression = decompressOnClient ? getClientSupportedCompression(request) : CompressionStrategy.NO_OP;
     this.storeName = storeName;
     this.version = version;
+    this.kafkaTopic = Version.composeKafkaTopic(storeName, version);
   }
 
   private static CompressionStrategy getClientSupportedCompression(HttpRequest request) {
@@ -282,7 +286,17 @@ public class VeniceResponseDecompressor {
 
   private ByteBuffer decompressRecord(CompressionStrategy compressionStrategy, ByteBuffer compressedData, RequestType requestType) {
     try {
-      ByteBuffer decompressed = CompressorFactory.getCompressor(compressionStrategy).decompress(compressedData);
+      VeniceCompressor compressor;
+      if (compressionStrategy == CompressionStrategy.ZSTD_WITH_DICT) {
+        compressor = CompressorFactory.getVersionSpecificCompressor(kafkaTopic);
+        if (compressor == null) {
+          throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
+              SERVICE_UNAVAILABLE, "Compressor not available for resource " + kafkaTopic + ". Dictionary not downloaded.");
+        }
+      } else {
+        compressor = CompressorFactory.getCompressor(compressionStrategy);
+      }
+      ByteBuffer decompressed = compressor.decompress(compressedData);
       return decompressed;
     } catch (IOException e) {
       String errorMsg = String.format("Failed to decompress data. Store: %s; Version: %d, error: %s", storeName, version, e.getMessage());

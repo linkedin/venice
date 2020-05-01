@@ -30,6 +30,7 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.api.DictionaryRetrievalService;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.httpclient.ApacheHttpAsyncStorageNodeClient;
@@ -141,6 +142,7 @@ public class RouterServer extends AbstractVeniceService {
   private Router router;
   private Router secureRouter;
   private Optional<RouterCache> routerCache;
+  private DictionaryRetrievalService dictionaryRetrievalService;
 
   private MultithreadEventLoopGroup workerEventLoopGroup;
   private MultithreadEventLoopGroup serverEventLoopGroup;
@@ -386,6 +388,8 @@ public class RouterServer extends AbstractVeniceService {
 
     OnlineInstanceFinderDelegator onlineInstanceFinder =
         new OnlineInstanceFinderDelegator(metadataRepository, routingDataRepository, partitionStatusOnlineInstanceFinder);
+
+    dictionaryRetrievalService = new DictionaryRetrievalService(onlineInstanceFinder, config, sslFactoryForRequests, metadataRepository);
 
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, storeConfigRepository,
@@ -684,6 +688,14 @@ public class RouterServer extends AbstractVeniceService {
       scatterGatherMode.initReadRequestThrottler(throttler);
       dispatcher.initReadRequestThrottler(throttler);
 
+      // Dictionary retrieval service should start only after "metadataRepository.refresh()" otherwise it won't be able
+      // to preload dictionaries from SN.
+      try {
+        dictionaryRetrievalService.startInner();
+      } catch (VeniceException e) {
+        logger.error("Encountered issue when starting dictionary retriever", e);
+        System.exit(1);
+      }
 
       /**
        * When the listen port is open, we would like to have current Router to be fully ready.

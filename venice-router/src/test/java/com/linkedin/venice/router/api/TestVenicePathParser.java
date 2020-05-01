@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -39,6 +40,7 @@ public class TestVenicePathParser {
     Store mockStore = mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
     doReturn(true).when(mockStore).isEnableReads();
+    doReturn(CompressionStrategy.NO_OP).when(mockStore).getCompressionStrategy();
     ReadOnlyStoreRepository mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
