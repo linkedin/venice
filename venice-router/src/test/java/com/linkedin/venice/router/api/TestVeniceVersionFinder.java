@@ -1,6 +1,8 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
@@ -17,6 +19,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatusOnlineInstanceFinder;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.TestUtils;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -140,18 +143,22 @@ public class TestVeniceVersionFinder {
     Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
 
     // When the current version changes, without any online replicas the versionFinder returns the old version number
+    store.addVersion(new Version(storeName, secondVersion));
+    store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(secondVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
 
     // When we retire an old version, we update to the new version anyways
+    store.addVersion(new Version(storeName, thirdVersion));
+    store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(thirdVersion);
     store.updateVersionStatus(1, VersionStatus.NOT_CREATED);
     Assert.assertEquals(versionFinder.getVersion(storeName), thirdVersion);
 
     // Next new version with no online instances still serves old ONLINE version
+    store.addVersion(new Version(storeName, fourthVersion));
+    store.updateVersionStatus(fourthVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(fourthVersion);
-    store.addVersion(new Version(storeName, thirdVersion));
-    store.updateVersionStatus(thirdVersion, VersionStatus.ONLINE);
     Assert.assertEquals(versionFinder.getVersion(storeName), thirdVersion);
 
     // Once we have online replicas, the versionFinder reflects the new version
@@ -160,8 +167,180 @@ public class TestVeniceVersionFinder {
 
     // PartitionStatusOnlineInstanceFinder can also work
     store.setLeaderFollowerModelEnabled(true);
+    store.addVersion(new Version(storeName, fifthVersion));
+    store.updateVersionStatus(fifthVersion, VersionStatus.ONLINE);
     store.setCurrentVersion(fifthVersion);
     Assert.assertEquals(versionFinder.getVersion(storeName), fifthVersion);
+  }
+
+  @Test
+  public void returnsCurrentVersionWhenTheDictionaryExists() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    int firstVersion = 1;
+    ByteBuffer firstVersionDictionary = ByteBuffer.allocate(1);
+
+    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    store.setPartitionCount(3);
+    store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+    store.addVersion(new Version(storeName, firstVersion));
+    store.setCurrentVersion(firstVersion);
+    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+
+    CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, Version.composeKafkaTopic(storeName, firstVersion), firstVersionDictionary.array());
+
+    doReturn(store).when(storeRepository).getStore(storeName);
+
+    List<Instance> instances = new LinkedList<>();
+    instances.add(new Instance("id1", "host", 1234));
+
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+
+    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
+    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
+    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+
+    //Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+
+    String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+
+    Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
+    Assert.assertNotNull(CompressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
+  }
+
+  @Test
+  public void returnsCurrentVersionWhenItIsTheOnlyOption() {
+    // When the router doesn't know of any other versions, it will return that version even if dictionary is not downloaded.
+    // If the dictionary is not downloaded by the time the records needs to be decompressed, then the router will return
+    // an error response.
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    int firstVersion = 1;
+
+    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    store.setPartitionCount(3);
+    store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+    store.addVersion(new Version(storeName, firstVersion));
+    store.setCurrentVersion(firstVersion);
+    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+
+    doReturn(store).when(storeRepository).getStore(storeName);
+
+    List<Instance> instances = new LinkedList<>();
+    instances.add(new Instance("id1", "host", 1234));
+
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+
+    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
+    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
+    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+
+    //Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+
+    String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+
+    Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
+    Assert.assertNull(CompressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
+  }
+
+  @Test
+  public void returnsPreviousVersionWhenDictionaryNotDownloaded() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    int firstVersion = 1;
+    int secondVersion = 2;
+
+    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    store.setPartitionCount(3);
+    store.addVersion(new Version(storeName, firstVersion));
+    store.setCurrentVersion(firstVersion);
+    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+
+    doReturn(store).when(storeRepository).getStore(storeName);
+
+    List<Instance> instances = new LinkedList<>();
+    instances.add(new Instance("id1", "host", 1234));
+
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+
+    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
+    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
+    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+
+    //Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+
+    String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+    String secondVersionKafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
+
+    Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
+
+    store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+    store.addVersion(new Version(storeName, secondVersion));
+    store.setCurrentVersion(secondVersion);
+    store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
+
+    Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
+
+    Assert.assertNull(CompressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
+    Assert.assertNull(CompressorFactory.getVersionSpecificCompressor(secondVersionKafkaTopic));
+  }
+
+  @Test
+  public void returnsNewVersionWhenDictionaryDownloads() {
+    ReadOnlyStoreRepository storeRepository = mock(ReadOnlyStoreRepository.class);
+    String storeName = TestUtils.getUniqueString("version-finder-test-store");
+    int firstVersion = 1;
+    int secondVersion = 2;
+
+    ByteBuffer secondVersionDictionary = ByteBuffer.allocate(1);
+
+    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    store.setPartitionCount(3);
+    store.addVersion(new Version(storeName, firstVersion));
+    store.setCurrentVersion(firstVersion);
+    store.updateVersionStatus(firstVersion, VersionStatus.ONLINE);
+
+    doReturn(store).when(storeRepository).getStore(storeName);
+
+    List<Instance> instances = new LinkedList<>();
+    instances.add(new Instance("id1", "host", 1234));
+
+    StaleVersionStats stats = mock(StaleVersionStats.class);
+    HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
+
+    OnlineInstanceFinderDelegator onlineInstanceFinder = mock(OnlineInstanceFinderDelegator.class);
+    doReturn(3).when(onlineInstanceFinder).getNumberOfPartitions(anyString());
+    doReturn(instances).when(onlineInstanceFinder).getReadyToServeInstances(anyString(), anyInt());
+
+    //Object under test
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+
+    String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
+    String secondVersionKafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
+
+    Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
+
+    store.setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT);
+    store.addVersion(new Version(storeName, secondVersion));
+    store.setCurrentVersion(secondVersion);
+    store.updateVersionStatus(secondVersion, VersionStatus.ONLINE);
+
+    CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, secondVersionKafkaTopic, secondVersionDictionary.array());
+
+    Assert.assertEquals(versionFinder.getVersion(storeName), secondVersion);
+
+    Assert.assertNull(CompressorFactory.getVersionSpecificCompressor(firstVersionKafkaTopic));
+    Assert.assertNotNull(CompressorFactory.getVersionSpecificCompressor(secondVersionKafkaTopic));
   }
 
   public static OnlineInstanceFinder getDefaultInstanceFinder() {

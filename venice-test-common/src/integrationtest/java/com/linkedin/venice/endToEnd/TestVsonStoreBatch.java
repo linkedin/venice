@@ -3,21 +3,26 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
@@ -29,8 +34,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.KEY_FIELD_PROP;
-import static com.linkedin.venice.hadoop.KafkaPushJob.VALUE_FIELD_PROP;
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
 
@@ -169,7 +173,51 @@ public class TestVsonStoreBatch {
     });
   }
 
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testZstdCompressingVsonRecord() throws Exception {
+    testBatchStore(inputDir -> {
+          Pair<Schema, Schema> schemas = writeSimpleVsonFileWithUserSchema(inputDir);
+          Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getSecond()).getField("name").schema();
+          return new Pair<>(schemas.getFirst(), selectedValueSchema);
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(KafkaPushJob.KEY_FIELD_PROP, "");
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+          properties.setProperty(COMPRESSION_DICTIONARY_SAMPLING_FACTOR, String.valueOf(500));
+          properties.setProperty(COMPRESSION_DICTIONARY_SIZE_LIMIT, String.valueOf(1024 * 1024));
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          //test single get
+          for (int i = 1; i <= 100; i ++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+
+          //test batch get
+          for (int i = 0; i < 10; i ++) {
+            Set<String> keys = new HashSet<>();
+            for (int j = 1; j <= 10; j ++) {
+              keys.add(Integer.toString(i * 10 + j));
+            }
+
+            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+            Assert.assertEquals(values.size(), 10);
+
+            for (int j = 1; j <= 10; j ++) {
+              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+            }
+          }
+        }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+  }
+
   private void testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator) throws Exception {
+    testBatchStore(inputFileWriter, extraProps, dataValidator, new UpdateStoreQueryParams());
+  }
+
+  private void testBatchStore(TestBatch.InputFileWriter inputFileWriter, Consumer<Properties> extraProps, TestBatch.H2VValidator dataValidator, UpdateStoreQueryParams storeParms) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = TestUtils.getUniqueString("store");
@@ -181,8 +229,7 @@ public class TestVsonStoreBatch {
       Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       extraProps.accept(props);
 
-      createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, false,
-          false);
+      createStoreForJob(veniceCluster.getClusterName(), schemas.getFirst().toString(), schemas.getSecond().toString(), props, storeParms);
 
       KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
       job.run();

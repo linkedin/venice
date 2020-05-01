@@ -44,4 +44,9 @@ public class ZstdWithDictCompressor extends VeniceCompressor {
   public InputStream decompress(InputStream inputStream) throws IOException {
     return new ZstdInputStream(inputStream).setDict(this.dictionary);
   }
+
+  @Override
+  public void close() throws IOException {
+    compressor.close();
+  }
 }

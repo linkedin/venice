@@ -148,6 +148,27 @@ public class TestPushUtils {
         });
   }
 
+  public static Schema writeAlternateSimpleAvroFileWithUserSchema(File parentDir, boolean fileNameWithAvroSuffix)
+      throws IOException {
+    String fileName;
+    if (fileNameWithAvroSuffix) {
+      fileName = "simple_user.avro";
+    } else {
+      fileName = "simple_user";
+    }
+    return writeAvroFile(parentDir, fileName, USER_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          String name = "alternate_test_name_";
+          for (int i = 1; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put("id", Integer.toString(i));
+            user.put("name", name + i);
+            user.put("age", i);
+            writer.append(user);
+          }
+        });
+  }
+
   public static Schema writeSimpleAvroFileWithIntToIntSchema(File parentDir, boolean fileNameWithAvroSuffix) throws IOException {
     return writeSimpleAvroFileWithIntToIntSchema(parentDir, fileNameWithAvroSuffix, 100);
   }
@@ -373,6 +394,24 @@ public class TestPushUtils {
     return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
+  public static Pair<Schema, Schema> writeSimpleVsonFileWithUserSchema(File parentDir) throws IOException {
+    String vsonKey = "\"string\"";
+    String vsonValue = "{\"name\":\"string\", \"age\":\"int32\"}";
+
+    writeVsonFile(vsonKey, vsonValue, parentDir,  "complex_user_vson-file",
+        (keySerializer, valueSerializer, writer) ->{
+          String name = "test_name_";
+          for (int i = 1; i <= 100; i++) {
+            Map<String, Object> valueRecord = new HashMap<>();
+            valueRecord.put("name", name + i);
+            valueRecord.put("age", i);
+            writer.append(new BytesWritable(keySerializer.toBytes(Integer.toString(i))),
+                new BytesWritable(valueSerializer.toBytes(valueRecord)));
+          }
+        });
+    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonKey), VsonAvroSchemaAdapter.parse(vsonValue));
+  }
+
   public static Pair<Schema, Schema> writeMultiLevelVsonFile(File parentDir) throws IOException {
     String vsonKeyStr = "\"int32\"";
     String vsonValueStr = "{\"level1\":{\"level21\":{\"field1\":\"int32\"}, \"level22\":{\"field2\":\"int32\"}}}";
@@ -514,32 +553,32 @@ public class TestPushUtils {
     String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
     String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
 
-    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, false, false, false);
+    return createStoreForJob(veniceClusterName, keySchemaStr, valueSchemaStr, props, CompressionStrategy.NO_OP, false, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceClusterWrapper,
                                                    String keySchemaStr, String valueSchema, Properties props) {
-    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, false, false);
+    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, CompressionStrategy.NO_OP, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
-                                                   String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed) {
-    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props, isCompressed, false);
+                                                   String keySchemaStr, String valueSchemaStr, Properties props, CompressionStrategy compressionStrategy) {
+    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props, compressionStrategy, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
                                                    String keySchemaStr, String valueSchemaStr, Properties props,
-                                                   boolean isCompressed, boolean chunkingEnabled) {
-    return createStoreForJob(veniceCluster.getClusterName(), keySchemaStr, valueSchemaStr, props, isCompressed, chunkingEnabled, false);
+                                                   CompressionStrategy compressionStrategy, boolean chunkingEnabled) {
+    return createStoreForJob(veniceCluster.getClusterName(), keySchemaStr, valueSchemaStr, props, compressionStrategy, chunkingEnabled, false);
   }
 
   public static ControllerClient createStoreForJob(String veniceClusterName,
                                                    String keySchemaStr, String valueSchemaStr, Properties props,
-                                                   boolean isCompressed, boolean chunkingEnabled, boolean incrementalPushEnabled) {
+                                                   CompressionStrategy compressionStrategy, boolean chunkingEnabled, boolean incrementalPushEnabled) {
 
     UpdateStoreQueryParams storeParams = new UpdateStoreQueryParams()
         .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
-        .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
+        .setCompressionStrategy(compressionStrategy)
         .setBatchGetLimit(2000)
         .setReadQuotaInCU(1000000000)
         .setChunkingEnabled(chunkingEnabled)

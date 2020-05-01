@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -12,6 +14,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
@@ -72,31 +75,64 @@ public class VeniceVersionFinder {
         metadataCurrentVersion = veniceStore.getCurrentVersion();
       }
     }
-    if (lastCurrentVersion.get(store).equals(metadataCurrentVersion)){
+    int prevVersion = lastCurrentVersion.get(store);
+    if (prevVersion == metadataCurrentVersion){
       stats.recordNotStale();
       return metadataCurrentVersion;
     }
-   //This is a new version change, verify we have online replicas for each partition
+    //This is a new version change, verify we have online replicas for each partition
     String kafkaTopic = Version.composeKafkaTopic(store, metadataCurrentVersion);
-    if (anyOfflinePartitions(kafkaTopic)) {
-      VersionStatus lastCurrentVersionStatus = veniceStore.getVersionStatus(lastCurrentVersion.get(store));
-      if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
-        String message =  "Some partitions are offline for new active version " + kafkaTopic + ", continuing to serve previous version: " + lastCurrentVersion.get(store);
+
+    boolean currentVersionDecompressorReady = isDecompressorReady(veniceStore, metadataCurrentVersion);
+    boolean prevVersionDecompressorReady = isDecompressorReady(veniceStore, prevVersion);
+
+    boolean currentVersionHasOfflinePartitions = anyOfflinePartitions(kafkaTopic);
+    if (currentVersionHasOfflinePartitions || !currentVersionDecompressorReady) {
+      String errorMessage = "Unable to serve new active version: " + kafkaTopic + ".";
+
+      if (currentVersionHasOfflinePartitions) {
+        errorMessage += " Offline partitions for new active version.";
+        stats.recordStalenessReason(StaleVersionReason.OFFLINE_PARTITIONS);
+      }
+
+      if (!currentVersionDecompressorReady) {
+        errorMessage += " Decompressor not ready for current version (Has dictionary downloaded?).";
+        stats.recordStalenessReason(StaleVersionReason.DICTIONARY_NOT_DOWNLOADED);
+      }
+
+      VersionStatus lastCurrentVersionStatus = veniceStore.getVersionStatus(prevVersion);
+      if (lastCurrentVersionStatus.equals(VersionStatus.ONLINE) && prevVersionDecompressorReady) {
+        String message = errorMessage + ". Continuing to serve previous version: " + prevVersion;
         if (!filter.isRedundantException(message)) {
           logger.warn(message);
         }
-        stats.recordStale(metadataCurrentVersion, lastCurrentVersion.get(store));
-        return lastCurrentVersion.get(store);
+        stats.recordStale(metadataCurrentVersion, prevVersion);
+        return prevVersion;
       } else {
-        logger.warn(""
-            + "Offline partitions for new active version: " + kafkaTopic
-            + ", but previous version :" + lastCurrentVersion.get(store) + " has status: " + lastCurrentVersionStatus.toString()
-            + ".  Switching to serve new active version.");
+        errorMessage += " Unable to serve previous version: " + prevVersion;
+
+        if (!lastCurrentVersionStatus.equals(VersionStatus.ONLINE)) {
+          errorMessage += " Previous version has status: " + lastCurrentVersionStatus.toString() + ".";
+        }
+
+        if (!prevVersionDecompressorReady) {
+          errorMessage += " Decompressor not ready for previous version (Has dictionary downloaded?).";
+        }
+
+        // When the router has only one available version, despite offline partitions, or dictionary not yet downloaded,
+        // etc, it will return it as the available version.
+        // If the partitions are still unavailable or the dictionary is not downloaded by the time the records needs to
+        // be decompressed, then the router will return an error response.
+        String message = errorMessage + " Switching to serve new active version.";
+        if (!filter.isRedundantException(message)) {
+          logger.warn(message);
+        }
+
         lastCurrentVersion.put(store, metadataCurrentVersion);
         stats.recordNotStale();
         return metadataCurrentVersion;
       }
-    } else { // all partitions are online
+    } else { // all partitions are online and decompressor is initialized with dictionary
       lastCurrentVersion.put(store, metadataCurrentVersion);
       stats.recordNotStale();
       return metadataCurrentVersion;
@@ -123,5 +159,12 @@ public class VeniceVersionFinder {
       }
     }
     return false;
+  }
+
+  private boolean isDecompressorReady(Store store, int versionNumber) {
+    String kafkaTopic = Version.composeKafkaTopic(store.getName(), versionNumber);
+    return store.getVersion(versionNumber)
+        .map(version -> version.getCompressionStrategy() != CompressionStrategy.ZSTD_WITH_DICT || CompressorFactory.versionSpecificCompressorExists(kafkaTopic))
+        .orElse(false);
   }
 }

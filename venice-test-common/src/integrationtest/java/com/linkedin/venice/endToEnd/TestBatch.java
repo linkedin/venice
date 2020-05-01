@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.LongBinaryOperator;
@@ -83,7 +84,7 @@ public abstract class TestBatch {
     String storeName = TestUtils.getUniqueString("store");
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
-    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, false, false);
+    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props);
 
     //Query store
     try(AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
@@ -169,6 +170,151 @@ public abstract class TestBatch {
             }
           }
     }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.GZIP));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testZstdCompressingAvroRecordCanFailWhenNoFallbackAvailable() throws Exception {
+    testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          //test single get. Can throw exception since no fallback available
+          try {
+            Assert.assertEquals(avroClient.get("1").get().toString(), "test_name_1");
+          } catch (ExecutionException e) {
+            String exceptionRegex = ".* Compressor not available for resource " + avroClient.getStoreName()
+                + "\\. Dictionary not downloaded\\.\\n";
+            Assert.assertTrue(e.getMessage().matches(exceptionRegex));
+          }
+        }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testZstdCompressingAvroRecordWhenNoFallbackAvailableWithSleep() throws Exception {
+    testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+          properties.setProperty(ZSTD_COMPRESSION_LEVEL, String.valueOf(17));
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          // Sleeping to wait for dictionary download since there is no previous version to fallback to.
+          Utils.sleep(1000);
+          //test single get
+          for (int i = 1; i <= 100; i ++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+
+          //test batch get
+          for (int i = 0; i < 10; i ++) {
+            Set<String> keys = new HashSet<>();
+            for (int j = 1; j <= 10; j ++) {
+              keys.add(Integer.toString(i * 10 + j));
+            }
+
+            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+            Assert.assertEquals(values.size(), 10);
+
+            for (int j = 1; j <= 10; j ++) {
+              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+            }
+          }
+        }, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT));
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testZstdCompressingAvroRecordWhenFallbackAvailable() throws Exception {
+    // Running a batch push first.
+    String storeName = testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          //test single get
+          for (int i = 1; i <= 100; i ++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+          }
+
+          //test batch get
+          for (int i = 0; i < 10; i ++) {
+            Set<String> keys = new HashSet<>();
+            for (int j = 1; j <= 10; j ++) {
+              keys.add(Integer.toString(i * 10 + j));
+            }
+
+            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+            Assert.assertEquals(values.size(), 10);
+
+            for (int j = 1; j <= 10; j ++) {
+              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+            }
+          }
+        });
+
+    // Then, enabling dictionary compression. After some time has passed, dictionary would have been downloaded and the new version should be served.
+    testBatchStore(
+        inputDir -> {
+          Schema recordSchema = writeAlternateSimpleAvroFileWithUserSchema(inputDir, false);
+          return new Pair<>(recordSchema.getField("id").schema(),
+              recordSchema.getField("name").schema());
+        },
+        properties -> {
+          /**
+           * Here will use {@link VENICE_DISCOVER_URL_PROP} instead.
+           */
+          properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
+          properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
+        },
+        (avroClient, vsonClient, metricsRepository) -> {
+          // Sleeping to allow dictionary download before version switch.
+          Utils.sleep(1000);
+          //test single get
+          for (int i = 1; i <= 100; i ++) {
+            Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "alternate_test_name_" + i);
+          }
+
+          //test batch get
+          for (int i = 0; i < 10; i ++) {
+            Set<String> keys = new HashSet<>();
+            for (int j = 1; j <= 10; j++) {
+              keys.add(Integer.toString(i * 10 + j));
+            }
+
+            Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+            Assert.assertEquals(values.size(), 10);
+
+            for (int j = 1; j <= 10; j++) {
+              Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "alternate_test_name_" + ((i * 10) + j));
+            }
+          }
+        }, storeName, new UpdateStoreQueryParams().setCompressionStrategy(CompressionStrategy.ZSTD_WITH_DICT), false);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

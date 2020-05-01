@@ -1,11 +1,12 @@
 package com.linkedin.venice.compression;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 
 
-public abstract class VeniceCompressor {
+public abstract class VeniceCompressor implements Closeable {
   private CompressionStrategy compressionStrategy;
 
   protected VeniceCompressor(CompressionStrategy compressionStrategy) {
@@ -23,4 +24,8 @@ public abstract class VeniceCompressor {
   }
 
   public abstract InputStream decompress(InputStream inputStream) throws IOException;
+
+  public void close() throws IOException {
+    return;
+  }
 }

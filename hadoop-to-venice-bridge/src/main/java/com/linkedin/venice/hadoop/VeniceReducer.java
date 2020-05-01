@@ -280,7 +280,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       if (compressionDictionary != null && compressionDictionary.limit() > 0) {
         String topicName = props.getString(TOPIC_PROP);
         this.compressor =
-            CompressorFactory.getVersionSpecificCompressor(CompressionStrategy.ZSTD_WITH_DICT, topicName, compressionDictionary.array(), compressionLevel);
+            CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, topicName, compressionDictionary.array(), compressionLevel);
       }
     } else {
       this.compressor =

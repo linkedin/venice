@@ -119,8 +119,7 @@ public class TestSuperSetSchemaRegistration {
       Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
       props.setProperty(VALUE_FIELD_PROP, "value");
 
-      createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props, false,
-          false);
+      createStoreForJob(veniceCluster, keySchema.toString(), valueSchema.toString(), props);
 
       // set up superset schema gen configs
       UpdateStoreQueryParams params = new UpdateStoreQueryParams();
