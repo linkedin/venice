@@ -69,7 +69,7 @@ public class AggVersionedStorageIngestionStats extends AbstractVeniceAggVersione
       } else {
         // Hybrid store and store ingestion is initialized.
         long rtTopicOffsetLag = ingestionTask.getRealTimeBufferOffsetLag();
-        rtTopicOffsetLagOverThreshold = Math.min(0, rtTopicOffsetLag - ingestionTask.getOffsetLagThreshold());
+        rtTopicOffsetLagOverThreshold = Math.max(0, rtTopicOffsetLag - ingestionTask.getOffsetLagThreshold());
         return rtTopicOffsetLag;
       }
     }
