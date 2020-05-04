@@ -43,6 +43,8 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
    */
   void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
 
+  void refreshRoutingDataForResource(String kafkaTopic);
+
   /**
    * Get the map contains all live instances which key is instance Id and value is the instance object.
    */
