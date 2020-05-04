@@ -684,6 +684,8 @@ public class Store {
       version.setChunkingEnabled(chunkingEnabled);
 
       version.setPartitionerConfig(partitionerConfig);
+
+      version.setNativeReplicationEnabled(nativeReplicationEnabled);
     }
 
     versions.add(index, version);
@@ -866,6 +868,7 @@ public class Store {
     result = 31 * result + (readComputationEnabled ? 1 : 0);
     result = 31 * result + bootstrapToOnlineTimeoutInHours;
     result = 31 * result + (leaderFollowerModelEnabled ? 1: 0);
+    result = 31 * result + (nativeReplicationEnabled ? 1 : 0);
     result = 31 * result + backupStrategy.hashCode();
     result = 31 * result + (schemaAutoRegisteFromPushJobEnabled ? 1 : 0);
     result = 31 * result + (superSetSchemaAutoGenerationForReadComputeEnabled ? 1 : 0);
@@ -912,6 +915,7 @@ public class Store {
     if (readComputationEnabled != store.readComputationEnabled) return false;
     if (bootstrapToOnlineTimeoutInHours != store.bootstrapToOnlineTimeoutInHours) return false;
     if (leaderFollowerModelEnabled != store.leaderFollowerModelEnabled) return false;
+    if (nativeReplicationEnabled != store.nativeReplicationEnabled) return false;
     if (backupStrategy != store.backupStrategy) return false;
     if (schemaAutoRegisteFromPushJobEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
     if (superSetSchemaAutoGenerationForReadComputeEnabled != store.schemaAutoRegisteFromPushJobEnabled) return false;
@@ -959,6 +963,7 @@ public class Store {
     clonedStore.setReadComputationEnabled(readComputationEnabled);
     clonedStore.setBootstrapToOnlineTimeoutInHours(bootstrapToOnlineTimeoutInHours);
     clonedStore.setLeaderFollowerModelEnabled(leaderFollowerModelEnabled);
+    clonedStore.setNativeReplicationEnabled(nativeReplicationEnabled);
     clonedStore.setBackupStrategy(backupStrategy);
     clonedStore.setSchemaAutoRegisterFromPushJobEnabled(schemaAutoRegisteFromPushJobEnabled);
     clonedStore.setSuperSetSchemaAutoGenerationForReadComputeEnabled(superSetSchemaAutoGenerationForReadComputeEnabled);

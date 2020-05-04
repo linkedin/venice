@@ -518,7 +518,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-      int numberOfPartitions, Version.PushType pushType) {
+      int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
     throw new VeniceUnsupportedOperationException("addVersionAndStartIngestion");
   }
 
@@ -773,11 +773,11 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
         : veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
-            sendStartOfPush, sorted, pushType, compressionDictionary);
+            sendStartOfPush, sorted, pushType, compressionDictionary, null);
     if (!pushType.isIncremental()) {
       acquireLock(clusterName, storeName);
       try {
-        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion.getNumber(), numberOfPartitions,
+        sendAddVersionAdminMessage(clusterName, storeName, pushJobId, newVersion, numberOfPartitions,
             pushType);
       } finally {
         releaseLock(clusterName);
@@ -788,15 +788,19 @@ public class VeniceParentHelixAdmin implements Admin {
     return newVersion;
   }
 
-  protected void sendAddVersionAdminMessage(String clusterName, String storeName, String pushJobId, int versionNum,
+  protected void sendAddVersionAdminMessage(String clusterName, String storeName, String pushJobId, Version version,
       int numberOfPartitions, Version.PushType pushType) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
     addVersion.pushJobId = pushJobId;
-    addVersion.versionNum = versionNum;
+    addVersion.versionNum = version.getNumber();
     addVersion.numberOfPartitions = numberOfPartitions;
     addVersion.pushType = pushType.getValue();
+    // Check whether native replication is enabled
+    if (version.isNativeReplicationEnabled()) {
+      addVersion.pushStreamSourceAddress = version.getPushStreamSourceAddress();
+    }
 
     AdminOperation message = new AdminOperation();
     message.operationType = AdminMessageType.ADD_VERSION.getValue();

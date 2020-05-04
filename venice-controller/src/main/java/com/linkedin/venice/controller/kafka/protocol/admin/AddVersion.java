@@ -7,7 +7,7 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class AddVersion extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AddVersion\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"versionNum\",\"type\":\"int\"},{\"name\":\"numberOfPartitions\",\"type\":\"int\"},{\"name\":\"pushType\",\"type\":\"int\",\"doc\":\"The push type of the new version, 0 => BATCH, 1 => STREAM_REPROCESSING. Previous add version messages will default to BATCH and this is a safe because they were created when BATCH was the only version type\",\"default\":0}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AddVersion\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"pushJobId\",\"type\":\"string\"},{\"name\":\"versionNum\",\"type\":\"int\"},{\"name\":\"numberOfPartitions\",\"type\":\"int\"},{\"name\":\"pushType\",\"type\":\"int\",\"doc\":\"The push type of the new version, 0 => BATCH, 1 => STREAM_REPROCESSING. Previous add version messages will default to BATCH and this is a safe because they were created when BATCH was the only version type\",\"default\":0},{\"name\":\"pushStreamSourceAddress\",\"type\":[\"null\",\"string\"],\"default\":null}]}");
   public java.lang.CharSequence clusterName;
   public java.lang.CharSequence storeName;
   public java.lang.CharSequence pushJobId;
@@ -15,6 +15,7 @@ public class AddVersion extends org.apache.avro.specific.SpecificRecordBase impl
   public int numberOfPartitions;
   /** The push type of the new version, 0 => BATCH, 1 => STREAM_REPROCESSING. Previous add version messages will default to BATCH and this is a safe because they were created when BATCH was the only version type */
   public int pushType;
+  public java.lang.CharSequence pushStreamSourceAddress;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -25,6 +26,7 @@ public class AddVersion extends org.apache.avro.specific.SpecificRecordBase impl
     case 3: return versionNum;
     case 4: return numberOfPartitions;
     case 5: return pushType;
+    case 6: return pushStreamSourceAddress;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -38,6 +40,7 @@ public class AddVersion extends org.apache.avro.specific.SpecificRecordBase impl
     case 3: versionNum = (java.lang.Integer)value$; break;
     case 4: numberOfPartitions = (java.lang.Integer)value$; break;
     case 5: pushType = (java.lang.Integer)value$; break;
+    case 6: pushStreamSourceAddress = (java.lang.CharSequence)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

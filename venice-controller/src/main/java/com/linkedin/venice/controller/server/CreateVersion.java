@@ -214,13 +214,17 @@ public class CreateVersion extends AbstractRoute {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, request.queryParams(PUSH_TYPE) + " is an invalid "
               + PUSH_TYPE, parseException);
         }
+        String remoteKafkaBootstrapServers = null;
+        if (request.queryParams().contains(REMOTE_KAFKA_BOOTSTRAP_SERVERS)) {
+          remoteKafkaBootstrapServers = request.queryParams(REMOTE_KAFKA_BOOTSTRAP_SERVERS);
+        }
 
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
         if (!admin.getTopicManager().containsTopic(topicName)) {
           throw new VeniceException("Expected topic " + topicName + " cannot be found. Unable to add version and start "
           + "ingestion for store " + storeName + " and version " + versionNumber + " in cluster " + clusterName);
         }
-        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType);
+        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, partitionCount, pushType, remoteKafkaBootstrapServers);
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
         responseObject.setVersion(versionNumber);

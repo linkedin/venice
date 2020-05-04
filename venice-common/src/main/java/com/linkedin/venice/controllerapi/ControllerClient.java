@@ -154,13 +154,16 @@ public class ControllerClient implements Closeable {
    * @return
    */
   public VersionResponse addVersionAndStartIngestion(String storeName, String pushJobId, int version,
-      int partitionCount, Version.PushType pushType) {
+      int partitionCount, Version.PushType pushType, String remoteKafkaBootstrapServers) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(PUSH_JOB_ID, pushJobId)
         .add(VERSION, version)
         .add(PARTITION_COUNT, partitionCount)
         .add(PUSH_TYPE, pushType.toString());
+    if (remoteKafkaBootstrapServers != null) {
+      params.add(REMOTE_KAFKA_BOOTSTRAP_SERVERS, remoteKafkaBootstrapServers);
+    }
     return request(ControllerRoute.ADD_VERSION, params, VersionResponse.class);
   }
 

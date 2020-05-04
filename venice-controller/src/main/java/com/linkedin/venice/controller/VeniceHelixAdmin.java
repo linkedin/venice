@@ -139,7 +139,7 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.meta.VersionStatus.*;
 /**
- * Helix Admin based on 0.6.6.4 APIs.
+ * Helix Admin based on 0.8.4.215 APIs.
  *
  * <p>
  * After using controller as service mode. There are two levels of cluster and controllers. Each venice controller will
@@ -807,8 +807,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         for (Version version : sourceOnlineVersions) {
             try {
                 int partitionCount = topicManager.getPartitions(version.kafkaTopicName()).size();
+                /**
+                 * Remote Kafka is set to null for store migration because version topics at source fabric might be deleted
+                 * already; migrated stores should bootstrap by consuming the version topics in its local fabric.
+                 */
                 addVersionAndStartIngestion(destClusterName, storeName, version.getPushJobId(), version.getNumber(),
-                    partitionCount, version.getPushType());
+                    partitionCount, version.getPushType(), null);
             } catch (Exception e) {
                 logger.warn("An exception was thrown when attempting to add version and start ingestion for store "
                 + storeName + " and version " + version.getNumber(), e);
@@ -971,7 +975,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void addVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
-        Version.PushType pushType) {
+        Version.PushType pushType, String remoteKafkaBootstrapServers) {
         Store store = getStore(clusterName, storeName);
         if (null == store) {
             throw new VeniceNoStoreException(storeName, clusterName);
@@ -982,7 +986,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " for store " + storeName + " in cluster " + clusterName);
         } else {
             addVersion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
-                getReplicationFactor(clusterName, storeName), true, false, false, true, pushType, null);
+                getReplicationFactor(clusterName, storeName), true, false, false,
+                true, pushType, null, remoteKafkaBootstrapServers);
             if (store.isMigrating()) {
                 try {
                     StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
@@ -995,7 +1000,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                             ControllerClient sourceClusterControllerClient =
                                 new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false), sslFactory);
                             VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
-                                pushJobId, versionNumber, numberOfPartitions, pushType);
+                                pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
                             if (response.isError()) {
                                 logger.warn("Replicate add version endpoint call to source cluster: " + sourceCluster
                                     + " failed for store " + storeName + " and version " + versionNumber + " Error: "
@@ -1006,7 +1011,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         ControllerClient destClusterControllerClient =
                             new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false), sslFactory);
                         VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
-                            pushJobId, versionNumber, numberOfPartitions, pushType);
+                            pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
                         if (response.isError()) {
                             logger.warn("Replicate add version endpoint call to destination cluster: " + destinationCluster
                                 + " failed for store " + storeName + " and version " + versionNumber + " Error: "
@@ -1026,7 +1031,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * without starting ingestion.
      */
     public Version addVersionOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
-        int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType, String compressionDictionary) {
+        int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
+        String compressionDictionary, String remoteKafkaBootstrapServers) {
         Store store = getStore(clusterName, storeName);
         if (store == null) {
             throwStoreDoesNotExist(clusterName, storeName);
@@ -1034,7 +1040,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
         return existingVersionToUse.orElseGet(
             () -> addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                false, sendStartOfPush, sorted, false, pushType, compressionDictionary));
+                false, sendStartOfPush, sorted, false, pushType,
+                compressionDictionary, remoteKafkaBootstrapServers));
     }
 
     /**
@@ -1045,7 +1052,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     private Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, int replicationFactor, boolean startIngestion, boolean sendStartOfPush,
-        boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary) {
+        boolean sorted, boolean useFastKafkaOperationTimeout, Version.PushType pushType, String compressionDictionary,
+        String remoteKafkaBootstrapServers) {
         if (isClusterInMaintenanceMode(clusterName)) {
             throw new HelixClusterMaintenanceModeException(clusterName);
         }
@@ -1127,6 +1135,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                       store.setBufferReplayForHybridForVersion(version.getNumber(), false);
                       logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
                           version.getNumber() + " in cluster: " + clusterName);
+                    }
+                    // Check whether native replication is enabled
+                    if (version.isNativeReplicationEnabled()) {
+                        if (remoteKafkaBootstrapServers != null) {
+                            /**
+                             * AddVersion is invoked by {@link com.linkedin.venice.controller.kafka.consumer.AdminExecutionTask}
+                             * which is processing an AddVersion message that contains remote Kafka bootstrap servers url.
+                             */
+                            version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+                        } else {
+                            /**
+                             * AddVersion is invoked by directly querying controllers; the fabric where the controllers
+                             * are located at is the source fabric.
+                             */
+                            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+                        }
                     }
                     repository.updateStore(store);
                     logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
@@ -1235,7 +1259,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         return pushType.isIncremental() ? getIncrementalPushVersion(clusterName, storeName)
             : addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
-                true, sendStartOfPush, sorted, false, pushType, compressionDictionary);
+                true, sendStartOfPush, sorted, false, pushType, compressionDictionary, null);
     }
 
     /**
@@ -2376,7 +2400,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
 
             if(nativeReplicationEnabled.isPresent()) {
-                if(!originalStore.isLeaderFollowerModelEnabled() && nativeReplicationEnabled.get()) {
+                /**
+                 * Leader/follower mode can be enabled/disabled within the same command.
+                 */
+                boolean isLeaderFollowerModelEnabled = getStore(clusterName, storeName).isLeaderFollowerModelEnabled();
+                if(!isLeaderFollowerModelEnabled && nativeReplicationEnabled.get()) {
                     throw new VeniceException("Native Replication cannot be enabled on a store which does not have leader/follower mode enabled!");
                 }
                 setNativeReplicationEnabled(clusterName, storeName, nativeReplicationEnabled.get());
