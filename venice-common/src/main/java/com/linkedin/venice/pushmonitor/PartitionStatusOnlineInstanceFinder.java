@@ -70,6 +70,9 @@ public class PartitionStatusOnlineInstanceFinder
     if (!routingDataRepository.containsKafkaTopic(kafkaTopic)) {
       logger.warn("Instance finder received partition status notification for topic unknown to RoutingDataRepository." +
           " Topic: " + kafkaTopic + ", Partition id: " + partitionStatus.getPartitionId());
+      // ResourceAssignment and this class maintain their own state, and so things can get out of order.  This forces the
+      // resourceAssignment path to reconcile
+      routingDataRepository.refreshRoutingDataForResource(kafkaTopic);
     }
     offlinePushStatus.setPartitionStatus(partitionStatus, false);
     if (!offlinePushStatus.getCurrentStatus().isTerminal()) {
@@ -92,7 +95,8 @@ public class PartitionStatusOnlineInstanceFinder
   @Override
   public List<Instance> getReadyToServeInstances(PartitionAssignment partitionAssignment, int partitionId) {
     String kafkaTopic = partitionAssignment.getTopic();
-    OfflinePushStatus offlinePushStatus = topicToResourceStatus.get(kafkaTopic);
+    // Get the listing, but if we don't have it, try and refresh the information from zk
+    OfflinePushStatus offlinePushStatus = topicToResourceStatus.computeIfAbsent(kafkaTopic, k -> getPushStatusFromZk(kafkaTopic));
     if (offlinePushStatus == null || partitionId >= partitionAssignment.getExpectedNumberOfPartitions()) {
       // have not received partition info related to this topic. Return empty list
       logger.warn("Unknown partition id, partitionId=" + partitionId +

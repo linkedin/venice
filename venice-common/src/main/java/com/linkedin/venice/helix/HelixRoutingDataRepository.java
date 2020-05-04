@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
@@ -19,6 +20,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
+import org.apache.helix.HelixProperty;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
@@ -192,6 +194,50 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
     @Override
     public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
         listenerManager.unsubscribe(kafkaTopic, listener);
+    }
+
+    public static PartitionAssignment convertExternalViewToPartitionAssignment(ExternalView externalView) {
+        PartitionAssignment assignment = new PartitionAssignment(externalView.getResourceName(), externalView.getPartitionSet().size());
+        // From the external view we have a partition to instance:state mapping.  We need to invert this mapping
+        // to be partition to state:instance.
+        for(String partition : externalView.getPartitionSet()) {
+            Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
+            Map<String, String> instanceToStateMap = externalView.getStateMap(partition);
+            for(String instance : instanceToStateMap.keySet()) {
+                String state = instanceToStateMap.get(instance);
+                // TODO replace with lambda
+                if (!stateToInstanceMap.containsKey(state)) {
+                    stateToInstanceMap.put(state, new ArrayList<>());
+                }
+                stateToInstanceMap.get(state).add(Instance.fromNodeId(instance));
+            }
+            assignment.addPartition(new Partition(HelixUtils.getPartitionId(partition), stateToInstanceMap));
+        }
+        return assignment;
+    }
+
+    @Override
+    public void refreshRoutingDataForResource(String resource) {
+        // the resourceName is synonymous with the version kafka topic name.  We use it to read the external view from zk
+        ExternalView resourceExternalView = manager.getClusterManagmentTool().getResourceExternalView(manager.getClusterName(), resource);
+        if(resourceExternalView == null) {
+            // We'll have to assume this resource is deleted and move on
+            logger.warn(String.format("Could not refresh routing data for resource %s as no external view was reachable", resource));
+            return;
+        }
+        // TODO: Figure out notification implications of this call.  One concern is between this and the on data change
+        // we end up going backwards
+        synchronized(resourceAssignment) {
+            resourceAssignment.setPartitionAssignment(resource, convertExternalViewToPartitionAssignment(resourceExternalView));
+        }
+        // Notify listeners of this routing update.
+        listenerManager.trigger(resource, new Function<RoutingDataChangedListener, Void>() {
+            @Override
+            public Void apply(RoutingDataChangedListener listener) {
+                listener.onRoutingDataChanged(resourceAssignment.getPartitionAssignment(resource));
+                return null;
+            }
+        });
     }
 
     @Override

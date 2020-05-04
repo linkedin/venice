@@ -10,7 +10,6 @@ import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-
 /**
  * Class defines the version of Venice store.
  */
@@ -297,7 +296,8 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
-    if (!storeName.equals(version.storeName)) {
+    // NPE proof comparison
+    if (!Objects.equals(storeName, version.storeName)) {
       return false;
     }
 
