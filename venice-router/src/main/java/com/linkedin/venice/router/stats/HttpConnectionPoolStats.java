@@ -93,6 +93,15 @@ public class HttpConnectionPoolStats extends AbstractVeniceStats {
     }
   }
 
+  public void removeConnectionPoolManager(PoolingNHttpClientConnectionManager connectionManager) {
+    rwLock.writeLock().lock();
+    try {
+      connectionManagerList.remove(connectionManager);
+    } finally {
+      rwLock.writeLock().unlock();
+    }
+  }
+
   /**
    * This function is used to gradually populate per-route stats.
    * @param hostName

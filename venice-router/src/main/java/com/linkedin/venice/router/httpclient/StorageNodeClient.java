@@ -37,4 +37,8 @@ public interface StorageNodeClient extends Closeable {
       Consumer<Throwable> failedCallBack,
       BooleanSupplier cancelledCallBack,
       long queryStartTimeInNS) throws RouterException;
+
+  default boolean isInstanceReadyToServe(String instanceId)  {
+    return true;
+  }
 }

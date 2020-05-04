@@ -95,6 +95,9 @@ public class VeniceRouterConfig {
   private long httpasyncclientConnectionWarmingSleepIntervalMs;
   private int dictionaryRetrievalTimeMs;
   private int routerDictionaryProcessingThreads;
+  private int httpasyncclientConnectionWarmingLowWaterMark;
+  private int httpasyncclientConnectionWarmingExecutorThreadNum;
+  private long httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -216,9 +219,11 @@ public class VeniceRouterConfig {
     fullPendingQueueServerOORMs = props.getLong(ROUTER_FULL_PENDING_QUEUE_SERVER_OOR_MS, TimeUnit.SECONDS.toMillis(0)); // No OOR
     httpasyncclientConnectionWarmingEnabled = props.getBoolean(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_ENABLED, false);
     httpasyncclientConnectionWarmingSleepIntervalMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS, 100); // 100ms
-
     dictionaryRetrievalTimeMs = (int)props.getLong(ROUTER_DICTIONARY_RETRIEVAL_TIME_MS, TimeUnit.SECONDS.toMillis(30)); // 30 seconds
     routerDictionaryProcessingThreads = props.getInt(ROUTER_DICTIONARY_PROCESSING_THREADS, 2);
+    httpasyncclientConnectionWarmingLowWaterMark = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
+    httpasyncclientConnectionWarmingExecutorThreadNum = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
+    httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2 mins
   }
 
   public String getClusterName() {
@@ -515,6 +520,17 @@ public class VeniceRouterConfig {
 
   public int getRouterDictionaryProcessingThreads() {
     return routerDictionaryProcessingThreads;
+  }
+  public int getHttpasyncclientConnectionWarmingLowWaterMark() {
+    return httpasyncclientConnectionWarmingLowWaterMark;
+  }
+
+  public int getHttpasyncclientConnectionWarmingExecutorThreadNum() {
+    return httpasyncclientConnectionWarmingExecutorThreadNum;
+  }
+
+  public long getHttpasyncclientConnectionWarmingNewInstanceDelayJoinMs() {
+    return httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
   }
 
   /**

@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
@@ -218,6 +219,11 @@ public class TestHostFinder {
     return mockSet;
   }
 
+  private StorageNodeClient mockStorageNodeClient(boolean ret) {
+    StorageNodeClient client =  mock(StorageNodeClient.class);
+    doReturn(ret).when(client).isInstanceReadyToServe(anyString());
+    return client;
+  }
   /**
    * VeniceHostHealthTest extends the actual VeniceHostHealth;
    * the purpose of this subclass is to override the unhealthy host
@@ -226,7 +232,7 @@ public class TestHostFinder {
    */
   private class VeniceHostHealthTest extends VeniceHostHealth {
     public VeniceHostHealthTest(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats) {
-      super(liveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+      super(liveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
     }
 
     /**

@@ -4,22 +4,27 @@ import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceChangedListener;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.DnsLookupStats;
 import com.linkedin.venice.router.stats.HttpConnectionPoolStats;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,6 +44,7 @@ import org.apache.http.nio.protocol.BasicAsyncRequestProducer;
 import org.apache.http.nio.protocol.BasicAsyncResponseConsumer;
 import org.apache.http.nio.protocol.HttpAsyncRequestProducer;
 import org.apache.http.nio.protocol.HttpAsyncResponseConsumer;
+import org.apache.http.pool.PoolStats;
 import org.apache.http.protocol.HttpContext;
 import org.apache.log4j.Logger;
 
@@ -47,16 +53,13 @@ import static com.linkedin.venice.HttpConstants.*;
 
 public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private static final Logger logger = Logger.getLogger(ApacheHttpAsyncStorageNodeClient.class);
-  private static final long CONNECTION_WARMING_WAIT_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(1); // 1 mins.
-  private static final long CONNECTION_WARMING_TOTAL_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5); // 5 mins
-
   private final String scheme;
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
   private final int clientPoolSize;
   private final ArrayList<CloseableHttpAsyncClient> clientPool;
   private final Random random = new Random();
-  private final VeniceConcurrentHashMap<String, CloseableHttpAsyncClient> hostToClientMap = new VeniceConcurrentHashMap<>();
+  private final Map<String, HttpClientUtils.ClosableHttpAsyncClientWithConnManager> nodeIdToClientMap = new VeniceConcurrentHashMap<>();
   private final HttpConnectionPoolStats poolStats;
   private final LiveInstanceMonitor liveInstanceMonitor;
   private final VeniceRouterConfig routerConfig;
@@ -69,6 +72,8 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
   private int connectionTimeout;
   private Optional<SSLEngineComponentFactory> sslFactory;
   private Optional<CachedDnsResolver> dnsResolver = Optional.empty();
+
+  private ClientConnectionWarmingService clientConnectionWarmingService = null;
 
   public ApacheHttpAsyncStorageNodeClient(VeniceRouterConfig config, Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository,
@@ -112,7 +117,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       maxConnPerRoutePerClient = (int)Math.ceil(((double)maxConnPerRoute) / clientPoolSize);
 
       for (int i = 0; i < clientPoolSize; ++i) {
-        clientPool.add(createAndStartNewClient());
+        clientPool.add(createAndStartNewClient().getClient());
       }
     }
   }
@@ -125,37 +130,342 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       totalMaxConnPerClient = routerConfig.getMaxOutgoingConnPerRoute(); // Using the same maxConnPerRoute, may need to tune later.
       // TODO: clean up clients when host dies.
       Set<Instance> instanceSet = liveInstanceMonitor.getAllLiveInstances();
-      int instanceNum = instanceSet.size();
+      instanceSet.forEach(host -> nodeIdToClientMap.put(host.getNodeId(),
+          createAndStartNewClient()));
       if (routerConfig.isHttpasyncclientConnectionWarmingEnabled()) {
-        logger.info("Start creating clients and connection warming for " + instanceNum + " instances");
-        ExecutorService executorService = Executors.newFixedThreadPool(instanceNum, new DaemonThreadFactory("HttpAsyncClient_ConnectionWarming_"));
-        instanceSet.forEach(host -> executorService.submit( () -> {
-              hostToClientMap.put(host.getHost(),
-                  createAndWarmupNewClient(routerConfig.getHttpasyncclientConnectionWarmingSleepIntervalMs(), host));
-            }));
-        executorService.shutdown();
-        try {
-          executorService.awaitTermination(CONNECTION_WARMING_TOTAL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (Exception e) {
-          throw new VeniceException("Failed to start HttpAsyncClient properly", e);
-        }
-        logger.info("Finished creating clients and connection warming for " + instanceNum + " instances");
+        logger.info("Connection warming is enabled in HttpAsyncClient");
+        clientConnectionWarmingService = new ClientConnectionWarmingService();
+        clientConnectionWarmingService.start();
       } else {
         logger.info("Connection warming is disabled in HttpAsyncClient");
-        instanceSet.forEach(host -> hostToClientMap.put(host.getHost(),
-                createAndStartNewClient()));
       }
     }
   }
 
   @Override
+  public boolean isInstanceReadyToServe(String instanceId) {
+    return null == clientConnectionWarmingService || clientConnectionWarmingService.isInstanceReadyToServe(instanceId);
+  }
+
+  @Override
   public void close() {
     if (perNodeClientEnabled) {
-      hostToClientMap.forEach((k,v) ->  IOUtils.closeQuietly(v));
+      nodeIdToClientMap.forEach((k,v) ->  IOUtils.closeQuietly(v.getClient()));
+      if (clientConnectionWarmingService != null) {
+        try {
+          clientConnectionWarmingService.stop();
+        } catch (Exception e) {
+          logger.error("Received exception when stopping ClientConnectionWarmingService", e);
+        }
+      }
     } else {
       clientPool.stream().forEach(client -> IOUtils.closeQuietly(client));
     }
   }
+
+  /**
+   * {@link ClientConnectionWarmingService} will take care of 3 different cases:
+   * 1. Router restart, and it will warm up the clients to all the live instances in {@link #startInner()};
+   * 2. Storage Node restart, and it will monitor the live instance change and warm up a new client for the new instances;
+   * 3. Connection pool maintenance. A {@link #clientConnHealthinessScannerThread} will periodically scan all the
+   *    existing clients and if the number of available connections of some client is below {@link #connectionWarmingLowWaterMark},
+   *    it will try to create a new client and warm it up to {@link #maxConnPerRoutePerClient} connections and replace it;
+   *
+   * More details:
+   * For #1, it is quite clear, and if the connection warming of the clients to all the live instances couldn't be accomplished
+   * within {@link #CONNECTION_WARMING_TOTAL_TIMEOUT_MS}, it will throw an exception to let Router fail fast.
+   *
+   * For #2, Router will delay the new instance until the timeout threshold: {@link #newInstanceDelayJoinMs} or the connection
+   * warming is done before the timeout. Since connection warming is a best-effort, we would like to prioritize the availability.
+   *
+   * For #3, Whenever the {@link #clientConnHealthinessScannerThread} finds a candidate, it will try to create a new client
+   * and warm it up and swap with the old client, and the old client will be gracefully shutdown by the pre-defined delay:
+   * {@link #CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS}. So far, we haven't found a way to do connection warming with the existing
+   * {@link CloseableHttpAsyncClient} reliably without affecting the live traffic.
+   */
+  private class ClientConnectionWarmingService extends AbstractVeniceService {
+    private static final String CONNECTION_WARMING_THREAD_PREFIX = "HttpAsyncClient_ConnectionWarming_";
+
+    private final long CONNECTION_WARMING_WAIT_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(1); // 1 mins.
+    private final long CONNECTION_WARMING_TOTAL_TIMEOUT_MS = TimeUnit.MINUTES.toMillis(5); // 5 mins
+    private final long CONNECTION_WARMING_SCANNER_SLEEP_INTERVAL_IN_MS = TimeUnit.MINUTES.toMillis(5); // 5 mins
+    private final long CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS = TimeUnit.MINUTES.toMillis(3);  // 3 mins
+
+    private final Set<String> ongoingWarmUpClientSet = new HashSet<>();
+    private final Map<CloseableHttpAsyncClient, Long> clientToCloseTimestampMap = new VeniceConcurrentHashMap<>();
+    private final ExecutorService clientConnWarmingExecutor;
+    private final int connectionWarmingLowWaterMark;
+    private final long newInstanceDelayJoinMs;
+    private final Thread clientConnHealthinessScannerThread;
+    /**
+     * This map contains the mapping between the new added instances detected by {@link com.linkedin.venice.helix.HelixLiveInstanceMonitor}
+     * and the force join timestamp (if the connection warming takes longer time than expected), Router will force
+     * the new instance join the online traffic serving.
+     */
+    private final Map<String, Long> nodeIdToForceJoinTimeMap = new VeniceConcurrentHashMap<>();
+
+    private boolean clientConnHealthinessScannerStopped = false;
+
+    public ClientConnectionWarmingService() {
+      // Initialize the ongoing client warming executor
+      this.clientConnWarmingExecutor = Executors.newFixedThreadPool(routerConfig.getHttpasyncclientConnectionWarmingExecutorThreadNum(),
+          new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
+      this.connectionWarmingLowWaterMark = routerConfig.getHttpasyncclientConnectionWarmingLowWaterMark();
+      if (connectionWarmingLowWaterMark > maxConnPerRoutePerClient) {
+        throw new VeniceException("Connection warming low water mark: " + connectionWarmingLowWaterMark +
+            " shouldn't be higher than the max connection per client: " + maxConnPerRoutePerClient);
+      }
+      this.newInstanceDelayJoinMs = routerConfig.getHttpasyncclientConnectionWarmingNewInstanceDelayJoinMs();
+      this.clientConnHealthinessScannerThread = new Thread(new ClientConnHealthinessScanner(), CONNECTION_WARMING_THREAD_PREFIX + "scanner");
+    }
+
+    public boolean isInstanceReadyToServe(String instanceId) {
+      Long forceJoinTimestamp =  nodeIdToForceJoinTimeMap.get(instanceId);
+      if (null == forceJoinTimestamp) {
+        return true;
+      }
+      if  (forceJoinTimestamp < System.currentTimeMillis()) {
+        nodeIdToForceJoinTimeMap.remove(instanceId);
+        return true;
+      }
+      return false;
+    }
+
+    @Override
+    public boolean startInner() throws Exception {
+      int instanceNum = nodeIdToClientMap.size();
+      logger.info("Start connection warming for " + instanceNum + " instances");
+      /**
+       * This is for one-time use during start, and we would like to warm up the connections to all the instances
+       * as fast as possible.
+       */
+      ExecutorService clientConnectionWarmingExecutorDuringStart = Executors.newFixedThreadPool(instanceNum, new DaemonThreadFactory(CONNECTION_WARMING_THREAD_PREFIX));
+
+      List<CompletableFuture<?>> futureList = new ArrayList<>(instanceNum);
+      nodeIdToClientMap.forEach( (nodeId, clientWithConnManager) -> {
+        futureList.add(CompletableFuture.runAsync(() -> {
+          Instance instance = Instance.fromNodeId(nodeId);
+          String instanceUrl = instance.getUrl(sslFactory.isPresent());
+          logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+          warmUpConnection(clientWithConnManager.getClient(), instanceUrl, maxConnPerRoutePerClient,
+              routerConfig.getHttpasyncclientConnectionWarmingSleepIntervalMs());
+          logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+        }, clientConnectionWarmingExecutorDuringStart));
+      });
+      CompletableFuture[] futureArray = new CompletableFuture[futureList.size()];
+      CompletableFuture allFuture = CompletableFuture.allOf(futureList.toArray(futureArray));
+      try {
+        allFuture.get(CONNECTION_WARMING_TOTAL_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        logger.info("Finished connection warming for " + instanceNum + " instances");
+      } catch (Exception e) {
+        throw new VeniceException("Failed to warm up HttpAsyncClient properly", e);
+      } finally {
+        clientConnectionWarmingExecutorDuringStart.shutdown();
+      }
+
+      // Start scanner thread
+      clientConnHealthinessScannerThread.start();
+
+      // Register new instance callback
+      liveInstanceMonitor.registerLiveInstanceChangedListener(new LiveInstanceChangedListener() {
+        @Override
+        public void handleNewInstances(Set<Instance> newInstances) {
+          long currentTimestamp = System.currentTimeMillis();
+          newInstances.forEach( instance -> {
+            nodeIdToForceJoinTimeMap.put(instance.getNodeId(), currentTimestamp  + newInstanceDelayJoinMs);
+            logger.info("Create and warm up a new http async client for instance: " + instance);
+            asyncCreateAndWarmupNewClientAndSwapAsync(instance, true);
+          });
+        }
+
+        @Override
+        public void handleDeletedInstances(Set<Instance> deletedInstances) {
+          /**
+           * Whether we need to clean up the client for the deleted instances.
+           * It seems to be risky since the deletion could be caused by the unstable ZK conn.
+           * TODO: explore a better way to cleanup unused clients.
+           */
+        }
+      });
+
+      return true;
+    }
+
+    private class ClientConnHealthinessScanner implements Runnable {
+      @Override
+      public void run() {
+        while (!clientConnHealthinessScannerStopped) {
+          try {
+            Thread.sleep(CONNECTION_WARMING_SCANNER_SLEEP_INTERVAL_IN_MS);
+
+            // First close the deprecated clients
+            clientToCloseTimestampMap.forEach( (client, closeTimestamp) -> {
+              if (closeTimestamp <= System.currentTimeMillis()) {
+                try {
+                  client.close();
+                } catch (Exception e) {
+                  logger.warn("Failed to close an HttpAsyncClient properly", e);
+                }
+              }
+            });
+
+            // Then scan the existing clients
+            nodeIdToClientMap.forEach( (nodeId, clientWithConnManager) -> {
+              Instance currentInstance = Instance.fromNodeId(nodeId);
+              if (!liveInstanceMonitor.isInstanceAlive(currentInstance)) {
+                // Not alive right now
+                return;
+              }
+              PoolStats stats = clientWithConnManager.getConnManager().getTotalStats();
+              int availableConnections = stats.getAvailable() + stats.getLeased();
+              if (availableConnections < connectionWarmingLowWaterMark) {
+                logger.info("Create a new httpasyncclient and warm it up for instance: " + currentInstance + " since the total "
+                    + "available connections: " + availableConnections + " is lower than connection warming  low water mark: " + connectionWarmingLowWaterMark);
+                asyncCreateAndWarmupNewClientAndSwapAsync(currentInstance, false);
+              }
+            });
+          } catch (InterruptedException e) {
+            logger.info("Received InterruptedException in ClientConnHealthinessScanner, will exit");
+            break;
+          }
+        }
+      }
+    }
+
+    private synchronized void asyncCreateAndWarmupNewClientAndSwapAsync(Instance instance, boolean force) {
+      String nodeId = instance.getNodeId();
+      if (!force && ongoingWarmUpClientSet.contains(nodeId)) {
+        logger.info("Connection warming for instance: " + instance + " has already stared, so the new connection warming request will be skipped");
+        return;
+      }
+      ongoingWarmUpClientSet.add(nodeId);
+      clientConnWarmingExecutor.submit(() -> {
+        try {
+          HttpClientUtils.ClosableHttpAsyncClientWithConnManager newClientWithConnManager =
+              createAndWarmupNewClient(routerConfig.getHttpasyncclientConnectionWarmingSleepIntervalMs(), instance);
+          // create new client
+          HttpClientUtils.ClosableHttpAsyncClientWithConnManager existingClientWithConnManager = nodeIdToClientMap.get(nodeId);
+          if (existingClientWithConnManager != null) {
+            // Remove the conn manager of the deprecated client from stats
+            poolStats.removeConnectionPoolManager(existingClientWithConnManager.getConnManager());
+            // Gracefully shutdown the current client
+            clientToCloseTimestampMap.put(existingClientWithConnManager.getClient(), System.currentTimeMillis() + CLIENT_GRACEFUL_SHUTDOWN_DELAY_IN_MS);
+          }
+          nodeIdToClientMap.put(nodeId, newClientWithConnManager);
+        } finally {
+          // No matter the connection warming succeeds or not, we need to clean it up to allow the retry in the next round if needed.
+          ongoingWarmUpClientSet.remove(nodeId);
+          if (force)  {
+            nodeIdToForceJoinTimeMap.remove(nodeId);
+          }
+        }
+      });
+    }
+
+    private HttpClientUtils.ClosableHttpAsyncClientWithConnManager createAndWarmupNewClient(long connectionWarmingSleepIntervalMs, Instance host) {
+      HttpClientUtils.ClosableHttpAsyncClientWithConnManager clientWithConnManager = createAndStartNewClient();
+      String instanceUrl = host.getUrl(sslFactory.isPresent());
+      logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+      try {
+        warmUpConnection(clientWithConnManager.getClient(), instanceUrl, maxConnPerRoutePerClient,
+            connectionWarmingSleepIntervalMs);
+        logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
+      } catch (Exception e) {
+        IOUtils.closeQuietly(clientWithConnManager.getClient());
+        throw new VeniceException("Received exception while warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl
+            + ", and closed the new created httpasyncclient, and exception: " + e);
+      }
+      return clientWithConnManager;
+    }
+
+    private class BlockingAsyncResponseConsumer extends BasicAsyncResponseConsumer {
+      private final CountDownLatch latch;
+      private final String instanceUrl;
+      public BlockingAsyncResponseConsumer(CountDownLatch latch, String instanceUrl) {
+        super();
+        this.latch = latch;
+        this.instanceUrl = instanceUrl;
+      }
+
+      @Override
+      protected HttpResponse buildResult(final HttpContext context) {
+        logger.info("Received buildResult invocation from instance url: " + instanceUrl);
+        try {
+          // Blocking IO threads of HttpAsyncClient, so that the current connection can't be reused by the new request
+          latch.await();
+        } catch (InterruptedException e) {
+          throw new VeniceException("Encountered InterruptedException while awaiting", e);
+        }
+        return super.buildResult(context);
+      }
+    }
+    /**
+     * This function leverages {@link CloseableHttpAsyncClient#execute(HttpAsyncRequestProducer, HttpAsyncResponseConsumer, FutureCallback)} for connection warming up.
+     * High-level ideas:
+     * 1. This interface gives us capability to keep occupying one connection by blocking {@link HttpAsyncResponseConsumer#responseCompleted(HttpContext)};
+     * 2. The connection warming response callback will be blocked until all of the new connection setup requests have been sent out;
+     *    Check {@literal MinimalClientExchangeHandlerImpl#responseCompleted()} to find more details  about blocking logic;
+     *    Check {@link org.apache.http.nio.pool.AbstractNIOConnPool#lease} to find more details about the connection setup logic;
+     *
+     * With this way, it is guaranteed that each request will trigger one new connection.
+     */
+    private void warmUpConnection(CloseableHttpAsyncClient client, String instanceUrl, int maxConnPerRoutePerClient, long connectionWarmingSleepIntervalMs) {
+      FutureCallback<HttpResponse> dummyCallback = new FutureCallback<HttpResponse>() {
+        @Override
+        public void completed(HttpResponse result) {
+        }
+
+        @Override
+        public void failed(Exception ex) {
+        }
+
+        @Override
+        public void cancelled() {
+        }
+      };
+      // Create a heart-beat request
+      HttpAsyncRequestProducer requestProducer = new BasicAsyncRequestProducer(HttpHost.create(instanceUrl), new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase()));
+      CountDownLatch latch = new CountDownLatch(1);
+      List<Future> connectionWarmupResponseFutures = new ArrayList<>(maxConnPerRoutePerClient);
+      try {
+        for (int cur = 0; cur < maxConnPerRoutePerClient; ++cur) {
+          Future responseFuture = client.execute(requestProducer, new BlockingAsyncResponseConsumer(latch, instanceUrl), dummyCallback);
+          connectionWarmupResponseFutures.add(responseFuture);
+          // To avoid overwhelming storage nodes
+          Thread.sleep(connectionWarmingSleepIntervalMs);
+        }
+        /**
+         * At this moment, all the new connection creation requests should be sent completely,
+         * then we could let the response processing proceed.
+         */
+        latch.countDown();
+        for (Future future : connectionWarmupResponseFutures) {
+          /**
+           * Waiting for up to {@link #CONNECTION_WARMING_WAIT_TIMEOUT_MS} to let new connection setup finish.
+           * So that, all the new connections will be ready to use after.
+           */
+          future.get(CONNECTION_WARMING_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        }
+      } catch (Exception e) {
+        throw new VeniceException("Encountered exception during connection warming to instance: " + instanceUrl, e);
+      }
+    }
+
+    @Override
+    public void stopInner() throws Exception {
+      clientConnHealthinessScannerStopped = true;
+      clientConnHealthinessScannerThread.interrupt();
+    }
+  }
+
+  private HttpClientUtils.ClosableHttpAsyncClientWithConnManager createAndStartNewClient() {
+    HttpClientUtils.ClosableHttpAsyncClientWithConnManager clientWithConnManager = HttpClientUtils.getMinimalHttpClientWithConnManager(ioThreadNumPerClient, maxConnPerRoutePerClient,
+        totalMaxConnPerClient, socketTimeout, connectionTimeout, sslFactory, dnsResolver, Optional.of(poolStats),
+        routerConfig.isIdleConnectionToServerCleanupEnabled(), routerConfig.getIdleConnectionToServerCleanupThresholdMins());
+    clientWithConnManager.getClient().start();
+    return clientWithConnManager;
+  }
+
 
   @Override
   public void query(
@@ -177,104 +487,13 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
     CloseableHttpAsyncClient selectedClient;
     if (perNodeClientEnabled) {
       // If all the pool are used up by the set of live instances, spawn new client
-      selectedClient = hostToClientMap.computeIfAbsent(host.getHost(), h-> createAndStartNewClient());
+      selectedClient = nodeIdToClientMap.computeIfAbsent(host.getNodeId(), h-> createAndStartNewClient()).getClient();
     } else {
       int selectedClientId = Math.abs(random.nextInt() % clientPoolSize);
       selectedClient = clientPool.get(selectedClientId);
     }
 
     selectedClient.execute(routerRequest, new HttpAsyncClientFutureCallBack(completedCallBack, failedCallBack, cancelledCallBack));
-  }
-
-  private CloseableHttpAsyncClient createAndWarmupNewClient(long connectionWarmingSleepIntervalMs, Instance host) {
-    CloseableHttpAsyncClient client = createAndStartNewClient();
-    String instanceUrl = host.getUrl(sslFactory.isPresent());
-    logger.info("Started warming up " + maxConnPerRoutePerClient + " connections to server: " + instanceUrl);
-    warmUpConnection(client, instanceUrl, maxConnPerRoutePerClient, connectionWarmingSleepIntervalMs);
-    logger.info("Finished warming up " + maxConnPerRoutePerClient + " connections to server: "  + instanceUrl);
-
-    return client;
-  }
-
-  private CloseableHttpAsyncClient createAndStartNewClient() {
-    CloseableHttpAsyncClient client = HttpClientUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient,
-        totalMaxConnPerClient, socketTimeout, connectionTimeout, sslFactory, dnsResolver, Optional.of(poolStats),
-        routerConfig.isIdleConnectionToServerCleanupEnabled(), routerConfig.getIdleConnectionToServerCleanupThresholdMins());
-    client.start();
-    return client;
-  }
-
-  private static class BlockingAsyncResponseConsumer extends BasicAsyncResponseConsumer {
-    private final CountDownLatch latch;
-    private final String instanceUrl;
-    public BlockingAsyncResponseConsumer(CountDownLatch latch, String instanceUrl) {
-      super();
-      this.latch = latch;
-      this.instanceUrl = instanceUrl;
-    }
-
-    @Override
-    protected HttpResponse buildResult(final HttpContext context) {
-      logger.info("Received buildResult invocation from instance url: " + instanceUrl);
-      try {
-        // Blocking IO threads of HttpAsyncClient, so that the current connection can't be reused by the new request
-        latch.await();
-      } catch (InterruptedException e) {
-        throw new VeniceException("Encountered InterruptedException while awaiting", e);
-      }
-      return super.buildResult(context);
-    }
-  }
-  /**
-   * This function leverages {@link CloseableHttpAsyncClient#execute(HttpAsyncRequestProducer, HttpAsyncResponseConsumer, FutureCallback)} for connection warming up.
-   * High-level ideas:
-   * 1. This interface gives us capability to keep occupying one connection by blocking {@link HttpAsyncResponseConsumer#responseCompleted(HttpContext)};
-   * 2. The connection warming response callback will be blocked until all of the new connection setup requests have been sent out;
-   *    Check {@literal MinimalClientExchangeHandlerImpl#responseCompleted()} to find more details  about blocking logic;
-   *    Check {@link org.apache.http.nio.pool.AbstractNIOConnPool#lease} to find more details about the connection setup logic;
-   *
-   * With this way, it is guaranteed that each request will trigger one new connection.
-   */
-  private void warmUpConnection(CloseableHttpAsyncClient client, String instanceUrl, int maxConnPerRoutePerClient, long connectionWarmingSleepIntervalMs) {
-    FutureCallback<HttpResponse> dummyCallback = new FutureCallback<HttpResponse>() {
-      @Override
-      public void completed(HttpResponse result) {
-      }
-
-      @Override
-      public void failed(Exception ex) {
-      }
-
-      @Override
-      public void cancelled() {
-      }
-    };
-    // Create a heart-beat request
-    HttpAsyncRequestProducer requestProducer = new BasicAsyncRequestProducer(HttpHost.create(instanceUrl), new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase()));
-    CountDownLatch latch = new CountDownLatch(1);
-    List<Future> connectionWarmupResponseFutures = new ArrayList<>(maxConnPerRoutePerClient);
-    try {
-      for (int cur = 0; cur < maxConnPerRoutePerClient; ++cur) {
-        Future responseFuture = client.execute(requestProducer, new BlockingAsyncResponseConsumer(latch, instanceUrl), dummyCallback);
-        connectionWarmupResponseFutures.add(responseFuture);
-        // To avoid overwhelming storage nodes
-        Thread.sleep(connectionWarmingSleepIntervalMs);
-      }
-      /**
-       * At this moment, all the new connection creation requests should be sent completely,
-       * then we could let the response processing proceed.
-        */
-      latch.countDown();
-      for (Future future : connectionWarmupResponseFutures) {
-        /**
-         * Waiting for up to {@link #CONNECTION_WARMING_WAIT_TIMEOUT_MS} to let new connection setup finish.
-         * So that, all the new connections will be ready to use after.
-         */
-        future.get(CONNECTION_WARMING_WAIT_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-      }
-    } catch (Exception e) {
-      throw new VeniceException("Encountered exception during connection warming to instance: " + instanceUrl, e);
-    }
   }
 
   private static class HttpAsyncClientFutureCallBack implements FutureCallback<HttpResponse> {

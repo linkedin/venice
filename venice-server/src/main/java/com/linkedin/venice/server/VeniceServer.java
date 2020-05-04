@@ -318,6 +318,16 @@ public class VeniceServer {
       service.start();
     }
 
+    /**
+     * We need to add some delay here for router connection warming.
+     * The new started server won't be serve online traffic right away because of router connection warming.
+     * If server doesn't have extra delay here, Router might encounter availability issue.
+     */
+    try {
+      Thread.sleep(veniceConfigLoader.getVeniceServerConfig().getRouterConnectionWarmingDelayMs());
+    } catch (InterruptedException e) {
+      throw new VeniceException("Got interrupted exception while delaying start for Router connection warming");
+    }
     List<AbstractStorageEngine> allStorageEngines =
         storageService.getStorageEngineRepository().getAllLocalStorageEngines();
     if (veniceConfigLoader.getVeniceServerConfig().isRocksDBOffsetMetadataEnabled()) {

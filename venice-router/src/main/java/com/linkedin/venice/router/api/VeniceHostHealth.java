@@ -3,6 +3,7 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -25,11 +26,13 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
 
   private final LiveInstanceMonitor liveInstanceMonitor;
+  private final StorageNodeClient storageNodeClient;
   private RouteHttpRequestStats routeHttpRequestStats;
   private final AggHostHealthStats aggHostHealthStats;
 
-  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, RouteHttpRequestStats routeHttpRequestStats,
-      boolean statefulRouterHealthCheckEnabled, int maxPendingConnectionPerHost, int routerPendingConnResumeThreshold,
+  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor, StorageNodeClient storageNodeClient,
+      RouteHttpRequestStats routeHttpRequestStats, boolean statefulRouterHealthCheckEnabled,
+      int maxPendingConnectionPerHost, int routerPendingConnResumeThreshold,
       long fullPendingQueueServerOORMs, AggHostHealthStats aggHostHealthStats) {
     this.routeHttpRequestStats = routeHttpRequestStats;
     this.statefulRouterHealthCheckEnabled = statefulRouterHealthCheckEnabled;
@@ -37,6 +40,7 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     this.routerPendingConnResumeThreshold = routerPendingConnResumeThreshold;
     this.fullPendingQueueServerOORMs = fullPendingQueueServerOORMs;
     this.liveInstanceMonitor = liveInstanceMonitor;
+    this.storageNodeClient = storageNodeClient;
     this.aggHostHealthStats = aggHostHealthStats;
   }
 
@@ -83,6 +87,10 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
     String nodeId = instance.getNodeId();
     if (!liveInstanceMonitor.isInstanceAlive(instance)) {
       aggHostHealthStats.recordUnhealthyHostOfflineInstance(nodeId);
+      return false;
+    }
+    if (!storageNodeClient.isInstanceReadyToServe(nodeId)) {
+      aggHostHealthStats.recordUnhealthyHostDelayJoin(nodeId);
       return false;
     }
     if (slowPartitionHosts.contains(hostPartitionString(instance, partitionName))) {

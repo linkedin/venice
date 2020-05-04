@@ -323,9 +323,6 @@ public class RouterServer extends AbstractVeniceService {
 
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
-    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, routeHttpRequestStats,
-        config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute(),
-        config.getRouterPendingConnResumeThresholdPerRoute(), config.getFullPendingQueueServerOORMs(), aggHostHealthStats);
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +
@@ -367,6 +364,9 @@ public class RouterServer extends AbstractVeniceService {
         throw new VeniceException("Router client type " + config.getStorageNodeClientType().toString() + " is not supported!");
     }
 
+    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor, storageNodeClient,routeHttpRequestStats,
+        config.isStatefulRouterHealthCheckEnabled(), config.getRouterUnhealthyPendingConnThresholdPerRoute(),
+        config.getRouterPendingConnResumeThresholdPerRoute(), config.getFullPendingQueueServerOORMs(), aggHostHealthStats);
     dispatcher = new VeniceDispatcher(config, healthMonitor, metadataRepository, routerCache,
         routerStats, metricsRepository, storageNodeClient, routeHttpRequestStats, aggHostHealthStats);
     scatterGatherMode = new VeniceDelegateMode(new VeniceDelegateModeConfig(config), routerStats);

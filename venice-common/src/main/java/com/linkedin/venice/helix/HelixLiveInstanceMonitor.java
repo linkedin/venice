@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceChangedListener;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.Collections;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Set;
 import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
+import java.util.concurrent.CopyOnWriteArraySet;
 import org.apache.log4j.Logger;
 
 
@@ -33,6 +35,9 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
   private final ZkClient zkClient;
   private Set<Instance> liveInstanceSet = Collections.emptySet();
   private final CachedResourceZkStateListener zkStateListener;
+
+  private final Set<LiveInstanceChangedListener> listeners = new CopyOnWriteArraySet<>();
+
 
 
   public HelixLiveInstanceMonitor(ZkClient zkClient, String clusterName) {
@@ -74,9 +79,27 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
   }
 
   @Override
-  public void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
+  public synchronized void handleChildChange(String parentPath, List<String> currentChildren) throws Exception {
+    Set<Instance> previousLiveInstanceSet = liveInstanceSet;
     liveInstanceSet = convertToInstance(currentChildren);
     LOGGER.info("Received new live instance set: " + liveInstanceSet);
+    // trigger live instance change listeners
+    Set<Instance> newInstances = new HashSet<>();
+    Set<Instance> deletedInstances = new HashSet<>();
+    liveInstanceSet.forEach( instance  -> {
+      if (!previousLiveInstanceSet.contains(instance)) {
+        newInstances.add(instance);
+      }
+    });
+    previousLiveInstanceSet.forEach( instance  -> {
+      if (!liveInstanceSet.contains(instance))  {
+        deletedInstances.add(instance);
+      }
+    });
+    for (LiveInstanceChangedListener listener : listeners) {
+      listener.handleNewInstances(newInstances);
+      listener.handleDeletedInstances(deletedInstances);
+    }
   }
 
   @Override
@@ -87,5 +110,9 @@ public class HelixLiveInstanceMonitor implements IZkChildListener, VeniceResourc
   @Override
   public Set<Instance> getAllLiveInstances() {
     return Collections.unmodifiableSet(liveInstanceSet);
+  }
+
+  public void registerLiveInstanceChangedListener(LiveInstanceChangedListener listener) {
+    listeners.add(listener);
   }
 }
