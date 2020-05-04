@@ -96,7 +96,7 @@ public interface Admin extends AutoCloseable, Closeable {
      * TODO Remove this method from the interface once store migration is refactored.
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
-        int numberOfPartitions, Version.PushType pushType);
+        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers);
 
     /**
      * The implementation of this method must take no action and return the same Version object if the same parameters

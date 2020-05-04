@@ -408,11 +408,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     for (int i = 0; i < 5; i ++) {
       // Mimic the retry behavior by the admin consumption task.
       Assert.assertThrows(VeniceOperationAgainstKafkaTimedOut.class,
-          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH));
+          () -> veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null));
     }
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     reset(mockedTopicManager);
-    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH);
+    veniceAdmin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, 1, 1, Version.PushType.BATCH, null);
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).getVersion(1).isPresent());
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         "There should only be exactly one version added to the test-store");
@@ -1246,5 +1246,40 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     storeTwo = veniceAdmin.getStore(clusterName, systemStoreTwo);
     Assert.assertEquals(storeOne.getStorageQuotaInByte(), quotaInBytes, "The metadata system store quota should be updated");
     Assert.assertEquals(storeOne, storeTwo, "The two metadata system store should get the same update");
+  }
+
+  @Test
+  public void testAddVersionWithRemoteKafkaBootstrapServers() {
+    TopicManager originalTopicManager = veniceAdmin.getTopicManager();
+
+    TopicManager mockedTopicManager = mock(TopicManager.class);
+    veniceAdmin.setTopicManager(mockedTopicManager);
+    String storeName = TestUtils.getUniqueString("test-store");
+    String pushJobId1 = "test-push-job-id-1";
+    veniceAdmin.addStore(clusterName, storeName, "test-owner", KEY_SCHEMA, VALUE_SCHEMA);
+    /**
+     * Enable L/F and native replication.
+     */
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setLeaderFollowerModel(true).setNativeReplicationEnabled(true));
+
+    /**
+     * Add version 1 without remote Kafka bootstrap servers.
+     */
+    veniceAdmin.addVersionOnly(clusterName, storeName, pushJobId1, 1, 1, false, true, Version.PushType.BATCH, null, null);
+    // Version 1 should exist.
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1);
+
+    /**
+     * Add version 2 with remote kafka bootstrap servers.
+     */
+    String remoteKafkaBootstrapServers = "localhost:9092";
+    String pushJobId2 = "test-push-job-id-2";
+    veniceAdmin.addVersionOnly(clusterName, storeName, pushJobId2, 2, 1, false, true, Version.PushType.BATCH, null, remoteKafkaBootstrapServers);
+    // Version 2 should exist and remote Kafka bootstrap servers info should exist in version 2.
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersion(2).get().getPushStreamSourceAddress(), remoteKafkaBootstrapServers);
+
+    //set topic original topic manager back
+    veniceAdmin.setTopicManager(originalTopicManager);
   }
 }

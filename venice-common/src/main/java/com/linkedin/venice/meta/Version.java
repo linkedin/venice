@@ -185,15 +185,15 @@ public class Version implements Comparable<Version> {
     this.leaderFollowerModelEnabled = leaderFollowerModelEnabled;
   }
 
-  private void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
+  public void setNativeReplicationEnabled(boolean nativeReplicationEnabled) {
     this.nativeReplicationEnabled = nativeReplicationEnabled;
   }
 
-  private String getPushStreamSourceAddress() {
+  public String getPushStreamSourceAddress() {
     return this.pushStreamSourceAddress;
   }
 
-  private void setPushStreamSourceAddress(String address) {
+  public void setPushStreamSourceAddress(String address) {
     pushStreamSourceAddress = address;
   }
 

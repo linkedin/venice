@@ -4,7 +4,7 @@ mkdir -p avro_tools
 avro_tools=`ls avro_tools | sort -rV | head -n 1`
 
 if [ -z $avro_tools ]; then
-  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/1.4.0/avro-tools-1.4.0.jar" -P avro_tools
+  wget "https://artifactory.corp.linkedin.com:8083/artifactory/ext-libraries/org/apache/avro/avro-tools/1.4.0/avro-tools-1.4.0.jar" -P avro_tools --no-check-certificate
   avro_tools=`ls avro_tools | sort -rV | head -n 1`
 fi
 
@@ -20,7 +20,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"
   "venice-common/src/main/resources/avro/ParticipantMessage/ParticipantMessageKey/*"
   "venice-common/src/main/resources/avro/ParticipantMessage/ParticipantMessageValue/v1/*"
-  "venice-controller/src/main/resources/avro/AdminOperation/v39/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v40/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"

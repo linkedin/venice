@@ -940,7 +940,7 @@ public class TestAdminConsumptionTask {
     doThrow(new VeniceOperationAgainstKafkaTimedOut("Mocking kafka topic creation timeout"))
         .when(admin)
         .addVersionAndStartIngestion(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions,
-            Version.PushType.BATCH);
+            Version.PushType.BATCH, null);
     Future<RecordMetadata> future = veniceWriter.put(emptyKeyBytes,
         getAddVersionMessage(clusterName, storeName, mockPushJobId, versionNumber, numberOfPartitions, 1L),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
