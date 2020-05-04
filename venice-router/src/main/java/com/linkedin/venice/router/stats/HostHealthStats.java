@@ -2,7 +2,6 @@ package com.linkedin.venice.router.stats;
 
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -26,6 +25,7 @@ public class HostHealthStats extends AbstractVeniceStats {
   private final Sensor leakedPendingRequestCount;
   private final Sensor unhealthyPendingQueueDuration;
   private final Sensor unhealthyPendingRateSensor;
+  private final Sensor unhealthyHostDelayJoinSensor;
   private  Optional<Sensor> unhealthyHostCountCausedByPendingQueueSensor = Optional.empty();
 
   public HostHealthStats(MetricsRepository metricsRepository, String name) {
@@ -39,6 +39,7 @@ public class HostHealthStats extends AbstractVeniceStats {
     this.leakedPendingRequestCount = registerSensor("leaked_pending_request_count", new Count());
     this.unhealthyPendingQueueDuration  = registerSensor("unhealthy_pending_queue_duration", new Avg(), new Min(), new Max(), new SampledTotal());;
     this.unhealthyPendingRateSensor = registerSensor("unhealthy_pending_queue", new OccurrenceRate());
+    this.unhealthyHostDelayJoinSensor = registerSensor("unhealthy_host_delay_join", new OccurrenceRate());
     if (name.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
       // This is trying to avoid emit unnecessary metrics per route
       this.unhealthyHostCountCausedByPendingQueueSensor = Optional.of(registerSensor("unhealthy_host_count_caused_by_pending_queue", new Avg(), new Min(), new Max()));
@@ -78,5 +79,9 @@ public class HostHealthStats extends AbstractVeniceStats {
     if (unhealthyHostCountCausedByPendingQueueSensor.isPresent()) {
       unhealthyHostCountCausedByPendingQueueSensor.get().record(count);
     }
+  }
+
+  public void recordUnhealthyHostDelayJoin() {
+    unhealthyHostDelayJoinSensor.record();
   }
 }

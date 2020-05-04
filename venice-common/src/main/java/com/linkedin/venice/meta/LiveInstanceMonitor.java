@@ -13,4 +13,6 @@ public interface LiveInstanceMonitor {
   boolean isInstanceAlive(Instance instance);
 
   Set<Instance> getAllLiveInstances();
+
+  void registerLiveInstanceChangedListener(LiveInstanceChangedListener listener);
 }

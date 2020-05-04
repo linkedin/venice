@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import java.util.concurrent.TimeUnit;
@@ -12,6 +13,12 @@ import static org.mockito.Mockito.*;
 
 
 public class TestVeniceHostHealth {
+
+  private StorageNodeClient mockStorageNodeClient(boolean ret) {
+    StorageNodeClient client =  mock(StorageNodeClient.class);
+    doReturn(ret).when(client).isInstanceReadyToServe(anyString());
+    return client;
+  }
 
   @Test
   public void checkHostHealthByLiveInstance() {
@@ -25,7 +32,7 @@ public class TestVeniceHostHealth {
 
     String fakePartition = "fake_partition";
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats,
+    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true),  routeHttpRequestStats,
         false, 5, 2, 10, mockAggHostHealthStats);
     Assert.assertFalse(hostHealth.isHostHealthy(deadInstance, fakePartition), "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
@@ -49,7 +56,7 @@ public class TestVeniceHostHealth {
     AggHostHealthStats mockAggHostHealthStats = mock(AggHostHealthStats.class);
 
     String fakePartition = "fake_partition";
-    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats,
+    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true),  routeHttpRequestStats,
         true, 4, 2, 10, mockAggHostHealthStats);
     Assert.assertFalse(hostHealth.isHostHealthy(deadInstance, fakePartition), "Host should be unhealthy when it is dead.");
     Assert.assertTrue(hostHealth.isHostHealthy(liveInstance, fakePartition), "Host should be healthy when it is alive");
@@ -73,13 +80,13 @@ public class TestVeniceHostHealth {
     AggHostHealthStats mockAggHostHealthStats = mock(AggHostHealthStats.class);
 
     String fakePartition = "fake_partition";
-    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats,
+    VeniceHostHealth hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true),  routeHttpRequestStats,
         true, 4, 2, 0, mockAggHostHealthStats);
     Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when it has lots of pending connection.");
     Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when the current pending request count is above resume threshold.");
     Assert.assertTrue(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be healthy when the current pending request count is below resume threshold.");
 
-    hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats,
+    hostHealth = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true),  routeHttpRequestStats,
         true, 4, 2, TimeUnit.MINUTES.toMillis(10), mockAggHostHealthStats);
     Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when it has lots of pending connection.");
     Assert.assertFalse(hostHealth.isHostHealthy(slowInstance, fakePartition), "Host should be unhealthy when the current pending request count is above resume threshold.");

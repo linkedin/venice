@@ -57,6 +57,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
           .put(ROUTER_CONNECTION_LIMIT, 20)
           .put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2)
           .put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2)
+          .put(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 1)
           .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
           // To speed up test
           .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)

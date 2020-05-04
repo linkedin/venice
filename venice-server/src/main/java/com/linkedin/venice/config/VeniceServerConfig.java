@@ -181,6 +181,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableRocksDBOffsetMetadata;
   private final String kafkaAdminClass;
   private final boolean kafkaOpenSSLEnabled;
+  private final long routerConnectionWarmingDelayMs;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -261,6 +262,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
     kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
+    // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
+    routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
   }
 
   public int getListenerPort() {
@@ -470,5 +473,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isKafkaOpenSSLEnabled() {
     return kafkaOpenSSLEnabled;
+  }
+
+  public long getRouterConnectionWarmingDelayMs() {
+    return routerConnectionWarmingDelayMs;
   }
 }

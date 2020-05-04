@@ -332,6 +332,13 @@ public class ConfigKeys {
    */
   public static final String SERVER_ENABLE_KAFKA_OPENSSL = "server.enable.kafka.openssl";
 
+  /**
+   * This config is used to control how much time Server will wait for connection warming from Routers.
+   * This is trying to avoid availability issue when router connection warming happens when Server restarts.
+   * In theory, this config should be equal to or bigger than {@link #ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS}.
+   */
+  public static final String SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS = "server.router.connection.warming.delay.ms";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.
@@ -624,6 +631,25 @@ public class ConfigKeys {
    * When Router starts, for a given route, the following config controls the warming up speed to minimize the impact to storage nodes.
    */
   public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_SLEEP_INTERVAL_MS = "router.httpasyncclient.connection.warming.sleep.interval.ms";
+
+  /**
+   * When the available connections in an httpasyncclient is below the low water mark, the connection warming service will try to
+   * spin up a new client to replace it.
+   * In theory, this config must be lower than  {@link #ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE}.
+   */
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK = "router.httpasyncclient.connection.warming.low.water.mark";
+
+  /**
+   * Connection warming executor thread num.
+   */
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM = "router.httpasyncclient.connection.warming.executor.thread.num";
+
+  /**
+   * For the new instance (Storage Node) detected by Router, the following config defines how much delay because of connection warming it could tolerate.
+   * If the connection warming takes longer than it, Router will put it in to serve online traffic by creating a new client without connection warming.
+   */
+  public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS  = "router.httpasyncclient.connection.warming.new.instance.delay.join.ms";
+
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.

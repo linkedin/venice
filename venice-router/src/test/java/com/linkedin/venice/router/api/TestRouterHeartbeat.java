@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.router.VeniceRouterConfig;
+import com.linkedin.venice.router.httpclient.StorageNodeClient;
 import com.linkedin.venice.router.stats.AggHostHealthStats;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.utils.TestUtils;
@@ -35,6 +36,12 @@ public class TestRouterHeartbeat {
     return mockLiveInstanceMonitor;
   }
 
+  private StorageNodeClient mockStorageNodeClient(boolean ret) {
+    StorageNodeClient client =  mock(StorageNodeClient.class);
+    doReturn(ret).when(client).isInstanceReadyToServe(anyString());
+    return client;
+  }
+
   public static VeniceRouterConfig mockVeniceRouterConfig() {
     VeniceRouterConfig mockConfig = mock(VeniceRouterConfig.class);
     doReturn(500d).when(mockConfig).getHeartbeatTimeoutMs();
@@ -55,7 +62,7 @@ public class TestRouterHeartbeat {
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
@@ -87,7 +94,7 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
 
     VeniceRouterConfig config = mockVeniceRouterConfig();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockLiveInstanceMonitor, healthMon, config, Optional.empty());
@@ -117,7 +124,7 @@ public class TestRouterHeartbeat {
 
     LiveInstanceMonitor mockLiveInstanceMonitor = mockLiveInstanceMonitor(instanceSet);
     RouteHttpRequestStats routeHttpRequestStats = mock(RouteHttpRequestStats.class);
-    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
+    VeniceHostHealth healthMon = new VeniceHostHealth(mockLiveInstanceMonitor, mockStorageNodeClient(true), routeHttpRequestStats, false, 10, 5, 10, mock(AggHostHealthStats.class));
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
