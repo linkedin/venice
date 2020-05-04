@@ -360,6 +360,10 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     leaderMetadata.hostName = writerId;
     kafkaMessageEnvelope.leaderMetadataFooter = leaderMetadata;
 
+    if (callback instanceof ChunkAwareCallback) {
+      ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
+    }
+
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, serializedKey);
 
     return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelope, partition, callback, false);
