@@ -1,13 +1,24 @@
 package com.linkedin.venice.etl.validator;
 
 import azkaban.jobExecutor.AbstractJob;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.etl.client.VeniceKafkaConsumerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
 import java.util.PriorityQueue;
 import java.util.Properties;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.lang.time.DateUtils;
@@ -18,7 +29,10 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.CommonConfigKeys.*;
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.etl.client.VeniceKafkaConsumerClient.*;
+import static com.linkedin.venice.etl.source.VeniceKafkaSource.*;
 
 
 /**
@@ -60,10 +74,14 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
   };
 
   private final VeniceProperties props;
+  private final String veniceControllerUrls;
+  private final String fabricName;
 
   private Path path;
   private FileSystem fs;
   private PriorityQueue<FileStatus> snapshotQueue;
+  private Set<String> veniceStoreNames;
+  private Optional<SSLFactory> sslFactory;
 
   public LumosSnapshotsFreshnessValidator(String jobId, Properties vanillaProps) throws Exception {
     super(jobId, logger);
@@ -89,6 +107,16 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
      * The priority queue is to sort lumos snapshots by time. The latest snapshot pops first.
      */
     this.snapshotQueue = new PriorityQueue<>(SNAPSHOT_COMPARATOR);
+
+    this.fabricName = props.getString(FABRIC_NAME);
+    this.veniceStoreNames = new HashSet<>();
+    String veniceStoreNamesList = props.getString(VENICE_STORE_NAME);
+    String[] storeNames = veniceStoreNamesList.split(VENICE_STORE_NAME_SEPARATOR);
+    for (String token : storeNames) {
+      veniceStoreNames.add(token.trim());
+    }
+    this.veniceControllerUrls = props.getString(VENICE_CONTROLLER_URLS);
+    this.sslFactory = Optional.of(SslUtils.getSSLFactory(setUpSSLProperties(props), props.getString(SSL_FACTORY_CLASS_NAME)));
   }
 
   @Override
@@ -98,6 +126,9 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
     /**
      * For each store_version, we do the checks for snapshots freshness.
      */
+    Map<String, ControllerClient> storeToControllerClient = VeniceKafkaConsumerClient.getControllerClients(
+        this.veniceStoreNames, this.veniceControllerUrls, sslFactory);
+    Map<String, Integer> storeNameToCurrentVersion = new HashMap<>();
     for (FileStatus fileStatus : fileStatuses) {
       /**
        * The queue is reused for all stores. Clear the snapshot queue when starting dealing with each store version.
@@ -107,7 +138,18 @@ public class LumosSnapshotsFreshnessValidator extends AbstractJob {
         logger.info("Skipping " + fileStatus.getPath().getName());
         continue;
       }
+
       String storeVersion = fileStatus.getPath().getName();
+      String storeName = Version.parseStoreFromKafkaTopicName(storeVersion);
+      int version = Version.parseVersionFromKafkaTopicName(storeVersion);
+      int currentVersion = storeNameToCurrentVersion.computeIfAbsent(storeName, k ->
+          storeToControllerClient.get(storeName).getStore(storeName).getStore().getColoToCurrentVersions().get(fabricName));
+      /**
+       * Skip checking freshness for old versions. i.e. version number < current version number
+       */
+      if (version < currentVersion) {
+        continue;
+      }
       FileStatus[] snapshotStatuses = fs.listStatus(fileStatus.getPath(), PATH_FILTER);
       for (FileStatus snapshotStatus : snapshotStatuses) {
         if (!snapshotStatus.isDirectory()) {
