@@ -47,7 +47,6 @@ public class ZkServerWrapper extends ProcessWrapper {
   private static final String ZK_HOSTNAME = "localhost"; // Retrieving Utils.getHostName() doesn't work...
 
   private static final String CLIENT_PORT_PROP = "clientPort";
-  private static final String CLIENT_PORT_ADDRESS = "clientPortAddress";
   private static final String TICK_TIME_PROP = "tickTime";
   private static final String MAX_SESSION_TIMEOUT_PROP = "maxSessionTimeout";
   private static final String NUM_CONNECTIONS_PROP = "maxClientCnxns";
@@ -106,7 +105,6 @@ public class ZkServerWrapper extends ProcessWrapper {
 
     // Dynamic configs
     startupProperties.setProperty(CLIENT_PORT_PROP, Integer.toString(port));
-    startupProperties.setProperty(CLIENT_PORT_ADDRESS, ZK_HOSTNAME);
     startupProperties.setProperty(DATA_DIR_PROP, dir.getAbsolutePath());
 
     QuorumPeerConfig quorumConfiguration = new QuorumPeerConfig();
