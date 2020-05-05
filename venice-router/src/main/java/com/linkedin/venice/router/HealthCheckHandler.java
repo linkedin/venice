@@ -60,7 +60,7 @@ public class HealthCheckHandler extends SimpleChannelInboundHandler<HttpRequest>
     InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     if (!filter.isRedundantException(sockAddr.getHostName(), e)) {
-      logger.error("Got exception while handling health check request from " + remoteAddr + ": ", e);
+      logger.error("Got exception while handling health check request from " + remoteAddr + ", and error: " + e.getMessage());
     }
     setupResponseAndFlush(INTERNAL_SERVER_ERROR, EMPTY_BYTES, false, ctx);
     ctx.close();
