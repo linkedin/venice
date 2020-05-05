@@ -259,14 +259,13 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   }
 
   private V getValue(Version version, K key, V reusedValue) {
-    ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-
-    byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-    // TODO: Align the implementation with the design, which expects the following sub partition calculation:
-    // int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()) * version.getPartitionerConfig().getAmplificationFactor()
-    //    + partitioner.getPartitionId(keyBytes, version.getPartitionerConfig().getAmplificationFactor());
-    int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()
-        * version.getPartitionerConfig().getAmplificationFactor());
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+      // TODO: Align the implementation with the design, which expects the following sub partition calculation:
+      // int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()) * version.getPartitionerConfig().getAmplificationFactor()
+      //    + partitioner.getPartitionId(keyBytes, version.getPartitionerConfig().getAmplificationFactor());
+    int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount() *
+        version.getPartitionerConfig().getAmplificationFactor());
     AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
     if (!storageEngine.containsPartition(subPartitionId)) {
       if (isRemoteQueryAllowed()) {
@@ -340,15 +339,14 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         ? FastSerializerDeserializerFactory.getFastAvroGenericSerializer(getKeySchema(), false)
         : SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema(), false);
 
+
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
     PartitionerConfig partitionerConfig = storeReposotory.getStore(getStoreName()).getPartitionerConfig();
     Properties params = new Properties();
     params.putAll(partitionerConfig.getPartitionerParams());
     VeniceProperties partitionerProperties = new VeniceProperties(params);
-    partitioner = PartitionUtils.getVenicePartitioner(
-        partitionerConfig.getPartitionerClass(),
-        partitionerConfig.getAmplificationFactor(),
-        partitionerProperties);
+    this.partitioner = PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
+        partitionerConfig.getAmplificationFactor(), partitionerProperties);
 
     // For now we only support FAIL_FAST and QUERY_REMOTELY. SUBSCRIBE_AND_QUERY_REMOTELY policy is not supported.
     if (isRemoteQueryAllowed()) {

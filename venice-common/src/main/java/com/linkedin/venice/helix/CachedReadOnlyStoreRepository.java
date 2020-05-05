@@ -173,6 +173,8 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected Store putStore(Store newStore) {
     updateLock.lock();
     try {
+      // Make sure every version in this store has partitionerConfig and partitionCount.
+      newStore.fixMissingFields();
       Store oldStore = storeMap.put(getZkStoreName(newStore.getName()), newStore);
       if (oldStore == null) {
         totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU());
