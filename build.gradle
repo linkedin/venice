@@ -29,7 +29,7 @@ ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.7.7',
                   avroMapred: 'org.apache.avro:avro-mapred:1.7.7',
                   avroMigrationHelper: 'com.linkedin.avroutil1:helper-all:0.1.11',
-                  azkaban: 'com.linkedin.azkaban:azkaban:2.5.0',
+                  azkaban: 'com.linkedin.azkaban:azkaban-common:3.84.18',
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   brooklinCommon: 'com.linkedin.brooklin-li-common:brooklin-li-common:14.0.7',
                   brooklinKafka: 'com.github.datastream:datastream-kafka-connector:6.0.38',
