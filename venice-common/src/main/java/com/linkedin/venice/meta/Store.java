@@ -826,6 +826,16 @@ public class Store {
     return getName().startsWith(SYSTEM_STORE_NAME_PREFIX);
   }
 
+  public void fixMissingFields() {
+    for (Version version : versions) {
+      if (version.getPartitionerConfig() == null) {
+        version.setPartitionerConfig(partitionerConfig);
+      }
+      if (version.getPartitionCount() == 0) {
+        version.setPartitionCount(partitionCount);
+      }
+    }
+  }
   /**
    * Set all of PUSHED version to ONLINE once store is enabled to write.
    */

@@ -86,7 +86,11 @@ public class IngestionController implements Closeable {
         }
       }
 
-      Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, version.getPartitionerConfig().getAmplificationFactor());
+      int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
+      logger.info("Amplification factor: " + amplificationFactor);
+      logger.info("Subscribing to partitions: " + partitions.toString());
+      Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, amplificationFactor);
+      logger.info("Subscribing to sub-partitions: " + subPartitions.toString());
       List<CompletableFuture> futures = new ArrayList<>(subPartitions.size());
       for (Integer id : subPartitions) {
         futures.add(subscribeSubPartition(id));
