@@ -1,6 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.davinci.client.DaVinciConfig;
+
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -8,14 +10,19 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.ConstantVenicePartitioner;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestPushUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+
 import com.linkedin.davinci.client.DaVinciClient;
+import com.linkedin.davinci.client.RemoteReadPolicy;
 
 import java.util.function.Consumer;
 import org.apache.commons.io.IOUtils;
@@ -38,7 +45,7 @@ import static org.testng.Assert.*;
 
 public class DaVinciClientTest {
   private static final int KEY_COUNT = 10;
-  private static final int TEST_TIMEOUT = 15_000; // ms
+  private static final int TEST_TIMEOUT = 20_000; // ms
   private VeniceClusterWrapper cluster;
 
   @BeforeClass
@@ -152,7 +159,6 @@ public class DaVinciClientTest {
     }
   }
 
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testBootstrap() throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
@@ -177,16 +183,20 @@ public class DaVinciClientTest {
     }
   }
 
-
   @Test(timeOut = TEST_TIMEOUT)
   public void testNonLocalRead() throws Exception {
     String storeName = cluster.createStore(KEY_COUNT);
-    String dataDirectory = TestUtils.getTempDataDirectory().getAbsolutePath();
-    DaVinciConfig daVinciConfig = DaVinciConfig.defaultDaVinciConfig(dataDirectory);
 
-    daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
+    VeniceProperties backendConfig = new PropertyBuilder()
+                                         .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+                                         .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+                                         .build();
+
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
+
     Set<Object> keySet = new HashSet<>();
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig)) {
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       client.subscribe(Collections.singleton(0)).get();
       // With QUERY_REMOTELY enabled, all key-value pairs should be found.
       for (int k = 0; k < KEY_COUNT; ++k) {
@@ -201,13 +211,12 @@ public class DaVinciClientTest {
       }
     }
 
-    daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.FAIL_FAST);
-    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig)) {
+    daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.FAIL_FAST);
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
       // We only subscribe to 1/3 of the partitions so some data will not be present locally.
       client.subscribe(Collections.singleton(0)).get();
       Assert.assertThrows(VeniceClientException.class, () -> client.batchGet(keySet).get());
     }
-
 
     // Update the store to use non-default partitioner and it shall fail during initialization even with QUERY_REMOTELY enabled.
     try (ControllerClient client = cluster.getControllerClient()) {
@@ -223,9 +232,8 @@ public class DaVinciClientTest {
         Assert.fail(response.getError());
       }
     }
-    daVinciConfig.setNonLocalReadsPolicy(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
-    Assert.assertThrows(VeniceClientException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig));
-
+    daVinciConfig.setRemoteReadPolicy(RemoteReadPolicy.QUERY_REMOTELY);
+    Assert.assertThrows(VeniceClientException.class, () -> ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig));
   }
 
   private void setUpHybridStore(String storeName, Consumer<UpdateStoreQueryParams> paramsConsumer) throws Exception {

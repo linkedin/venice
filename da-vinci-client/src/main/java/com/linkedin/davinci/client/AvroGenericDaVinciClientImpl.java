@@ -45,7 +45,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Objects;
+
 import java.util.HashSet;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
@@ -67,88 +67,90 @@ import static com.linkedin.venice.client.store.ClientFactory.*;
 
 
 public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
-  private static String DAVINCI_CLIENT_NAME = "davinci_client";
-  private static int REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = 1;
-  private static int REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS = 1;
   private static final Logger logger = Logger.getLogger(AvroGenericDaVinciClientImpl.class);
 
-  private final String storeName;
-  protected final boolean useFastAvro;
-  private final MetricsRepository metricsRepository;
-  private final DaVinciConfig daVinciConfig;
-  private final ClientConfig clientConfig;
-  private final List<AbstractVeniceService> services = new ArrayList<>();
-  private final AtomicBoolean isStarted = new AtomicBoolean(false);
+  private static String CLIENT_NAME = "davinci-client";
 
+  protected final DaVinciConfig daVinciConfig;
+  protected final ClientConfig clientConfig;
+  protected final VeniceProperties backendConfig;
+
+  private AvroGenericStoreClient<K, V> veniceClient;
+  private VenicePartitioner partitioner;
+  private RecordSerializer<K> keySerializer;
+
+  // TODO: refactor the code and move these to DaVinciBackend
   private ZkClient zkClient;
-  private ReadOnlyStoreRepository metadataReposotory;
+  private ReadOnlyStoreRepository storeReposotory;
   private ReadOnlySchemaRepository schemaRepository;
   private StorageService storageService;
   private StorageEngineMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
-  private RecordSerializer<K> keySerializer;
+  private MetricsRepository metricsRepository;
   private IngestionController ingestionController;
-  private TransportClient transportClient;
-  private AvroGenericStoreClient<K, V> veniceClient;
-  private VenicePartitioner partitioner;
+  private final List<AbstractVeniceService> services = new ArrayList<>();
+  private final AtomicBoolean isStarted = new AtomicBoolean(false);
+
 
   public AvroGenericDaVinciClientImpl(
-      DaVinciConfig daVinciConfig,
-      ClientConfig clientConfig) {
-    this.daVinciConfig = daVinciConfig;
+      DaVinciConfig config,
+      ClientConfig clientConfig,
+      VeniceProperties backendConfig) {
+    this.daVinciConfig = config;
     this.clientConfig = clientConfig;
-    this.storeName = clientConfig.getStoreName();
-    this.useFastAvro = clientConfig.isUseFastAvro();
-    this.metricsRepository = Optional.ofNullable(clientConfig.getMetricsRepository())
-        .orElse(TehutiUtils.getMetricsRepository(DAVINCI_CLIENT_NAME));
+    this.backendConfig = backendConfig;
   }
 
-  private D2TransportClient getD2TransportClient() {
-    transportClient = ClientFactory.getTransportClient(clientConfig);
-    if (!(transportClient instanceof D2TransportClient)) {
-      throw new VeniceClientException("Da Vinci only supports D2 client.");
+  private D2ServiceDiscoveryResponseV2 discoverService() {
+    try (TransportClient client = ClientFactory.getTransportClient(clientConfig)) {
+      if (!(client instanceof D2TransportClient)) {
+        throw new VeniceClientException("Venice service discovery requires D2 client, got " + client.getClass());
+      }
+      D2ServiceDiscovery serviceDiscovery = new D2ServiceDiscovery();
+      D2ServiceDiscoveryResponseV2 response = serviceDiscovery.discoverD2Service((D2TransportClient) client, getStoreName());
+      logger.info("Venice service discovered" +
+                       ", clusterName=" + response.getCluster() +
+                       ", zkAddress=" + response.getZkAddress() +
+                       ", kafkaZkAddress=" + response.getKafkaZkAddress() +
+                       ", kafkaBootstrapServers=" + response.getKafkaBootstrapServers());
+      return response;
+    } catch (Exception e) {
+      throw new VeniceClientException("Failed venice service discovery", e);
     }
-    return (D2TransportClient) transportClient;
   }
 
-  private VeniceConfigLoader buildVeniceConfigLoader() {
-    final D2ServiceDiscoveryResponseV2 d2ServiceDiscoveryResponse;
-    try (D2TransportClient d2TransportClient = getD2TransportClient()) {
-      D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
-      d2ServiceDiscoveryResponse = d2ServiceDiscovery.discoverD2Service(d2TransportClient, getStoreName());
-    }
-    String zkAddress = d2ServiceDiscoveryResponse.getZkAddress();
-    String kafkaZkAddress = Objects.requireNonNull(d2ServiceDiscoveryResponse.getKafkaZkAddress());
-    String kafkaBootstrapServers = Objects.requireNonNull(d2ServiceDiscoveryResponse.getKafkaBootstrapServers());
-    String clusterName = Objects.requireNonNull(d2ServiceDiscoveryResponse.getCluster());
+  private VeniceConfigLoader buildVeniceConfig() {
+    D2ServiceDiscoveryResponseV2 discoveryResponse = discoverService();
+    String clusterName = backendConfig.getString(ConfigKeys.CLUSTER_NAME, discoveryResponse.getCluster());
+    String zkAddress = backendConfig.getString(ConfigKeys.ZOOKEEPER_ADDRESS, discoveryResponse.getZkAddress());
+    String kafkaZkAddress = backendConfig.getString(ConfigKeys.KAFKA_ZK_ADDRESS, discoveryResponse.getKafkaZkAddress());
+    String kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, discoveryResponse.getKafkaBootstrapServers());
 
     VeniceProperties clusterProperties = new PropertyBuilder()
-        // Helix-related config
-        .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
-        // Kafka-related config
-        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
-        .put(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress)
-        // Other configs
+        .put(backendConfig.toProperties())
         .put(ConfigKeys.CLUSTER_NAME, clusterName)
-        .put(ConfigKeys.PERSISTENCE_TYPE, daVinciConfig.getPersistenceType())
+        .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
+        .put(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress)
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
         .build();
-    // Generate server.properties in config directory
+    logger.info("clusterConfig=" + clusterProperties.toString(true));
+
     VeniceProperties serverProperties = new PropertyBuilder()
+        .put(backendConfig.toProperties())
         .put(ConfigKeys.LISTENER_PORT, 0) // not used by Da Vinci
-        .put(ConfigKeys.DATA_BASE_PATH, daVinciConfig.getDataBasePath())
-        .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED, daVinciConfig.isRocksDBPlainTableFormatEnabled())
+        .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
+            daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
         .build();
-    VeniceProperties serverOverrideProperties = new VeniceProperties(new Properties());
-    VeniceConfigLoader
-        veniceConfigLoader = new VeniceConfigLoader(clusterProperties, serverProperties, serverOverrideProperties);
-    return veniceConfigLoader;
+    logger.info("serverConfig=" + serverProperties.toString(true));
+
+    return new VeniceConfigLoader(clusterProperties, serverProperties, new VeniceProperties(new Properties()));
   }
 
   @Override
   public CompletableFuture<Void> subscribeToAllPartitions() {
     // TODO: add non-static partitioning support
-    Store store = metadataReposotory.getStoreOrThrow(storeName);
-    String msg = "Cannot subscribe to an empty store " + storeName + ". Please push data to the store first.";
+    Store store = storeReposotory.getStoreOrThrow(getStoreName());
+    String msg = "Cannot subscribe to an empty store " + getStoreName() + ". Please push data to the store first.";
     Version version = store.getVersions().stream().findAny().orElseThrow(() -> new VeniceClientException(msg));
     Set<Integer> partitions = IntStream.range(0, version.getPartitionCount()).boxed().collect(Collectors.toSet());
     return subscribe(partitions);
@@ -172,7 +174,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     // TODO: refactor IngestionController to use StoreBackend directly
     try (ReferenceCounted<IngestionController.VersionBackend> versionRef =
-              ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
+              ingestionController.getStoreOrThrow(getStoreName()).getCurrentVersion()) {
       if (null == versionRef.get()) {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
@@ -194,7 +196,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     // TODO: refactor IngestionController to use StoreBackend directly
     try (ReferenceCounted<IngestionController.VersionBackend> versionRef =
-              ingestionController.getStoreOrThrow(storeName).getCurrentVersion()) {
+              ingestionController.getStoreOrThrow(getStoreName()).getCurrentVersion()) {
       if (null == versionRef.get()) {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
@@ -225,7 +227,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   }
 
   private boolean isRemoteQueryAllowed() {
-    return daVinciConfig.getNonLocalReadsPolicy().equals(DaVinciConfig.NonLocalReadsPolicy.QUERY_REMOTELY);
+    return daVinciConfig.getRemoteReadPolicy().equals(RemoteReadPolicy.QUERY_REMOTELY);
   }
 
   private AbstractStorageEngine getStorageEngine(Version version) {
@@ -258,9 +260,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         null,
         null,
         version.getCompressionStrategy(),
-        useFastAvro,
+        clientConfig.isUseFastAvro(),
         schemaRepository,
-        storeName);
+        clientConfig.getStoreName());
   }
 
   @Override
@@ -269,49 +271,57 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     if (!isntStarted) {
       throw new VeniceClientException("Client is already started!");
     }
-    VeniceConfigLoader veniceConfigLoader = buildVeniceConfigLoader();
+
+    VeniceConfigLoader veniceConfigLoader = buildVeniceConfig();
     String clusterName = veniceConfigLoader.getVeniceClusterConfig().getClusterName();
+
+    metricsRepository =
+        Optional.ofNullable(clientConfig.getMetricsRepository())
+            .orElse(TehutiUtils.getMetricsRepository(CLIENT_NAME));
+
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     zkClient = ZkClientFactory.newZkClient(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress());
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "davinci-zk-client"));
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    metadataReposotory = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
-        REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS);
-    metadataReposotory.refresh();
-    schemaRepository = new HelixReadOnlySchemaRepository(metadataReposotory, zkClient, adapter, clusterName,
-        REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, REFRESH_INTERVAL_FOR_ZK_RECONNECT_IN_MS);
+
+    storeReposotory = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,3, 1000);
+    storeReposotory.refresh();
+
+    schemaRepository = new HelixReadOnlySchemaRepository(storeReposotory, zkClient, adapter, clusterName,3, 1000);
     schemaRepository.refresh();
 
-    AggVersionedStorageEngineStats
-        storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, metadataReposotory);
+    AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeReposotory);
     storageService = new StorageService(veniceConfigLoader, storageEngineStats);
     services.add(storageService);
 
     storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
     services.add(storageMetadataService);
 
-    // SchemaReader of Kafka protocol
     SchemaReader schemaReader = ClientFactory.getSchemaReader(
-        ClientConfig.cloneConfig(clientConfig).setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)));
+        ClientConfig.cloneConfig(clientConfig).setStoreName(
+            SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)));
+
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
         veniceConfigLoader,
         storageMetadataService,
-        metadataReposotory,
+        storeReposotory,
         schemaRepository,
         metricsRepository,
         Optional.of(schemaReader),
         Optional.of(clientConfig));
     services.add(kafkaStoreIngestionService);
-    this.keySerializer =
-        SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
+
+    keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema());
 
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
-    PartitionerConfig partitionerConfig = metadataReposotory.getStore(getStoreName()).getPartitionerConfig();
+    PartitionerConfig partitionerConfig = storeReposotory.getStore(getStoreName()).getPartitionerConfig();
     Properties params = new Properties();
     params.putAll(partitionerConfig.getPartitionerParams());
     VeniceProperties partitionerProperties = new VeniceProperties(params);
-    this.partitioner = PartitionUtils.getVenicePartitioner(partitionerConfig.getPartitionerClass(),
-        partitionerConfig.getAmplificationFactor(), partitionerProperties);
+    partitioner = PartitionUtils.getVenicePartitioner(
+        partitionerConfig.getPartitionerClass(),
+        partitionerConfig.getAmplificationFactor(),
+        partitionerProperties);
 
     // For now we only support FAIL_FAST and QUERY_REMOTELY. SUBSCRIBE_AND_QUERY_REMOTELY policy is not supported.
     if (isRemoteQueryAllowed()) {
@@ -324,7 +334,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     ingestionController = new IngestionController(
         veniceConfigLoader,
-        metadataReposotory,
+        storeReposotory,
         storageService,
         kafkaStoreIngestionService);
 
@@ -375,7 +385,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   @Override
   public String getStoreName() {
-    return storeName;
+    return clientConfig.getStoreName();
   }
 
   @Override
