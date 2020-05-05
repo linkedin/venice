@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -317,7 +318,7 @@ public class StoreIngestionTaskTest {
                        boolean isLeaderFollowerModelEnabled) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
-    VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
+    KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
     VeniceWriterFactory mockWriterFactory = mock(VeniceWriterFactory.class);
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
@@ -361,7 +362,7 @@ public class StoreIngestionTaskTest {
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
-        .setVeniceConsumerFactory(mockFactory)
+        .setKafkaClientFactory(mockFactory)
         .setStorageEngineRepository(mockStorageEngineRepository)
         .setStorageMetadataService(offsetManager)
         .setNotifiersQueue(notifiers)

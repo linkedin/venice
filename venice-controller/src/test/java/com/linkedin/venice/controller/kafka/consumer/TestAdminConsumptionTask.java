@@ -33,8 +33,6 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.meta.ETLStoreConfig;
-import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
@@ -140,7 +138,7 @@ public class TestAdminConsumptionTask {
     // By default, topic has already been created
     doReturn(new HashSet<>(Arrays.asList(topicName))).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
-    doReturn(true).when(topicManager).containsTopic(topicName);
+    doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
   }
 
   @AfterMethod
@@ -392,8 +390,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT * 6)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0L, TestUtils.getVeniceConsumerFactory(kafka));
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     topicManager.createTopic(adminTopic, 1, 1, true);
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);

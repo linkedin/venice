@@ -47,7 +47,7 @@ public class TopicManagerTest {
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas, false);
     TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.SECONDS,
-        () -> Assert.assertTrue(manager.containsTopic(topicName)));
+        () -> Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicName)));
     return topicName;
   }
 
@@ -55,8 +55,7 @@ public class TopicManagerTest {
   public void setup() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
-    manager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    manager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka));
   }
 
   @AfterClass
@@ -69,12 +68,12 @@ public class TopicManagerTest {
   public void testCreateTopic() throws Exception {
     String topicNameWithEternalRetentionPolicy = getTopic();
     manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
-    Assert.assertTrue(manager.containsTopic(topicNameWithEternalRetentionPolicy));
+    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
     Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
 
     String topicNameWithDefaultRetentionPolicy = getTopic();
     manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
-    Assert.assertTrue(manager.containsTopic(topicNameWithDefaultRetentionPolicy));
+    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
     Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
     Assert.assertEquals(1, manager.getReplicationFactor(topicNameWithDefaultRetentionPolicy));
   }
@@ -95,11 +94,11 @@ public class TopicManagerTest {
     // re-create those topics with different retention policy
 
     manager.createTopic(topicNameWithEternalRetentionPolicy, 1, 1, true); /* should be noop */
-    Assert.assertTrue(manager.containsTopic(topicNameWithEternalRetentionPolicy));
+    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithEternalRetentionPolicy));
     Assert.assertEquals(manager.getTopicRetention(topicNameWithEternalRetentionPolicy), TopicManager.ETERNAL_TOPIC_RETENTION_POLICY_MS);
 
     manager.createTopic(topicNameWithDefaultRetentionPolicy, 1, 1, false); /* should be noop */
-    Assert.assertTrue(manager.containsTopic(topicNameWithDefaultRetentionPolicy));
+    Assert.assertTrue(manager.containsTopicAndAllPartitionsAreOnline(topicNameWithDefaultRetentionPolicy));
     Assert.assertEquals(manager.getTopicRetention(topicNameWithDefaultRetentionPolicy), TopicManager.DEFAULT_TOPIC_RETENTION_POLICY_MS);
   }
 
@@ -107,14 +106,14 @@ public class TopicManagerTest {
   public void testDeleteTopic() {
     String topicName = getTopic();
     manager.ensureTopicIsDeletedAndBlock(topicName);
-    Assert.assertFalse(manager.containsTopic(topicName));
+    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
   public void testDeleteTopicWithRetry() {
     String topicName = getTopic();
     manager.ensureTopicIsDeletedAndBlockWithRetry(topicName);
-    Assert.assertFalse(manager.containsTopic(topicName));
+    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test
@@ -137,7 +136,7 @@ public class TopicManagerTest {
     String topicName = getTopic();
     // Delete that topic
     manager.ensureTopicIsDeletedAndBlock(topicName);
-    Assert.assertFalse(manager.containsTopic(topicName));
+    Assert.assertFalse(manager.containsTopicAndAllPartitionsAreOnline(topicName));
   }
 
   @Test

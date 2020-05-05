@@ -3,14 +3,14 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 
 
-public class VeniceControllerConsumerFactory extends VeniceConsumerFactory {
+public class VeniceControllerConsumerFactory extends KafkaClientFactory {
   private final VeniceControllerConfig controllerConfig;
   public VeniceControllerConsumerFactory(VeniceControllerConfig controllerConfig){
     this.controllerConfig = controllerConfig;
@@ -31,4 +31,13 @@ public class VeniceControllerConsumerFactory extends VeniceConsumerFactory {
     return properties;
   }
 
+  @Override
+  protected String getKafkaAdminClass() {
+    return controllerConfig.getKafkaAdminClass();
+  }
+
+  @Override
+  protected String getKafkaZkAddress() {
+    return controllerConfig.getKafkaZkAddress();
+  }
 }

@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -43,14 +44,14 @@ public class StoreIngestionTaskFactory {
       boolean bufferReplayEnabledForHybrid
   ) {
     if (isLeaderFollowerModelEnabled) {
-      return new LeaderFollowerStoreIngestionTask(builder.veniceWriterFactory, builder.veniceConsumerFactory,
+      return new LeaderFollowerStoreIngestionTask(builder.veniceWriterFactory, builder._kafkaClientFactory,
           kafkaConsumerProperties, builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers,
           builder.bandwidthThrottler, builder.recordsThrottler, builder.schemaRepo, builder.metadataRepo,
           builder.topicManager, builder.ingestionStats, builder.versionedDIVStats,
           builder.versionedStorageIngestionStats, builder.storeBufferService, isCurrentVersion, hybridStoreConfig,
           isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
     } else {
-      return new OnlineOfflineStoreIngestionTask(builder.veniceWriterFactory, builder.veniceConsumerFactory,
+      return new OnlineOfflineStoreIngestionTask(builder.veniceWriterFactory, builder._kafkaClientFactory,
           kafkaConsumerProperties, builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers,
           builder.bandwidthThrottler, builder.recordsThrottler, builder.schemaRepo, builder.metadataRepo,
           builder.topicManager, builder.ingestionStats, builder.versionedDIVStats,
@@ -74,7 +75,7 @@ public class StoreIngestionTaskFactory {
     private volatile boolean built = false;
 
     private VeniceWriterFactory veniceWriterFactory;
-    private VeniceConsumerFactory veniceConsumerFactory;
+    private KafkaClientFactory _kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> notifiers;
@@ -103,9 +104,9 @@ public class StoreIngestionTaskFactory {
       return this;
     }
 
-    public Builder setVeniceConsumerFactory(VeniceConsumerFactory consumerFactory) {
+    public Builder setKafkaClientFactory(KafkaClientFactory consumerFactory) {
       if (!built) {
-        this.veniceConsumerFactory = consumerFactory;
+        this._kafkaClientFactory = consumerFactory;
       }
       return this;
     }

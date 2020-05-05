@@ -24,7 +24,7 @@ public class VeniceWriterTest {
   public void testThreadSafety() throws ExecutionException, InterruptedException, IOException {
     ExecutorService executorService = null;
     try (KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-        TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()))) {
+        TopicManager topicManager = new TopicManager(TestUtils.getVeniceConsumerFactory(kafka))) {
       String topicName = TestUtils.getUniqueString("topic-for-vw-thread-safety");
       topicManager.createTopic(topicName, 1, 1, true);
       Properties properties = new Properties();

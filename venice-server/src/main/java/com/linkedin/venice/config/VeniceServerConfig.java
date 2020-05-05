@@ -2,6 +2,7 @@ package com.linkedin.venice.config;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -177,7 +178,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final BlockingQueueType blockingQueueType;
   private final boolean restServiceEpollEnabled;
   private final boolean enableRocksDBOffsetMetadata;
-
+  private final String kafkaAdminClass;
 
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
@@ -257,6 +258,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
 
     restServiceEpollEnabled = serverProperties.getBoolean(SERVER_REST_SERVICE_EPOLL_ENABLED, false);
+    kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
   }
 
   public int getListenerPort() {
@@ -458,5 +460,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
   public boolean isRocksDBOffsetMetadataEnabled() {
     return enableRocksDBOffsetMetadata;
+  }
+
+  public String getKafkaAdminClass() {
+    return kafkaAdminClass;
   }
 }

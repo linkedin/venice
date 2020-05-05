@@ -224,7 +224,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // Check whether the admin topic exists or not
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     TopicManager topicManager = getTopicManager();
-    if (topicManager.containsTopic(topicName)) {
+    if (topicManager.containsTopicAndAllPartitionsAreOnline(topicName)) {
       logger.info("Admin topic: " + topicName + " for cluster: " + clusterName + " already exists.");
     } else {
       // Create Kafka topic
@@ -370,7 +370,7 @@ public class VeniceParentHelixAdmin implements Admin {
         if (storeInfo.getHybridStoreConfig() != null
             && !storeInfo.getVersions().isEmpty()
             && storeInfo.getVersions().get(storeInfo.getLargestUsedVersionNumber()).getPartitionCount() == partitionCount
-            && getTopicManager().containsTopic(Version.composeRealTimeTopic(storeName))) {
+            && getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
           storeReady = true;
         }
       }
@@ -1763,7 +1763,7 @@ public class VeniceParentHelixAdmin implements Admin {
         logger.info("Truncating topic when kill offline push job, topic: " + kafkaTopic);
         truncateKafkaTopic(kafkaTopic);
         String correspondingStreamReprocessingTopic = Version.composeStreamReprocessingTopicFromVersionTopic(kafkaTopic);
-        if (getTopicManager().containsTopicInKafkaZK(correspondingStreamReprocessingTopic)) {
+        if (getTopicManager().containsTopic(correspondingStreamReprocessingTopic)) {
           truncateKafkaTopic(correspondingStreamReprocessingTopic);
         }
       }

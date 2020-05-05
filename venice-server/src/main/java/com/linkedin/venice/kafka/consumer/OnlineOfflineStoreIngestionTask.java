@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceInconsistentStoreMetadataException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
@@ -38,7 +39,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
   public OnlineOfflineStoreIngestionTask(
       VeniceWriterFactory writerFactory,
-      VeniceConsumerFactory consumerFactory,
+      KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,

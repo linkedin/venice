@@ -114,9 +114,8 @@ public class TestHybrid {
     });
 
     //And real-time topic should exist now.
-    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
-    assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
+    assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
     assertEquals(topicManager.getTopicRetention(Version.composeRealTimeTopic(storeName)),
         hybridStoreConfig.getRetentionTimeInMs(), "RT retention not configured properly");
     // Make sure RT retention is updated when the rewind time is updated
@@ -200,8 +199,7 @@ public class TestHybrid {
 
     Assert.assertFalse(response.isError());
 
-    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
 
     //Do an H2V push
     runH2V(h2vProperties, 1, controllerClient);
@@ -632,9 +630,8 @@ public class TestHybrid {
     }
 
     // And real-time topic should not exist since buffer replay is skipped.
-    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
-    assertFalse(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
+    assertFalse(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
     IOUtils.closeQuietly(topicManager);
 
     venice.close();

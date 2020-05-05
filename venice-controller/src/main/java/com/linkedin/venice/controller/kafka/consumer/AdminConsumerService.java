@@ -7,7 +7,7 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controller.ZkAdminTopicMetadataAccessor;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -27,7 +27,7 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final VeniceHelixAdmin admin;
   private final AdminOffsetManager offsetManager;
   private final ZkAdminTopicMetadataAccessor adminTopicMetadataAccessor;
-  private final VeniceConsumerFactory consumerFactory;
+  private final KafkaClientFactory consumerFactory;
   private final MetricsRepository metricsRepository;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;

@@ -47,8 +47,7 @@ public class TestBrooklin {
     String topic = "test-topic";
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     TopicManager topicManager =
-        new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-            DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+        new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(kafka));
 
     //enable ssl
     Properties kafkaSslProps = new Properties();
@@ -80,8 +79,8 @@ public class TestBrooklin {
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
     Properties properties = new Properties();
     properties.put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        100, 0l, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        100, 0l, TestUtils.getVeniceConsumerFactory(kafka));
     TopicReplicator replicator =
         new BrooklinTopicReplicator(topicManager, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()),
             brooklin.getBrooklinDmsUri(), new VeniceProperties(properties), dummyVeniceClusterName, "venice-test-service", false,
@@ -178,8 +177,7 @@ public class TestBrooklin {
   @Test
   public void testReflectiveInstantiation() {
 
-    TopicManager topicManager = new TopicManager("some zk connection", DEFAULT_SESSION_TIMEOUT_MS,
-        DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory("test"));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(null));
 
     // Main case: trying to instantiate the BrooklinTopicReplicator
     String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();

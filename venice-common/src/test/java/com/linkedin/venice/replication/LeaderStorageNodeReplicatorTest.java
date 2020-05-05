@@ -56,8 +56,8 @@ public class LeaderStorageNodeReplicatorTest {
     Version version = new Version(Version.parseStoreFromKafkaTopicName(destTopic), 1, "test-id");
     doReturn(Optional.of(version)).when(mockStore).getVersion(Version.parseVersionFromKafkaTopicName(destTopic));
     doReturn(3600L).when(mockHybridConfig).getRewindTimeInSeconds();
-    doReturn(true).when(mockTopicManager).containsTopic(srcTopic);
-    doReturn(true).when(mockTopicManager).containsTopic(destTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(srcTopic);
+    doReturn(true).when(mockTopicManager).containsTopicAndAllPartitionsAreOnline(destTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(srcTopic);
     doReturn(partitionInfos).when(mockTopicManager).getPartitions(destTopic);
     doReturn(mockVeniceWriter).when(mockVeniceWriterFactory).createBasicVeniceWriter(any(), any());

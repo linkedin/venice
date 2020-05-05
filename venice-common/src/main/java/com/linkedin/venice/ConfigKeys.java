@@ -1025,4 +1025,9 @@ public class ConfigKeys {
    * Number of threads that the Router will use to wait for dictionary to download from storage nodes and process it.
    */
   public static final String ROUTER_DICTIONARY_PROCESSING_THREADS = "router.dictionary.processing.threads";
+
+  /**
+   * The class name to use for the {@link com.linkedin.venice.kafka.admin.KafkaAdminWrapper}.
+   */
+  public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
 }
