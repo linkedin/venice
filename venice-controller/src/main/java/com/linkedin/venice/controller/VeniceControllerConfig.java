@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -63,6 +64,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean sendConcurrentTopicDeleteRequestsEnabled;
   private final boolean enableBatchPushFromAdminInChildController;
   private final boolean adminCheckReadMethodForKafka;
+  private final String kafkaAdminClass;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -141,6 +143,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
     this.enableBatchPushFromAdminInChildController = props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
+    this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
   }
 
   public int getAdminPort() {
@@ -281,6 +284,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isEnableBatchPushFromAdminInChildController() {
     return enableBatchPushFromAdminInChildController;
+  }
+
+  public String getKafkaAdminClass() {
+    return kafkaAdminClass;
   }
 
   /**

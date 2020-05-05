@@ -81,9 +81,8 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     });
 
     //verify realtime topic exists
-    topicManager = new TopicManager(venice.getKafka().getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
-    Assert.assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName)));
 
     //disable store
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()

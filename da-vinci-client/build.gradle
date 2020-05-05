@@ -1,12 +1,18 @@
 apply plugin: 'java-library'
 
 dependencies {
-  implementation project(':venice-common')
+  implementation (project(':venice-common')) {
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
   implementation project(':venice-server')
   implementation project(':venice-thin-client')
   implementation project(':venice-schema-common')
   implementation project(':venice-server')
-  implementation project(':venice-controller')
+  implementation (project(':venice-controller')) {
+    exclude module: 'kafka_2.10'
+    exclude group: 'org.scala-lang'
+  }
   implementation libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   implementation libraries.helix
 }

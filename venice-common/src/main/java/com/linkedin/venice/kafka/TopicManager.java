@@ -1,19 +1,20 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.admin.KafkaAdminWrapper;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
-import kafka.admin.AdminUtils;
-import kafka.admin.RackAwareMode;
-import kafka.common.TopicAlreadyMarkedForDeletionException;
-import kafka.server.ConfigType;
-import kafka.utils.ZKStringSerializer$;
-import kafka.utils.ZkUtils;
-
-import org.I0Itec.zkclient.ZkClient;
-import org.I0Itec.zkclient.ZkConnection;
+import java.io.Closeable;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -26,20 +27,6 @@ import org.apache.kafka.common.errors.InvalidReplicationFactorException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.map.ObjectMapper;
-
-import java.io.Closeable;
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.offsets.OffsetRecord.*;
@@ -58,28 +45,21 @@ public class TopicManager implements Closeable {
   public static final long DEFAULT_TOPIC_RETENTION_POLICY_MS = 5 * Time.MS_PER_DAY;
 
   // Immutable state
-  private final String zkConnection;
-  private final int sessionTimeoutMs;
-  private final int connectionTimeoutMs;
   private final int kafkaOperationTimeoutMs;
   private final int topicDeletionStatusPollIntervalMs;
   private final long topicMinLogCompactionLagMs;
-  private final VeniceConsumerFactory veniceConsumerFactory;
+  private final KafkaClientFactory kafkaClientFactory;
   private final boolean isConcurrentTopicDeleteRequestsEnabled;
 
   // Mutable, lazily initialized, state
-  private ZkClient zkClient;
+  private KafkaAdminWrapper kafkaAdmin;
   private KafkaConsumer<byte[], byte[]> kafkaConsumer;
-  private ZkUtils zkUtils;
 
   private static final Logger logger = Logger.getLogger(TopicManager.class);
-  private static final ObjectMapper mapper = new ObjectMapper();
-  public static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
-  public static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
   public static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   private static final int MINIMUM_TOPIC_DELETION_STATUS_POLL_TIMES = 10;
   private static final int FAST_KAFKA_OPERATION_TIMEOUT_MS = Time.MS_PER_SECOND;
-  protected static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
+  public static final long UNKNOWN_TOPIC_RETENTION = Long.MIN_VALUE;
   protected static final long ETERNAL_TOPIC_RETENTION_POLICY_MS = Long.MAX_VALUE;
   private static final int KAFKA_POLLING_RETRY_ATTEMPT = 3;
   public static final int MAX_TOPIC_DELETE_RETRIES = 3;
@@ -96,29 +76,29 @@ public class TopicManager implements Closeable {
 
 
   //TODO: Consider adding a builder for this class as the number of constructors is getting high.
-  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs, long topicMinLogCompactionLagMs, VeniceConsumerFactory veniceConsumerFactory,
+  public TopicManager(
+      int kafkaOperationTimeoutMs,
+      int topicDeletionStatusPollIntervalMs,
+      long topicMinLogCompactionLagMs,
+      KafkaClientFactory kafkaClientFactory,
       boolean isConcurrentTopicDeleteRequestsEnabled) {
-    this.zkConnection = zkConnection;
-    this.sessionTimeoutMs = sessionTimeoutMs;
-    this.connectionTimeoutMs = connectionTimeoutMs;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
     this.topicDeletionStatusPollIntervalMs = topicDeletionStatusPollIntervalMs;
     this.topicMinLogCompactionLagMs = topicMinLogCompactionLagMs;
-    this.veniceConsumerFactory = veniceConsumerFactory;
+    this.kafkaClientFactory = kafkaClientFactory;
     this.isConcurrentTopicDeleteRequestsEnabled = isConcurrentTopicDeleteRequestsEnabled;
   }
 
-  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
-      int topicDeletionStatusPollIntervalMs, long topicMinLogCompactionLagMs, VeniceConsumerFactory veniceConsumerFactory) {
-    this(zkConnection, sessionTimeoutMs, connectionTimeoutMs, kafkaOperationTimeoutMs,
-        topicDeletionStatusPollIntervalMs, topicMinLogCompactionLagMs, veniceConsumerFactory, DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY);
-  }
-
-  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, int topicDeletionStatusPollIntervalMS,
-      long topicMinLogCompactionLagMS, VeniceConsumerFactory veniceConsumerFactory) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs,
-        topicDeletionStatusPollIntervalMS, topicMinLogCompactionLagMS, veniceConsumerFactory);
+  public TopicManager(
+      int kafkaOperationTimeoutMs,
+      int topicDeletionStatusPollIntervalMs,
+      long topicMinLogCompactionLagMs,
+      KafkaClientFactory kafkaClientFactory) {
+    this(kafkaOperationTimeoutMs,
+        topicDeletionStatusPollIntervalMs,
+        topicMinLogCompactionLagMs,
+        kafkaClientFactory,
+        DEFAULT_CONCURRENT_TOPIC_DELETION_REQUEST_POLICY);
   }
 
   /**
@@ -126,12 +106,13 @@ public class TopicManager implements Closeable {
    * topic.deletion.status.poll.interval.ms, so we use default config defined in this class; besides, TopicManager
    * in server doesn't use the config mentioned above.
    *
-   * @param zkConnection
-   * @param veniceConsumerFactory
+   * @param kafkaClientFactory
    */
-  public TopicManager(String zkConnection, VeniceConsumerFactory veniceConsumerFactory) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
-        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS, DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS, veniceConsumerFactory);
+  public TopicManager(KafkaClientFactory kafkaClientFactory) {
+    this(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        DEFAULT_TOPIC_DELETION_STATUS_POLL_INTERVAL_MS,
+        DEFAULT_KAFKA_MIN_LOG_COMPACTION_LAG_MS,
+        kafkaClientFactory);
   }
 
   /**
@@ -233,10 +214,8 @@ public class TopicManager implements Closeable {
       boolean asyncCreateOperationSucceeded = false;
       while (!asyncCreateOperationSucceeded) {
         try {
-          // TODO: Stop using Kafka APIs which depend on ZK.
-          // RackAwareMode.Safe: Use rack information if every broker has a rack. Otherwise, fallback to Disabled mode.
-          AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
-            asyncCreateOperationSucceeded = true;
+          getKafkaAdmin().createTopic(topicName, numPartitions, replication, topicProperties);
+          asyncCreateOperationSucceeded = true;
         } catch (InvalidReplicationFactorException e) {
           if (System.currentTimeMillis() > deadlineMs) {
             throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ". Topic still does not exist after " + (deadlineMs - startTime) + "ms.", e);
@@ -261,7 +240,7 @@ public class TopicManager implements Closeable {
 
   protected void waitUntilTopicCreated(String topicName, int partitionCount, long deadlineMs) {
     long startTime = System.currentTimeMillis();
-    while (!containsTopic(topicName, partitionCount)) {
+    while (!containsTopicAndAllPartitionsAreOnline(topicName, partitionCount)) {
       if (System.currentTimeMillis() > deadlineMs) {
         throw new VeniceOperationAgainstKafkaTimedOut(
             "Timeout while creating topic: " + topicName + ".  Topic still did not pass all the checks after " + (deadlineMs - startTime) + "ms.");
@@ -279,11 +258,7 @@ public class TopicManager implements Closeable {
     if (!isTopicFullyDeleted(topicName, false)) {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
-      try {
-        AdminUtils.deleteTopic(getZkUtils(), topicName);
-      } catch (TopicAlreadyMarkedForDeletionException e) {
-        logger.warn("Topic delete requested, but topic already marked for deletion");
-      }
+      getKafkaAdmin().deleteTopic(topicName);
     } else {
       logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
     }
@@ -317,13 +292,12 @@ public class TopicManager implements Closeable {
     if (!topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG) || // config doesn't exist
         !topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG).equals(retentionInMSStr)) { // config is different
       topicProperties.put(TopicConfig.RETENTION_MS_CONFIG, Long.toString(retentionInMS));
-      AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
+      getKafkaAdmin().setTopicConfig(topicName, topicProperties);
       return true;
     }
     // Retention time has already been updated for this topic before
     return false;
   }
-
 
   /**
    * Update topic compaction policy.
@@ -338,7 +312,7 @@ public class TopicManager implements Closeable {
     if (! expectedCompactionPolicy.equals(currentCompactionPolicy)) {
       // Different, then update
       topicProperties.put(TopicConfig.CLEANUP_POLICY_CONFIG, expectedCompactionPolicy);
-      AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
+      getKafkaAdmin().setTopicConfig(topicName, topicProperties);
       logger.info("Kafka compaction policy for topic: " + topicName + " has been updated from " +
           currentCompactionPolicy + " to " + expectedCompactionPolicy);
     }
@@ -351,17 +325,7 @@ public class TopicManager implements Closeable {
   }
 
   public Map<String, Long> getAllTopicRetentions() {
-    scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
-    Map<String, Long> topicRetentions = new HashMap<>();
-    Map<String, Properties> allTopicConfigsJavaMap = scala.collection.JavaConversions.mapAsJavaMap(allTopicConfigs);
-    allTopicConfigsJavaMap.forEach( (topic, topicProperties) -> {
-      if (topicProperties.containsKey(TopicConfig.RETENTION_MS_CONFIG)) {
-        topicRetentions.put(topic, Long.valueOf(topicProperties.getProperty(TopicConfig.RETENTION_MS_CONFIG)));
-      } else {
-        topicRetentions.put(topic, UNKNOWN_TOPIC_RETENTION);
-      }
-    });
-    return topicRetentions;
+    return getKafkaAdmin().getAllTopicRetentions();
   }
 
   /**
@@ -390,15 +354,15 @@ public class TopicManager implements Closeable {
    * @return
    */
   public Properties getTopicConfig(String topicName) {
-    if (!containsTopicInKafkaZK(topicName)) {
+    if (!containsTopic(topicName)) {
       throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
     }
 
-    return AdminUtils.fetchEntityConfig(getZkUtils(), ConfigType.Topic(), topicName);
+    return getKafkaAdmin().getTopicConfig(topicName);
   }
 
-  public scala.collection.Map<String, Properties> getAllTopicConfig() {
-    return AdminUtils.fetchAllTopicConfigs(getZkUtils());
+  public Map<String, Properties> getAllTopicConfig() {
+    return getKafkaAdmin().getAllTopicConfig();
   }
 
   /**
@@ -422,13 +386,18 @@ public class TopicManager implements Closeable {
    * @param topicName
    */
   public void ensureTopicIsDeletedAndBlock(String topicName) {
-    if (!containsTopic(topicName)) {
+    if (!containsTopicAndAllPartitionsAreOnline(topicName)) {
       // Topic doesn't exist
       return;
     }
 
     // This is trying to guard concurrent topic deletion in Kafka.
-    if (!isConcurrentTopicDeleteRequestsEnabled && getZkUtils().getChildrenParentMayNotExist(ZkUtils.DeleteTopicsPath()).size() > 0) {
+    if (!isConcurrentTopicDeleteRequestsEnabled &&
+        /**
+         * TODO: Add support for this call in the {@link com.linkedin.venice.kafka.admin.KafkaAdminClient}
+         * This is the last remaining call that depends on {@link kafka.utils.ZkUtils}.
+         */
+        getKafkaAdmin().isTopicDeletionUnderway()) {
       throw new VeniceException("Delete operation already in progress! Try again later.");
     }
 
@@ -492,29 +461,29 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * @see {@link #containsTopic(String, Integer)}
+   * A quick check to see whether the topic exists.
+   *
+   * N.B.: The behavior of the Scala and Java admin clients are different...
    */
   public boolean containsTopic(String topic) {
-    return containsTopic(topic, null);
+    return this.getKafkaAdmin().containsTopic(topic);
   }
 
   /**
-   * Check whether the topic exists in Kafka ZK or not.
-   * This function is only being used by {@literal VeniceHelixAdmin#truncateKafkaTopic} right now,
-   * since topic truncation doesn't care about whether the topic actually exists in Kafka broker or not.
+   * @see {@link #containsTopicAndAllPartitionsAreOnline(String, Integer)}
    */
-  public boolean containsTopicInKafkaZK(String topic) {
-    return AdminUtils.topicExists(getZkUtils(), topic);
+  public boolean containsTopicAndAllPartitionsAreOnline(String topic) {
+    return containsTopicAndAllPartitionsAreOnline(topic, null);
   }
 
   /**
-   * This is an extensive check to mitigate an edge-case where a topic is only created in ZK but not in the brokers.
+   * This is an extensive check to mitigate an edge-case where a topic is not yet created in all the brokers.
    *
    * @return true if the topic exists and all its partitions have at least one in-sync replica
    *         false if the topic does not exist at all or if it exists but isn't completely available
    */
-  public synchronized boolean containsTopic(String topic, Integer expectedPartitionCount) {
-    boolean zkMetadataCreatedForTopic = AdminUtils.topicExists(getZkUtils(), topic);
+  public synchronized boolean containsTopicAndAllPartitionsAreOnline(String topic, Integer expectedPartitionCount) {
+    boolean zkMetadataCreatedForTopic = containsTopic(topic);
     if (!zkMetadataCreatedForTopic) {
       return false;
     }
@@ -552,9 +521,9 @@ public class TopicManager implements Closeable {
    *         false if the topic exists fully or partially
    */
   public synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
-    boolean zkMetadataExistsForTopic = AdminUtils.topicExists(getZkUtils(), topic);
+    boolean zkMetadataExistsForTopic = containsTopic(topic);
     if (zkMetadataExistsForTopic) {
-      logger.info("AdminUtils.topicExists() returned true, meaning that the ZK path still exists for topic: " + topic);
+      logger.info("containsTopicInKafkaZK() returned true, meaning that the ZK path still exists for topic: " + topic);
       return false;
     }
 
@@ -583,7 +552,7 @@ public class TopicManager implements Closeable {
   public synchronized Map<Integer, Long> getLatestOffsets(String topic) {
     // To be safe, check whether the topic exists or not,
     // since querying offset against non-existing topic could cause endless retrying.
-    if (!containsTopic(topic)) {
+    if (!containsTopicAndAllPartitionsAreOnline(topic)) {
       logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
       return new HashMap<>();
     }
@@ -622,8 +591,8 @@ public class TopicManager implements Closeable {
    * This method is synchronized because it calls #getConsumer()
    *
    * Here this function will only check whether the topic exists in Kafka Zookeeper or not.
-   * If stronger check against Kafka broker is required, the caller should call {@link #containsTopic(String)}
-   * before invoking this function. The reason of not checking topic existence by {@link #containsTopic(String)}
+   * If stronger check against Kafka broker is required, the caller should call {@link #containsTopicAndAllPartitionsAreOnline(String)}
+   * before invoking this function. The reason of not checking topic existence by {@link #containsTopicAndAllPartitionsAreOnline(String)}
    * by default since this function will validate whether every topic partition has ISR, which could
    * fail {@link #getLatestOffset(String, int)} since some transient non-ISR could happen randomly.
    */
@@ -632,7 +601,7 @@ public class TopicManager implements Closeable {
   }
 
   private synchronized Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
-    if (doTopicCheck && !containsTopicInKafkaZK(topic)) {
+    if (doTopicCheck && !containsTopic(topic)) {
       throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
     }
     if (partition < 0) {
@@ -687,7 +656,7 @@ public class TopicManager implements Closeable {
   }
 
   private synchronized Long getEarliestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
-    if (doTopicCheck && !containsTopicInKafkaZK(topic)) {
+    if (doTopicCheck && !containsTopic(topic)) {
       throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
     }
     if (partition < 0) {
@@ -854,10 +823,10 @@ public class TopicManager implements Closeable {
 
   private synchronized KafkaConsumer<byte[], byte[]> getConsumer(boolean closeAndRecreate) {
     if (this.kafkaConsumer == null) {
-      this.kafkaConsumer = veniceConsumerFactory.getKafkaConsumer(getKafkaConsumerProps());
+      this.kafkaConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps());
     } else if (closeAndRecreate) {
       this.kafkaConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
-      this.kafkaConsumer = veniceConsumerFactory.getKafkaConsumer(getKafkaConsumerProps());
+      this.kafkaConsumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps());
       logger.info("Closed and recreated consumer.");
     }
     return this.kafkaConsumer;
@@ -872,37 +841,16 @@ public class TopicManager implements Closeable {
     return props;
   }
 
-  /**
-   * The first time this is called, it lazily initializes {@link #zkClient}.
-   *
-   * @return The internal {@link ZkClient} instance.
-   */
-  private synchronized ZkClient getZkClient() {
-    if (this.zkClient == null) {
-      this.zkClient = new ZkClient(zkConnection, sessionTimeoutMs, connectionTimeoutMs, ZKStringSerializer$.MODULE$);
+  private synchronized KafkaAdminWrapper getKafkaAdmin() {
+    if (null == this.kafkaAdmin) {
+      this.kafkaAdmin = kafkaClientFactory.getKafkaAdminClient();
     }
-    return this.zkClient;
-  }
-
-  /**
-   * The first time this is called, it lazily initializes {@link #zkUtils}.
-   *
-   * @return The internal {@link ZkUtils} instance.
-   */
-  private synchronized ZkUtils getZkUtils() {
-    if (this.zkUtils == null) {
-      this.zkUtils = new ZkUtils(getZkClient(), new ZkConnection(zkConnection), false);
-    }
-    return this.zkUtils;
+    return this.kafkaAdmin;
   }
 
   @Override
   public synchronized void close() throws IOException {
     IOUtils.closeQuietly(kafkaConsumer);
-    // does not implement closeable, so we're doing it the old-school way
-    if (this.zkClient != null) {
-      zkClient.close();
-    }
+    IOUtils.closeQuietly(kafkaAdmin);
   }
-
 }

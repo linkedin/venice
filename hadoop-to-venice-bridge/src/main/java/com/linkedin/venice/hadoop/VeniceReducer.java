@@ -12,8 +12,8 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfPush;
@@ -298,9 +298,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
    * Start Of Push message.
    */
   private ByteBuffer readDictionaryFromKafka() {
-    VeniceConsumerFactory veniceConsumerFactory = new VeniceAdminToolConsumerFactory(props);
+    KafkaClientFactory kafkaClientFactory = new VeniceAdminToolConsumerFactory(props);
 
-    try (KafkaConsumer<byte[], byte[]> consumer = veniceConsumerFactory.getKafkaConsumer(getKafkaConsumerProps())) {
+    try (KafkaConsumer<byte[], byte[]> consumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps())) {
       String topicName = props.getString(TOPIC_PROP);
       List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
       LOGGER.info("Consuming from topic: " + topicName + " till StartOfPush");

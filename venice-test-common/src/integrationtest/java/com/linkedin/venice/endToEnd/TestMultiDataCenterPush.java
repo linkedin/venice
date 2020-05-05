@@ -166,18 +166,18 @@ public class TestMultiDataCenterPush {
     // Verify the topics in parent controller
     TopicManager parentTopicManager = parentController.getVeniceAdmin().getTopicManager();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,() -> {
-      Assert.assertFalse(parentTopicManager.containsTopic(v1Topic), "Topic: " + v1Topic + " should be deleted after push");
-      Assert.assertFalse(parentTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be deleted after push");
-      Assert.assertFalse(parentTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be deleted after push");
+      Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after push");
+      Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be deleted after push");
+      Assert.assertFalse(parentTopicManager.containsTopicAndAllPartitionsAreOnline(v3Topic), "Topic: " + v3Topic + " should be deleted after push");
     });
 
     // Verify the topics in child controller
     TopicManager childTopicManager = childControllers.get(0).get(0).getVeniceAdmin().getTopicManager();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS,() -> {
-      Assert.assertFalse(childTopicManager.containsTopic(v1Topic), "Topic: " + v1Topic + " should be deleted after 3 pushes");
+      Assert.assertFalse(childTopicManager.containsTopicAndAllPartitionsAreOnline(v1Topic), "Topic: " + v1Topic + " should be deleted after 3 pushes");
     });
-    Assert.assertTrue(childTopicManager.containsTopic(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
-    Assert.assertTrue(childTopicManager.containsTopic(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
+    Assert.assertTrue(childTopicManager.containsTopicAndAllPartitionsAreOnline(v2Topic), "Topic: " + v2Topic + " should be kept after 3 pushes");
+    Assert.assertTrue(childTopicManager.containsTopicAndAllPartitionsAreOnline(v3Topic), "Topic: " + v3Topic + " should be kept after 3 pushes");
 
     /**
      * In order to speed up integration test, reuse the multi data center cluster for hybrid store RT topic retention time testing

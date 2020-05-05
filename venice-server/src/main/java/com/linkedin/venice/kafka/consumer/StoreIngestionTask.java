@@ -14,6 +14,7 @@ import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentExcepti
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.EndOfIncrementalPush;
@@ -123,7 +124,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final ReadOnlyStoreRepository metadataRepo;
   protected final String consumerTaskId;
   protected final Properties kafkaProps;
-  protected final VeniceConsumerFactory factory;
+  protected final KafkaClientFactory factory;
   protected final VeniceWriterFactory veniceWriterFactory;
   protected final AtomicBoolean isRunning;
   protected final AtomicBoolean emitMetrics; // TODO: remove this once we migrate to versioned stats
@@ -203,7 +204,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
 
   public StoreIngestionTask(VeniceWriterFactory writerFactory,
-                            VeniceConsumerFactory consumerFactory,
+                            KafkaClientFactory consumerFactory,
                             Properties kafkaConsumerProperties,
                             StorageEngineRepository storageEngineRepository,
                             StorageMetadataService storageMetadataService,

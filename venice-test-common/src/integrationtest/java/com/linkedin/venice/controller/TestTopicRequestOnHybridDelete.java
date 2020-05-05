@@ -158,8 +158,7 @@ public class TestTopicRequestOnHybridDelete {
   @Test
   public void deleteStoreAfterStartedPushAllowsNewPush(){
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress(), DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS,
-        DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
+    TopicManager topicManager = new TopicManager(DEFAULT_KAFKA_OPERATION_TIMEOUT_MS, 100, 0l, TestUtils.getVeniceConsumerFactory(venice.getKafka()));
 
     String storeName = TestUtils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);
@@ -172,7 +171,7 @@ public class TestTopicRequestOnHybridDelete {
     Assert.assertFalse(startedVersion.isError(),
         "The call to controllerClient.requestTopicForWrites() returned an error: " + startedVersion.getError());
     Assert.assertEquals(controllerClient.queryJobStatus(startedVersion.getKafkaTopic()).getStatus(), ExecutionStatus.STARTED.toString());
-    Assert.assertTrue(topicManager.containsTopic(startedVersion.getKafkaTopic()));
+    Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(startedVersion.getKafkaTopic()));
 
     //disable store
     controllerClient.updateStore(storeName, new UpdateStoreQueryParams()

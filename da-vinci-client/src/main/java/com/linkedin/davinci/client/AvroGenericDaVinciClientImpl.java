@@ -17,6 +17,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
+import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -149,6 +150,9 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         .put(ConfigKeys.LISTENER_PORT, 0) // not used by Da Vinci
         .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
             daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
+
+        /** allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
+        .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
         .build();
     logger.info("serverConfig=" + serverProperties.toString(true));
 

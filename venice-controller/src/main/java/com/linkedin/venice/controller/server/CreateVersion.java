@@ -220,7 +220,7 @@ public class CreateVersion extends AbstractRoute {
         }
 
         String topicName = Version.composeKafkaTopic(storeName, versionNumber);
-        if (!admin.getTopicManager().containsTopic(topicName)) {
+        if (!admin.getTopicManager().containsTopicAndAllPartitionsAreOnline(topicName)) {
           throw new VeniceException("Expected topic " + topicName + " cannot be found. Unable to add version and start "
           + "ingestion for store " + storeName + " and version " + versionNumber + " in cluster " + clusterName);
         }

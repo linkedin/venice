@@ -280,8 +280,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.adapterSerializer = new HelixAdapterSerializer();
         veniceConsumerFactory = new VeniceControllerConsumerFactory(commonConfig);
 
-        this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(),
-                                             multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
+        this.topicManager = new TopicManager(multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(),
                                              multiClusterConfigs.getTopicDeletionStatusPollIntervalMs(),
                                              multiClusterConfigs.getKafkaMinLogCompactionLagInMs(),
                                              veniceConsumerFactory);
@@ -624,7 +623,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             for (int attempt = 0; attempt < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS; attempt ++) {
                 if (attempt > 0)
                     Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-                if (topicManager.containsTopic(expectedRTTopic)) {
+                if (topicManager.containsTopicAndAllPartitionsAreOnline(expectedRTTopic)) {
                     pushJobDetailsRTTopic = expectedRTTopic;
                     logger.info("Topic " + expectedRTTopic
                         + " exists and is configured to receive push job details events");
@@ -661,7 +660,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             while (getTopicAttempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
                 if (getTopicAttempts != 0)
                     Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-                if (topicManager.containsTopic(expectedTopicName)) {
+                if (topicManager.containsTopicAndAllPartitionsAreOnline(expectedTopicName)) {
                     pushJobStatusTopicName = expectedTopicName;
                     logger.info("Push job status topic name set to " + expectedTopicName);
                     break;
@@ -1413,7 +1412,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     + "Version: " + version.getNumber() + " Store:" + storeName);
             }
             String versionTopic = Version.composeKafkaTopic(storeName, version.getNumber());
-            if (!topicManager.containsTopic(versionTopic) || isTopicTruncated(versionTopic)) {
+            if (!topicManager.containsTopicAndAllPartitionsAreOnline(versionTopic) || isTopicTruncated(versionTopic)) {
                 veniceHelixAdminStats.recordUnexpectedTopicAbsenceCount();
                 throw new VeniceException("Incremental push cannot be started for store: " + storeName + " in cluster: "
                     + clusterName + " because the version topic: " + versionTopic
@@ -1678,7 +1677,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * This logic is used to avoid the scenario that the topic exists in Kafka Zookeeper, but not fully ready in
          * Kafka Broker yet.
          */
-        if (getTopicManager().containsTopicInKafkaZK(kafkaTopicName)) {
+        if (getTopicManager().containsTopic(kafkaTopicName)) {
             if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs)) {
                 // Retention time is updated to "deprecatedJobTopicRetentionMs"; log this topic config changes
                 logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
@@ -1691,10 +1690,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return false;
     }
 
-    private boolean truncateKafkaTopic(String kafkaTopicName, scala.collection.Map<String, Properties> topicConfigs) {
-        if (topicConfigs.contains(kafkaTopicName)) {
+    private boolean truncateKafkaTopic(String kafkaTopicName, Map<String, Properties> topicConfigs) {
+        if (topicConfigs.containsKey(kafkaTopicName)) {
             if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs,
-                topicConfigs.get(kafkaTopicName).get())) {
+                topicConfigs.get(kafkaTopicName))) {
                 // retention is updated.
                 logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
                 return true;
@@ -1772,7 +1771,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             logger.info("Detected the following old topics to truncate: " + String.join(", ", oldTopicsToTruncate));
             int numberOfNewTopicsMarkedForDelete = 0;
-            scala.collection.Map<String, Properties> topicConfigs = getTopicManager().getAllTopicConfig();
+            Map<String, Properties> topicConfigs = getTopicManager().getAllTopicConfig();
             for (String t : oldTopicsToTruncate) {
                 if (truncateKafkaTopic(t, topicConfigs)) {
                     ++numberOfNewTopicsMarkedForDelete;
@@ -2333,7 +2332,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                     } else {
                         store.setHybridStoreConfig(finalHybridConfig);
-                        if (topicManager.containsTopic(Version.composeRealTimeTopic(storeName))) {
+                        if (topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                             // RT already exists, ensure the retention is correct
                             topicManager.updateTopicRetention(Version.composeRealTimeTopic(storeName),
                                 finalHybridConfig.getRetentionTimeInMs());
@@ -2445,7 +2444,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             //rollback to original store
             storeMetadataUpdate(clusterName, storeName, store -> originalStore);
             if (originalStore.isHybrid() && hybridStoreConfig.isPresent()
-                && topicManager.containsTopic(Version.composeRealTimeTopic(storeName))) {
+                && topicManager.containsTopicAndAllPartitionsAreOnline(Version.composeRealTimeTopic(storeName))) {
                 // Ensure the topic retention is rolled back too
                 topicManager.updateTopicRetention(Version.composeRealTimeTopic(storeName),
                     originalStore.getHybridStoreConfig().getRetentionTimeInMs());
@@ -3317,7 +3316,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     boolean verified = false;
                     String topic = participantMessageStoreRTTMap.get(clusterName);
                     while (attempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
-                        if (topicManager.containsTopic(topic)) {
+                        if (topicManager.containsTopicAndAllPartitionsAreOnline(topic)) {
                             verified = true;
                             logger.info("Participant message store RTT topic set to " + topic + " for cluster "
                                 + clusterName);

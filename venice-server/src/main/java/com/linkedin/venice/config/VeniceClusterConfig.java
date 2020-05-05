@@ -5,6 +5,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.meta.Store;

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -99,7 +100,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   public LeaderFollowerStoreIngestionTask(
       VeniceWriterFactory writerFactory,
-      VeniceConsumerFactory consumerFactory,
+      KafkaClientFactory consumerFactory,
       Properties kafkaConsumerProperties,
       StorageEngineRepository storageEngineRepository,
       StorageMetadataService storageMetadataService,

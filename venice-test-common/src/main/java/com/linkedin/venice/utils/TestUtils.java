@@ -7,7 +7,9 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
+import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -252,12 +254,22 @@ public class TestUtils {
     }
   }
 
-  public static VeniceConsumerFactory getVeniceConsumerFactory(String kafakBootstrapServer) {
-    return new VeniceConsumerFactory() {
+  public static KafkaClientFactory getVeniceConsumerFactory(KafkaBrokerWrapper kafka) {
+    return new KafkaClientFactory() {
       @Override
       public Properties setupSSL(Properties properties) {
-        properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafakBootstrapServer);
+        properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
         return properties;
+      }
+
+      @Override
+      protected String getKafkaAdminClass() {
+        return ScalaAdminUtils.class.getName();
+      }
+
+      @Override
+      protected String getKafkaZkAddress() {
+        return kafka.getZkAddress();
       }
     };
   }

@@ -112,7 +112,7 @@ public class TestVeniceParentHelixAdmin {
   public void setupTestCase() {
     topicManager = mock(TopicManager.class);
     doReturn(new HashSet<String>(Arrays.asList(topicName))).when(topicManager).listTopics();
-    doReturn(true).when(topicManager).containsTopic(topicName);
+    doReturn(true).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
 
     internalAdmin = mock(VeniceHelixAdmin.class);
     doReturn(topicManager).when(internalAdmin).getTopicManager();
@@ -198,7 +198,7 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testStartWhenTopicNotExists() {
-    doReturn(false).when(topicManager).containsTopic(topicName);
+    doReturn(false).when(topicManager).containsTopicAndAllPartitionsAreOnline(topicName);
     parentAdmin.start(clusterName);
     verify(internalAdmin).getTopicManager();
     verify(topicManager).createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);

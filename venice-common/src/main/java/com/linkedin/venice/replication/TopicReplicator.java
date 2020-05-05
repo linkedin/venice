@@ -6,7 +6,6 @@ import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -87,10 +86,10 @@ public abstract class TopicReplicator {
     if (sourceTopic.equals(destinationTopic)){
       throw new DuplicateTopicException(errorPrefix + " they are the same topic.");
     }
-    if (!getTopicManager().containsTopic(sourceTopic)){
+    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(sourceTopic)){
       throw new TopicDoesNotExistException(errorPrefix + " topic " + sourceTopic + " does not exist.");
     }
-    if (!getTopicManager().containsTopic(destinationTopic)){
+    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(destinationTopic)){
       throw new TopicDoesNotExistException(errorPrefix + " topic " + destinationTopic + " does not exist.");
     }
     int sourcePartitionCount = getTopicManager().getPartitions(sourceTopic).size();
@@ -130,7 +129,7 @@ public abstract class TopicReplicator {
      *       doesn't have any existing version or a correct storage quota, we cannot decide the partition
      *       number for it.
      */
-    if (!getTopicManager().containsTopic(srcTopicName)) {
+    if (!getTopicManager().containsTopicAndAllPartitionsAreOnline(srcTopicName)) {
       int partitionCount = getTopicManager().getPartitions(destTopicName).size();
       int replicationFactor = getTopicManager().getReplicationFactor(destTopicName);
       getTopicManager().createTopic(srcTopicName,

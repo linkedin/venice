@@ -27,7 +27,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.pushmonitor.PushMonitor;
-import com.linkedin.venice.schema.DerivedSchemaEntry;
 import com.linkedin.venice.schema.WriteComputeSchemaAdapter;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -38,7 +37,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -831,7 +829,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
     Assert.assertTrue(
-        veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())),
+        veniceAdmin.getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeKafkaTopic(storeName, version.getNumber())),
         "Kafka topic should be created.");
 
     // Store has not been disabled.
@@ -864,7 +862,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
           veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
       TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
           () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
-      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())),
+      Assert.assertTrue(veniceAdmin.getTopicManager().containsTopicAndAllPartitionsAreOnline(Version.composeKafkaTopic(storeName, version.getNumber())),
           "Kafka topic should be created.");
 
       veniceAdmin.setStoreReadability(clusterName, storeName, false);
@@ -1085,7 +1083,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     for (Store store: stores) {
       for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
         String topicName = Version.composeKafkaTopic(store.getName(), versionNumber);
-        Assert.assertTrue(topicManager.containsTopic(topicName), "Topic '" + topicName + "' should exist.");
+        Assert.assertTrue(topicManager.containsTopicAndAllPartitionsAreOnline(topicName), "Topic '" + topicName + "' should exist.");
       }
     }
 

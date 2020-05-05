@@ -134,7 +134,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
             "Kafka_consumption_bandwidth", false, EventThrottler.BLOCK_STRATEGY);
     EventThrottler consumptionRecordsCountThrottler = new EventThrottler(serverConfig.getKafkaFetchQuotaRecordPerSecond(),
         serverConfig.getKafkaFetchQuotaTimeWindow(), "kafka_consumption_records_count", false, EventThrottler.BLOCK_STRATEGY);
-    TopicManager topicManager = new TopicManager(serverConfig.getKafkaZkAddress(), veniceConsumerFactory);
+    TopicManager topicManager = new TopicManager(veniceConsumerFactory);
 
     VeniceNotifier notifier = new LogNotifier();
     this.notifiers.add(notifier);
@@ -178,7 +178,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(veniceWriterFactory)
-        .setVeniceConsumerFactory(veniceConsumerFactory)
+        .setKafkaClientFactory(veniceConsumerFactory)
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
         .setNotifiersQueue(notifiers)
