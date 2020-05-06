@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -54,9 +55,11 @@ public class TestPushJobStatusUpload {
   private ControllerClient parentControllerClient;
   private String pushJobStatusStoreName;
   private Properties controllerProperties;
+  private Schema recordSchema;
+  private String inputDirPath;
 
   @BeforeClass
-  public void setup() {
+  public void setup() throws IOException {
     pushJobStatusStoreName = "test-push-job-status-store";
     venice = ServiceFactory.getVeniceCluster(1, 1, 1, 1, 1000000, false, false);
     zkWrapper = ServiceFactory.getZkServer();
@@ -75,6 +78,9 @@ public class TestPushJobStatusUpload {
     TestUtils.waitForNonDeterministicPushCompletion(
         Version.composeKafkaTopic(VeniceSystemStoreUtils.getPushJobDetailsStoreName(), 1), controllerClient,
         2, TimeUnit.MINUTES, Optional.of(logger));
+    File inputDir = getTempDataDirectory();
+    inputDirPath = "file://" + inputDir.getAbsolutePath();
+    recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
   }
 
   @AfterClass
@@ -141,9 +147,6 @@ public class TestPushJobStatusUpload {
   @Test
   public void testPushJobDetails() throws ExecutionException, InterruptedException, IOException {
     String testStoreName = "test-push-store";
-    File inputDir = getTempDataDirectory();
-    String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
     parentControllerClient.createNewStore(testStoreName, "test-user",
         recordSchema.getField("id").schema().toString(), recordSchema.getField("name").schema().toString());
     // Set store quota to unlimited else local H2V jobs will fail due to quota enforcement NullPointerException because
@@ -198,6 +201,41 @@ public class TestPushJobStatusUpload {
       assertFalse(value.pushJobConfigs.isEmpty());
       assertNotNull(value.producerConfigs);
       assertTrue(value.producerConfigs.isEmpty());
+    }
+  }
+
+  @Test
+  public void testPushJobDetailsFailureTags() throws ExecutionException, InterruptedException {
+    String testStoreName = "test-push-failure-store";
+    parentControllerClient.createNewStore(testStoreName, "test-user",
+        recordSchema.getField("id").schema().toString(), recordSchema.getField("name").schema().toString());
+    // hadoop job client cannot fetch counters properly and should fail the job
+    parentControllerClient.updateStore(testStoreName, new UpdateStoreQueryParams().setStorageQuotaInByte(0));
+    Properties pushJobProps = defaultH2VProps(venice, inputDirPath, testStoreName);
+    pushJobProps.setProperty(PUSH_JOB_STATUS_UPLOAD_ENABLE, String.valueOf(true));
+    pushJobProps.setProperty(POLL_JOB_STATUS_INTERVAL_MS, String.valueOf(1000));
+    pushJobProps.setProperty(VENICE_URL_PROP, parentController.getControllerUrl());
+    pushJobProps.setProperty(VENICE_DISCOVER_URL_PROP, parentController.getControllerUrl());
+    KafkaPushJob testPushJob = new KafkaPushJob("test-push-job-details-job", pushJobProps);
+    assertThrows(VeniceException.class, testPushJob::run);
+    try (AvroSpecificStoreClient<PushJobStatusRecordKey, PushJobDetails> client =
+        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig(
+            VeniceSystemStoreUtils.getPushJobDetailsStoreName(), PushJobDetails.class)
+            .setVeniceURL(venice.getRandomRouterURL()))) {
+      PushJobStatusRecordKey key = new PushJobStatusRecordKey();
+      key.storeName = testStoreName;
+      key.versionNumber = 1;
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        try {
+          assertNotNull(client.get(key).get(), "RT writes are not reflected in store yet");
+        } catch (Exception e) {
+          fail("Unexpected exception thrown while reading from the venice store", e);
+        }
+      });
+      PushJobDetails value = client.get(key).get();
+      assertEquals(value.pushJobLatestCheckpoint.intValue(), PushJobCheckpoints.START_MAP_REDUCE_JOB.getValue(),
+          "Unexpected latest push job checkpoint reported");
+      assertFalse(value.failureDetails.toString().isEmpty());
     }
   }
 

@@ -7,7 +7,7 @@ package com.linkedin.venice.status.protocol;
 
 @SuppressWarnings("all")
 public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobDetails\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"reportTimestamp\",\"type\":\"long\",\"doc\":\"timestamp for when the reported details were collected\"},{\"name\":\"overallStatus\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"PushJobDetailsStatusTuple\",\"fields\":[{\"name\":\"status\",\"type\":\"int\"},{\"name\":\"timestamp\",\"type\":\"long\"}]}}},{\"name\":\"coloStatus\",\"type\":[\"null\",{\"type\":\"map\",\"values\":{\"type\":\"array\",\"items\":\"PushJobDetailsStatusTuple\"}}],\"default\":null},{\"name\":\"pushId\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"partitionCount\",\"type\":\"int\",\"default\":-1},{\"name\":\"valueCompressionStrategy\",\"type\":\"int\",\"doc\":\"0 => NO_OP, 1 => GZIP\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"jobDurationInMs\",\"type\":\"long\",\"default\":-1},{\"name\":\"totalNumberOfRecords\",\"type\":\"long\",\"doc\":\"total number of key value pairs pushed\",\"default\":-1},{\"name\":\"totalKeyBytes\",\"type\":\"long\",\"doc\":\"total amount of key bytes pushed\",\"default\":-1},{\"name\":\"totalRawValueBytes\",\"type\":\"long\",\"doc\":\"total amount of uncompressed value bytes\",\"default\":-1},{\"name\":\"totalCompressedValueBytes\",\"type\":\"long\",\"doc\":\"total amount of \",\"default\":-1},{\"name\":\"pushJobConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"producerConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PushJobDetails\",\"namespace\":\"com.linkedin.venice.status.protocol\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"reportTimestamp\",\"type\":\"long\",\"doc\":\"timestamp for when the reported details were collected\"},{\"name\":\"overallStatus\",\"type\":{\"type\":\"array\",\"items\":{\"type\":\"record\",\"name\":\"PushJobDetailsStatusTuple\",\"fields\":[{\"name\":\"status\",\"type\":\"int\"},{\"name\":\"timestamp\",\"type\":\"long\"}]}}},{\"name\":\"coloStatus\",\"type\":[\"null\",{\"type\":\"map\",\"values\":{\"type\":\"array\",\"items\":\"PushJobDetailsStatusTuple\"}}],\"default\":null},{\"name\":\"pushId\",\"type\":\"string\",\"default\":\"\"},{\"name\":\"partitionCount\",\"type\":\"int\",\"default\":-1},{\"name\":\"valueCompressionStrategy\",\"type\":\"int\",\"doc\":\"0 => NO_OP, 1 => GZIP\",\"default\":0},{\"name\":\"chunkingEnabled\",\"type\":\"boolean\",\"default\":false},{\"name\":\"jobDurationInMs\",\"type\":\"long\",\"default\":-1},{\"name\":\"totalNumberOfRecords\",\"type\":\"long\",\"doc\":\"total number of key value pairs pushed\",\"default\":-1},{\"name\":\"totalKeyBytes\",\"type\":\"long\",\"doc\":\"total amount of key bytes pushed\",\"default\":-1},{\"name\":\"totalRawValueBytes\",\"type\":\"long\",\"doc\":\"total amount of uncompressed value bytes\",\"default\":-1},{\"name\":\"totalCompressedValueBytes\",\"type\":\"long\",\"doc\":\"total amount of \",\"default\":-1},{\"name\":\"pushJobConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"producerConfigs\",\"type\":[\"null\",{\"type\":\"map\",\"values\":\"string\"}],\"default\":null},{\"name\":\"pushJobLatestCheckpoint\",\"type\":[\"null\",\"int\"],\"doc\":\"Latest checkpoint reached by the push job if available, 0 => INITIALIZE_PUSH_JOB, 1 => NEW_VERSION_CREATED, 2 =>  START_MAP_REDUCE_JOB, 3 => MAP_REDUCE_JOB_COMPLETED, 4 => START_JOB_STATUS_POLLING, 5 => JOB_STATUS_POLLING_COMPLETED\",\"default\":null},{\"name\":\"failureDetails\",\"type\":\"string\",\"default\":\"\"}]}");
   public java.lang.CharSequence clusterName;
   /** timestamp for when the reported details were collected */
   public long reportTimestamp;
@@ -29,6 +29,9 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
   public long totalCompressedValueBytes;
   public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> pushJobConfigs;
   public java.util.Map<java.lang.CharSequence,java.lang.CharSequence> producerConfigs;
+  /** Latest checkpoint reached by the push job if available, 0 => INITIALIZE_PUSH_JOB, 1 => NEW_VERSION_CREATED, 2 =>  START_MAP_REDUCE_JOB, 3 => MAP_REDUCE_JOB_COMPLETED, 4 => START_JOB_STATUS_POLLING, 5 => JOB_STATUS_POLLING_COMPLETED */
+  public java.lang.Integer pushJobLatestCheckpoint;
+  public java.lang.CharSequence failureDetails;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -48,6 +51,8 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
     case 12: return totalCompressedValueBytes;
     case 13: return pushJobConfigs;
     case 14: return producerConfigs;
+    case 15: return pushJobLatestCheckpoint;
+    case 16: return failureDetails;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -70,6 +75,8 @@ public class PushJobDetails extends org.apache.avro.specific.SpecificRecordBase 
     case 12: totalCompressedValueBytes = (java.lang.Long)value$; break;
     case 13: pushJobConfigs = (java.util.Map<java.lang.CharSequence,java.lang.CharSequence>)value$; break;
     case 14: producerConfigs = (java.util.Map<java.lang.CharSequence,java.lang.CharSequence>)value$; break;
+    case 15: pushJobLatestCheckpoint = (java.lang.Integer)value$; break;
+    case 16: failureDetails = (java.lang.CharSequence)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

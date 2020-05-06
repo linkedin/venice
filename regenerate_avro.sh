@@ -29,7 +29,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/ComputeResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/ComputeRouterRequestKey/*"
   "venice-schema-common/src/main/resources/avro/StreamingFooterRecord/*"
-  "venice-common/src/main/resources/avro/PushJobStatusRecord/PushJobDetails/v1/*"
+  "venice-common/src/main/resources/avro/PushJobStatusRecord/PushJobDetails/v2/*"
 )
 CODE_GEN_PATH=(
   "venice-common/src/main/java"
