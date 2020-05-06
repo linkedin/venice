@@ -53,6 +53,12 @@ public class PartitionStatusOnlineInstanceFinder
 
   @Override
   public synchronized void onPartitionStatusChange(String kafkaTopic, ReadOnlyPartitionStatus partitionStatus) {
+    //temporary debugging info. TODO:remove when the bug is found
+    logger.info(String.format("Received partition status change. kafka: %s, partition id: %d."
+        , kafkaTopic, partitionStatus.getPartitionId()));
+    partitionStatus.getReplicaStatuses().forEach(replicaStatus ->
+        logger.info(String.format("instance: %s, status: %s. \n", replicaStatus.getInstanceId(), replicaStatus.getCurrentStatus())));
+
     OfflinePushStatus offlinePushStatus = topicToResourceStatus.get(kafkaTopic);
     if (offlinePushStatus == null ) {
       // have not yet received partition status for this topic yet. return;
@@ -96,6 +102,15 @@ public class PartitionStatusOnlineInstanceFinder
     }
 
     PartitionStatus partitionStatus = offlinePushStatus.getPartitionStatus(partitionId);
+
+    if (partitionStatus == null) {
+      logger.warn(String.format("offline push status is incomplete. topic: %s, "
+          + "partition: %d is null. Try recovering it by reading from the ZK.", kafkaTopic, partitionId));
+      OfflinePushStatus refreshedStatus = getPushStatusFromZk(kafkaTopic);
+      topicToResourceStatus.put(kafkaTopic, refreshedStatus);
+      partitionStatus = refreshedStatus.getPartitionStatus(partitionId);
+    }
+
     return PushStatusDecider.getReadyToServeInstances(partitionStatus, partitionAssignment, partitionId);
   }
 
