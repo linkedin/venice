@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -30,6 +31,7 @@ import org.apache.kafka.common.config.SslConfigs;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
@@ -43,7 +45,7 @@ public class ProduceWithSSL {
 
   @BeforeClass
   public void setup() {
-    cluster = ServiceFactory.getVeniceClusterWithKafkaSSL();
+    cluster = ServiceFactory.getVeniceClusterWithKafkaSSL(false);
   }
 
   @AfterClass
@@ -95,9 +97,13 @@ public class ProduceWithSSL {
     }
   }
 
-  @Test
-  public void testKafkaPushJobSupportSSL()
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
+  public void testKafkaPushJobSupportSSL(boolean isOpenSSLEnabled)
       throws Exception {
+    VeniceClusterWrapper cluster = this.cluster;
+    if (isOpenSSLEnabled) {
+      cluster = ServiceFactory.getVeniceClusterWithKafkaSSL(true);
+    }
     File inputDir = getTempDataDirectory();
     String storeName = TestUtils.getUniqueString("store");
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);

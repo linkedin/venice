@@ -13,6 +13,8 @@ dependencies {
         exclude group: 'org.apache.kafka'
     }
     implementation libraries.kafka
+    // TODO: Use openssl in ETL to improve performance
+    implementation libraries.conscrypt
 }
 
 configurations {

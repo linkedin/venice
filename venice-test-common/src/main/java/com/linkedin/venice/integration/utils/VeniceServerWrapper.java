@@ -67,6 +67,7 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     return (serviceName, port, dataDirectory) -> {
       boolean enableServerWhitelist = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SERVER_WHITE_LIST, "false"));
       boolean sslToKafka = Boolean.parseBoolean(featureProperties.getProperty(SERVER_SSL_TO_KAFKA, "false"));
+      boolean isKafkaOpenSSLEnabled = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_KAFKA_OPENSSL, "false"));
       boolean ssl = Boolean.parseBoolean(featureProperties.getProperty(SERVER_ENABLE_SSL, "false"));
       boolean isAutoJoin = Boolean.parseBoolean(featureProperties.getProperty(SERVER_IS_AUTO_JOIN, "false"));
       Optional<ClientConfig> consumerClientConfig = Optional.ofNullable(
@@ -101,6 +102,9 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
         serverPropsBuilder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
+        if (isKafkaOpenSSLEnabled) {
+          serverPropsBuilder.put(SERVER_ENABLE_KAFKA_OPENSSL, true);
+        }
       }
 
       VeniceProperties serverProps = serverPropsBuilder.build();

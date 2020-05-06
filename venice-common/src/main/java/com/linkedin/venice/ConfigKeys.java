@@ -327,6 +327,11 @@ public class ConfigKeys {
    */
   public static final String SERVER_BLOCKING_QUEUE_TYPE = "server.blocking.queue.type";
 
+  /**
+   * This config is used to control whether openssl is enabled for Kafka consumers in server.
+   */
+  public static final String SERVER_ENABLE_KAFKA_OPENSSL = "server.enable.kafka.openssl";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

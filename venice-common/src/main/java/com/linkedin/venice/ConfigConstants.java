@@ -16,4 +16,16 @@ public class ConfigConstants {
   /**
    * End of controller config default value
    */
+
+  // Start of server config default value
+
+  /**
+   * Default Kafka SSL context provider class name.
+   *
+   * {@link org.apache.kafka.common.security.ssl.BoringSslContextProvider} supports openssl.
+   * BoringSSL is the c implementation of OpenSSL, and conscrypt add a java wrapper around BoringSSL.
+   * The default BoringSslContextProvider mainly relies on conscrypt.
+   */
+  public static final String DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME = "org.apache.kafka.common.security.ssl.BoringSslContextProvider";
+  // End of server config default value
 }

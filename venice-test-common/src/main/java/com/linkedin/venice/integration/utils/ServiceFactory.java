@@ -268,8 +268,9 @@ public class ServiceFactory {
 
   //TODO There are too many parameters and options that we used to create a venice cluster wrapper.
   //TODO need a builder pattern or option class to simply this.
-  public static VeniceClusterWrapper getVeniceClusterWithKafkaSSL(){
-    return getVeniceCluster(1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_SSL_TO_STORAGE_NODES, true);
+  public static VeniceClusterWrapper getVeniceClusterWithKafkaSSL(boolean isKafkaOpenSSLEnabled) {
+    return getVeniceCluster(TestUtils.getUniqueString("venice-cluster"), 1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
+        false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR-1, DEFAULT_SSL_TO_STORAGE_NODES, true, isKafkaOpenSSLEnabled);
   }
 
   public static VeniceClusterWrapper getVeniceCluster(boolean sslToStorageNodes) {
@@ -292,7 +293,7 @@ public class ServiceFactory {
         VeniceClusterWrapper.generateService(TestUtils.getUniqueString("venice-cluster"), numberOfControllers,
             numberOfServers, numberOfRouter, replicationFactor, partitionSize, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, sslToStorageNodes,
-            sslToKafka, extraProperties));
+            sslToKafka, false, extraProperties));
   }
 
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
@@ -313,15 +314,22 @@ public class ServiceFactory {
         enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka);
   }
 
+  public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouter,
+      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
+    return getVeniceCluster(clusterName, numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize,
+        enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false);
+  }
+
   // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
   // Or a builder pattern
   public static VeniceClusterWrapper getVeniceCluster(String clusterName, int numberOfControllers, int numberOfServers, int numberOfRouter,
       int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
-      long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka) {
+      long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes, boolean sslToKafka, boolean isKafkaOpenSSLEnabled) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(clusterName, numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
             partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes,
-            sslToKafka, new Properties()));
+            sslToKafka, isKafkaOpenSSLEnabled, new Properties()));
   }
 
   protected static VeniceClusterWrapper getVeniceClusterWrapperForMultiCluster(
@@ -344,7 +352,7 @@ public class ServiceFactory {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, clusterToD2,
             numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize, enableWhitelist,
-            enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, new Properties()));
+            enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes, sslToKafka, false, new Properties()));
   }
 
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,

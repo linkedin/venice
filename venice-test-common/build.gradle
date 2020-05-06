@@ -132,7 +132,7 @@ dependencies {
   implementation project(':da-vinci-client')
   implementation libraries.kafka
   implementation libraries.kafkaClients
-  implementation libraries.kafkaTest
+  implementation libraries.conscrypt
   implementation libraries.kafkaClientsTest
   implementation libraries.rocksdbjni
   implementation libraries.routerApi
