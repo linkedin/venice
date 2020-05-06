@@ -60,6 +60,7 @@ jar {
             // exclude("mapred*.xml")
             // exclude("core*.xml")
             exclude("**/org.apache.hadoop*")
+            exclude("javax/ws/rs/core/**")
         }
     }
 
@@ -86,6 +87,7 @@ task fatJar(type: Jar) {
             exclude("com/google/common/**")
             exclude("org/apache/avro/**")
             exclude("**/org.apache.hadoop*")
+            exclude("javax/ws/rs/core/**")
         }
     }
 
