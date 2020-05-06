@@ -372,6 +372,24 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   private ZstdConfig zstdConfig;
 
+  public enum PushJobCheckpoints {
+    INITIALIZE_PUSH_JOB(0),
+    NEW_VERSION_CREATED(1),
+    START_MAP_REDUCE_JOB(2),
+    MAP_REDUCE_JOB_COMPLETED(3),
+    START_JOB_STATUS_POLLING(4),
+    JOB_STATUS_POLLING_COMPLETED(5);
+
+    private int value;
+
+    PushJobCheckpoints(int value) {
+      this.value = value;
+    }
+
+    public int getValue() {
+      return value;
+    }
+  }
 
   /**
    * Do not change this method argument type
@@ -478,6 +496,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   @Override
   public void run() {
     try {
+      initPushJobDetails();
       jobStartTime = System.currentTimeMillis();
       logGreeting();
       int hdfsOperationThreadNum = props.getInt(HDFS_OPERATIONS_PARALLEL_THREAD_NUM, 20);
@@ -490,8 +509,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       }
       // Discover the cluster based on the store name and re-initialized controller client.
       this.clusterName = discoverCluster(pushJobSetting, sslFactory);
+      pushJobDetails.clusterName = clusterName;
       this.controllerClient = new ControllerClient(clusterName, pushJobSetting.veniceControllerUrl, sslFactory);
-      initPushJobDetails();
       sendPushJobDetails();
       this.inputDirectory = getInputURI(this.props);
 
@@ -522,6 +541,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         this.pushId = pushStartTime + "_" + props.getString(AZK_JOB_EXEC_URL, "failed_to_obtain_azkaban_url");
         // Create new store version, topic and fetch Kafka url from backend
         versionTopicInfo = createNewStoreVersion(pushJobSetting, inputFileDataSize, controllerClient, pushId, props, dict);
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.NEW_VERSION_CREATED);
         // Update and send push job details with new info
         pushJobDetails.pushId = pushId;
         pushJobDetails.partitionCount = versionTopicInfo.partitionCount;
@@ -548,7 +568,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
            */
           pushJobSetting.incrementalPushVersion = Optional.of(String.valueOf(System.currentTimeMillis()));
           getVeniceWriter(versionTopicInfo).broadcastStartOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
           runningJob = jc.runJob(jobConf);
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED);
           getVeniceWriter(versionTopicInfo).broadcastEndOfIncrementalPush(pushJobSetting.incrementalPushVersion.get(), new HashMap<>());
         } else {
           if (pushJobSetting.sendControlMessagesDirectly) {
@@ -559,7 +581,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
              * {@link createNewStoreVersion(PushJobSetting, long, ControllerClient, String, VeniceProperties)}
              */
           }
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_MAP_REDUCE_JOB);
           runningJob = jc.runJob(jobConf);
+          updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.MAP_REDUCE_JOB_COMPLETED);
           if (pushJobSetting.sendControlMessagesDirectly) {
             getVeniceWriter(versionTopicInfo).broadcastEndOfPush(new HashMap<>());
           } else {
@@ -574,7 +598,9 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.WRITE_COMPLETED.getValue()));
         sendPushJobDetails();
         // Waiting for Venice Backend to complete consumption
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_JOB_STATUS_POLLING);
         pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
+        updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
         checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
@@ -596,6 +622,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       try {
         checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
+        pushJobDetails.failureDetails = e.toString();
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
         updatePushJobDetailsWithConfigs();
         sendPushJobDetails();
@@ -754,6 +781,12 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     pushJobDetails.totalKeyBytes = -1;
     pushJobDetails.totalRawValueBytes = -1;
     pushJobDetails.totalCompressedValueBytes = -1;
+    pushJobDetails.failureDetails = "";
+    pushJobDetails.pushJobLatestCheckpoint = PushJobCheckpoints.INITIALIZE_PUSH_JOB.getValue();
+  }
+
+  private void updatePushJobDetailsWithCheckpoint(PushJobCheckpoints checkpoint) {
+    pushJobDetails.pushJobLatestCheckpoint = checkpoint.getValue();
   }
 
   private void updatePushJobDetailsWithMRCounters() {
