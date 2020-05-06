@@ -117,6 +117,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int minActiveReplica,
       boolean sslToStorageNodes,
       boolean sslToKafka,
+      boolean isKafkaOpenSSLEnabled,
       Properties extraProperties) {
 
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
@@ -154,6 +155,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 //            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
           );
         }
+        featureProperties.setProperty(SERVER_ENABLE_KAFKA_OPENSSL, Boolean.toString(isKafkaOpenSSLEnabled));
 
         VeniceServerWrapper veniceServerWrapper =
             ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, featureProperties, extraProperties);
@@ -203,6 +205,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       int minActiveReplica,
       boolean sslToStorageNodes,
       boolean sslToKafka,
+      boolean isKafkaOpenSSLEnabled,
       Properties extraProperties) {
 
     ZkServerWrapper zkServerWrapper = null;
@@ -234,7 +237,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
           delayToReblanceMS,
           minActiveReplica,
           sslToStorageNodes,
-          sslToKafka,extraProperties);
+          sslToKafka,
+          isKafkaOpenSSLEnabled,
+          extraProperties);
 
     } catch (Exception e) {
       IOUtils.closeQuietly(zkServerWrapper);

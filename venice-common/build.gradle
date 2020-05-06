@@ -49,6 +49,7 @@ dependencies {
 
   implementation libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   implementation libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+  implementation libraries.conscrypt
 
   implementation libraries.oss
 
@@ -70,7 +71,6 @@ dependencies {
   implementation project(':venice-thin-client')
 
   // Test dependencies are allowed to be bulkier.
-  testImplementation libraries.kafkaTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation libraries.kafkaClientsTest // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
   testImplementation project(':venice-controller')
 }

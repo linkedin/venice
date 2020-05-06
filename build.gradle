@@ -19,8 +19,8 @@ apply plugin: 'java'
 apply plugin: 'idea'
 
 // Internal LinkedIn Kafka release
-def internalKafkaGroup = 'kafka'
-def internalKafkaVersion = '2.0.0.81'
+def internalKafkaGroup = 'com.linkedin.kafka'
+def internalKafkaVersion = '2.0.0.25'
 
 def ddsStorageCoreVersion = '5.4.74'
 def gobblinVersion = '1.64.1495'
@@ -40,7 +40,6 @@ ext.libraries = [ // Groovy map literal
                   commonsIo: 'commons-io:commons-io:2.4',
                   helix: 'org.apache.helix:helix-core:1.0.0.2',
                   kafka: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion,
-                  kafkaTest: internalKafkaGroup + ':kafka_2.11:' + internalKafkaVersion + ':test',
                   kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
                   kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion + ':test',
                   mockito: 'org.mockito:mockito-core:3.3.3',
@@ -115,7 +114,10 @@ ext.libraries = [ // Groovy map literal
                   flatbufferJava: 'com.google.flatbuffers:flatbuffers-java:1.11.0',
 
                   // open source fastserde from avro-util
-                  linkedinAvroFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.1.14'
+                  linkedinAvroFastserde: 'com.linkedin.avroutil1:avro-fastserde:0.1.14',
+
+                  // open source conscrypt from google
+                  conscrypt: 'org.conscrypt:conscrypt-openjdk-uber:2.4.0'
 ]
 
 subprojects {

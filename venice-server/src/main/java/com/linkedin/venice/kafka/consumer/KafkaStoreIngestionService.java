@@ -58,6 +58,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
+import static com.linkedin.venice.ConfigConstants.*;
+import static org.apache.kafka.common.config.SslConfigs.*;
+
+
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * Manages Kafka topics and partitions that need to be consumed for the stores on this node.
@@ -125,10 +129,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     this.veniceConfigLoader = veniceConfigLoader;
 
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties());
-
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     VeniceServerConsumerFactory veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
+
+    Properties veniceWriterProperties = veniceConfigLoader.getVeniceClusterConfig().getClusterProperties().toProperties();
+    if (serverConfig.isKafkaOpenSSLEnabled()) {
+      veniceWriterProperties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
+    }
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
+
     EventThrottler consumptionBandwidthThrottler =
         new EventThrottler(serverConfig.getKafkaFetchQuotaBytesPerSecond(), serverConfig.getKafkaFetchQuotaTimeWindow(),
             "Kafka_consumption_bandwidth", false, EventThrottler.BLOCK_STRATEGY);

@@ -17,6 +17,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.config.BlockingQueueType.*;
 
@@ -179,7 +180,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean restServiceEpollEnabled;
   private final boolean enableRocksDBOffsetMetadata;
   private final String kafkaAdminClass;
-
+  private final boolean kafkaOpenSSLEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -238,6 +239,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
     enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
+    kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, true);
 
     /**
      * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
@@ -464,5 +466,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getKafkaAdminClass() {
     return kafkaAdminClass;
+  }
+
+  public boolean isKafkaOpenSSLEnabled() {
+    return kafkaOpenSSLEnabled;
   }
 }

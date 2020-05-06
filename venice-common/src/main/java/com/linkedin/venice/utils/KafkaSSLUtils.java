@@ -11,6 +11,8 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
+import static com.linkedin.venice.ConfigConstants.*;
+
 
 public class KafkaSSLUtils {
   // Self-signed cert, expires 2027, use keystore as truststore since self-signed.
@@ -24,6 +26,7 @@ public class KafkaSSLUtils {
     //Listen on two ports, one for ssl one for non-ssl
     properties.put(KafkaConfig.ListenersProp(), "PLAINTEXT://" + host + ":" + port + ",SSL://" + host + ":" + sslPort);
     properties.putAll(getLocalCommonKafkaSSLConfig());
+    properties.put(SslConfigs.SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
     return properties;
   }
 

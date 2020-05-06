@@ -60,7 +60,6 @@ import org.apache.log4j.Logger;
 
 // TODO curate all comments later
 public class VeniceServer {
-
   private static final Logger logger = Logger.getLogger(VeniceServer.class);
 
   public final static String SERVER_SERVICE_NAME = "venice-server";

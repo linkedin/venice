@@ -9,6 +9,9 @@ import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 
+import static com.linkedin.venice.ConfigConstants.*;
+import static org.apache.kafka.common.config.SslConfigs.*;
+
 
 public class VeniceServerConsumerFactory extends KafkaClientFactory {
   private final VeniceServerConfig serverConfig;
@@ -25,6 +28,12 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
       }
       properties.putAll(sslConfig.get().getKafkaSSLConfig());
       properties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, serverConfig.getKafkaSecurityProtocol());
+      /**
+       * Check whether openssl is enabled for the kafka consumers in ingestion service.
+       */
+      if (serverConfig.isKafkaOpenSSLEnabled()) {
+        properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
+      }
     }
     properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
     return properties;

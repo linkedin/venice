@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
  * Useful for tests which are timing-dependent.
  */
 public class MockTime
-    extends kafka.utils.MockTime
+    extends org.apache.kafka.common.utils.MockTime
     implements org.apache.kafka.common.utils.Time, // For interop with the Kafka Broker's Time abstraction
                Time {
 

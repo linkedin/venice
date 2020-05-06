@@ -48,6 +48,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SslUtils;
@@ -64,7 +65,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -158,11 +158,6 @@ public class TestVeniceParentHelixAdmin {
     // Need to bypass VeniceWriter initialization
     veniceWriter = mock(VeniceWriter.class);
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
-  }
-
-  @DataProvider(name = "isControllerSslEnabled")
-  public static Object[][] isControllerSslEnabled() {
-    return new Object[][]{{false}, {true}};
   }
 
   private VeniceControllerConfig mockConfig(String clusterName) {
@@ -1094,7 +1089,7 @@ public class TestVeniceParentHelixAdmin {
     return Schema.parse(schemaStr);
   }
 
-  @Test(dataProvider = "isControllerSslEnabled")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSuperSetSchemaGen(boolean isControllerSslEnabled) throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     VeniceControllerWrapper childControllerWrapper =
@@ -1142,7 +1137,7 @@ public class TestVeniceParentHelixAdmin {
     kafkaBrokerWrapper.close();
   }
 
-  @Test(dataProvider = "isControllerSslEnabled")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSuperSetSchemaGenWithSameUpcomingSchema(boolean isControllerSslEnabled) throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     VeniceControllerWrapper childControllerWrapper =
@@ -1817,14 +1812,7 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin).truncateKafkaTopic(storeName + "_v3");
   }
 
-  @DataProvider(name = "incrementalPush")
-  public static Object[][] incrementalPush() {
-    return new Object[][] {
-        {false}, {true}
-    };
-  }
-
-  @Test(dataProvider = "incrementalPush")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testAdminCanKillLingeringVersion(boolean isIncrementalPush) {
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     long startTime = System.currentTimeMillis();

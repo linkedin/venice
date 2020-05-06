@@ -34,6 +34,7 @@ dependencies {
   implementation libraries.bdbJe
   implementation libraries.helix
   implementation libraries.kafkaClients
+  implementation libraries.conscrypt
   implementation libraries.netty
   implementation libraries.asyncHttpClient
   implementation libraries.tehuti

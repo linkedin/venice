@@ -7,14 +7,11 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.TestUtils;
-import java.io.IOException;
+import com.linkedin.venice.utils.DataProviderUtils;
 import java.security.cert.X509Certificate;
 import java.util.Optional;
 import javax.security.auth.x500.X500Principal;
 import javax.servlet.http.HttpServletRequest;
-import org.apache.log4j.Logger;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import spark.Request;
 import spark.Response;
@@ -22,14 +19,7 @@ import spark.Route;
 
 
 public class CreateVersionTest {
-  @DataProvider(name = "checkReadMethod")
-  public static Object[][] checkReadMethod() {
-    return new Object[][] {
-        {false}, {true}
-    };
-  }
-
-  @Test(dataProvider = "checkReadMethod")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testCreateVersionWithACL(boolean checkReadMethod) {
     String storeName = "test_store";
     String user = "test_user";

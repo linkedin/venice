@@ -23,6 +23,7 @@ import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -46,19 +47,13 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import org.apache.http.client.methods.HttpGet;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
 //TODO: refactor Dispatcher to take a HttpClient Factory, so we don't need to spin up an HTTP server for these tests
 public class TestVeniceDispatcher {
-  @DataProvider(name = "isNettyClientEnabled")
-  public static Object[][] routerHttpClientStatus() {
-    return new Object[][]{{false}, {true}};
-  }
-
-  @Test(dataProvider = "isNettyClientEnabled")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testErrorRetry(boolean useNettyClient) {
     VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false);
     try {
@@ -79,7 +74,7 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "isNettyClientEnabled")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testErrorRetryOnPendingCheckFail(boolean useNettyClient) {
     VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, true);
     try {
@@ -100,7 +95,7 @@ public class TestVeniceDispatcher {
     }
   }
 
-  @Test(dataProvider = "isNettyClientEnabled")
+  @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void passesThroughHttp429(boolean useNettyClient) {
     VeniceDispatcher dispatcher = getMockDispatcher(useNettyClient, false);
     try {
