@@ -74,6 +74,48 @@ public class TestVsonStoreBatch {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreWithMissingKeyField() throws Exception {
+    testBatchStore(inputDir -> writeSimpleVsonFile(inputDir), props -> {
+      props.remove(KEY_FIELD_PROP);
+      props.setProperty(VALUE_FIELD_PROP, "");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 0; i < 100; i++) {
+        //we need to explicitly call toString() because avro actually returns Utf8
+        Assert.assertEquals(avroClient.get(i).get().toString(), String.valueOf(i + 100));
+        Assert.assertEquals(vsonClient.get(i).get(), String.valueOf(i + 100));
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreWithMissingValueField() throws Exception {
+    testBatchStore(inputDir -> writeSimpleVsonFile(inputDir), props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.remove(VALUE_FIELD_PROP);
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 0; i < 100; i++) {
+        //we need to explicitly call toString() because avro actually returns Utf8
+        Assert.assertEquals(avroClient.get(i).get().toString(), String.valueOf(i + 100));
+        Assert.assertEquals(vsonClient.get(i).get(), String.valueOf(i + 100));
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreWithMissingKeyAndValueFields() throws Exception {
+    testBatchStore(inputDir -> writeSimpleVsonFile(inputDir), props -> {
+      props.remove(KEY_FIELD_PROP);
+      props.remove(VALUE_FIELD_PROP);
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 0; i < 100; i++) {
+        //we need to explicitly call toString() because avro actually returns Utf8
+        Assert.assertEquals(avroClient.get(i).get().toString(), String.valueOf(i + 100));
+        Assert.assertEquals(vsonClient.get(i).get(), String.valueOf(i + 100));
+      }
+    });
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreWithComplexRecords() throws Exception {
     testBatchStore(inputDir -> writeComplexVsonFile(inputDir), props -> {
       props.setProperty(KEY_FIELD_PROP, "");
