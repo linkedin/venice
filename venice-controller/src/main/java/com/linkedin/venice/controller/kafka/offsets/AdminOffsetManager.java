@@ -10,7 +10,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import java.util.HashMap;

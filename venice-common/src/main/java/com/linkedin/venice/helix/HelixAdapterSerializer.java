@@ -6,8 +6,8 @@ import java.io.IOException;
 
 import com.linkedin.venice.utils.PathResourceRegistry;
 import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
-import org.I0Itec.zkclient.exception.ZkMarshallingError;
 import org.apache.helix.manager.zk.PathBasedZkSerializer;
+import org.apache.helix.zookeeper.zkclient.exception.ZkMarshallingError;
 
 
 /**

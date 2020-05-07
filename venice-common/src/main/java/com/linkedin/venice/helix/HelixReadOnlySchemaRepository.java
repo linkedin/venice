@@ -20,8 +20,8 @@ import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
-import org.I0Itec.zkclient.IZkChildListener;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.common.VeniceSystemStoreUtils.*;

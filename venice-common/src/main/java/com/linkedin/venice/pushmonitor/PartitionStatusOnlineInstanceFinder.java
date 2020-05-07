@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.I0Itec.zkclient.IZkChildListener;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.log4j.Logger;
 
 

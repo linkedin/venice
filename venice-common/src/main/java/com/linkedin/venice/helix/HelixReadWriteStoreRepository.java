@@ -5,7 +5,7 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.HelixUtils;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
 /**

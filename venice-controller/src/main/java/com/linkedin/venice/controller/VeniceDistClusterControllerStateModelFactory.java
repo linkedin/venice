@@ -10,8 +10,8 @@ import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.participant.statemachine.StateModelFactory;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
 /**

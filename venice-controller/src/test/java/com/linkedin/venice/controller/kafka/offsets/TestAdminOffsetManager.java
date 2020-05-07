@@ -9,7 +9,7 @@ import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.TestUtils;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.data.Stat;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;

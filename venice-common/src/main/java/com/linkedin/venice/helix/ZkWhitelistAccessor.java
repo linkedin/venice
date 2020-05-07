@@ -8,7 +8,7 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 
 
 /**

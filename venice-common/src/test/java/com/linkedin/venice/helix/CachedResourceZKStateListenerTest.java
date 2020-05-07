@@ -8,7 +8,7 @@ import com.linkedin.venice.utils.TestUtils;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.testng.Assert;

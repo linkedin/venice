@@ -58,7 +58,7 @@ import com.linkedin.venice.writer.VeniceWriter;
 
 import java.util.Collections;
 import org.apache.avro.Schema;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;

@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Instance;
-import org.apache.helix.ZNRecord;
+import org.apache.helix.zookeeper.datamodel.ZNRecord;
 
 
 /**
