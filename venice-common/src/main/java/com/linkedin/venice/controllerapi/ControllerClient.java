@@ -779,7 +779,7 @@ public class ControllerClient implements Closeable {
     String message = "Unable to make controller request" +
         ", controller=" + this.masterControllerUrl +
         ", route=" + route.getPath() +
-        ", params=" + params.getNameValuePairs() +
+        ", params=" + params.getAbbreviatedNameValuePairs() +
         ", timeout=" + timeoutMs;
     return makeErrorResponse(message, lastException, responseType);
   }
