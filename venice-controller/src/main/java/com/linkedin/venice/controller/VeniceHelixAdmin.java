@@ -1873,19 +1873,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeMetadataUpdate(clusterName, storeName, store -> {
             if (store.getPartitionCount() != partitionCount && store.isHybrid()) {
                 throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for a hybrid store");
-            } else {
-                int desiredPartitionCount = partitionCount;
-
-                if (desiredPartitionCount > clusterConfig.getMaxNumberOfPartition()) {
-                    desiredPartitionCount = clusterConfig.getMaxNumberOfPartition();
-                } else if (desiredPartitionCount < clusterConfig.getNumberOfPartition()) {
-                    desiredPartitionCount = clusterConfig.getNumberOfPartition();
-                }
-                // Do not update the partitionCount on the store.version as version config is immutable. The version.getPartitionCount()
-                // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have any effect.
-                store.setPartitionCount(desiredPartitionCount);
-                return store;
             }
+
+            int maxPartitionNum = clusterConfig.getMaxNumberOfPartition();
+            if (partitionCount > maxPartitionNum) {
+                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+                    + partitionCount + " should be less than max: " + maxPartitionNum);
+            }
+            if (partitionCount < 0) {
+                throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+                    + partitionCount + " should NOT be negative");
+            }
+
+            // Do not update the partitionCount on the store.version as version config is immutable. The version.getPartitionCount()
+            // is read only in getRealTimeTopic and createInternalStore creation, so modifying currentVersion should not have any effect.
+            if (partitionCount != 0) {
+                store.setPartitionCount(partitionCount);
+            } else {
+                store.setPartitionCount(clusterConfig.getNumberOfPartition());
+            }
+
+            return store;
         });
     }
 

@@ -995,6 +995,16 @@ public class VeniceParentHelixAdmin implements Admin {
     try {
       veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
 
+      int maxPartitionNum = veniceHelixAdmin.getVeniceHelixResource(clusterName).getConfig().getMaxNumberOfPartition();
+      if (partitionCount > maxPartitionNum) {
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+            + partitionCount + " should be less than max: " + maxPartitionNum);
+      }
+      if (partitionCount < 0) {
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+            + partitionCount + " should NOT be negative");
+      }
+
       SetStorePartitionCount setStorePartition = (SetStorePartitionCount) AdminMessageType.SET_STORE_PARTITION.getNewInstance();
       setStorePartition.clusterName = clusterName;
       setStorePartition.storeName = storeName;
@@ -1128,7 +1138,21 @@ public class VeniceParentHelixAdmin implements Admin {
       if (partitionCount.isPresent() && store.isHybrid()){
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Cannot change partition count for hybrid stores");
       }
-      setStore.partitionNum = partitionCount.isPresent() ? partitionCount.get() : store.getPartitionCount();
+
+      if (partitionCount.isPresent()) {
+        setStore.partitionNum = partitionCount.get();
+        int maxPartitionNum = veniceHelixAdmin.getVeniceHelixResource(clusterName).getConfig().getMaxNumberOfPartition();
+        if (setStore.partitionNum > maxPartitionNum) {
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+              + partitionCount + " should be less than max: " + maxPartitionNum);
+        }
+        if (setStore.partitionNum < 0) {
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Partition count: "
+              + partitionCount + " should NOT be negative");
+        }
+      } else {
+        setStore.partitionNum = store.getPartitionCount();
+      }
 
       /**
        * If the update requests sets nativeReplicationEnabled, the store must already be in leader/follower mode
