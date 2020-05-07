@@ -444,7 +444,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       resultSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(computeResultSchema);
     }
 
-    BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(BINARY_DECODER_PARAM, null);
+    BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(BINARY_DECODER_PARAM, null);
     Map<String, Object> globalContext = new HashMap<>();
     for (ComputeRouterRequestKeyV1 key : keys) {
       clearFieldsInReusedRecord(resultRecord, computeResultSchema);
