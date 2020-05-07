@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -87,6 +88,7 @@ public class TestVeniceParentHelixAdmin {
   private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
   private static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
+  private static final int MAX_PARTITION_NUM = 1024;
 
   private final String clusterName = "test-cluster";
   private final String coloName = "test-colo";
@@ -171,6 +173,7 @@ public class TestVeniceParentHelixAdmin {
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(coloName, "localhost");
     doReturn(childClusterMap).when(config).getChildClusterMap();
+    doReturn(MAX_PARTITION_NUM).when(config).getMaxNumberOfPartition();
     return config;
   }
 
@@ -479,6 +482,24 @@ public class TestVeniceParentHelixAdmin {
     // Add store again now with an existing exception
     Assert.assertThrows(VeniceException.class,
         () -> parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr));
+  }
+
+  @Test
+  public void testSetStorePartitionCount() {
+    String storeName = "test-store";
+    when(internalAdmin.getLastExceptionForStore(clusterName, storeName))
+        .thenReturn(null);
+    doReturn(CompletableFuture.completedFuture(new RecordMetadata(topicPartition, 0, 1, -1, -1L, -1, -1)))
+        .when(veniceWriter).put(any(), any(), anyInt());
+
+    String owner = "test-owner";
+    String keySchemaStr = "\"string\"";
+    String valueSchemaStr = "\"string\"";
+    parentAdmin.start(clusterName);
+    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM);
+    Assert.assertThrows(VeniceHttpException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, MAX_PARTITION_NUM + 1));
+    Assert.assertThrows(VeniceHttpException.class, () -> parentAdmin.setStorePartitionCount(clusterName, storeName, -1));
   }
 
   @Test
