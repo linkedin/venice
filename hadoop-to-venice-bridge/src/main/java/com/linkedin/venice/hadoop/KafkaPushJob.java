@@ -1021,7 +1021,13 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     } else {
       partitioners = Optional.of(DefaultVenicePartitioner.class.getName());
     }
-    Optional<String> dictionary = Optional.ofNullable(compressionDictionary).map(ByteBuffer::array).map(EncodingUtils::base64EncodeToString);
+
+    Optional<String> dictionary;
+    if (askControllerToSendControlMessage) {
+      dictionary = Optional.ofNullable(compressionDictionary).map(ByteBuffer::array).map(EncodingUtils::base64EncodeToString);
+    } else {
+      dictionary = Optional.empty();
+    }
 
     VersionCreationResponse versionCreationResponse =
         controllerClient.retryableRequest(setting.controllerRetries, c ->
@@ -1591,7 +1597,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     Iterator<Pair<byte[], byte[]>> it = recordReader.iterator();
     while (it.hasNext()) {
       Pair<byte[], byte[]> record = it.next();
+      if (record == null) {
+        continue;
+      }
+
       byte[] data = record.getSecond();
+
+      if (data == null || data.length == 0) {
+        continue;
+      }
 
       if (fileSampleSize + data.length > this.zstdConfig.maxBytesPerFile) {
         logger.info("Read " + fileSampleSize + " bytes to build dictionary. Reached limit per file.");

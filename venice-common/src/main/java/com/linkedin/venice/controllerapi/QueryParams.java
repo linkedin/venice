@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.http.NameValuePair;
 import org.apache.http.message.BasicNameValuePair;
 
@@ -47,6 +48,12 @@ public class QueryParams {
   public List<NameValuePair> getNameValuePairs() {
     return params.entrySet().stream()
         .map(entry -> new BasicNameValuePair(entry.getKey(), entry.getValue()))
+        .collect(Collectors.toList());
+  }
+
+  public List<NameValuePair> getAbbreviatedNameValuePairs() {
+    return params.entrySet().stream()
+        .map(entry -> new BasicNameValuePair(entry.getKey(), StringUtils.abbreviate(entry.getValue(), 500)))
         .collect(Collectors.toList());
   }
 }

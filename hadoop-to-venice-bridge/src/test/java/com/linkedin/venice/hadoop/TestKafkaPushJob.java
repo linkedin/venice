@@ -217,6 +217,32 @@ public class TestKafkaPushJob {
   }
 
   /**
+   *This is a fast test as long as @BeforeMethod doesn't create a cluster
+   * @throws Exception
+   */
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceSchemaFieldNotFoundException.class,
+      expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
+  public void testRunJobWithInvalidValueFieldVson() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleVsonFileWithUserSchema(inputDir);
+
+    // Setup job properties
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    String storeName = TestUtils.getUniqueString("store");
+    veniceCluster.getNewStore(storeName);
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+    // Override with not-existing value field
+    props.put(KEY_FIELD_PROP, "");
+    props.put(VALUE_FIELD_PROP, "name1");
+
+    KafkaPushJob job = new KafkaPushJob("Test push job", props);
+    job.run();
+
+    // No need for asserts, because we are expecting an exception to be thrown!
+  }
+
+  /**
    * This is a fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
