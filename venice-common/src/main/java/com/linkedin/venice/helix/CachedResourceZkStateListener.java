@@ -3,7 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
-import org.I0Itec.zkclient.IZkStateListener;
+import org.apache.helix.zookeeper.zkclient.IZkStateListener;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.Watcher;
 
@@ -91,8 +91,7 @@ public class CachedResourceZkStateListener implements IZkStateListener {
   }
 
   @Override
-  public void handleNewSession()
-      throws Exception {
+  public void handleNewSession(String s) throws Exception {
     logger.info("handleNewSession() called.");
   }
 

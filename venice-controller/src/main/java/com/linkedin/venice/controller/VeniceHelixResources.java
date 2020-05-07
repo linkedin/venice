@@ -28,7 +28,7 @@ import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
 import java.util.stream.Collectors;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
 

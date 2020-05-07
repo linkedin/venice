@@ -6,7 +6,7 @@ import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
-import org.I0Itec.zkclient.IZkStateListener;
+import org.apache.helix.zookeeper.zkclient.IZkStateListener;
 import org.apache.log4j.Logger;
 
 import static org.apache.zookeeper.Watcher.Event.KeeperState;
@@ -71,7 +71,7 @@ public class ZkClientStatusStats extends AbstractVeniceStats implements IZkState
   }
 
   @Override
-  public void handleNewSession() {
+  public void handleNewSession(String s) {
     LOGGER.info("New session established for '" + getName() + "', current KeeperState: " + clientState);
     zkClientNewSessionSensor.record();
   }

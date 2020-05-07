@@ -111,7 +111,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
@@ -124,7 +123,6 @@ import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZNRecordSerializer;
-import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
@@ -133,6 +131,7 @@ import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 
@@ -267,7 +266,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          *
          * {@link ZkClient#setZkSerializer(ZkSerializer)} is necessary, otherwise Helix will throw:
          *
-         * org.I0Itec.zkclient.exception.ZkMarshallingError: java.io.NotSerializableException: org.apache.helix.ZNRecord
+         * org.apache.helix.zookeeper.zkclient.exception.ZkMarshallingError: java.io.NotSerializableException: org.apache.helix.ZNRecord
          */
         zkClientForHelixAdmin.setZkSerializer(new ZNRecordSerializer());
         if (!zkClientForHelixAdmin.waitUntilConnected(ZkClient.DEFAULT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS)) {

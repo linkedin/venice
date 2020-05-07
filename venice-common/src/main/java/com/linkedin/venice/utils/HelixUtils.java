@@ -10,7 +10,6 @@ import java.util.HashMap;
 import java.util.List;
 
 import java.util.Map;
-import org.I0Itec.zkclient.DataUpdater;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.PropertyKey;
@@ -20,6 +19,7 @@ import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.helix.zookeeper.zkclient.DataUpdater;
 import org.apache.log4j.Logger;
 
 

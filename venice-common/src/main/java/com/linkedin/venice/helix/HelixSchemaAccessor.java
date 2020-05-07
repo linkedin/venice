@@ -8,10 +8,10 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
-import org.I0Itec.zkclient.IZkChildListener;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
-import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.helix.zookeeper.zkclient.IZkChildListener;
 import org.apache.log4j.Logger;
 
 
