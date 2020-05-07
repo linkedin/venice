@@ -38,15 +38,15 @@ public class VeniceVsonRecordReader extends AbstractVeniceRecordReader<BytesWrit
 
   public VeniceVsonRecordReader(String topicName, String keySchemaString, String valueSchemaString, String keyField, String valueField) {
     super(topicName);
-    this.keyField = keyField;
-    this.valueField = valueField;
+    this.keyField = keyField == null ? "" : keyField;
+    this.valueField = valueField == null ? "" : valueField;
     setupSchema(keySchemaString, valueSchemaString);
   }
 
   public VeniceVsonRecordReader(String topicName, String keyField, String valueField, FileSystem fs, Path hdfsPath) {
     super(topicName);
-    this.keyField = keyField;
-    this.valueField = valueField;
+    this.keyField = keyField == null ? "" : keyField;
+    this.valueField = valueField == null ? "" : valueField;
     metadataMap = new TreeMap<>();
 
     if (fs != null && hdfsPath != null) {

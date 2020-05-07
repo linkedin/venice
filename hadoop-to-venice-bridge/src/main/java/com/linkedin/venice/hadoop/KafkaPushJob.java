@@ -1570,8 +1570,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path, boolean buildDictionary) {
     logger.debug("path:" + path.toUri().getPath());
 
-    String keyField = props.getString(KEY_FIELD_PROP);
-    String valueField = props.getString(VALUE_FIELD_PROP);
+    String keyField = props.getString(KEY_FIELD_PROP, "");
+    String valueField = props.getString(VALUE_FIELD_PROP, "");
     VeniceVsonRecordReader recordReader = new VeniceVsonRecordReader(null, keyField, valueField, fs, path);
 
     // If dictionary compression is enabled for version, read the records to get training samples
