@@ -86,7 +86,6 @@ import static org.mockito.Mockito.*;
 public class TestVeniceParentHelixAdmin {
   private static final int TIMEOUT_IN_MS = 60 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
-  private static final String PUSH_JOB_STATUS_STORE_NAME = String.format(Store.SYSTEM_STORE_FORMAT, "push-job-status-store");
   private static final String PUSH_JOB_DETAILS_STORE_NAME = VeniceSystemStoreUtils.getPushJobDetailsStoreName();
 
   private final String clusterName = "test-cluster";
@@ -173,7 +172,6 @@ public class TestVeniceParentHelixAdmin {
     doReturn(10000).when(config).getParentControllerWaitingTimeForConsumptionMs();
     doReturn("fake_kafka_bootstrap_servers").when(config).getKafkaBootstrapServers();
     doReturn(clusterName).when(config).getPushJobStatusStoreClusterName();
-    doReturn(PUSH_JOB_STATUS_STORE_NAME).when(config).getPushJobStatusStoreName();
     doReturn(true).when(config).isParticipantMessageStoreEnabled();
     Map<String, String> childClusterMap = new HashMap<>();
     childClusterMap.put(coloName, "localhost");
@@ -308,8 +306,6 @@ public class TestVeniceParentHelixAdmin {
   public void testAsyncSetupForPushStatusStore() {
     String participantStoreName = VeniceSystemStoreUtils.getParticipantStoreNameForCluster(clusterName);
     doReturn(true).when(internalAdmin).isMasterController(clusterName);
-    doReturn(Version.composeRealTimeTopic(PUSH_JOB_STATUS_STORE_NAME)).when(internalAdmin)
-        .getRealTimeTopic(clusterName, PUSH_JOB_STATUS_STORE_NAME);
     doReturn(Version.composeRealTimeTopic(PUSH_JOB_DETAILS_STORE_NAME)).when(internalAdmin)
         .getRealTimeTopic(clusterName, PUSH_JOB_DETAILS_STORE_NAME);
     doReturn(Version.composeRealTimeTopic(participantStoreName)).when(internalAdmin)
@@ -320,7 +316,7 @@ public class TestVeniceParentHelixAdmin {
     mockVeniceParentHelixAdmin.setTimer(new MockTime());
     try {
       mockVeniceParentHelixAdmin.start(clusterName);
-      String[] systemStoreNames = {PUSH_JOB_STATUS_STORE_NAME, PUSH_JOB_DETAILS_STORE_NAME, participantStoreName};
+      String[] systemStoreNames = {PUSH_JOB_DETAILS_STORE_NAME, participantStoreName};
       for (String systemStore : systemStoreNames) {
         TestUtils.waitForNonDeterministicCompletion(1, TimeUnit.SECONDS, () -> {
           Store s = mockVeniceParentHelixAdmin.getStore(clusterName, systemStore);

@@ -810,12 +810,7 @@ public class ConfigKeys {
   public static final String ROUTER_LEAKED_FUTURE_CLEANUP_THRESHOLD_MS = "router.leaked.future.cleanup.threshold.ms";
 
   /**
-   * Store name for the internal store for storing push job status records.
-   */
-  public static final String PUSH_JOB_STATUS_STORE_NAME = "controller.push.job.status.store.name";
-
-  /**
-   * The name of the cluster that the internal store for storing push job status records belongs to.
+   * The name of the cluster that the internal store for storing push job details records belongs to.
    */
   public static final String PUSH_JOB_STATUS_STORE_CLUSTER_NAME = "controller.push.job.status.store.cluster.name";
 

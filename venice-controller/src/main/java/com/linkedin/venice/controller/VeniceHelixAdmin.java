@@ -82,7 +82,6 @@ import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
-import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.EncodingUtils;
 import com.linkedin.venice.utils.ExceptionUtils;
@@ -199,7 +198,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final String coloMasterClusterName;
     private final Optional<SSLFactory> sslFactory;
     private final String pushJobStatusStoreClusterName;
-    private final String pushJobStatusStoreName;
 
   /**
      * Level-1 controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -215,11 +213,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private String pushJobDetailsRTTopic;
 
     // Those variables will be initialized lazily.
-    private int pushJobStatusValueSchemaId = -1;
     private int pushJobDetailsSchemaId = -1;
 
     private static final String PUSH_JOB_DETAILS_WRITER = "PUSH_JOB_DETAILS_WRITER";
-    private static final String PUSH_JOB_STATUS_WRITER = "PUSH_JOB_STATUS_WRITER";
     private final Map<String, VeniceWriter> jobTrackingVeniceWriterMap = new VeniceConcurrentHashMap<>();
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
@@ -301,7 +297,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         isControllerClusterHAAS = commonConfig.isControllerClusterLeaderHAAS();
         coloMasterClusterName = commonConfig.getClusterName();
         pushJobStatusStoreClusterName = commonConfig.getPushJobStatusStoreClusterName();
-        pushJobStatusStoreName = commonConfig.getPushJobStatusStoreName();
 
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
@@ -609,8 +604,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return response.getId();
     }
 
-    // TODO duplicate code with VeniceHelixAdmin::sendPushJobStatusMessage but we intend to keep this method and remove
-    // the other one in the near future.
     public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {
         if (pushJobStatusStoreClusterName.isEmpty()) {
             throw new VeniceException(("Unable to send the push job details because "
@@ -645,44 +638,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
 
         pushJobDetailsWriter.put(key, value, pushJobDetailsSchemaId, null);
-    }
-
-
-    public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
-        if (pushJobStatusStoreClusterName.isEmpty() || pushJobStatusStoreName.isEmpty()) {
-            // Push job status upload store is not configured.
-            throw new VeniceException("Unable to upload the push job status because corresponding store is not configured");
-        }
-        if (pushJobStatusTopicName == null) {
-            int getTopicAttempts = 0;
-            String expectedTopicName = Version.composeRealTimeTopic(pushJobStatusStoreName);
-            // Retry with backoff to allow the store and topic to be created when the config is changed.
-            while (getTopicAttempts < INTERNAL_STORE_GET_RRT_TOPIC_ATTEMPTS) {
-                if (getTopicAttempts != 0)
-                    Utils.sleep(INTERNAL_STORE_RTT_RETRY_BACKOFF_MS);
-                if (topicManager.containsTopicAndAllPartitionsAreOnline(expectedTopicName)) {
-                    pushJobStatusTopicName = expectedTopicName;
-                    logger.info("Push job status topic name set to " + expectedTopicName);
-                    break;
-                }
-                getTopicAttempts++;
-            }
-            if (pushJobStatusTopicName == null) {
-                throw new VeniceException("Can't find the expected topic " + expectedTopicName
-                    + " for push job status. Either the topic hasn't been created yet or it's misconfigured.");
-            }
-        }
-
-        VeniceWriter pushJobStatusWriter = jobTrackingVeniceWriterMap.computeIfAbsent(PUSH_JOB_STATUS_WRITER, k -> {
-            pushJobStatusValueSchemaId = fetchSystemStoreSchemaId(pushJobStatusStoreClusterName,
-                pushJobStatusStoreName, value.getSchema().toString());
-            return getVeniceWriterFactory().createVeniceWriter(pushJobStatusTopicName,
-                new VeniceAvroKafkaSerializer(key.getSchema().toString()),
-                new VeniceAvroKafkaSerializer(value.getSchema().toString()));
-        });
-
-        pushJobStatusWriter.put(key, value, pushJobStatusValueSchemaId, null);
-        logger.info("Successfully sent push job status for store " + value.storeName.toString() + " in cluster ");
     }
 
     public void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {

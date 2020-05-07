@@ -1,6 +1,5 @@
 package com.linkedin.venice.status.protocol;
 
-import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.HashMap;
@@ -11,15 +10,15 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestPushJobStatusSchemaCompatibility {
+public class TestPushJobDetailsSchemaCompatibility {
   @Test
   public void testPushJobStatusValueSchemaCompatibility() throws IOException {
     Map<Integer, Schema> schemaVersionMap = new HashMap<>();
-    int latestSchemaId = VeniceParentHelixAdmin.LATEST_PUSH_JOB_STATUS_VALUE_SCHEMA_ID;
+    int latestSchemaId = 2;
     for (int i=1; i<= latestSchemaId; i++) {
       schemaVersionMap.put(i,
-          Utils.getSchemaFromResource("avro/PushJobStatusRecord/PushJobStatusRecordValue/v"
-              + i + "/PushJobStatusRecordValue.avsc"));
+          Utils.getSchemaFromResource("avro/PushJobStatusRecord/PushJobDetails/v"
+              + i + "/PushJobDetails.avsc"));
     }
     Schema latestSchema = schemaVersionMap.get(latestSchemaId);
     schemaVersionMap.forEach( (schemaId, schema) -> {
@@ -29,7 +28,7 @@ public class TestPushJobStatusSchemaCompatibility {
       SchemaCompatibility.SchemaPairCompatibility backwardCompatibility =
           SchemaCompatibility.checkReaderWriterCompatibility(latestSchema, schema);
       Assert.assertEquals(backwardCompatibility.getType(), SchemaCompatibility.SchemaCompatibilityType.COMPATIBLE,
-          "PushJobStatusRecordValue schema version " + schemaId + " is incompatible with the latest schema "
+          "PushJobDetails schema version " + schemaId + " is incompatible with the latest schema "
       + "version of " + latestSchemaId);
     });
   }

@@ -51,7 +51,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int minNumberOfUnusedKafkaTopicsToPreserve;
   private final int minNumberOfStoreVersionsToPreserve;
   private final int parentControllerMaxErroredTopicNumToKeep;
-  private final String pushJobStatusStoreName;
   private final String pushJobStatusStoreClusterName;
   private final boolean participantMessageStoreEnabled;
   private final String systemSchemaClusterName;
@@ -123,7 +122,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     // By default, keep 0 errored topics per store in parent controller
     this.parentControllerMaxErroredTopicNumToKeep = props.getInt(PARENT_CONTROLLER_MAX_ERRORED_TOPIC_NUM_TO_KEEP, 0);
 
-    this.pushJobStatusStoreName = props.getString(PUSH_JOB_STATUS_STORE_NAME, "");
     this.pushJobStatusStoreClusterName = props.getString(PUSH_JOB_STATUS_STORE_CLUSTER_NAME, "");
     this.participantMessageStoreEnabled = props.getBoolean(PARTICIPANT_MESSAGE_STORE_ENABLED, false);
     this.adminHelixMessagingChannelEnabled = props.getBoolean(ADMIN_HELIX_MESSAGING_CHANNEL_ENABLED, true);
@@ -253,8 +251,6 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public int getParentControllerMaxErroredTopicNumToKeep() {
     return parentControllerMaxErroredTopicNumToKeep;
   }
-
-  public String getPushJobStatusStoreName() { return pushJobStatusStoreName; }
 
   public String getPushJobStatusStoreClusterName() { return pushJobStatusStoreClusterName; }
 

@@ -416,28 +416,6 @@ public class ControllerClient implements Closeable {
     return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1);
   }
 
-  /**
-   * Uploads information regarding to a push job
-   * @param storeName name of the store involved with the push job
-   * @param version version number of the involved store
-   * @param status the final status of the push job
-   * @param jobDurationInMs duration of the push job in milliseconds
-   * @param pushJobId unique id of the push job
-   * @param message additional description for the corresponding job status
-   * @return
-   */
-  public PushJobStatusUploadResponse uploadPushJobStatus(String storeName, int version, PushJobStatus status,
-      long jobDurationInMs, String pushJobId, String message) {
-    QueryParams params = newParams()
-        .add(NAME, storeName)
-        .add(VERSION, version)
-        .add(PUSH_JOB_STATUS, status.name())
-        .add(PUSH_JOB_DURATION, jobDurationInMs)
-        .add(PUSH_JOB_ID, pushJobId)
-        .add(MESSAGE, message);
-    return request(ControllerRoute.UPLOAD_PUSH_JOB_STATUS, params, PushJobStatusUploadResponse.class);
-  }
-
   public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
     QueryParams params = newParams()
         .add(NAME, storeName)
