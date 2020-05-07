@@ -140,7 +140,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       (reusedDecoder, bytes, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) ->
           deserializer.deserialize(
               reusedValue,
-              DecoderFactory.get().binaryDecoder(
+              DecoderFactory.defaultFactory().createBinaryDecoder(
                   bytes,
                   ValueRecord.SCHEMA_HEADER_LENGTH,
                   inputBytesLength - ValueRecord.SCHEMA_HEADER_LENGTH,
@@ -150,7 +150,7 @@ public abstract class AbstractAvroChunkingAdapter<T> implements ChunkingAdapter<
       (reusedDecoder, inputStream, inputBytesLength, reusedValue, compressionStrategy, deserializer, readResponse) -> {
         VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
         try (InputStream decompressedInputStream = compressor.decompress(inputStream)) {
-          BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(decompressedInputStream, reusedDecoder);
+          BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(decompressedInputStream, reusedDecoder);
           return deserializer.deserialize(reusedValue, decoder);
         } catch (IOException e) {
           throw new VeniceException("Failed to decompress, compressionStrategy: " + compressionStrategy.name(), e);

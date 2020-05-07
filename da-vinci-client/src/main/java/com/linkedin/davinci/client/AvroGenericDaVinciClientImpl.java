@@ -84,7 +84,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   private static class ReusableObjects {
     final ByteBuffer reusedRawValue = ByteBuffer.allocate(1024 * 1024);
-    final BinaryDecoder binaryDecoder = DecoderFactory.get().binaryDecoder(new byte[16], null);
+    final BinaryDecoder binaryDecoder = DecoderFactory.defaultFactory().createBinaryDecoder(new byte[16], null);
     final BinaryEncoder binaryEncoder = AvroCompatibilityHelper.newBinaryEncoder(new ByteArrayOutputStream(), true, null);
     final ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
   }

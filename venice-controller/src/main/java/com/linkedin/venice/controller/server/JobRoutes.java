@@ -160,7 +160,7 @@ public class JobRoutes extends AbstractRoute {
         String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
         DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$);
         PushJobDetails pushJobDetails =
-            reader.read(null, DecoderFactory.get().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+            reader.read(null, DecoderFactory.defaultFactory().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
         admin.sendPushJobDetails(key, pushJobDetails);
       } catch (Throwable e) {
         controllerResponse.setError(e.getMessage());
