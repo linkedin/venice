@@ -78,6 +78,9 @@ public class DaVinciClientTest {
         });
       }
 
+      // test non-existing key
+      assertNull(client.get(KEY_COUNT + 1).get());
+
       // test read from a store that was deleted concurrently
       try (ControllerClient controllerClient = cluster.getControllerClient()) {
         ControllerResponse response = controllerClient.disableAndDeleteStore(storeName);

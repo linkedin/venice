@@ -98,7 +98,9 @@ public class ChunkingUtils {
       String storeName) {
     long databaseLookupStartTimeInNS = (null != response) ? System.nanoTime() : 0;
     reusedRawValue = store.get(partition, keyBuffer, reusedRawValue);
-
+    if (null == reusedRawValue) {
+      return null;
+    }
     return getFromStorage(
         reusedRawValue.array(), reusedRawValue.limit(), databaseLookupStartTimeInNS, adapter, store, partition, response,
         reusedValue, reusedDecoder, compressionStrategy, fastAvroEnabled, schemaRepo, storeName);
