@@ -29,7 +29,6 @@ public class ReplicaStatus {
   public ReplicaStatus(String instanceId) {
     this.instanceId = instanceId;
     statusHistory = new LinkedList<>();
-    addHistoricStatus(currentStatus);
   }
 
   public void updateStatus(ExecutionStatus newStatus) {

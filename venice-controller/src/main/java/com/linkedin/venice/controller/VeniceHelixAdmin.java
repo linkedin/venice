@@ -2588,7 +2588,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
       logger.info("After waiting for " + elapsedTime + "ms, resource " + topic + " does not have enough nodes" +
           ", strategy=" + strategy.toString() + ", replicationFactor=" + replicationFactor + ", reason=" + notReadyReason.get());
-      pushMonitor.refreshAndUpdatePushStatus(topic, ExecutionStatus.STARTED, notReadyReason);
       Utils.sleep(WAIT_FOR_HELIX_RESOURCE_ASSIGNMENT_FINISH_RETRY_MS);
     }
 
