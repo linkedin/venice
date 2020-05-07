@@ -9,8 +9,6 @@ import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
-import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
-import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.Optional;
@@ -114,29 +112,7 @@ public class JobRoutes extends AbstractRoute {
     return (request, response) -> {
       PushJobStatusUploadResponse responseObject = new PushJobStatusUploadResponse();
       response.type(HttpConstants.JSON);
-      try {
-        // No ACL check for uploading push status
-        AdminSparkServer.validateParams(request, UPLOAD_PUSH_JOB_STATUS.getParams(), admin);
-        responseObject.setName(request.queryParams(NAME));
-        responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
-        PushJobStatusRecordKey key = new PushJobStatusRecordKey();
-        PushJobStatusRecordValue value = new PushJobStatusRecordValue();
-        String storeName = request.queryParams(NAME);
-        int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
-        key.storeName = storeName;
-        key.versionNumber = version;
-        value.storeName = storeName;
-        value.clusterName = request.queryParams(CLUSTER);
-        value.versionNumber = version;
-        value.status = PushJobStatus.valueOf(request.queryParams(PUSH_JOB_STATUS));
-        value.pushDuration = Utils.parseLongFromString(request.queryParams(PUSH_JOB_DURATION), PUSH_JOB_DURATION);
-        value.pushId = request.queryParams(PUSH_JOB_ID);
-        value.message = request.queryParams(MESSAGE);
-        admin.sendPushJobStatusMessage(key, value);
-      } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(e, request, response);
-      }
+      // TODO: remove once all h2v plugin deployments have updated and no longer calling into this for reporting.
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }

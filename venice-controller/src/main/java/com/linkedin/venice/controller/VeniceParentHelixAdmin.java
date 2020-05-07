@@ -68,7 +68,6 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.security.SSLFactory;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
-import com.linkedin.venice.status.protocol.PushJobStatusRecordValue;
 import com.linkedin.venice.store.rocksdb.RocksDBUtils;
 import com.linkedin.venice.utils.AvroSchemaUtils;
 import com.linkedin.venice.utils.Pair;
@@ -113,15 +112,11 @@ import org.apache.log4j.Logger;
  * then wait for the admin consumer to consume the message.
  */
 public class VeniceParentHelixAdmin implements Admin {
-  // Latest value schema id for push job status
-  public static final int LATEST_PUSH_JOB_STATUS_VALUE_SCHEMA_ID = 2;
-
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final long SLEEP_INTERVAL_FOR_ASYNC_SETUP_MS = 3000;
   private static final int MAX_ASYNC_SETUP_RETRY_COUNT = 10;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private static final String VENICE_INTERNAL_STORE_OWNER = "venice-internal";
-  private static final String PUSH_JOB_STATUS_STORE_DESCRIPTOR = "push job status store: ";
   private static final String PUSH_JOB_DETAILS_STORE_DESCRIPTOR = "push job details store: ";
   private static final String PARTICIPANT_MESSAGE_STORE_DESCRIPTOR = "participant message store: ";
   //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
@@ -245,14 +240,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
     if (!multiClusterConfigs.getPushJobStatusStoreClusterName().isEmpty()
         && clusterName.equals(multiClusterConfigs.getPushJobStatusStoreClusterName())) {
-      if (!multiClusterConfigs.getPushJobStatusStoreName().isEmpty()) {
-        String storeName = multiClusterConfigs.getPushJobStatusStoreName();
-        asyncSetupForInternalRTStore(multiClusterConfigs.getPushJobStatusStoreClusterName(),
-            storeName, PUSH_JOB_STATUS_STORE_DESCRIPTOR + storeName,
-            PushJobStatusRecordKey.SCHEMA$.toString(), PushJobStatusRecordValue.SCHEMA$.toString(),
-            multiClusterConfigs.getConfigForCluster(clusterName).getNumberOfPartition());
-      }
-
       asyncSetupForInternalRTStore(
           multiClusterConfigs.getPushJobStatusStoreClusterName(),
           VeniceSystemStoreUtils.getPushJobDetailsStoreName(),
@@ -1945,10 +1932,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void updateClusterDiscovery(String storeName, String oldCluster, String newCluster) {
     veniceHelixAdmin.updateClusterDiscovery(storeName, oldCluster, newCluster);
-  }
-
-  public void sendPushJobStatusMessage(PushJobStatusRecordKey key, PushJobStatusRecordValue value) {
-    veniceHelixAdmin.sendPushJobStatusMessage(key, value);
   }
 
   public void sendPushJobDetails(PushJobStatusRecordKey key, PushJobDetails value) {

@@ -601,7 +601,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.START_JOB_STATUS_POLLING);
         pollStatusUntilComplete(pushJobSetting.incrementalPushVersion, controllerClient, pushJobSetting, versionTopicInfo);
         updatePushJobDetailsWithCheckpoint(PushJobCheckpoints.JOB_STATUS_POLLING_COMPLETED);
-        checkAndUploadPushJobStatus(PushJobStatus.SUCCESS, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.COMPLETED.getValue()));
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
         updatePushJobDetailsWithConfigs();
@@ -620,7 +619,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
       logger.error("Failed to run job.", e);
       // Make sure all the logic before killing the failed push jobs is captured in the following block
       try {
-        checkAndUploadPushJobStatus(PushJobStatus.ERROR, e.getMessage(), pushJobSetting, versionTopicInfo, pushStartTime, pushId);
         pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.ERROR.getValue()));
         pushJobDetails.failureDetails = e.toString();
         pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
@@ -742,29 +740,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
     // we are applying this factor to provide a more reasonable estimation.
     return new Pair<>(schemaInfo, inputFileDataSize.get() * INPUT_DATA_SIZE_FACTOR);
-  }
-
-  /**
-   * Check push job status related fields and provide appropriate values if yet to be set due to error situations.
-   * Upload these fields to the controller using the {@link ControllerClient}.
-   * @param status the status of the push job.
-   * @param message the corresponding message to the push job status.
-   */
-  private void checkAndUploadPushJobStatus(PushJobStatus status, String message, PushJobSetting pushJobSetting, VersionTopicInfo versionTopicInfo, long pushStartTime, String pushId) {
-    if (pushJobSetting.enablePushJobStatusUpload) {
-      int version = versionTopicInfo == null ? UNCREATED_VERSION_NUMBER : Version.parseVersionFromKafkaTopicName(versionTopicInfo.topic);
-      long duration = pushStartTime == 0 ? 0 : System.currentTimeMillis() - pushStartTime;
-      String verifiedPushId = pushId == null ? "" : pushId;
-      try {
-        PushJobStatusUploadResponse response = controllerClient.retryableRequest(pushJobSetting.controllerRetries, c ->
-            c.uploadPushJobStatus(pushJobSetting.storeName, version, status, duration, verifiedPushId, message));
-        if (response.isError()) {
-          logger.warn("Failed to upload push job status with error: " + response.getError());
-        }
-      } catch (Exception e) {
-        logger.warn("Exception thrown while uploading push job status", e);
-      }
-    }
   }
 
   private void initPushJobDetails() {
@@ -1449,7 +1424,6 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   @Override
   public void cancel() {
     stopAndCleanup(pushJobSetting, controllerClient, versionTopicInfo);
-    checkAndUploadPushJobStatus(PushJobStatus.KILLED, "", pushJobSetting, versionTopicInfo, pushStartTime, pushId);
     pushJobDetails.overallStatus.add(getPushJobDetailsStatusTuple(PushJobDetailsStatus.KILLED.getValue()));
     pushJobDetails.jobDurationInMs = System.currentTimeMillis() - jobStartTime;
     updatePushJobDetailsWithConfigs();

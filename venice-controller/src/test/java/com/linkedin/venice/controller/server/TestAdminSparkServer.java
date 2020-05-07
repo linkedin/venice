@@ -746,16 +746,6 @@ public class TestAdminSparkServer {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void controllerClientCanUploadPushJobStatus() {
-    String storeName = TestUtils.getUniqueString("controllerClientCanUploadJobStatus");
-    int version = 1;
-    PushJobStatusUploadResponse jobStatusUploadResponse= controllerClient.uploadPushJobStatus(storeName, version,
-        PushJobStatus.SUCCESS, 1000, "test-push-id", "");
-    // expected to fail because the push job status topic/store is not created (no parent controller in the cluster).
-    Assert.assertEquals(jobStatusUploadResponse.isError(), true);
-  }
-
-  @Test(timeOut = TEST_TIMEOUT)
   public void controllerClientCanSetLeaderFollowerModelInTheCluster() {
     String storeName = TestUtils.getUniqueString("controllerClientCanSetLeaderFollowerModel");
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
