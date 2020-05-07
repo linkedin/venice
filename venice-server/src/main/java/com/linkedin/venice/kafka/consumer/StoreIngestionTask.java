@@ -1450,19 +1450,24 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
      */
     if (putValue.position() < SCHEMA_HEADER_LENGTH) {
-      throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + SCHEMA_HEADER_LENGTH);
+      // using {@link com.linkedin.venice.serialization.avro.KafkaValueSerializer}
+      ByteBuffer value = ByteBuffer.allocate(SCHEMA_HEADER_LENGTH + putValue.remaining());
+      value.putInt(schemaId);
+      value.put(putValue.asReadOnlyBuffer());
+      value.rewind();
+      writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, value);
+    } else {
+      // Back up the original 4 bytes
+      putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
+      int backupBytes = putValue.getInt();
+      putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
+      ByteUtils.writeInt(putValue.array(), schemaId, putValue.position());
+
+      writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, putValue);
+
+      /** We still want to recover the original position to make this function idempotent. */
+      putValue.putInt(backupBytes);
     }
-
-    // Back up the original 4 bytes
-    putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
-    int backupBytes = putValue.getInt();
-    putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
-    ByteUtils.writeInt(putValue.array(), schemaId, putValue.position());
-
-    writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, putValue);
-
-    /** We still want to recover the original position to make this function idempotent. */
-    putValue.putInt(backupBytes);
   }
 
   private void writeToStorageEngine(AbstractStorageEngine storageEngine, int partition, byte[] keyBytes, ByteBuffer putValue) {
