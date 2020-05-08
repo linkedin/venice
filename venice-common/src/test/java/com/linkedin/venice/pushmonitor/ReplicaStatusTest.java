@@ -86,6 +86,7 @@ public class ReplicaStatusTest {
   @Test
   public void testStatusHistory() {
     ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    replicaStatus.updateStatus(STARTED);
     replicaStatus.updateStatus(PROGRESS);
     replicaStatus.updateStatus(COMPLETED);
 
@@ -108,6 +109,7 @@ public class ReplicaStatusTest {
   @Test
   public void testStatusHistoryWithLotsOfProgressStatus() {
     ReplicaStatus replicaStatus = new ReplicaStatus(instanceId);
+    replicaStatus.updateStatus(STARTED);
     for (int i = 0; i < ReplicaStatus.MAX_HISTORY_LENGTH * 2; i++) {
       replicaStatus.updateStatus(PROGRESS);
     }
