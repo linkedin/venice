@@ -138,6 +138,12 @@ public abstract class AbstractParticipantModel extends StateModel {
   protected void removePartitionFromStoreGracefully() {
     try {
       // Gracefully drop partition to drain the requests to this partition
+      // This method is called during OFFLINE->DROPPED state transition. Due to Zk or other transient issues a store
+      // version could miss ONLINE->OFFLINE transition and newer version could come online triggering this transition.
+      // Since this removes the storageEngine from the map not doing a un-subscribe and dropping a partition could
+      // lead to NPE and other issues.
+      // Adding a topic unsubscribe call for those race conditions as a safe-guard before dropping the partition.
+      stopConsumption();
       getTime().sleep(TimeUnit.SECONDS.toMillis(getStoreConfig().getPartitionGracefulDropDelaySeconds()));
     } catch (InterruptedException e) {
       throw new VeniceException("Got interrupted during state transition: 'OFFLINE' -> 'DROPPED'", e);
