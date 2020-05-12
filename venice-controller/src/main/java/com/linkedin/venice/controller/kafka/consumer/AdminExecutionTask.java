@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
@@ -321,7 +322,13 @@ public class AdminExecutionTask implements Callable<Void> {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int versionNum = message.versionNum;
-    admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
+    if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+      // Dematerialize a metadata store version.
+      admin.dematerializeMetadataStoreVersion(clusterName, VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName), versionNum);
+    } else {
+      // Delete an old version for a Venice store.
+      admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
+    }
     logger.info("Deleted version: " + versionNum + " in store:" + storeName + " in cluster: " + clusterName);
   }
 
@@ -509,8 +516,18 @@ public class AdminExecutionTask implements Callable<Void> {
             pushType, remoteKafkaBootstrapServers);
       }
     } else {
-      admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
-          remoteKafkaBootstrapServers);
+      if (VeniceSystemStore.METADATA_STORE.getPrefix().equals(storeName)) {
+        // New version for the Zk shared metadata store.
+        admin.newZkSharedStoreVersion(clusterName, storeName);
+      } else if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+        // Materialize a metadata store for a specific Venice store.
+        admin.materializeMetadataStoreVersion(clusterName,
+            VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName), versionNumber);
+      } else {
+        // New version for regular Venice store.
+        admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
+            remoteKafkaBootstrapServers);
+      }
     }
   }
 

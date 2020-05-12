@@ -1,5 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controller.AdminTopicMetadataAccessor;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
@@ -482,19 +484,26 @@ public class AdminConsumptionTask implements Runnable, Closeable {
    * @return the corresponding store name.
    */
   private String extractStoreName(AdminOperation adminOperation) {
+    String storeName;
     switch (AdminMessageType.valueOf(adminOperation)) {
       case KILL_OFFLINE_PUSH_JOB:
         KillOfflinePushJob message = (KillOfflinePushJob) adminOperation.payloadUnion;
-        return Version.parseStoreFromKafkaTopicName(message.kafkaTopic.toString());
+        storeName = Version.parseStoreFromKafkaTopicName(message.kafkaTopic.toString());
+        break;
       default:
         try {
           GenericRecord payload = (GenericRecord) adminOperation.payloadUnion;
-          return payload.get("storeName").toString();
+          storeName = payload.get("storeName").toString();
         } catch (Exception e) {
           throw new VeniceException("Failed to handle operation type: " + adminOperation.operationType
               + " because it does not contain a storeName field");
         }
     }
+    if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE
+        && !VeniceSystemStore.METADATA_STORE.getPrefix().equals(storeName)) {
+      storeName = VeniceSystemStoreUtils.getStoreNameFromMetadataStoreName(storeName);
+    }
+    return storeName;
   }
 
   private void updateLastOffset(long offset) {

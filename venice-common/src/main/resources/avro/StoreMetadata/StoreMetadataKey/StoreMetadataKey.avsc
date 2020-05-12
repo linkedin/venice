@@ -1,7 +1,7 @@
 {
   "name": "StoreMetadataKey",
   "doc": "A composite key that divides the key space to retrieve different types of metadata for a Venice store. StoreAttributes and TargetVersionStates are global properties therefore shouldn't have cluster and fabric names in the keyStrings array. In contrast, CurrentStoreStates and CurrentVersionStates are cluster and fabric specific states that's identified with corresponding cluster and fabric names in the keyStrings array.",
-  "namespace": "com.linkedin.venice.meta",
+  "namespace": "com.linkedin.venice.meta.systemstore.schemas",
   "type": "record",
   "fields": [
     {

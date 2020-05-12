@@ -51,10 +51,13 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
 
+  private final MetadataStoreWriter metadataStoreWriter;
+
   public VeniceDistClusterControllerStateModel(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       VeniceControllerMultiClusterConfig multiClusterConfigs, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
+      MetadataStoreWriter metadataStoreWriter) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.clusterName = clusterName;
@@ -67,6 +70,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
+    this.metadataStoreWriter = metadataStoreWriter;
   }
 
   /**
@@ -118,7 +122,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
         controller.startTimerTasks();
         resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterConfig,
             storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-            accessController);
+            accessController, metadataStoreWriter);
         resources.refresh();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {

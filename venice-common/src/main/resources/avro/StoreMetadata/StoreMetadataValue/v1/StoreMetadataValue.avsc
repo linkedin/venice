@@ -1,6 +1,6 @@
 {
   "name": "StoreMetadataValue",
-  "namespace": "com.linkedin.venice.meta",
+  "namespace": "com.linkedin.venice.meta.systemstore.schemas",
   "type": "record",
   "fields": [
     {
@@ -435,7 +435,7 @@
                       "name": "partitionerConfig",
                       "type": [
                         "null",
-                        "com.linkedin.venice.meta.PartitionerConfig"
+                        "com.linkedin.venice.meta.systemstore.schemas.PartitionerConfig"
                       ],
                       "default": null
                     }
@@ -452,7 +452,7 @@
           "fields": [
             {
               "name": "states",
-              "type": "com.linkedin.venice.meta.StoreProperties"
+              "type": "com.linkedin.venice.meta.systemstore.schemas.StoreProperties"
             }
           ]
         },
@@ -466,8 +466,13 @@
               "doc": "An array of version states describing the current state of an given fabric. Old entries are purged as new entries are added.",
               "type": {
                 "type": "array",
-                "items": "com.linkedin.venice.meta.StoreVersionState"
+                "items": "com.linkedin.venice.meta.systemstore.schemas.StoreVersionState"
               }
+            },
+            {
+              "name": "currentVersion",
+              "doc": "The version number that is currently used to serve read traffic",
+              "type": "int"
             }
           ]
         }

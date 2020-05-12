@@ -30,7 +30,7 @@ public class CreateStore extends AbstractRoute {
         String storeName = request.queryParams(NAME);
         String keySchema = request.queryParams(KEY_SCHEMA);
         String valueSchema = request.queryParams(VALUE_SCHEMA);
-        boolean isSystemStore = Boolean.getBoolean(request.queryParams(IS_SYSTEM_STORE));
+        boolean isSystemStore = Boolean.parseBoolean(request.queryParams(IS_SYSTEM_STORE));
 
         String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER);
         if (owner == null) {

@@ -76,13 +76,13 @@ public abstract class AbstractParticipantModel extends StateModel {
   }
 
   private void logEntry(String from, String to, Message message, NotificationContext context) {
-    logger.info(getStorePartitionDescription() + " initiating transition from " + from + " to " + to + " Store"
+    logger.info(getStorePartitionDescription() + " initiating transition from " + from + " to " + to + " for resource: "
         + getStoreConfig().getStoreName() + " Partition " + getPartition() +
         " invoked with Message " + message + " and context " + context);
   }
 
   private void logCompletion(String from, String to, Message message, NotificationContext context) {
-    logger.info(getStorePartitionDescription() + " completed transition from " + from + " to " + to + " Store "
+    logger.info(getStorePartitionDescription() + " completed transition from " + from + " to " + to + " for resource: "
         + getStoreConfig().getStoreName() + " Partition " + getPartition() +
         " invoked with Message " + message + " and context " + context);
   }

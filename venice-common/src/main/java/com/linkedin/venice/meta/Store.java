@@ -237,6 +237,11 @@ public class Store {
   private boolean hybridStoreDiskQuotaEnabled = false;
 
   /**
+   * Whether or not the store metadata system store is enabled for this store.
+   */
+  private boolean storeMetadataSystemStoreEnabled = false;
+
+  /**
    * Properties related to ETL Store behavior.
    */
   private ETLStoreConfig etlStoreConfig = new ETLStoreConfig();
@@ -635,6 +640,14 @@ public class Store {
     this.etlStoreConfig = etlStoreConfig;
   }
 
+  public boolean isStoreMetadataSystemStoreEnabled() {
+    return storeMetadataSystemStoreEnabled;
+  }
+
+  public void setStoreMetadataSystemStoreEnabled(boolean storeMetadataSystemStoreEnabled) {
+    this.storeMetadataSystemStoreEnabled = storeMetadataSystemStoreEnabled;
+  }
+
   /**
    * Add a version into store.
    *
@@ -886,6 +899,7 @@ public class Store {
     result = 31 * result + (hybridStoreDiskQuotaEnabled ? 1 : 0);
     result = 31 * result + (etlStoreConfig != null ? etlStoreConfig.hashCode() : 0);
     result = 31 * result + (partitionerConfig != null ? partitionerConfig.hashCode() : 0);
+    result = 31 * result + (storeMetadataSystemStoreEnabled ? 1 : 0);
     return result;
   }
 
@@ -932,6 +946,7 @@ public class Store {
     if (latestSuperSetValueSchemaId != store.latestSuperSetValueSchemaId) return false;
     if (hybridStoreDiskQuotaEnabled != store.hybridStoreDiskQuotaEnabled) return false;
     if (!partitionerConfig.equals(store.partitionerConfig)) return false;
+    if (storeMetadataSystemStoreEnabled != store.storeMetadataSystemStoreEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -980,6 +995,7 @@ public class Store {
     clonedStore.setLatestSuperSetValueSchemaId(latestSuperSetValueSchemaId);
     clonedStore.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
     clonedStore.setEtlStoreConfig(etlStoreConfig);
+    clonedStore.setStoreMetadataSystemStoreEnabled(storeMetadataSystemStoreEnabled);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

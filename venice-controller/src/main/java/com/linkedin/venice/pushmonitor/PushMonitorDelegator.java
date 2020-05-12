@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
@@ -48,7 +49,7 @@ public class PushMonitorDelegator implements PushMonitor {
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid,
       Optional<TopicReplicator> onlineOfflineTopicReplicator, Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
 
     this.clusterName = clusterName;
     this.pushMonitorType = pushMonitorType;
@@ -58,10 +59,10 @@ public class PushMonitorDelegator implements PushMonitor {
 
     this.offlinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository, offlinePushAccessor,
         storeCleaner, metadataRepository, aggPushHealthStats, skipBufferReplayForHybrid, onlineOfflineTopicReplicator,
-        metricsRepository);
+        metricsRepository, metadataStoreWriter);
     this.partitionStatusBasedPushStatusMonitor = new PartitionStatusBasedPushMonitor(clusterName, offlinePushAccessor,
         storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats, skipBufferReplayForHybrid,
-        leaderFollowerTopicReplicator, metricsRepository);
+        leaderFollowerTopicReplicator, metricsRepository, metadataStoreWriter);
 
     this.topicToPushMonitorMap = new VeniceConcurrentHashMap<>();
   }

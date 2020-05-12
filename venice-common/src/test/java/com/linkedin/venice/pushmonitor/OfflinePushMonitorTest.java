@@ -21,7 +21,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
   protected AbstractPushMonitor getPushMonitor(boolean skipBufferReplayForHybrid, TopicReplicator mockReplicator) {
     return new OfflinePushMonitor(getClusterName(), getMockRoutingDataRepo(), getMockAccessor(), getMockStoreCleaner(),
         getMockStoreRepo(), getMockPushHealthStats(), skipBufferReplayForHybrid, Optional.of(mockReplicator),
-        getMetricsRepository());
+        getMetricsRepository(), getMockMetadataStoreWriter());
   }
 
   @Test

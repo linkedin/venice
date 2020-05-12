@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.throttle;
 
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -101,9 +102,9 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
     if (!zkRoutersManager.isThrottlingEnabled()) {
       return;
     }
-    StoreReadThrottler throttler = storesThrottlers.get().get(storeName);
+    StoreReadThrottler throttler = storesThrottlers.get().get(VeniceSystemStoreUtils.getZkStoreName(storeName));
     if (throttler == null) {
-      throw new VeniceException("Could not found the throttler for store: " + storeName);
+      throw new VeniceException("Could not find the throttler for store: " + storeName);
     } else {
       throttler.mayThrottleRead(readCapacityUnit, storageNodeId);
     }

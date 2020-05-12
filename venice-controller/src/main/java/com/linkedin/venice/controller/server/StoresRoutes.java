@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
@@ -512,6 +513,28 @@ public class StoresRoutes extends AbstractRoute {
         veniceResponse.setCluster(cluster);
         veniceResponse.setStores((String []) storeCandidates.toArray());
       }
+    };
+  }
+
+  public Route dematerializeMetadataStoreVersion(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      response.type(HttpConstants.JSON);
+      try {
+        AdminSparkServer.validateParams(request, DEMATERIALIZE_METADATA_STORE_VERSION.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+
+        admin.dematerializeMetadataStoreVersion(clusterName, storeName, versionNumber);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
   }
 }

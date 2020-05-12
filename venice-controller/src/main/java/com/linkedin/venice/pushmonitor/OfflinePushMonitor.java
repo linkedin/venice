@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -23,9 +24,9 @@ public class OfflinePushMonitor extends AbstractPushMonitor implements RoutingDa
   public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor offlinePushAccessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
     super(clusterName, offlinePushAccessor, storeCleaner, metadataRepository, routingDataRepository, aggPushHealthStats,
-        skipBufferReplayForHybrid, topicReplicator, metricsRepository);
+        skipBufferReplayForHybrid, topicReplicator, metricsRepository, metadataStoreWriter);
   }
   /**
    * Checking push status based on Helix external view (RoutingData)

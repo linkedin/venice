@@ -534,4 +534,18 @@ public interface Admin extends AutoCloseable, Closeable {
     void writeEndOfPush(String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush);
 
     boolean whetherEnableBatchPushFromAdmin();
+
+    Version newZkSharedStoreVersion(String clusterName, String zkSharedStoreName);
+
+    /**
+     * Materialize the specified Zk shared metadata store version for the given Venice store name and set the
+     * storeMetadataSystemStoreEnabled flag to true.
+     */
+    void materializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
+
+    /**
+     * Dematerialize the specified Zk shared metadata store version for the given Venice store name and set the
+     * storeMetadataSystemStoreEnabled flag to false.
+     */
+    void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber);
 }

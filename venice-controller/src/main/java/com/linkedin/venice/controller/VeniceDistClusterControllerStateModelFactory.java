@@ -30,11 +30,13 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final Optional<TopicReplicator> onlineOfflineTopicReplicator;
   private final Optional<TopicReplicator> leaderFollowerTopicReplicator;
   private final Optional<DynamicAccessController> accessController;
+  private final MetadataStoreWriter metadataStoreWriter;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       StoreCleaner storeCleaner, VeniceControllerMultiClusterConfig clusterConfigs, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
-      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController) {
+      Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
+      MetadataStoreWriter metadataStoreWriter) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterConfigs = clusterConfigs;
@@ -44,6 +46,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     this.onlineOfflineTopicReplicator = onlineOfflineTopicReplicator;
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
+    this.metadataStoreWriter = metadataStoreWriter;
   }
 
   @Override
@@ -53,7 +56,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(veniceClusterName, zkClient, adapterSerializer, clusterConfigs,
             storeCleaner, metricsRepository, controllerInitialization, onlineOfflineTopicReplicator,
-            leaderFollowerTopicReplicator, accessController);
+            leaderFollowerTopicReplicator, accessController, metadataStoreWriter);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

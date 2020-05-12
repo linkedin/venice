@@ -1224,7 +1224,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
   }
 
   @Test
-  public void testSharedZkStore() {
+  public void testZkSharedStore() {
     String metadataStorePrefix = VeniceSystemStore.METADATA_STORE.getPrefix();
     String systemStoreOne = metadataStorePrefix + "_store_one";
     String systemStoreTwo = metadataStorePrefix + "_store_two";
@@ -1243,6 +1243,11 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     storeTwo = veniceAdmin.getStore(clusterName, systemStoreTwo);
     Assert.assertEquals(storeOne.getStorageQuotaInByte(), quotaInBytes, "The metadata system store quota should be updated");
     Assert.assertEquals(storeOne, storeTwo, "The two metadata system store should get the same update");
+    veniceAdmin.newZkSharedStoreVersion(clusterName, metadataStorePrefix);
+    storeOne = veniceAdmin.getStore(clusterName, systemStoreOne);
+    Assert.assertEquals(storeOne.getCurrentVersion(), 1);
+    Assert.assertTrue(storeOne.getVersion(1).isPresent());
+    Assert.assertEquals(storeOne.getVersion(1).get().getPartitionCount(), storeOne.getPartitionCount());
   }
 
   @Test
