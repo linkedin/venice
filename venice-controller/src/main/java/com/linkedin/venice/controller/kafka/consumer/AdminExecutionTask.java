@@ -503,11 +503,19 @@ public class AdminExecutionTask implements Callable<Void> {
     Version.PushType pushType = Version.PushType.valueOf(message.pushType);
     String remoteKafkaBootstrapServers = message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString();
     if (isParentController) {
-      // Parent controllers mirror versions to src/dest clusters
-      admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
-      return;
+      if (checkPreConditionForReplicateAddVersion(clusterName, storeName)) {
+        // Parent controller mirrors new version to src or dest cluster if the store is migrating
+        admin.replicateAddVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions,
+            pushType, remoteKafkaBootstrapServers);
+      }
+    } else {
+      admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
+          remoteKafkaBootstrapServers);
     }
-    admin.addVersionAndStartIngestion(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
+  }
+
+  private boolean checkPreConditionForReplicateAddVersion(String clusterName, String storeName) {
+    return admin.getStore(clusterName, storeName).isMigrating();
   }
 
   private boolean checkPreConditionForReplicateUpdateStore(String clusterName, String storeName,
