@@ -322,7 +322,7 @@ public class RouterServer extends AbstractVeniceService {
     RouteHttpRequestStats routeHttpRequestStats = new RouteHttpRequestStats(metricsRepository);
 
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
-    VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
+    VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository, metadataRepository);
     routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +
