@@ -284,7 +284,7 @@ public class IngestionController implements Closeable {
         continue;
       }
 
-      Version version = getLatestVersion(storeName).orElseGet(null);
+      Version version = getLatestVersion(storeName).orElse(null);
       if (version == null || version.kafkaTopicName().equals(kafkaTopicName) == false) {
         // If the version is not the latest, it should be removed.
         storageService.removeStorageEngine(kafkaTopicName);
