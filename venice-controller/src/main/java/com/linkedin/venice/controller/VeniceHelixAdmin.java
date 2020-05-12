@@ -910,81 +910,46 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     /**
-     * This method is invoked in parent controllers for store migration.
+     * This method is invoked in parent controllers to replicate new version signals for migrating store.
      */
     public void replicateAddVersionAndStartIngestion(
         String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartitions,
         Version.PushType pushType, String remoteKafkaBootstrapServers) {
         checkControllerMastership(clusterName);
-        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
-        Store store = repository.getStore(storeName);
-        if (null == store) {
-            throw new VeniceNoStoreException(storeName, clusterName);
-        }
-        if (versionNumber < store.getLargestUsedVersionNumber()) {
-            logger.info("Ignoring the add version message since version " + versionNumber
-                + " is less than the largestUsedVersionNumber of " + store.getLargestUsedVersionNumber()
-                + " for store " + storeName + " in cluster " + clusterName);
-        } else {
-            if (versionNumber > store.getLargestUsedVersionNumber() && !store.containsVersion(versionNumber)) {
-                resources.lockForMetadataOperation();
-                try {
-                    repository.lock();
-                    try {
-                        Version version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
-                        version.setPushType(pushType);
-                        store.addVersion(version);
-                        // Disable buffer replay for hybrid according to cluster config
-                        if (store.isHybrid() && resources.getConfig().isSkipBufferRelayForHybrid()) {
-                            store.setBufferReplayForHybridForVersion(version.getNumber(), false);
-                            logger.info("Disabled buffer replay for store: " + storeName + " and version: " +
-                                version.getNumber() + " in cluster: " + clusterName);
-                        }
-                        repository.updateStore(store);
-                        logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
-                    } finally {
-                        repository.unLock();
+        try {
+            StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
+            String destinationCluster = storeConfig.getMigrationDestCluster();
+            String sourceCluster = storeConfig.getMigrationSrcCluster();
+            if (storeConfig.getCluster().equals(destinationCluster)) {
+                // Migration has completed in this colo but the overall migration is still in progress.
+                if (clusterName.equals(destinationCluster)) {
+                    // Mirror new pushes back to the source cluster in case we abort migration after completion.
+                    ControllerClient sourceClusterControllerClient =
+                        new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false), sslFactory);
+                    VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
+                        pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
+                    if (response.isError()) {
+                        // Throw exceptions here to utilize admin channel's retry property to overcome transient errors.
+                        throw new VeniceException("Replicate add version endpoint call back to source cluster: "
+                            + sourceCluster + " failed for store: " + storeName + " with version: " + versionNumber
+                            + ". Error: " + response.getError());
                     }
-                } finally {
-                    resources.unlockForMetadataOperation();
+                }
+            } else if (clusterName.equals(sourceCluster)) {
+                // Migration is still in progress and we need to mirror new version signal from source to dest.
+                ControllerClient destClusterControllerClient =
+                    new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false), sslFactory);
+                VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
+                    pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
+                if (response.isError()) {
+                    throw new VeniceException("Replicate add version endpoint call to destination cluster: "
+                        + destinationCluster + " failed for store: " + storeName + " with version: " + versionNumber
+                        + ". Error: " + response.getError());
                 }
             }
-            if (store.isMigrating()) {
-                try {
-                    StoreConfig storeConfig = storeConfigRepo.getStoreConfig(storeName).get();
-                    String destinationCluster = storeConfig.getMigrationDestCluster();
-                    String sourceCluster = storeConfig.getMigrationSrcCluster();
-                    if (storeConfig.getCluster().equals(destinationCluster)) {
-                        // Migration has completed in this colo but the overall migration is still in progress.
-                        if (clusterName.equals(destinationCluster)) {
-                            // Mirror new pushes back to the source cluster in case we abort migration after completion.
-                            ControllerClient sourceClusterControllerClient =
-                                new ControllerClient(sourceCluster, getMasterController(sourceCluster).getUrl(false), sslFactory);
-                            VersionResponse response = sourceClusterControllerClient.addVersionAndStartIngestion(storeName,
-                                pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
-                            if (response.isError()) {
-                                logger.warn("Replicate add version endpoint call to source cluster: " + sourceCluster
-                                    + " failed for store " + storeName + " and version " + versionNumber + " Error: "
-                                    + response.getError());
-                            }
-                        }
-                    } else if (clusterName.equals(sourceCluster)) {
-                        ControllerClient destClusterControllerClient =
-                            new ControllerClient(destinationCluster, getMasterController(destinationCluster).getUrl(false), sslFactory);
-                        VersionResponse response = destClusterControllerClient.addVersionAndStartIngestion(storeName,
-                            pushJobId, versionNumber, numberOfPartitions, pushType, remoteKafkaBootstrapServers);
-                        if (response.isError()) {
-                            logger.warn("Replicate add version endpoint call to destination cluster: " + destinationCluster
-                                + " failed for store " + storeName + " and version " + versionNumber + " Error: "
-                                + response.getError());
-                        }
-                    }
-                } catch (Exception e) {
-                    logger.warn("Exception thrown when replicating add version for store " + storeName + " and version "
-                        + versionNumber + " as part of store migration", e);
-                }
-            }
+        } catch (Exception e) {
+            logger.warn("Exception thrown when replicating add version for store " + storeName + " and version "
+                + versionNumber + " as part of store migration", e);
         }
     }
 
@@ -992,7 +957,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * A wrapper to invoke VeniceHelixAdmin#addVersion to only increment the version and create the topic(s) needed
      * without starting ingestion.
      */
-    public Version addVersionOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
+    public Version addVersionAndTopicOnly(String clusterName, String storeName, String pushJobId, int numberOfPartitions,
         int replicationFactor, boolean sendStartOfPush, boolean sorted, Version.PushType pushType,
         String compressionDictionary, String remoteKafkaBootstrapServers) {
         Store store = getStore(clusterName, storeName);
@@ -1004,6 +969,50 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             () -> addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor,
                 false, sendStartOfPush, sorted, false, pushType,
                 compressionDictionary, remoteKafkaBootstrapServers));
+    }
+
+    /**
+     * Only add version to the store without creating the topic or start ingestion. Used to sync version metadata in the
+     * parent fabric during store migration.
+     */
+    public Version addVersionOnly(String clusterName, String storeName, String pushJobId, int versionNumber,
+        int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
+        checkControllerMastership(clusterName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        HelixReadWriteStoreRepository repository = resources.getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        if (null == store) {
+            throw new VeniceNoStoreException(storeName, clusterName);
+        }
+        Version version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
+        if (versionNumber < store.getLargestUsedVersionNumber() || store.containsVersion(versionNumber)) {
+            logger.info("Ignoring the add version message since version " + versionNumber
+                + " is less than the largestUsedVersionNumber of " + store.getLargestUsedVersionNumber()
+                + " for store " + storeName + " in cluster " + clusterName);
+        } else {
+            resources.lockForMetadataOperation();
+            try {
+                repository.lock();
+                try {
+                    version.setPushType(pushType);
+                    store.addVersion(version);
+                    if (version.isNativeReplicationEnabled()) {
+                        if (remoteKafkaBootstrapServers != null) {
+                            version.setPushStreamSourceAddress(remoteKafkaBootstrapServers);
+                        } else {
+                            version.setPushStreamSourceAddress(getKafkaBootstrapServers(isSslToKafka()));
+                        }
+                    }
+                    repository.updateStore(store);
+                    logger.info("Add version: " + version.getNumber() + " for store: " + storeName);
+                } finally {
+                    repository.unLock();
+                }
+            } finally {
+                resources.unlockForMetadataOperation();
+            }
+        }
+        return version;
     }
 
     /**

@@ -505,9 +505,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
       int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers) {
+    Version version = veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, versionNumber, numberOfPartitions, pushType,
+        remoteKafkaBootstrapServers);
     acquireLock(clusterName, storeName);
     try {
-      Version version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
       sendAddVersionAdminMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
     } finally {
       releaseLock(clusterName);
@@ -764,7 +765,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     Version newVersion = pushType.isIncremental() ? veniceHelixAdmin.getIncrementalPushVersion(clusterName, storeName)
-        : veniceHelixAdmin.addVersionOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
+        : veniceHelixAdmin.addVersionAndTopicOnly(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor,
             sendStartOfPush, sorted, pushType, compressionDictionary, null);
     if (!pushType.isIncremental()) {
       acquireLock(clusterName, storeName);

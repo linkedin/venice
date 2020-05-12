@@ -91,8 +91,7 @@ public interface Admin extends AutoCloseable, Closeable {
     void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber);
 
     /**
-     * TODO this method should only be in {@link VeniceHelixAdmin}. In the interface only because of store migration.
-     * TODO Remove this method from the interface once store migration is refactored.
+     * This method behaves differently in {@link VeniceHelixAdmin} and {@link VeniceParentHelixAdmin}.
      */
     void addVersionAndStartIngestion(String clusterName, String storeName, String pushJobId, int versionNumber,
         int numberOfPartitions, Version.PushType pushType, String remoteKafkaBootstrapServers);
