@@ -68,7 +68,7 @@ public class TestVenicePathParser {
   public void parsesQueries() throws RouterException {
     String uri = "storage/store/key";
     VenicePartitionFinder partitionFinder = mock(VenicePartitionFinder.class);
-    doReturn(3).when(partitionFinder).findPartitionNumber(Mockito.anyString(), Mockito.anyObject());
+    doReturn(3).when(partitionFinder).findPartitionNumber(Mockito.anyObject(), Mockito.anyInt(), Mockito.anyString(), Mockito.anyInt());
     VenicePathParser parser = new VenicePathParser(getVersionFinder(), partitionFinder, getMockedStats(),
         mock(ReadOnlyStoreRepository.class), mock(VeniceRouterConfig.class));
     BasicFullHttpRequest request = new BasicFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri, 0, 0);

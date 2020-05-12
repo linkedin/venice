@@ -78,7 +78,7 @@ public class TestVeniceComputePath {
 
   private VenicePartitionFinder getVenicePartitionFinder(int partitionId) {
     VenicePartitionFinder mockedPartitionFinder = mock(VenicePartitionFinder.class);
-    doReturn(partitionId).when(mockedPartitionFinder).findPartitionNumber(any(), any());
+    when(mockedPartitionFinder.findPartitionNumber(any(), anyInt(), any(), anyInt())).thenReturn(partitionId);
     return mockedPartitionFinder;
   }
 

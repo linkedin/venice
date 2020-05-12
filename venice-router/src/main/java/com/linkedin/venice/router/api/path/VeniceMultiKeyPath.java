@@ -90,7 +90,7 @@ public abstract class VeniceMultiKeyPath<K> extends VenicePath {
       // partition lookup
       int partitionId;
       try {
-        partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum);
+        partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum, getStoreName(), getVersionNumber());
         routerKey.setPartitionId(partitionId);
       } catch (VeniceNoHelixResourceException e){
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(

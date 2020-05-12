@@ -8,8 +8,10 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -62,6 +64,12 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(CompressionStrategy.NO_OP).when(mockStore).getCompressionStrategy();
     HelixReadOnlyStoreRepository mockMetadataRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
+
+    Version mockVersion = Mockito.mock(Version.class);
+    doReturn(Optional.of(mockVersion)).when(mockStore).getVersion(Mockito.anyInt());
+
+    PartitionerConfig partitionerConfig = new PartitionerConfig();
+    doReturn(partitionerConfig).when(mockVersion).getPartitionerConfig();
 
     HelixReadOnlySchemaRepository mockSchemaRepository = Mockito.mock(HelixReadOnlySchemaRepository.class);
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(Mockito.anyString());

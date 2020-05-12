@@ -61,7 +61,9 @@ public class VeniceSingleGetPath extends VenicePath {
     }
 
     try {
-      int partitionId = partitionFinder.findPartitionNumber(resourceName, routerKey);
+      int partitionNum = partitionFinder.getNumPartitions(resourceName);
+      int partitionId = partitionFinder.findPartitionNumber(routerKey, partitionNum,
+          Version.parseStoreFromKafkaTopicName(resourceName), Version.parseVersionFromKafkaTopicName(resourceName));
       routerKey.setPartitionId(partitionId);
       String partition = Integer.toString(partitionId);
       setPartitionKeys(Collections.singleton(routerKey));
