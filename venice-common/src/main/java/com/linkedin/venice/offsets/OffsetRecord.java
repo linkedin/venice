@@ -197,7 +197,7 @@ public class OffsetRecord {
   }
 
   public String getLeaderHostId() {
-    return this.partitionState.leaderHostId.toString();
+    return (partitionState.leaderHostId != null) ? partitionState.leaderHostId.toString() : null;
   }
 
   /**

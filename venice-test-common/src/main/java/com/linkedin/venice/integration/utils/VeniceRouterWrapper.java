@@ -110,7 +110,7 @@ public class VeniceRouterWrapper extends ProcessWrapper implements MetricsAware 
   }
 
   @Override
-  protected void newProcess() throws Exception {
+  protected void newProcess() {
     List<D2Server> d2Servers = D2TestUtils.getD2Servers(
         zkAddress, "http://localhost:" + getPort(), "https://localhost:" + getSslPort());
     service = new RouterServer(properties, d2Servers, Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));

@@ -348,7 +348,6 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         } catch (Exception e) {
           logger.error("Error when invoking callback function for partition status change", e);
         }
-        return null;
       });
     }
 

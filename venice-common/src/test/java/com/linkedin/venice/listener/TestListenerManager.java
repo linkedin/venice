@@ -5,7 +5,6 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -15,18 +14,13 @@ public class TestListenerManager {
   private final int TEST_TIME_OUT = 500;
 
   @Test
-  public void testSubscribeAndUnsubscribe()
-      throws InterruptedException {
+  public void testSubscribeAndUnsubscribe() {
     String key = "testSubscribeAndUnsubscribe";
     TestListener listener1 = new TestListener();
     manager.subscribe(key, listener1);
-    manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
-      @Override
-      public Void apply(RoutingDataRepository.RoutingDataChangedListener listener) {
-        listener.onRoutingDataChanged(new PartitionAssignment(key, 1));
-        return null;
-      }
-    });
+    manager.trigger(key, listener -> listener.onRoutingDataChanged(new PartitionAssignment(key, 1)));
+    manager.trigger(key, listener -> listener.onRoutingDataChanged(new PartitionAssignment(key, 1)));
+
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener1.isExecuted);
 
     TestListener listener2 = new TestListener();
@@ -38,20 +32,13 @@ public class TestListenerManager {
   }
 
   @Test
-  public void testSubscribeAndUnsubscribeWithWildChar()
-      throws InterruptedException {
+  public void testSubscribeAndUnsubscribeWithWildChar() {
     String key = "testSubscribeAndUnsubscribeWithWildChar";
     TestListener listener1 = new TestListener();
     TestListener listener2 = new TestListener();
     manager.subscribe(Utils.WILDCARD_MATCH_ANY, listener1);
     manager.subscribe(key, listener2);
-    manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
-      @Override
-      public Void apply(RoutingDataRepository.RoutingDataChangedListener listener) {
-        listener.onRoutingDataChanged(new PartitionAssignment(key, 1));
-        return null;
-      }
-    });
+    manager.trigger(key, listener -> listener.onRoutingDataChanged(new PartitionAssignment(key, 1)));
     // Both listeners should be triggered.
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener1.isExecuted);
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener2.isExecuted);
@@ -59,13 +46,7 @@ public class TestListenerManager {
     listener2.isExecuted = false;
     manager.unsubscribe(Utils.WILDCARD_MATCH_ANY, listener1);
 
-    manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
-      @Override
-      public Void apply(RoutingDataRepository.RoutingDataChangedListener listener) {
-        listener.onRoutingDataDeleted(key);
-        return null;
-      }
-    });
+    manager.trigger(key, listener -> listener.onRoutingDataDeleted(key));
     // Listener registered with key should be triggered, but the one registered with wild char would not because it already unsubscribed.
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener2.isExecuted);
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> !listener1.isExecuted);

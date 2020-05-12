@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -21,6 +22,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PersistenceType;
@@ -43,6 +45,7 @@ import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -64,7 +67,7 @@ import static com.linkedin.venice.kafka.TopicManager.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
-
+//TODO: try to share the cluster across all test cases.
 public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
   private static final int STREAMING_RECORD_SIZE = 1024;
@@ -383,12 +386,22 @@ public class TestHybrid {
     }
   }
 
+  /**
+   * A comprehensive integration test for GF job. We set up RF to be 2 in the cluster and spin up 3 SNs nodes here.
+   * 2 RF is required to be the correctness for both leader and follower's behavior. A spare SN is also added for
+   * testing whether the flow can work while the original leader dies.
+   *
+   * @param isLeaderFollowerModelEnabled true if the resource is running in L/F model. Otherwise, the resource is running in O/O model.
+   *                                     Pass-through mode is enabled during L/F model and we have extra check for it.
+   */
   @Test(dataProvider = "isLeaderFollowerModelEnabled")
   public void testSamzaBatchLoad(boolean isLeaderFollowerModelEnabled) throws Exception {
     Properties extraProperties = new Properties();
     extraProperties.setProperty(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.name());
-    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(3L));
-    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false, extraProperties);
+    extraProperties.setProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS, Long.toString(1L));
+
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster(1,3,
+        1,2, 1000000, false, false, extraProperties);
     Admin admin = veniceClusterWrapper.getMasterVeniceController().getVeniceAdmin();
     String clusterName = veniceClusterWrapper.getClusterName();
     String storeName = "test-store";
@@ -405,7 +418,6 @@ public class TestHybrid {
     Assert.assertFalse(admin.getStore(clusterName, storeName).containsVersion(1));
     Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
 
-
     // Batch load from Samza
     VeniceSystemFactory factory = new VeniceSystemFactory();
     Version.PushType pushType = isLeaderFollowerModelEnabled ? Version.PushType.STREAM_REPROCESSING : Version.PushType.BATCH;
@@ -416,14 +428,46 @@ public class TestHybrid {
       // The default behavior would exit the process
       ((VeniceSystemProducer) veniceBatchProducer).setExitMode(SamzaExitMode.NO_OP);
     }
-    for (int i = 10; i >= 1; i --) { // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
+
+    // Purposefully out of order, because Samza batch jobs should be allowed to write out of order
+    for (int i = 10; i >= 1; i --) {
       sendStreamingRecord(veniceBatchProducer, storeName, i);
     }
 
     Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
     Assert.assertEquals(admin.getStore(clusterName, storeName).getCurrentVersion(), 0);
+
+    //while running in L/F model, we try to stop the original SN; let Helix elect a new leader and push some extra
+    //data here. This is for testing "pass-through" mode is working properly
+    if (isLeaderFollowerModelEnabled) {
+      //wait a little time to make sure the leader has re-produced all existing messages
+      long waitTime = TimeUnit.SECONDS.toMillis(Integer
+          .parseInt(extraProperties.getProperty(SERVER_PROMOTION_TO_LEADER_REPLICA_DELAY_SECONDS)) + 2);
+      Utils.sleep(waitTime);
+
+      String resourceName = Version.composeKafkaTopic(storeName, 1);
+      HelixRoutingDataRepository routingDataRepo = veniceClusterWrapper.getRandomVeniceRouter().getRoutingDataRepository();
+      Instance leaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
+      Assert.assertNotNull(leaderNode);
+
+      veniceClusterWrapper.stopVeniceServer(leaderNode.getPort());
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        Instance newLeaderNode = routingDataRepo.getLeaderInstance(resourceName, 0);
+        Assert.assertNotNull(newLeaderNode);
+        Assert.assertNotEquals(leaderNode.getPort(), newLeaderNode.getPort());
+        Assert.assertTrue(routingDataRepo
+            .getPartitionAssignments(resourceName).getPartition(0).getWorkingInstances().size() == 2);
+      });
+    }
+
     // Before EOP, the Samza batch producer should still be in active state
     Assert.assertEquals(factory.getNumberOfActiveSystemProducers(), 1);
+
+    if (isLeaderFollowerModelEnabled) {
+      for (int i = 31; i <= 40; i++) {
+        sendStreamingRecord(veniceBatchProducer, storeName, i);
+      }
+    }
 
     // Write END_OF_PUSH message
     // TODO: in the future we would like to automatically send END_OF_PUSH message after batch load from Samza
@@ -443,18 +487,26 @@ public class TestHybrid {
     // Verify data, note only 1-10 have been pushed so far
     AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(veniceClusterWrapper.getRandomRouterURL()));
-    for (int i = 1; i < 10; i++){
+    for (int i = 1; i <= 10; i ++){
       String key = Integer.toString(i);
       Object value = client.get(key).get();
       Assert.assertNotNull(value);
       Assert.assertEquals(value.toString(), "stream_" + key);
     }
-    Assert.assertTrue(client.get(Integer.toString(11)).get() == null, "This record should not be found");
+
+    Assert.assertNull(client.get(Integer.toString(11)).get(), "This record should not be found");
+
+    if (isLeaderFollowerModelEnabled) {
+      for (int i = 31; i <= 40; i ++){
+        String key = Integer.toString(i);
+        Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
+      }
+    }
 
     // Switch to stream mode and push more data
     SystemProducer veniceStreamProducer = getSamzaProducer(veniceClusterWrapper, storeName, Version.PushType.STREAM);
     veniceStreamProducer.start();
-    for (int i=11; i<=20; i++) {
+    for (int i = 11; i <= 20; i ++) {
       sendStreamingRecord(veniceStreamProducer, storeName, i);
     }
     Assert.assertTrue(admin.getStore(clusterName, storeName).containsVersion(1));
@@ -471,11 +523,11 @@ public class TestHybrid {
     long normalTimeForConsuming = TimeUnit.SECONDS.toMillis(3);
     logger.info("normalTimeForConsuming:" + normalTimeForConsuming + "; extraWaitTime:" + extraWaitTime);
     Utils.sleep(normalTimeForConsuming + extraWaitTime);
-    for (int i = 1; i < 20; i++){
+    for (int i = 1; i < 20; i ++){
       String key = Integer.toString(i);
       Assert.assertEquals(client.get(key).get().toString(), "stream_" + key);
     }
-    Assert.assertTrue(client.get(Integer.toString(21)).get() == null, "This record should not be found");
+    Assert.assertNull(client.get(Integer.toString(21)).get(), "This record should not be found");
 
     veniceClusterWrapper.close();
   }

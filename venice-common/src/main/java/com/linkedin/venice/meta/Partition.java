@@ -70,6 +70,10 @@ public class Partition {
     return getInstancesInState(HelixState.OFFLINE_STATE);
   }
 
+  public List<Instance> getLeaderInstance() {
+    return getInstancesInState(HelixState.LEADER_STATE);
+  }
+
   public Map<String, List<Instance>> getAllInstances() {
     return Collections.unmodifiableMap(stateToInstancesMap);
   }

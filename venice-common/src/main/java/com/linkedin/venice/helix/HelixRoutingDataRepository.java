@@ -17,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixProperty;
@@ -69,7 +68,7 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
 
     private ListenerManager<RoutingDataChangedListener> listenerManager;
 
-    private volatile Map<String, Instance> liveInstancesMap = new HashMap();
+    private volatile Map<String, Instance> liveInstancesMap = new HashMap<> ();
 
     private volatile Map<String, Integer> resourceToIdealPartitionCountMap;
 
@@ -231,13 +230,8 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
             resourceAssignment.setPartitionAssignment(resource, convertExternalViewToPartitionAssignment(resourceExternalView));
         }
         // Notify listeners of this routing update.
-        listenerManager.trigger(resource, new Function<RoutingDataChangedListener, Void>() {
-            @Override
-            public Void apply(RoutingDataChangedListener listener) {
-                listener.onRoutingDataChanged(resourceAssignment.getPartitionAssignment(resource));
-                return null;
-            }
-        });
+        listenerManager.trigger(resource, listener ->
+            listener.onRoutingDataChanged(resourceAssignment.getPartitionAssignment(resource)));
     }
 
     @Override
@@ -403,23 +397,27 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
         // And assume that the listener would compare and decide how to handle this event.
         for (String kafkaTopic : resourceAssignment.getAssignedResources()) {
             PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
-            listenerManager.trigger(kafkaTopic, new Function<RoutingDataChangedListener, Void>() {
-                @Override
-                public Void apply(RoutingDataChangedListener listener) {
-                    listener.onRoutingDataChanged(partitionAssignment);
-                    return null;
-                }
-            });
+            listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataChanged(partitionAssignment));
         }
+
         //Notify events to the listeners which listen on deleted resources.
         for (String kafkaTopic : deletedResourceNames) {
-            listenerManager.trigger(kafkaTopic, new Function<RoutingDataChangedListener, Void>() {
-                @Override
-                public Void apply(RoutingDataChangedListener listener) {
-                    listener.onRoutingDataDeleted(kafkaTopic);
-                    return null;
-                }
-            });
+            listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
         }
+    }
+
+    @Override
+    public Instance getLeaderInstance(String resourceName, int partition) {
+        List<Instance> instances = resourceAssignment.getPartition(resourceName, partition).getLeaderInstance();
+        if (instances.isEmpty()) {
+            return null;
+        }
+
+        if (instances.size() > 1) {
+            logger.error(String.format("Detect multiple leaders. Kafka topic: %s, partition: %d",
+                resourceName, partition));
+        }
+
+        return instances.get(0);
     }
 }
