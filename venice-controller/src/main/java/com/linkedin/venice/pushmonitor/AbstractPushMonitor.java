@@ -1,5 +1,8 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Instance;
@@ -60,11 +63,12 @@ public abstract class AbstractPushMonitor
   private final boolean skipBufferReplayForHybrid;
   private Map<String, OfflinePushStatus> topicToPushMap = new VeniceConcurrentHashMap<>();
   private Optional<TopicReplicator> topicReplicator;
+  private final MetadataStoreWriter metadataStoreWriter;
 
   public AbstractPushMonitor(String clusterName, OfflinePushAccessor offlinePushAccessor,
       StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
       AggPushHealthStats aggPushHealthStats, boolean skipBufferReplayForHybrid, Optional<TopicReplicator> topicReplicator,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository, MetadataStoreWriter metadataStoreWriter) {
     this.clusterName = clusterName;
     this.offlinePushAccessor = offlinePushAccessor;
     this.storeCleaner = storeCleaner;
@@ -73,6 +77,7 @@ public abstract class AbstractPushMonitor
     this.aggPushHealthStats = aggPushHealthStats;
     this.skipBufferReplayForHybrid = skipBufferReplayForHybrid;
     this.topicReplicator = topicReplicator;
+    this.metadataStoreWriter = metadataStoreWriter;
 
     ReentrantReadWriteLock pushMonitorReadWriteLock = new ReentrantReadWriteLock(true);
     String readLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-readLock";
@@ -613,7 +618,10 @@ public abstract class AbstractPushMonitor
       aggPushHealthStats.recordFailedPush(storeName, getDurationInSec(pushStatus));
       // If we met some error to delete error version, we should not throw the exception out to fail this operation,
       // because it will be collected once a new push is completed for this store.
-      storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+      if (VeniceSystemStoreUtils.getSystemStore(storeName) != VeniceSystemStore.METADATA_STORE) {
+        // Do not delete the store version for Zk shared stores upon a single failure
+        storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+      }
     } catch (Exception e) {
       logger.warn("Could not delete error version: " + versionNumber + " for store: " + storeName + " in cluster: "
           + clusterName, e);
@@ -622,6 +630,10 @@ public abstract class AbstractPushMonitor
   }
 
   private void updateStoreVersionStatus(String storeName, int versionNumber, VersionStatus status) {
+    if (VeniceSystemStoreUtils.getSystemStore(storeName) == VeniceSystemStore.METADATA_STORE) {
+      // Do not update Zk shared store version status.
+      return;
+    }
     VersionStatus newStatus = status;
     try {
       metadataRepository.lock();
@@ -646,6 +658,10 @@ public abstract class AbstractPushMonitor
         }
       }
       metadataRepository.updateStore(store);
+      if (store.isStoreMetadataSystemStoreEnabled()) {
+        metadataStoreWriter.writeCurrentVersionStates(clusterName, storeName, store.getVersions(),
+            store.getCurrentVersion());
+      }
     } finally {
       metadataRepository.unLock();
     }

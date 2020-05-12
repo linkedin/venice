@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -32,6 +33,7 @@ public abstract class AbstractPushMonitorTest {
   private StoreCleaner mockStoreCleaner;
   private AggPushHealthStats mockPushHealthStats;
   private MetricsRepository metricsRepository;
+  private MetadataStoreWriter metadataStoreWriter;
 
   private String clusterName =TestUtils.getUniqueString("test_cluster");
   private String storeName;
@@ -58,6 +60,7 @@ public abstract class AbstractPushMonitorTest {
     mockPushHealthStats = mock(AggPushHealthStats.class);
     metricsRepository = new MetricsRepository();
     monitor = getPushMonitor();
+    metadataStoreWriter = mock(MetadataStoreWriter.class);
   }
 
   @Test
@@ -500,5 +503,9 @@ public abstract class AbstractPushMonitorTest {
 
   protected int getReplicationFactor() {
     return replicationFactor;
+  }
+
+  protected MetadataStoreWriter getMockMetadataStoreWriter() {
+    return metadataStoreWriter;
   }
 }

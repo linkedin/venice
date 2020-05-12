@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -541,6 +542,9 @@ public class VeniceParentHelixAdmin implements Admin {
           .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
           .forEach(v -> store.deleteVersion(v.getNumber()));
       storeRepo.updateStore(store);
+      if (store.isStoreMetadataSystemStoreEnabled()) {
+        veniceHelixAdmin.getMetadataStoreWriter().writeTargetVersionStates(clusterName, storeName, store.getVersions());
+      }
     } finally {
       storeRepo.unLock();
     }
@@ -780,6 +784,15 @@ public class VeniceParentHelixAdmin implements Admin {
 
   protected void sendAddVersionAdminMessage(String clusterName, String storeName, String pushJobId, Version version,
       int numberOfPartitions, Version.PushType pushType) {
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.ADD_VERSION.getValue();
+    message.payloadUnion = getAddVersionMessage(clusterName, storeName, pushJobId, version, numberOfPartitions, pushType);
+
+    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+  }
+
+  private AddVersion getAddVersionMessage(String clusterName, String storeName, String pushJobId, Version version,
+      int numberOfPartitions, Version.PushType pushType) {
     AddVersion addVersion = (AddVersion) AdminMessageType.ADD_VERSION.getNewInstance();
     addVersion.clusterName = clusterName;
     addVersion.storeName = storeName;
@@ -791,12 +804,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (version.isNativeReplicationEnabled()) {
       addVersion.pushStreamSourceAddress = version.getPushStreamSourceAddress();
     }
-
-    AdminOperation message = new AdminOperation();
-    message.operationType = AdminMessageType.ADD_VERSION.getValue();
-    message.payloadUnion = addVersion;
-
-    sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    return addVersion;
   }
 
   @Override
@@ -2024,8 +2032,68 @@ public class VeniceParentHelixAdmin implements Admin {
     return multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap();
   }
 
-  public List<String> getChildControllerUrls(String clusterName) {
-    return new ArrayList<>(multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap().values());
+  @Override
+  public Version newZkSharedStoreVersion(String clusterName, String zkSharedStoreName) {
+    Version newVersion = veniceHelixAdmin.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
+    acquireLock(clusterName, zkSharedStoreName);
+    try {
+      sendAddVersionAdminMessage(clusterName, zkSharedStoreName, newVersion.getPushJobId(), newVersion, newVersion.getPartitionCount(), newVersion.getPushType());
+    } finally {
+      releaseLock(clusterName);
+    }
+    return newVersion;
+  }
+
+  /**
+   * Parent controller will only create the RT topic. Sync/write relevant target store states to the RT and send add
+   * version admin message for the materializing metadata store version
+   */
+  @Override
+  public void materializeMetadataStoreVersion(String clusterName, String storeName, int metadataStoreVersionNumber) {
+    veniceHelixAdmin.checkControllerMastership(clusterName);
+    Store veniceStore = getStore(clusterName, storeName);
+    Store zkSharedStoreMetadata = getStore(clusterName, VeniceSystemStore.METADATA_STORE.getPrefix());
+    veniceHelixAdmin.checkMetadataStorePrerequisites(clusterName, storeName, metadataStoreVersionNumber, veniceStore,
+        zkSharedStoreMetadata);
+    Version version = zkSharedStoreMetadata.getVersion(metadataStoreVersionNumber).get();
+    String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
+    getRealTimeTopic(clusterName, metadataStoreName);
+    veniceHelixAdmin.getMetadataStoreWriter().writeStoreAttributes(clusterName, storeName, veniceStore);
+    veniceHelixAdmin.getMetadataStoreWriter().writeTargetVersionStates(clusterName, storeName, veniceStore.getVersions());
+    veniceHelixAdmin.storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setStoreMetadataSystemStoreEnabled(true);
+      return store;
+    });
+
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.ADD_VERSION.getValue();
+    message.payloadUnion = getAddVersionMessage(clusterName, metadataStoreName, version.getPushJobId(), version,
+        version.getPartitionCount(), version.getPushType());
+    acquireLock(clusterName, storeName);
+    try {
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } finally {
+      releaseLock(clusterName);
+    }
+  }
+
+  @Override
+  public void dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
+    String metadataStoreName = VeniceSystemStoreUtils.getMetadataStoreName(storeName);
+    veniceHelixAdmin.checkPreConditionForSingleVersionDeletion(clusterName, metadataStoreName, versionNumber);
+    DeleteOldVersion deleteOldVersion = (DeleteOldVersion) AdminMessageType.DELETE_OLD_VERSION.getNewInstance();
+    deleteOldVersion.clusterName = clusterName;
+    deleteOldVersion.storeName = metadataStoreName;
+    deleteOldVersion.versionNum = versionNumber;
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.DELETE_OLD_VERSION.getValue();
+    message.payloadUnion = deleteOldVersion;
+    acquireLock(clusterName, storeName);
+    try {
+      sendAdminMessageAndWaitForConsumed(clusterName, storeName, message);
+    } finally {
+      releaseLock(clusterName);
+    }
   }
 
   /**

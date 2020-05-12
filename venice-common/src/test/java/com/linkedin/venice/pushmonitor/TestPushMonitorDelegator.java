@@ -1,5 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
+import com.linkedin.venice.controller.MetadataStoreWriter;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -20,12 +21,13 @@ public class TestPushMonitorDelegator {
   private ReadWriteStoreRepository metadataRepo = Mockito.mock(ReadWriteStoreRepository.class);
   private AggPushHealthStats aggPushHealthStats = Mockito.mock(AggPushHealthStats.class);
   private MetricsRepository metricsRepository = new MetricsRepository();
+  private MetadataStoreWriter metadataStoreWriter = Mockito.mock(MetadataStoreWriter.class);
 
   @Test
   public void testDelegatorCanCleanupLegacyStatus() {
     PushMonitorDelegator delegator = new PushMonitorDelegator(pushMonitorType, clusterName, routingDataRepository,
         offlinePushAccessor, storeCleaner, metadataRepo, aggPushHealthStats, false,
-        Optional.empty(), Optional.empty(), metricsRepository);
+        Optional.empty(), Optional.empty(), metricsRepository, metadataStoreWriter);
 
     OfflinePushStatus legacyStatus = new OfflinePushStatus("legacy_v1", 1, 1,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);

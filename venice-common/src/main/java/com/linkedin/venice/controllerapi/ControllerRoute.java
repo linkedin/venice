@@ -13,7 +13,7 @@ public enum ControllerRoute {
   EMPTY_PUSH("/empty_push", HttpMethod.POST, Arrays.asList(NAME, STORE_SIZE, PUSH_JOB_ID)), // do an empty push into a new version for this store
   END_OF_PUSH("/end_of_push", HttpMethod.POST, Arrays.asList(NAME, VERSION)), // write an END OF PUSH message into the topic
   STORE("/store", HttpMethod.GET, Arrays.asList(NAME)), // get all information about that store
-  NEW_STORE("/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER),
+  NEW_STORE("/new_store", HttpMethod.POST, Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER, IS_SYSTEM_STORE),
   MIGRATE_STORE("/migrate_store", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   COMPLETE_MIGRATION("/complete_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
   ABORT_MIGRATION("/abort_migration", HttpMethod.POST, Arrays.asList(NAME, CLUSTER, CLUSTER_DEST)),
@@ -84,12 +84,19 @@ public enum ControllerRoute {
       PUSH_JOB_DURATION, PUSH_JOB_ID)),
 
   SEND_PUSH_JOB_DETAILS("/send_push_job_details", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION), PUSH_JOB_DETAILS),
-  
+
   ADD_VERSION("/add_version", HttpMethod.POST, Arrays.asList(NAME, PUSH_JOB_ID, VERSION, PARTITION_COUNT)),
 
   LIST_LF_STORES("/list_lf_stores", HttpMethod.GET, Arrays.asList()),
 
-  ENABLE_LF_MODEL("/enable_lf_model", HttpMethod.POST, Arrays.asList(STORE_TYPE, STATUS));
+  ENABLE_LF_MODEL("/enable_lf_model", HttpMethod.POST, Arrays.asList(STORE_TYPE, STATUS)),
+
+  NEW_ZK_SHARED_STORE_VERSION("/new_zk_shared_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME)),
+
+  MATERIALIZE_METADATA_STORE_VERSION("/materialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION)),
+
+  DEMATERIALIZE_METADATA_STORE_VERSION("/dematerialize_metadata_store_version", HttpMethod.POST, Arrays.asList(CLUSTER, NAME, VERSION));
+
 
   private final String path;
   private final HttpMethod httpMethod;

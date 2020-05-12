@@ -218,6 +218,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(LIST_LF_STORES.getPath(), storesRoutes.getLFModelStores(admin));
     httpService.post(ENABLE_LF_MODEL.getPath(), storesRoutes.enableLFModelForStores(admin));
 
+    httpService.post(NEW_ZK_SHARED_STORE_VERSION.getPath(), createVersion.newZkSharedStoreVersion(admin));
+    httpService.post(MATERIALIZE_METADATA_STORE_VERSION.getPath(), createVersion.materializeMetadataStoreVersion(admin));
+    httpService.post(DEMATERIALIZE_METADATA_STORE_VERSION.getPath(), storesRoutes.dematerializeMetadataStoreVersion(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
     Exception e = initFailure.get();
     if (e != null) {

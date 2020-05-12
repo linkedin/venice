@@ -4,8 +4,11 @@ import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.client.store.AvroSpecificStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.common.StoreMetadataType;
+import com.linkedin.venice.common.VeniceSystemStore;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -13,10 +16,18 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.common.VeniceSystemStoreUtils;
+import com.linkedin.venice.meta.systemstore.schemas.CurrentStoreStates;
+import com.linkedin.venice.meta.systemstore.schemas.CurrentVersionStates;
+import com.linkedin.venice.meta.systemstore.schemas.StoreAttributes;
+import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataKey;
+import com.linkedin.venice.meta.systemstore.schemas.StoreMetadataValue;
+import com.linkedin.venice.meta.systemstore.schemas.StoreProperties;
+import com.linkedin.venice.meta.systemstore.schemas.TargetVersionStates;
 import com.linkedin.venice.participant.protocol.ParticipantMessageKey;
 import com.linkedin.venice.participant.protocol.ParticipantMessageValue;
 import com.linkedin.venice.participant.protocol.enums.ParticipantMessageType;
@@ -24,9 +35,11 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.Metric;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 import org.testng.annotations.AfterClass;
@@ -34,11 +47,13 @@ import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static com.linkedin.venice.meta.VersionStatus.*;
+import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 
-public class TestParticipantMessageStore {
-  private static final Logger logger = Logger.getLogger(TestParticipantMessageStore.class);
+public class SystemStoreTest {
+  private static final Logger logger = Logger.getLogger(SystemStoreTest.class);
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper parentZk;
@@ -46,6 +61,8 @@ public class TestParticipantMessageStore {
   private ControllerClient parentControllerClient;
   private String participantMessageStoreName;
   private VeniceServerWrapper veniceServerWrapper;
+  private String clusterName;
+  private int metadataStoreVersionNumber;
 
   @BeforeClass
   public void setup() {
@@ -59,6 +76,7 @@ public class TestParticipantMessageStore {
         String.valueOf(Long.MAX_VALUE));
     venice = ServiceFactory.getVeniceCluster(1, 0, 1, 1,
         100000, false, false, enableParticipantMessageStore);
+    clusterName = venice.getClusterName();
     D2Client d2Client = D2TestUtils.getAndStartD2Client(venice.getZk().getAddress());
     serverFeatureProperties.put(VeniceServerWrapper.CLIENT_CONFIG_FOR_CONSUMER, ClientConfig.defaultGenericClientConfig("")
         .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
@@ -75,6 +93,19 @@ public class TestParticipantMessageStore {
     parentControllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
     TestUtils.waitForNonDeterministicPushCompletion(Version.composeKafkaTopic(participantMessageStoreName, 1),
         controllerClient, 2, TimeUnit.MINUTES, Optional.of(logger));
+    // Set up and configure the Zk shared store for METADATA_STORE
+    String zkSharedStoreName = VeniceSystemStore.METADATA_STORE.getPrefix();
+    ControllerResponse controllerResponse =
+        parentControllerClient.createNewZkSharedStoreWithDefaultConfigs(zkSharedStoreName, "test");
+    assertFalse(controllerResponse.isError(), "Failed to create the new Zk shared store");
+    VersionCreationResponse versionCreationResponse =
+        parentControllerClient.newZkSharedStoreVersion(clusterName, zkSharedStoreName);
+    // Verify the new version creation in parent and child controller
+    assertFalse(versionCreationResponse.isError(), "Failed to create the new Zk shared store version");
+    metadataStoreVersionNumber = versionCreationResponse.getVersion();
+    Store zkSharedStore = parentController.getVeniceAdmin().getStore(clusterName, zkSharedStoreName);
+    assertTrue(zkSharedStore.containsVersion(metadataStoreVersionNumber), "New version is missing");
+    assertEquals(zkSharedStore.getCurrentVersion(), metadataStoreVersionNumber, "Unexpected current version");
   }
 
   @AfterClass
@@ -167,6 +198,121 @@ public class TestParticipantMessageStore {
     });
   }
 
+  /**
+   * Alternatively, to break the test into smaller ones is to enforce execution order or dependency of tests since if
+   * the Zk shared store tests fail then tests related to materializing the metadata store will definitely fail as well.
+   */
+  @Test
+  public void testMetadataStore() throws ExecutionException, InterruptedException {
+    // Create a new Venice store and materialize the corresponding metadata system store
+    String regularVeniceStoreName = TestUtils.getUniqueString("regular_store");
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
+        STRING_SCHEMA, STRING_SCHEMA);
+    assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
+    ControllerResponse controllerResponse =
+        parentControllerClient.materializeMetadataStoreVersion(clusterName, regularVeniceStoreName, metadataStoreVersionNumber);
+    assertFalse(controllerResponse.isError(), "Failed to materialize the new Zk shared store version");
+    String metadataStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+    // Try to read from the metadata store
+    venice.refreshAllRouterMetaData();
+    StoreMetadataKey storeAttributesKey = new StoreMetadataKey();
+    storeAttributesKey.keyStrings = Arrays.asList(regularVeniceStoreName);
+    storeAttributesKey.metadataType = StoreMetadataType.STORE_ATTRIBUTES.getValue();
+    StoreMetadataKey storeTargetVersionStatesKey = new StoreMetadataKey();
+    storeTargetVersionStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName);
+    storeTargetVersionStatesKey.metadataType = StoreMetadataType.TARGET_VERSION_STATES.getValue();
+    StoreMetadataKey storeCurrentStatesKey = new StoreMetadataKey();
+    storeCurrentStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
+    storeCurrentStatesKey.metadataType = StoreMetadataType.CURRENT_STORE_STATES.getValue();
+    StoreMetadataKey storeCurrentVersionStatesKey = new StoreMetadataKey();
+    storeCurrentVersionStatesKey.keyStrings = Arrays.asList(regularVeniceStoreName, clusterName);
+    storeCurrentVersionStatesKey.metadataType = StoreMetadataType.CURRENT_VERSION_STATES.getValue();
+
+    try (AvroSpecificStoreClient<StoreMetadataKey, StoreMetadataValue> client =
+        ClientFactory.getAndStartSpecificAvroClient(ClientConfig.defaultSpecificClientConfig
+            (VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName),
+                StoreMetadataValue.class).setVeniceURL(venice.getRandomRouterURL()))) {
+      TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+        try {
+          assertNotNull(client.get(storeAttributesKey).get());
+          assertNotNull(client.get(storeTargetVersionStatesKey).get());
+          assertNotNull(client.get(storeCurrentStatesKey).get());
+          assertNotNull(client.get(storeCurrentVersionStatesKey).get());
+        } catch (Exception e) {
+          fail();
+        }
+      });
+      // Perform some checks to ensure the metadata store values are populated
+      StoreAttributes storeAttributes  = (StoreAttributes) client.get(storeAttributesKey).get().metadataUnion;
+      assertEquals(storeAttributes.sourceCluster.toString(), clusterName, "Unexpected sourceCluster");
+      TargetVersionStates targetVersionStates =
+          (TargetVersionStates) client.get(storeTargetVersionStatesKey).get().metadataUnion;
+      assertTrue(targetVersionStates.targetVersionStates.isEmpty(), "targetVersionStates should be empty");
+      CurrentStoreStates currentStoreStates = (CurrentStoreStates) client.get(storeCurrentStatesKey).get().metadataUnion;
+      assertEquals(currentStoreStates.states.name.toString(), regularVeniceStoreName, "Unexpected store name");
+      CurrentVersionStates currentVersionStates =
+          (CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion;
+      assertEquals(currentVersionStates.currentVersion, Store.NON_EXISTING_VERSION, "Unexpected current version");
+      assertTrue(currentVersionStates.currentVersionStates.isEmpty(), "Version list should be empty");
+      // New push to the Venice store should be reflected in the corresponding metadata store
+      VersionCreationResponse newVersionResponse = parentControllerClient.requestTopicForWrites(regularVeniceStoreName,
+          1024, Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, false,
+          Optional.empty(), Optional.empty());
+      assertFalse(newVersionResponse.isError());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        assertFalse(((CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion)
+            .currentVersionStates.isEmpty());
+      });
+      currentVersionStates = (CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion;
+      assertEquals(currentVersionStates.currentVersionStates.get(0).status.toString(), STARTED.name());
+      parentControllerClient.writeEndOfPush(regularVeniceStoreName, newVersionResponse.getVersion());
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        assertEquals(((CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion)
+            .currentVersion, newVersionResponse.getVersion());
+      });
+      currentVersionStates = (CurrentVersionStates) client.get(storeCurrentVersionStatesKey).get().metadataUnion;
+      assertEquals(currentVersionStates.currentVersionStates.get(0).status.toString(), ONLINE.name());
+    }
+
+    // Dematerialize the metadata store version and it should be cleaned up properly.
+    controllerResponse = parentControllerClient.dematerializeMetadataStoreVersion(clusterName, regularVeniceStoreName,
+        metadataStoreVersionNumber);
+    assertFalse(controllerResponse.isError(), "Failed to dematerialize metadata store version");
+    assertFalse(parentController.getVeniceAdmin().getStore(clusterName, regularVeniceStoreName).isStoreMetadataSystemStoreEnabled());
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
+      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+    });
+  }
+
+  @Test
+  public void testDeleteStoreDematerializesMetadataStoreVersion() {
+    // Create a new Venice store and materialize the corresponding metadata system store
+    String regularVeniceStoreName = TestUtils.getUniqueString("regular_store_to_delete");
+    NewStoreResponse newStoreResponse = parentControllerClient.createNewStore(regularVeniceStoreName, "test",
+        STRING_SCHEMA, STRING_SCHEMA);
+    assertFalse(newStoreResponse.isError(), "Failed to create the regular Venice store");
+    ControllerResponse controllerResponse =
+        parentControllerClient.materializeMetadataStoreVersion(clusterName, regularVeniceStoreName, metadataStoreVersionNumber);
+    assertFalse(controllerResponse.isError(), "Failed to materialize the new Zk shared store version");
+    String metadataStoreTopic =
+        Version.composeKafkaTopic(VeniceSystemStoreUtils.getMetadataStoreName(regularVeniceStoreName), metadataStoreVersionNumber);
+    TestUtils.waitForNonDeterministicPushCompletion(metadataStoreTopic, controllerClient, 30, TimeUnit.SECONDS,
+        Optional.empty());
+    assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
+    assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+    // Delete the Venice store and verify its metadata store version is dematerialized.
+    controllerResponse = parentControllerClient.disableAndDeleteStore(regularVeniceStoreName);
+    assertFalse(controllerResponse.isError(), "Failed to delete the regular Venice store");
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      assertFalse(venice.getVeniceControllers().get(0).getVeniceAdmin().isResourceStillAlive(metadataStoreTopic));
+      assertTrue(venice.getVeniceControllers().get(0).getVeniceAdmin().isTopicTruncated(metadataStoreTopic));
+    });
+  }
+
   private void verifyKillMessageInParticipantStore(String topic, boolean shouldPresent) {
     // Verify the kill push message is in the participant message store.
     ParticipantMessageKey key = new ParticipantMessageKey();
@@ -185,7 +331,7 @@ public class TestParticipantMessageStore {
             assertNull(client.get(key).get());
           }
         } catch (Exception e) {
-          // no op
+          fail();
         }
       });
     }

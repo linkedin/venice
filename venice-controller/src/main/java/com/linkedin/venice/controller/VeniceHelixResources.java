@@ -65,9 +65,10 @@ public class VeniceHelixResources implements VeniceResource {
       MetricsRepository metricsRepository,
       Optional<TopicReplicator> onlineOfflineTopicReplicator,
       Optional<TopicReplicator> leaderFollowerTopicReplicator,
-      Optional<DynamicAccessController> accessController) {
+      Optional<DynamicAccessController> accessController,
+      MetadataStoreWriter metadataStoreWriter) {
     this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock(),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController);
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter);
   }
 
   /**
@@ -83,7 +84,8 @@ public class VeniceHelixResources implements VeniceResource {
                               VeniceReentrantReadWriteLock shutdownLock,
                               Optional<TopicReplicator> onlineOfflineTopicReplicator,
                               Optional<TopicReplicator> leaderFollowerTopicReplicator,
-                              Optional<DynamicAccessController> accessController) {
+                              Optional<DynamicAccessController> accessController,
+                              MetadataStoreWriter metadataStoreWriter) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
@@ -106,7 +108,7 @@ public class VeniceHelixResources implements VeniceResource {
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
         metadataRepository, new AggPushHealthStats(clusterName, metricsRepository), config.isSkipBufferRelayForHybrid(),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository);
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, metricsRepository, metadataStoreWriter);
     // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
     this.routersClusterManager =
         new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),

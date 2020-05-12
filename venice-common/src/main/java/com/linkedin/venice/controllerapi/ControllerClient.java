@@ -2,6 +2,8 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
+import com.linkedin.venice.common.VeniceSystemStore;
+import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -289,6 +291,51 @@ public class ControllerClient implements Closeable {
         .add(KEY_SCHEMA, keySchema)
         .add(VALUE_SCHEMA, valueSchema);
     return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
+  public NewStoreResponse createNewZkSharedStore(String storeName, String owner) {
+    VeniceSystemStore systemStore = VeniceSystemStoreUtils.getSystemStore(storeName);
+    if (systemStore == null || !systemStore.isStoreZkShared()) {
+      throw new VeniceException("Cannot create new Zk shared store, " + storeName + "is not a known Zk shared store");
+    }
+    QueryParams params = newParams()
+        .add(NAME, systemStore.getPrefix())
+        .add(OWNER, owner)
+        .add(KEY_SCHEMA, systemStore.getKeySchema())
+        .add(VALUE_SCHEMA, systemStore.getValueSchema())
+        .add(IS_SYSTEM_STORE, true);
+    return request(ControllerRoute.NEW_STORE, params, NewStoreResponse.class);
+  }
+
+  public ControllerResponse createNewZkSharedStoreWithDefaultConfigs(String storeName, String owner) {
+    ControllerResponse response = createNewZkSharedStore(storeName, owner);
+    if (!response.isError()) {
+      response = updateStore(storeName, VeniceSystemStoreUtils.getDefaultZkSharedStoreParams());
+    }
+    return response;
+  }
+
+  public VersionCreationResponse newZkSharedStoreVersion(String clusterName, String zkSharedStoreName) {
+    QueryParams params = newParams()
+        .add(CLUSTER, clusterName)
+        .add(NAME, zkSharedStoreName);
+    return request(ControllerRoute.NEW_ZK_SHARED_STORE_VERSION, params, VersionCreationResponse.class);
+  }
+
+  public ControllerResponse materializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
+    QueryParams params = newParams()
+        .add(CLUSTER, clusterName)
+        .add(NAME, storeName)
+        .add(VERSION, versionNumber);
+    return request(ControllerRoute.MATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse dematerializeMetadataStoreVersion(String clusterName, String storeName, int versionNumber) {
+    QueryParams params = newParams()
+        .add(CLUSTER, clusterName)
+        .add(NAME, storeName)
+        .add(VERSION, versionNumber);
+    return request(ControllerRoute.DEMATERIALIZE_METADATA_STORE_VERSION, params, ControllerResponse.class);
   }
 
   public StoreMigrationResponse migrateStore(String storeName, String destClusterName) {
