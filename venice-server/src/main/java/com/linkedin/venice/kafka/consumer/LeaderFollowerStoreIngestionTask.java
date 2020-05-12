@@ -604,21 +604,33 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         /**
          * If upstream offset is rewound and it's from a different producer, we encounter a split-brain
          * issue (multiple leaders producing to the same partition at the same time)
+         *
+         * The condition is a little messy here. This is due to the fact that we have 2 mechanisms to detect the issue.
+         * 1. (old) we identify a Venice writer by checking message's GUID.
+         * 2. We identify a Venice writer by checking message's "leaderMetadataFooter.hostName".
+         *
+         * We would need the second mechanism because once "pass-through" message reproducing is enabled (and it's the
+         * enabled by default in latest code base), leader will re-use the same GUID as the one that's passed from the
+         * upstream message.
+         *
+         * TODO:Remove old condition check once every SN is bumped to have "pass-through" mode enabled.
          */
-        if ((newUpstreamOffset < previousUpstreamOffset && offsetRecord.getLeaderGUID() != null
-            && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID()))
-          || (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
-            && kafkaValue.leaderMetadataFooter.hostName != offsetRecord.getLeaderHostId())) {
-          /**
-           * Check whether the data inside rewind message is the same the data inside storage engine; if so,
-           * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
-           *
-           * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
-           * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
-           */
-          String logMsg = String.format(consumerTaskId + " received message with upstreamOffset: %ld;" + " but recorded upstreamOffset is: %ld. New GUID: %s; previous producer GUID: %s. "
-                  + "Multiple leaders are producing.", newUpstreamOffset, previousUpstreamOffset, GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
-              GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
+        if (newUpstreamOffset < previousUpstreamOffset) {
+          if ((offsetRecord.getLeaderGUID() != null && !kafkaValue.producerMetadata.producerGUID.equals(offsetRecord.getLeaderGUID()))
+              || (kafkaValue.leaderMetadataFooter != null && offsetRecord.getLeaderHostId() != null
+              && !kafkaValue.leaderMetadataFooter.hostName.toString().equals(offsetRecord.getLeaderHostId()))) {
+            /**
+             * Check whether the data inside rewind message is the same the data inside storage engine; if so,
+             * we don't consider it as lossy rewind; otherwise, report potentially lossy upstream rewind.
+             *
+             * Fail the job if it's lossy and it's during the GF job (before END_OF_PUSH received);
+             * otherwise, don't fail the push job, it's streaming ingestion now so it's serving online traffic already.
+             */
+            String logMsg = String.format(consumerTaskId + " received message with upstreamOffset: %d;"
+                    + " but recorded upstreamOffset is: %d. New GUID: %s; previous producer GUID: %s. "
+                    + "Multiple leaders are producing.", newUpstreamOffset, previousUpstreamOffset,
+                GuidUtils.getHexFromGuid(kafkaValue.producerMetadata.producerGUID),
+                GuidUtils.getHexFromGuid(offsetRecord.getLeaderGUID()));
 
           boolean lossy = true;
           try {
@@ -662,22 +674,23 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             logger.warn(consumerTaskId + " failed comparing the rewind message with the actual value in Venice", e);
           }
 
-          if (lossy) {
-            if (!partitionConsumptionState.isEndOfPushReceived()) {
-              logMsg += "\nFailing the job because lossy rewind happens during Grandfathering job";
-              logger.error(logMsg);
-              versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
-              VeniceException e = new VeniceException(logMsg);
-              notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
-              throw e;
+            if (lossy) {
+              if (!partitionConsumptionState.isEndOfPushReceived()) {
+                logMsg += "\nFailing the job because lossy rewind happens during Grandfathering job";
+                logger.error(logMsg);
+                versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+                VeniceException e = new VeniceException(logMsg);
+                notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), logMsg, e);
+                throw e;
+              } else {
+                logMsg += "\nDon't fail the job during streaming ingestion";
+                logger.error(logMsg);
+                versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+              }
             } else {
-              logMsg += "\nDon't fail the job during streaming ingestion";
-              logger.error(logMsg);
-              versionedDIVStats.recordPotentiallyLossyLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
+              logger.info(logMsg);
+              versionedDIVStats.recordBenignLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
             }
-          } else {
-            logger.info(logMsg);
-            versionedDIVStats.recordBenignLeaderOffsetRewind(storeNameWithoutVersionInfo, storeVersion);
           }
         }
         /**

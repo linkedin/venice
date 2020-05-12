@@ -8,6 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import org.apache.log4j.Logger;
 
@@ -64,15 +65,14 @@ public class ListenerManager<T> {
    * @param handler The function really handle the event. It accepts listener and call the corresponding handle method
    *                of this listener.
    */
-  public synchronized void trigger(String key, Function<T, Void> handler) {
-    // Trigger listeners which registered with given key and wild char.
+  public synchronized void trigger(String key, Consumer<T> handler) {
     trigger(listenerMap.get(key), handler);
     trigger(listenerMap.get(Utils.WILDCARD_MATCH_ANY), handler);
   }
 
-  private void trigger(Set<T> listeners, Function<T, Void> handler) {
+  private void trigger(Set<T> listeners, Consumer<T> handler) {
     if (listeners != null) {
-      listeners.stream().forEach(listener -> threadPool.execute(() -> handler.apply(listener)));
+      listeners.stream().forEach(listener -> threadPool.execute(() -> handler.accept(listener)));
     }
   }
 

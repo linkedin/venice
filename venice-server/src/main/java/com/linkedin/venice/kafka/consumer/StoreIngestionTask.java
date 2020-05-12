@@ -943,7 +943,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       // TODO need a way to safeguard DIV errors from backup version that have once been current (but not anymore) during re-balancing
       boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
-        errorMessage += ". Consumption will be halted.";
+        errorMessage +=  ". Consumption will be halted.";
         notificationDispatcher.reportError(Arrays.asList(partitionConsumptionState), errorMessage, e);
         unSubscribePartition(topic, faultyPartition);
       } else {
@@ -1197,8 +1197,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
    * offset is stale and is not updated until the very end
    */
-  private ControlMessageType processControlMessage(ControlMessage controlMessage, int partition, long offset,
-      PartitionConsumptionState partitionConsumptionState) throws InterruptedException {
+  private ControlMessageType processControlMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState)
+      throws InterruptedException {
     /**
      * If leader consumes control messages from topics other than version topic, it should produce
      * them to version topic; however, START_OF_SEGMENT and END_OF_SEGMENT should not be forwarded
@@ -1218,9 +1219,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
         /**
-         * No-op for {@link ControlMessageType#START_OF_SEGMENT} and {@link ControlMessageType#END_OF_SEGMENT}.
-         * These are handled in the {@link ProducerTracker}.
+         * If END_OF_PUSH is not received. Both DIV and leader SN pass-through mode are enabled. In that case, we
+         * need to re-produce SOS and EOS to make DIV work.
          */
+        if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
+          produceAndWriteToDatabase(consumerRecord, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
+            getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, sourceTopicOffset));
+        }
         break;
       case START_OF_BUFFER_REPLAY:
         processStartOfBufferReplay(controlMessage, offset, partitionConsumptionState);
@@ -1282,7 +1287,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
+        processControlMessage(consumerRecord, controlMessage, consumerRecord.partition(),
+            consumerRecord.offset(), partitionConsumptionState);
         /**
          * Here, we want to sync offset/producer guid info whenever receiving any control message:
          * 1. We want to keep the critical milestones.
@@ -1545,7 +1551,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                */
 
               if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
-                return getVeniceWriter().put(keyBytes, kafkaValue, callback, sourceTopicOffset);
+                return getVeniceWriter().put(kafkaKey, kafkaValue, callback, sourceTopicOffset);
               }
 
               return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue),
@@ -1880,6 +1886,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   @FunctionalInterface
   interface WriteToStorageEngine {
+    WriteToStorageEngine NO_OP = (key) -> {};
+
     void apply(byte[] key);
   }
 

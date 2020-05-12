@@ -252,7 +252,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     List<ReplicaState> replicaStates = new ArrayList<>();
     List<ReplicaState> partitionReplicaStates;
     List<Integer> unretrievablePartitions = new ArrayList<>();
-    for (int p = 0; p < onlineInstanceFinder.getNumberOfPartitions(resourceName); p++) {
+    for (int p = 0; p < onlineInstanceFinder.getNumberOfPartitions(resourceName); p ++) {
       try {
         partitionReplicaStates = onlineInstanceFinder.getReplicaStates(resourceName, p);
         if (partitionReplicaStates.isEmpty()) {

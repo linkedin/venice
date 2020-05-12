@@ -57,6 +57,13 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
    */
   boolean doseResourcesExistInIdealState(String resource);
 
+  /**
+   * Given resource name and partition number, return the current leader instance.
+   * @return the current leader instance. Null if there is no leader/the resource doesn't use
+   * L/F model/resource doesn't exist.
+   */
+  Instance getLeaderInstance(String resourceName, int partition);
+
   interface RoutingDataChangedListener {
     /**
      * Handle routing data changed event.
