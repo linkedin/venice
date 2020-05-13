@@ -983,7 +983,7 @@ public class TestVeniceParentHelixAdmin {
   @Test
   public void testStoreVersionCleanUpWithFewerVersions() {
     String storeName = "test_store";
-    Store testStore = new Store(storeName, "test_owner", -1, PersistenceType.BDB,
+    Store testStore = new Store(storeName, "test_owner", -1, PersistenceType.ROCKS_DB,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     testStore.addVersion(new Version(storeName, 1));
     testStore.addVersion(new Version(storeName, 2));
@@ -999,7 +999,7 @@ public class TestVeniceParentHelixAdmin {
   @Test
   public void testStoreVersionCleanUpWithMoreVersions() {
     String storeName = "test_store";
-    Store testStore = new Store(storeName, "test_owner", -1, PersistenceType.BDB,
+    Store testStore = new Store(storeName, "test_owner", -1, PersistenceType.ROCKS_DB,
             RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     for (int i = 1; i <= 10; ++i) {
       testStore.addVersion(new Version(storeName, i));

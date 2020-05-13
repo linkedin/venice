@@ -66,9 +66,7 @@ public class TestEarlyTermination {
     serverFeaturePropertiesWithoutEarlyTermination.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");
     veniceCluster.addVeniceServer(serverFeaturePropertiesWithoutEarlyTermination, serverPropertiesWithoutEarlyTermination);
 
-    // By default, the storage engine is ROCKS_DB, and we would like test BDB here as well.
     Properties serverPropertiesWithEarlyTermination = new Properties();
-    serverPropertiesWithEarlyTermination.put(ConfigKeys.PERSISTENCE_TYPE, BDB);
     serverPropertiesWithEarlyTermination.put(ConfigKeys.SERVER_STORE_TO_EARLY_TERMINATION_THRESHOLD_MS_MAP, storeName + ":0, non_existing_store:0");
     Properties serverFeaturePropertiesWithEarlyTermination = new Properties();
     serverFeaturePropertiesWithEarlyTermination.put(VeniceServerWrapper.SERVER_ENABLE_SSL, "true");

@@ -161,9 +161,9 @@ public class KafkaStoreIngestionServiceTest {
     String invalidTopic = "invalid-store_v1";
     String storeName = Version.parseStoreFromKafkaTopicName(topic1);
     String deletedStoreName = Version.parseStoreFromKafkaTopicName(invalidTopic);
-    Store mockStore = new Store(storeName, "unit-test", 0, PersistenceType.BDB,
+    Store mockStore = new Store(storeName, "unit-test", 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
-    Store toBeDeletedStore = new Store(deletedStoreName, "unit-test", 0, PersistenceType.BDB,
+    Store toBeDeletedStore = new Store(deletedStoreName, "unit-test", 0, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     mockStore.addVersion(new Version(storeName, 1, "test-job-id"));
     toBeDeletedStore.addVersion(new Version(deletedStoreName, 1, "test-job-id"));

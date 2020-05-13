@@ -190,7 +190,7 @@ public class AggVersionedDIVStatsTest {
 
 
   private Store createStore(String nameStore) {
-    return new Store(nameStore, "", 10, PersistenceType.BDB,
+    return new Store(nameStore, "", 10, PersistenceType.ROCKS_DB,
         RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
   }
 }
