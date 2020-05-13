@@ -17,7 +17,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static com.linkedin.venice.ConfigConstants.*;
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.config.BlockingQueueType.*;
 
@@ -26,6 +25,13 @@ import static com.linkedin.venice.config.BlockingQueueType.*;
  * class that maintains config very specific to a Venice server
  */
 public class VeniceServerConfig extends VeniceClusterConfig {
+  /**
+   * Since the RT topic could be consumed by multiple store versions for Hybrid stores, we couldn't share the consumer across
+   * different Hybrid store versions.
+   * Considering there will be at most 3 store versions (backup, current and new), we need to make sure the consumer pool
+   * size should be at least 3.
+   */
+  public static final int MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER = 3;
 
   private final int listenerPort;
   private final BdbServerConfig bdbServerConfig;
@@ -184,6 +190,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long routerConnectionWarmingDelayMs;
   private boolean helixCustomizedViewEnabled;
   private final long ssdHealthCheckShutdownTimeMs;
+  private final boolean sharedConsumerPoolEnabled;
+  private final int consumerPoolSizePerKafkaCluster;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -197,8 +205,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     maxOnlineOfflineStateTransitionThreadNumber = serverProperties.getInt(MAX_ONLINE_OFFLINE_STATE_TRANSITION_THREAD_NUMBER, 100);
     maxLeaderFollowerStateTransitionThreadNumber = serverProperties.getInt(MAX_LEADER_FOLLOWER_STATE_TRANSITION_THREAD_NUMBER, 20);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
-    storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 25 * 1024 * 1024); // 25MB
-    storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 5 * 1024 * 1024); // 5MB
+    // To miminize the GC impact during heavy ingestion.
+    storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 10 * 1024 * 1024); // 10MB
+    storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 1 * 1024 * 1024); // 1MB
     restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 16);
     serverComputeThreadNum = serverProperties.getInt(SERVER_COMPUTE_THREAD_NUM, 16);
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
@@ -268,6 +277,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     kafkaAdminClass = serverProperties.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
     // Disable it by default, and when router connection warming is enabled, we need to adjust this config.
     routerConnectionWarmingDelayMs = serverProperties.getLong(SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS, 0);
+    sharedConsumerPoolEnabled = serverProperties.getBoolean(SERVER_SHARED_CONSUMER_POOL_ENABLED, false);
+    consumerPoolSizePerKafkaCluster = serverProperties.getInt(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, 5);
+    if (consumerPoolSizePerKafkaCluster < MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER) {
+      throw new VeniceException(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER + " shouldn't be less than: " +
+          MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER + ", but it is " + consumerPoolSizePerKafkaCluster);
+    }
   }
 
   public int getListenerPort() {
@@ -489,5 +504,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getSsdHealthCheckShutdownTimeMs() {
     return ssdHealthCheckShutdownTimeMs;
+  }
+
+  public boolean isSharedConsumerPoolEnabled() {
+    return sharedConsumerPoolEnabled;
+  }
+
+  public int getConsumerPoolSizePerKafkaCluster() {
+    return consumerPoolSizePerKafkaCluster;
   }
 }

@@ -339,6 +339,16 @@ public class ConfigKeys {
    */
   public static final String SERVER_ROUTER_CONNECTION_WARMING_DELAY_MS = "server.router.connection.warming.delay.ms";
 
+  /**
+   * Whether to enable shared consumer pool in storage node.
+   */
+  public static final String SERVER_SHARED_CONSUMER_POOL_ENABLED = "server.shared.consumer.pool.enabled";
+
+  /**
+   * Consumer pool size per Kafka cluster.
+   */
+  public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.consumer.pool.size.per.kafka.cluster";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

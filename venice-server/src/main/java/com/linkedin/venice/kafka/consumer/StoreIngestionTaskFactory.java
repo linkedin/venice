@@ -49,14 +49,16 @@ public class StoreIngestionTaskFactory {
           builder.bandwidthThrottler, builder.recordsThrottler, builder.schemaRepo, builder.metadataRepo,
           builder.topicManager, builder.ingestionStats, builder.versionedDIVStats,
           builder.versionedStorageIngestionStats, builder.storeBufferService, isCurrentVersion, hybridStoreConfig,
-          isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
+          isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.kafkaConsumerService,
+          builder.serverConfig);
     } else {
       return new OnlineOfflineStoreIngestionTask(builder.veniceWriterFactory, builder._kafkaClientFactory,
           kafkaConsumerProperties, builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers,
           builder.bandwidthThrottler, builder.recordsThrottler, builder.schemaRepo, builder.metadataRepo,
           builder.topicManager, builder.ingestionStats, builder.versionedDIVStats,
           builder.versionedStorageIngestionStats, builder.storeBufferService, isCurrentVersion, hybridStoreConfig,
-          isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.serverConfig);
+          isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.kafkaConsumerService,
+          builder.serverConfig);
     }
   }
 
@@ -90,6 +92,7 @@ public class StoreIngestionTaskFactory {
     private StoreBufferService storeBufferService;
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
+    private KafkaConsumerService kafkaConsumerService;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -205,6 +208,13 @@ public class StoreIngestionTaskFactory {
     public Builder setDiskUsage(DiskUsage diskUsage) {
       if (!built) {
         this.diskUsage = diskUsage;
+      }
+      return this;
+    }
+
+    public Builder setKafkaConsumerService(KafkaConsumerService kafkaConsumerService) {
+      if (!built) {
+        this.kafkaConsumerService = kafkaConsumerService;
       }
       return this;
     }

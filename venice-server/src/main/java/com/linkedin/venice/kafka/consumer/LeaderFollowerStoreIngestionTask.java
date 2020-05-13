@@ -120,11 +120,12 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
+      KafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig) {
     super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService,
         notifiers, bandwidthThrottler, recordsThrottler, schemaRepo, metadataRepo, topicManager, storeIngestionStats,
         versionedDIVStats, versionedStorageIngestionStats, storeBufferService, isCurrentVersion, hybridStoreConfig,
-        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
+        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, kafkaConsumerService, serverConfig);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
   }
 
@@ -227,7 +228,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           // subscribe back to VT/partition
-          consumer.subscribe(topic, partition, versionTopicOffset);
+          subscribe(topic, partition, versionTopicOffset);
           logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
         }
         partitionConsumptionStateMap.get(partition).setLeaderState(STANDBY);
@@ -291,7 +292,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
 
             // subscribe to the new upstream
-            consumer.subscribe(offsetRecord.getLeaderTopic(), partition, offsetRecord.getLeaderOffset());
+            subscribe(offsetRecord.getLeaderTopic(), partition, offsetRecord.getLeaderOffset());
             partitionConsumptionState.setLeaderState(LEADER);
 
             logger.info(consumerTaskId + " promoted to leader for partition " + partition
@@ -367,7 +368,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             // subscribe to the new upstream
             partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
-            consumer.subscribe(newSourceTopicName, partition, upstreamStartOffset);
+            subscribe(newSourceTopicName, partition, upstreamStartOffset);
 
             if (!topic.equals(currentLeaderTopic)) {
               /**

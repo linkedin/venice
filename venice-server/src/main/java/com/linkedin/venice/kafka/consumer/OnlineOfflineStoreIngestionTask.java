@@ -59,11 +59,12 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
+      KafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig) {
     super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService,
         notifiers, bandwidthThrottler, recordsThrottler, schemaRepo, storeRepo, topicManager, storeIngestionStats,
         versionedDIVStats, versionedStorageIngestionStats, storeBufferService, isCurrentVersion, hybridStoreConfig,
-        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, serverConfig);
+        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, kafkaConsumerService, serverConfig);
   }
 
   @Override

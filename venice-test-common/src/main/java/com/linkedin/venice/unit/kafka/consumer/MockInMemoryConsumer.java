@@ -126,4 +126,9 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   public Set<TopicPartition> paused() {
     return delegate.paused();
   }
+
+  @Override
+  public Set<TopicPartition> getAssignment() {
+    return delegate.getAssignment();
+  }
 }

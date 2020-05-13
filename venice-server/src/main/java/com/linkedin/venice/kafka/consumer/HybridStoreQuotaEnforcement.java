@@ -91,10 +91,14 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
   }
 
   /**
-   * Enforce partition level quota for the map
+   * Enforce partition level quota for the map.
+   * This function could be inovked by multiple threads when shared consumer is being used.
+   * Check {@link StoreIngestionTask#produceToStoreBufferService} and {@link StoreIngestionTask#processMessages}
+   * to find more details.
+   *
    * @param subscribedPartitionToSize with partition id as key and batch records size as value
    */
-  protected void checkPartitionQuota(Map<Integer, Integer> subscribedPartitionToSize) {
+  protected synchronized void checkPartitionQuota(Map<Integer, Integer> subscribedPartitionToSize) {
     for (Map.Entry<Integer, Integer> curr : subscribedPartitionToSize.entrySet()) {
       enforcePartitionQuota(curr.getKey(), curr.getValue());
     }
@@ -198,6 +202,10 @@ public class HybridStoreQuotaEnforcement implements StoreDataChangedListener {
 
   protected boolean isPartitionPausedIngestion(int partition) {
     return pausedPartitions.contains(partition);
+  }
+
+  public boolean hasPausedPartitionIngestion() {
+    return !pausedPartitions.isEmpty();
   }
 
   protected long getStoreQuotaInBytes() {

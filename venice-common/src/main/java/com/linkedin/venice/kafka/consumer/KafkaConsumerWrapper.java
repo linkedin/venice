@@ -21,9 +21,17 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
 
   void close();
 
+  default void close(Set<String> topics) {
+    close();
+  }
+
   ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout);
 
   boolean hasSubscription();
+
+  default boolean hasSubscription(Set<String> topics) {
+    return hasSubscription();
+  }
 
   boolean hasSubscription(String topic, int partition);
 
@@ -42,4 +50,6 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
   void resume(String topic, int partition);
 
   Set<TopicPartition> paused();
+
+  Set<TopicPartition> getAssignment();
 }
