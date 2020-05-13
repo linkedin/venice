@@ -103,7 +103,7 @@ public class ProducerTracker {
     Segment segment = trackSegment(partition, messageEnvelope, tolerateMissingMessage);
     trackSequenceNumber(segment, messageEnvelope, tolerateMissingMessage, errorMetricCallback);
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
-    trackCheckSum(segment, key, messageEnvelope);
+    trackCheckSum(segment, key, messageEnvelope, tolerateMissingMessage, errorMetricCallback);
 
     // We return a closure, so that it is the caller's responsibility to decide whether to execute the state change or not.
     return offsetRecord -> {
@@ -260,7 +260,7 @@ public class ProducerTracker {
       extraInfo += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
     }
     if (tolerateMissingMessage && tolerateAnyMessageType.orElse(true)) {
-      logger.info("Will " + extraInfo);
+      logger.warn("Will " + extraInfo);
     } else {
       throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(segment, messageEnvelope, Optional.of("Cannot " + extraInfo));
     }
@@ -319,7 +319,7 @@ public class ProducerTracker {
           /**
            * Only log and report error if the error metric tracking callback is not empty.
            */
-          logger.error("Encountered missing data message, which could happen if EOP has been received", dataMissingException);
+          logger.warn("Encountered missing data message, which could happen if EOP has been received. Error msg:\n" + dataMissingException.getMessage());
           errorMetricCallback.get().execute(dataMissingException);
         }
       } else {
@@ -343,7 +343,8 @@ public class ProducerTracker {
    * @throws CorruptDataException if the data is corrupt. Can only happen when processing control message of type:
    *                              {@link ControlMessageType#END_OF_SEGMENT}
    */
-  private void trackCheckSum(Segment segment, KafkaKey key, KafkaMessageEnvelope messageEnvelope)
+  private void trackCheckSum(Segment segment, KafkaKey key, KafkaMessageEnvelope messageEnvelope,
+      boolean tolerateMissingMessage, Optional<DIVErrorMetricCallback> errorMetricCallback)
       throws CorruptDataException {
     /**
      * {@link Segment#addToCheckSum(KafkaKey, KafkaMessageEnvelope)} is an expensive operation because of the internal
@@ -360,8 +361,19 @@ public class ProducerTracker {
         // We're good, the expected checksum matches the one we computed on the receiving end (:
         segment.end(incomingEndOfSegment.finalSegment);
       } else {
-        // Uh oh. Checksums don't match.
-        throw DataFaultType.CORRUPT.getNewException(segment, messageEnvelope);
+        DataValidationException dataCorruptException = DataFaultType.CORRUPT.getNewException(segment, messageEnvelope);
+        if (tolerateMissingMessage) {
+          /**
+           * When log compaction is enabled, messages can be missing within a segment, so at the end when calculating
+           * checksum, the checksum will not match if any mesasge is missing.
+           */
+          segment.end(incomingEndOfSegment.finalSegment);
+          logger.warn("Encountered corrupt checksum, which could happen if log compaction is enabled. Error msg:\n" + dataCorruptException.getMessage());
+          errorMetricCallback.ifPresent(callback -> callback.execute(dataCorruptException));
+        } else {
+          // Uh oh. Checksums don't match.
+          throw dataCorruptException;
+        }
       }
     }
   }
