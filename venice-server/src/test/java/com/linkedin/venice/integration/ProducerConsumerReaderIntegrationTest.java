@@ -58,7 +58,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @DataProvider(name = "PersistenceType")
   public static Object[] persistenceType() {
-    return new Object[]{PersistenceType.BDB, PersistenceType.ROCKS_DB};
+    return new Object[]{PersistenceType.ROCKS_DB};
   }
 
   @BeforeMethod

@@ -1053,7 +1053,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     List<Store> stores = new ArrayList<>();
     for (int storeNumber = 1; storeNumber <= NUMBER_OF_STORES; storeNumber++) {
       String storeName = TestUtils.getUniqueString("store-" + storeNumber);
-      Store store = new Store(storeName, storeOwner, System.currentTimeMillis(), PersistenceType.BDB,
+      Store store = new Store(storeName, storeOwner, System.currentTimeMillis(), PersistenceType.ROCKS_DB,
           RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
 

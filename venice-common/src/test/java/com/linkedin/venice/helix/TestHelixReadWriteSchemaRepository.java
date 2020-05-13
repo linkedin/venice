@@ -59,7 +59,7 @@ public class TestHelixReadWriteSchemaRepository {
   }
 
   private void createStore(String storeName) {
-    Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.BDB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.ROCKS_DB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     storeRepo.addStore(store);
   }
 

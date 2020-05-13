@@ -74,10 +74,10 @@ public class IntegrationTestUtils {
 
         // Other configs
         .put(CLUSTER_NAME, clusterName)
-        .put(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString())
+        .put(OFFSET_MANAGER_TYPE, PersistenceType.ROCKS_DB.toString())
         .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
         .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
-        .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString())
+        .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB.toString())
         .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, false)
         .build();
 

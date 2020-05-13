@@ -94,7 +94,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(OFFLINE_JOB_START_TIMEOUT_MS, 60 * 1000)
             // To speed up topic cleanup
             .put(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, 100)
-            .put(PERSISTENCE_TYPE, PersistenceType.BDB)
+            .put(PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
             // Moving from topic monitor to admin protocol for add version and starting ingestion
             .put(CONTROLLER_ADD_VERSION_VIA_ADMIN_PROTOCOL, true)
             // The first cluster will always be the one to host system schemas...
