@@ -7,6 +7,7 @@ import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OperationsPerInvocation;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Param;
 import org.openjdk.jmh.annotations.Scope;
@@ -32,20 +33,30 @@ import org.openjdk.jmh.runner.options.OptionsBuilder;
  * `ligradle jmh` again to run the results.
  */
 @BenchmarkMode(Mode.AverageTime)
-@OutputTimeUnit(TimeUnit.MILLISECONDS)
+@OutputTimeUnit(TimeUnit.MICROSECONDS)
 @State(Scope.Benchmark)
 @Fork(value = 2)
-@Warmup(iterations = 1)
+@Warmup(iterations = 3)
 @Measurement(iterations = 3)
 public class SerdeBenchmark {
-  private final static int numQueries = 1000_000;
-  private final static int _numThreads = 2;
+  private final static int numQueries = 100_000;
+  private final static int _numThreads = 1;
 
   /**
    * Testing with different value size
    */
   @Param({"2500", "5000"})
-  protected String valueSize;
+  protected int valueSize;
+
+  @Param({"true", "false"})
+  protected boolean serializeOnce;
+
+  @Param({"true", "false"})
+  protected boolean accessData;
+
+  private String testNameSuffix() {
+    return valueSize + (serializeOnce ? "_serializeOnce" : "") + (accessData ? "_accessData" : "");
+  }
 
   @Setup
   public void setup() {
@@ -57,32 +68,41 @@ public class SerdeBenchmark {
 
   public static void main(String[] args) throws RunnerException {
     org.openjdk.jmh.runner.options.Options opt = new OptionsBuilder()
+        .include(SerdeBenchmark.class.getSimpleName())
         .addProfiler(GCProfiler.class)
         .build();
     new Runner(opt).run();
   }
 
   @Benchmark
-  public void avroSerdeBenchmarkTest(Blackhole bh) {
-      Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-          () -> BenchmarkUtils.avroBenchmark(false, Integer.parseInt(valueSize), numQueries), "avro_" + valueSize , numQueries, _numThreads);
-  }
-
-  @Benchmark
+  @OperationsPerInvocation(numQueries)
   public void fastAvroSerdeBenchmarkTest(Blackhole bh) {
     Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.avroBenchmark(true, Integer.parseInt(valueSize), numQueries), "fastAvro_" + valueSize, numQueries,  _numThreads);
+        () -> BenchmarkUtils.avroBenchmark(true, valueSize, numQueries, serializeOnce, accessData, bh),
+        "fastAvro_" + testNameSuffix(), numQueries,  _numThreads);;
   }
 
   @Benchmark
+  @OperationsPerInvocation(numQueries)
+  public void avroSerdeBenchmarkTest(Blackhole bh) {
+      Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
+          () -> BenchmarkUtils.avroBenchmark(false, valueSize, numQueries, serializeOnce, accessData, bh),
+          "avro_" + testNameSuffix() , numQueries, _numThreads);
+  }
+
+  @Benchmark
+  @OperationsPerInvocation(numQueries)
   public void flatbuffersBenchmarkTest(Blackhole bh) {
     Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.flatBuffersBenchmark(Integer.parseInt(valueSize), numQueries), "flatbuffers_" + valueSize , numQueries,  _numThreads);
+        () -> BenchmarkUtils.flatBuffersBenchmark(valueSize, numQueries, serializeOnce, accessData, bh),
+       "flatbuffers_" + testNameSuffix() , numQueries,  _numThreads);
   }
 
   @Benchmark
+  @OperationsPerInvocation(numQueries)
   public void floatVectorBenchmarkTest(Blackhole bh) {
     Map<String, Float> metricsDelta = BenchmarkUtils.runWithMetrics(
-        () -> BenchmarkUtils.floatVectorBenchmark(Integer.parseInt(valueSize), numQueries), "floatVectors_" + valueSize , numQueries,  _numThreads);
+        () -> BenchmarkUtils.floatVectorBenchmark(valueSize, numQueries, serializeOnce, accessData, bh),
+       "floatVectors_" + testNameSuffix() , numQueries,  _numThreads);
   }
 }

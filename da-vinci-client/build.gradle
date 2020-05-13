@@ -8,7 +8,6 @@ dependencies {
   implementation project(':venice-server')
   implementation project(':venice-thin-client')
   implementation project(':venice-schema-common')
-  implementation project(':venice-server')
   implementation (project(':venice-controller')) {
     exclude module: 'kafka_2.10'
     exclude group: 'org.scala-lang'
