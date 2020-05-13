@@ -176,6 +176,11 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     kafkaConsumer.resume(Arrays.asList(tp));
   }
 
+  @Override
+  public Set<TopicPartition> getAssignment() {
+    return kafkaConsumer.assignment();
+  }
+
 
   @Override
   public Set<TopicPartition> paused() {

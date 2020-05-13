@@ -1,6 +1,5 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import io.tehuti.metrics.MetricsRepository;
 
 //TODO: once we've migrated this stats to multi-version. We might want to consider merge it with DIVStats

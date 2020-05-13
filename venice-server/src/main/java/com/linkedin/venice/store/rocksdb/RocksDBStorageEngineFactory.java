@@ -124,7 +124,6 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
     this.rocksDBThrottler = new RocksDBThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
-
     this.rateLimiter = new RateLimiter(rocksDBServerConfig.getWriteQuotaBytesPerSecond());
   }
 

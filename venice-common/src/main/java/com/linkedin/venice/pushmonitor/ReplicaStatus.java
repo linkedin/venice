@@ -90,7 +90,7 @@ public class ReplicaStatus {
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
       case END_OF_INCREMENTAL_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, WARNING, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_INCREMENTAL_PUSH_RECEIVED, END_OF_INCREMENTAL_PUSH_RECEIVED, WARNING, ERROR, COMPLETED);
         break;
       default:
         isValid = false;

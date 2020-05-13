@@ -100,6 +100,8 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
           .put(SERVER_ENABLE_ROCKSDB_METADATA, true)
           .put(ROCKSDB_OPTIONS_USE_DIRECT_READS, false) // Required by PlainTable format
           .put(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 0)
+          .put(PARTICIPANT_MESSAGE_CONSUMPTION_DELAY_MS, 1000)
+          .put(KAFKA_READ_CYCLE_DELAY_MS, 50)
           .put(configProperties);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);

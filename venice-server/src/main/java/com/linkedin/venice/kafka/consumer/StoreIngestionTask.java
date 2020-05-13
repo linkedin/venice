@@ -60,19 +60,13 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
-
-import org.apache.avro.generic.GenericRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.producer.Callback;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.log4j.Logger;
-
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -87,6 +81,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 import static com.linkedin.venice.store.record.ValueRecord.*;
@@ -141,6 +141,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   protected final StoreBufferService storeBufferService;
   /** Persists the exception thrown by {@link StoreBufferService}. */
   protected Exception lastDrainerException = null;
+  /** Persists the exception thrown by {@link KafkaConsumerService}. */
+  private Exception lastConsumerException = null;
   /** Keeps track of every upstream producer this consumer task has seen so far. */
   protected final Map<GUID, ProducerTracker> producerTrackerMap;
   protected final AggStoreIngestionStats storeIngestionStats;
@@ -204,6 +206,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
+  private final KafkaConsumerService kafkaConsumerService;
+  /**
+   * This topic set is used to track all the topics, which have ever been subscribed.
+   * It may not reflect the current subscriptions.
+   */
+  private final Set<String> everSubscribedTopics = new HashSet<>();
 
   public StoreIngestionTask(VeniceWriterFactory writerFactory,
                             KafkaClientFactory consumerFactory,
@@ -226,6 +234,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                             VeniceStoreConfig storeConfig,
                             DiskUsage diskUsage,
                             boolean bufferReplayEnabledForHybrid,
+                            KafkaConsumerService kafkaConsumerService,
                             VeniceServerConfig serverConfig) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -291,6 +300,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled()) {
       buildHybridQuotaEnforcer();
     }
+
+    this.kafkaConsumerService = kafkaConsumerService;
   }
 
   protected void validateState() {
@@ -471,7 +482,85 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    */
   protected abstract long measureHybridOffsetLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag);
 
-  protected void processMessages() throws InterruptedException {
+  /**
+   * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
+   * @param records : received consumer records
+   * @param whetherToApplyThrottling : whether to apply throttling in this function or not.
+   * @throws InterruptedException
+   */
+  void produceToStoreBufferService(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records,
+      boolean whetherToApplyThrottling) throws InterruptedException {
+    long totalBytesRead = 0;
+    double elapsedTimeForPuttingIntoQueue = 0;
+    List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> processedRecord = new LinkedList<>();
+    long beforeProcessingTimestamp = System.currentTimeMillis();
+    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+      // Check schema id availability before putting consumer record to drainer queue
+      waitReadyToProcessRecord(record);
+      processedRecord.add(record);
+      long queuePutStartTimeInNS = System.nanoTime();
+      storeBufferService.putConsumerRecord(record, this); // blocking call
+      elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
+      totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
+    }
+
+    long quotaEnforcementStartTimeInNS = System.nanoTime();
+    /**
+     * Enforces hybrid quota on this batch poll if this is hybrid store and persistence type is rocksDB
+     * Even if the records list is empty, we still need to check quota to potentially resume partition
+     */
+    boolean isHybridQuotaEnabled = metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled();
+    if (isHybridQuotaEnabled && !hybridQuotaEnforcer.isPresent()) {
+      buildHybridQuotaEnforcer();
+    }
+    if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent()) {
+      refillPartitionToSizeMap(processedRecord);
+      hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
+    }
+    if (emitMetrics.get()) {
+      storeIngestionStats.recordQuotaEnforcementLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
+      if (totalBytesRead > 0) {
+        storeIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
+      }
+      long afterPutTimestamp = System.currentTimeMillis();
+      storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, elapsedTimeForPuttingIntoQueue);
+      storeIngestionStats.recordConsumerToQueueLatency(storeNameWithoutVersionInfo, afterPutTimestamp - beforeProcessingTimestamp);
+    }
+
+    if (whetherToApplyThrottling) {
+      /**
+       * We would like to throttle the ingestion by batch ({@link ConsumerRecords} return by each poll.
+       * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(ConsumerRecord, StoreIngestionTask)}
+       * could be blocked when the buffer is full, and the throttling could be inaccurate.
+       * So every record returned from {@link KafkaConsumerWrapper#poll(long)} should be processed
+       * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
+       * during GC.
+       *
+       * Here are more details:
+       * 1. Previously, the throttling was happening in StoreIngestionTask#processConsumerRecord,
+       *    which would be invoked by StoreBufferService;
+       * 2. When the ingestion got throttled, the database operations would halt, but the deserialized
+       *    records would be kept pushing to the intermediate buffer pool until the pool is full;
+       * 3. When Young GC happens, all the objects in the buffer pool could be potentially copied to Survivor
+       *    space since they are being actively referenced;
+       * 4. The object copy time is the slowest phase in Young GC;
+       *
+       * By moving the throttling logic after putting deserialized records to buffer, the records in the buffer
+       * will be processed as long as there is enough capacity.
+       * With this way, the actively referenced object will be reduced greatly during throttling and Young GC
+       * won't need to copy many objects from Young regions to Survivor regions, which reduces the overall
+       * GC pause time.
+       */
+      bandwidthThrottler.maybeThrottle(totalBytesRead);
+      recordsThrottler.maybeThrottle(recordCount);
+    }
+  }
+
+  protected void processMessages(boolean usingSharedConsumer) throws InterruptedException {
+    if (null != lastConsumerException) {
+      throw new VeniceException("Exception thrown by shared consumer", lastConsumerException);
+    }
+
     if (null != lastDrainerException) {
       // Interrupt the whole ingestion task
       throw new VeniceException("Exception thrown by store buffer drainer", lastDrainerException);
@@ -481,10 +570,19 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
      */
-    if (!consumer.hasSubscription()) {
+    if (!consumer.hasSubscription(everSubscribedTopics)) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
         logger.warn(consumerTaskId + " No Partitions are subscribed to for store attempt " + idleCounter);
-        Thread.sleep(readCycleDelayMs);
+        if (usingSharedConsumer) {
+          /**
+           * The extended sleep is trying to reduce the contention since the consumer is shared and synchronized.
+           * This is not ideal to have those branches, and later we could clean them up once the shared consumer
+           * is adopted by default.
+           */
+          Thread.sleep(readCycleDelayMs * 20);
+        } else {
+          Thread.sleep(readCycleDelayMs);
+        }
         return;
       }
 
@@ -494,6 +592,26 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
     idleCounter = 0;
 
+    if (emitMetrics.get()) {
+      long currentQuota = metadataRepo.getStore(storeNameWithoutVersionInfo).getStorageQuotaInByte();
+      storeIngestionStats.recordDiskQuotaAllowed(storeNameWithoutVersionInfo, currentQuota);
+    }
+    if (usingSharedConsumer) {
+
+      /**
+       * While using the shared consumer, we still need to check hybrid quota here since the actual disk usage could change
+       * because of compaction or the disk quota could be adjusted even there is no record write.
+       * Since {@link #produceToStoreBufferService} is only being invoked by {@link KafkaConsumerService} when there
+       * are available records, this function needs to check whether we need to resume the consumption when there are
+       * paused consumption because of hybrid quota violation.
+       */
+      boolean isHybridQuotaEnabled = metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled();
+      if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent() && hybridQuotaEnforcer.get().hasPausedPartitionIngestion()) {
+        hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
+      }
+      Thread.sleep(readCycleDelayMs);
+      return;
+    }
 
     long beforePollingTimestamp = System.currentTimeMillis();
 
@@ -504,8 +622,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long afterPollingTimestamp = System.currentTimeMillis();
 
     if (emitMetrics.get()) {
-      long currentQuota = metadataRepo.getStore(storeNameWithoutVersionInfo).getStorageQuotaInByte();
-      storeIngestionStats.recordDiskQuotaAllowed(storeNameWithoutVersionInfo, currentQuota);
       storeIngestionStats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
       storeIngestionStats.recordPollResultNum(storeNameWithoutVersionInfo, recordCount);
     }
@@ -522,69 +638,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    long quotaEnforcementStartTimeInNS = System.nanoTime();
-    /**
-     * Enforces hybrid quota on this batch poll if this is hybrid store and persistence type is rocksDB
-     * Even if the records list is empty, we still need to check quota to potentially resume partition
-     */
-    boolean isHybridQuotaEnabled = metadataRepo.getStore(storeNameWithoutVersionInfo).isHybridStoreDiskQuotaEnabled();
-    if (isHybridQuotaEnabled && !hybridQuotaEnforcer.isPresent()) {
-      buildHybridQuotaEnforcer();
-    }
-    if (isHybridQuotaEnabled && hybridQuotaEnforcer.isPresent()) {
-      refillPartitionToSizeMap(records);
-      hybridQuotaEnforcer.get().checkPartitionQuota(subscribedPartitionToSize.get());
-    }
-    if (emitMetrics.get()) {
-      storeIngestionStats.recordQuotaEnforcementLatency(storeNameWithoutVersionInfo, LatencyUtils.getLatencyInMS(quotaEnforcementStartTimeInNS));
-    }
-
-    long totalBytesRead = 0;
-    double elapsedTimeForPuttingIntoQueue = 0;
-    for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
-      // Check schema id availability before putting consumer record to drainer queue
-      waitReadyToProcessRecord(record);
-      long queuePutStartTimeInNS = System.nanoTime();
-      storeBufferService.putConsumerRecord(record, this); // blocking call
-      elapsedTimeForPuttingIntoQueue += LatencyUtils.getLatencyInMS(queuePutStartTimeInNS);
-      totalBytesRead += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
-    }
-
-    if (totalBytesRead > 0) {
-      storeIngestionStats.recordTotalBytesReadFromKafkaAsUncompressedSize(totalBytesRead);
-    }
-
-    if (emitMetrics.get()) {
-      long afterPutTimestamp = System.currentTimeMillis();
-      storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, elapsedTimeForPuttingIntoQueue);
-      storeIngestionStats.recordConsumerToQueueLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
-    }
-
-    /**
-     * We would like to throttle the ingestion by batch ({@link ConsumerRecords} return by each poll.
-     * The batch shouldn't be too big, otherwise, the {@link StoreBufferService#putConsumerRecord(ConsumerRecord, StoreIngestionTask)}
-     * could be blocked when the buffer is full, and the throttling could be inaccurate.
-     * So every record returned from {@link KafkaConsumerWrapper#poll(long)} should be processed
-     * as fast as possible to avoid long-lasting objects in JVM to minimize the 'object copy' time
-     * during GC.
-     *
-     * Here are more details:
-     * 1. Previously, the throttling was happening in StoreIngestionTask#processConsumerRecord,
-     *    which would be invoked by StoreBufferService;
-     * 2. When the ingestion got throttled, the database operations would halt, but the deserialized
-     *    records would be kept pushing to the intermediate buffer pool until the pool is full;
-     * 3. When Young GC happens, all the objects in the buffer pool could be potentially copied to Survivor
-     *    space since they are being actively referenced;
-     * 4. The object copy time is the slowest phase in Young GC;
-     *
-     * By moving the throttling logic after putting deserialized records to buffer, the records in the buffer
-     * will be processed as long as there is enough capacity.
-     * With this way, the actively referenced object will be reduced greatly during throttling and Young GC
-     * won't need to copy many objects from Young regions to Survivor regions, which reduces the overall
-     * GC pause time.
-     */
-    bandwidthThrottler.maybeThrottle(totalBytesRead);
-    recordsThrottler.maybeThrottle(recordCount);
+    produceToStoreBufferService(records, true);
   }
 
   /**
@@ -599,7 +653,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     logger.info("Running " + consumerTaskId);
     try {
       versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeNameWithoutVersionInfo, storeVersion);
-      this.consumer = factory.getConsumer(kafkaProps);
+      if (serverConfig.isSharedConsumerPoolEnabled()) {
+        this.consumer = kafkaConsumerService.getConsumer(this);
+      } else {
+        this.consumer = factory.getConsumer(kafkaProps);
+      }
       /**
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
        * acquired by some other synchronized function, such as {@link #kill()}.
@@ -607,7 +665,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       while (isRunning()) {
         processConsumerActions();
         checkLongRunningTaskState();
-        processMessages();
+        processMessages(serverConfig.isSharedConsumerPoolEnabled());
       }
 
       // If the ingestion task is stopped gracefully (server stops), persist processed offset to disk
@@ -627,6 +685,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)},
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
+        this.consumer.unSubscribe(topic, partitionConsumptionState.getPartition());
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partitionConsumptionState.getPartition());
         syncOffset(topic, partitionConsumptionState);
       }
@@ -689,7 +748,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       logger.info("Error in consumer creation, skipping close for topic " + topic);
       return;
     }
-    consumer.close();
+    consumer.close(everSubscribedTopics);
     isRunning.set(false);
     logger.info("Store ingestion task for store: " + topic + " is closed");
   }
@@ -787,6 +846,29 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
+  Set<String> getEverSubscribedTopics() {
+    return everSubscribedTopics;
+  }
+
+  /**
+   * All the subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function instead of
+   * {@link KafkaConsumerWrapper#subscribe} directly since we need to let {@link KafkaConsumerService} knows which
+   * {@link StoreIngestionTask} to use when receiving result for any specific topic.
+   * @param topic
+   * @param partition
+   */
+  protected synchronized void subscribe(String topic, int partition, long offset) {
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      /**
+       * We need to let {@link KafkaConsumerService} know that the messages from this topic will be handled by the
+       * current {@link StoreIngestionTask}.
+       */
+        kafkaConsumerService.attach(consumer, topic, this);
+    }
+    consumer.subscribe(topic, partition, offset);
+    everSubscribedTopics.add(topic);
+  }
+
   protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition)
       throws InterruptedException {
     switch (operation) {
@@ -808,7 +890,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         );
 
         checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
-        consumer.subscribe(topic, partition, record.getOffset());
+        this.subscribe(topic, partition, record.getOffset());
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
             + record.getOffset());
         break;
@@ -1017,6 +1099,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     lastDrainerException = e;
   }
 
+  public void setLastConsumerException(Exception e) {
+    lastConsumerException = e;
+  }
+
   /**
    * @return the total lag for all subscribed partitions between the real-time buffer topic and this consumption task.
    */
@@ -1083,7 +1169,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   public boolean isHybridMode() {
     if (hybridStoreConfig == null) {
-      logger.error("hybrid config shouldn't be null. Something bad happened. Topic: " + getTopic());
+      logger.error("hybrid config shouldn't be null. Something bad happened. Topic: " + getVersionTopic());
     }
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
@@ -1674,7 +1760,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Check whether the given schema id is available for current store.
    * The function will bypass the check if schema id is -1 (H2V job is still using it before we finishes t he integration with schema registry).
    * Right now, this function is maintaining a local cache for schema id of current store considering that the value schema is immutable;
-   * If the schema id is not available, this function will polling until the schema appears;
+   * If the schema id is not available, this function will polling until the schema appears or timeout: {@link #SCHEMA_POLLING_TIMEOUT_MS};
    *
    * @param schemaId
    */
@@ -1737,14 +1823,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       long elapsedTime = System.nanoTime() - startTime;
       if (schemaExists) {
         logger.info("Found new value schema [" + schemaId + "] for " + storeNameWithoutVersionInfo +
-                        " after " + NANOSECONDS.toSeconds(elapsedTime));
+            " after " + NANOSECONDS.toSeconds(elapsedTime));
         availableSchemaIds.add(schemaId);
         return;
       }
 
       if (NANOSECONDS.toMillis(elapsedTime) > SCHEMA_POLLING_TIMEOUT_MS || !isRunning()) {
         logger.warn("Value schema [" + schemaId + "] is not available for " + storeNameWithoutVersionInfo +
-                        " after " + NANOSECONDS.toSeconds(elapsedTime));
+            " after " + NANOSECONDS.toSeconds(elapsedTime));
         throw new VeniceException("Value schema [" + schemaId + "] is not available for " + storeNameWithoutVersionInfo);
       }
 
@@ -1780,7 +1866,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return isRunning.get();
   }
 
-  public String getTopic() {
+  public String getVersionTopic() {
     return topic;
   }
 
@@ -1824,7 +1910,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * these partitions need to be resumed.
    * @param records
    */
-  private void refillPartitionToSizeMap(ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records) {
+  private void refillPartitionToSizeMap(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
     subscribedPartitionToSize.get().clear();
     for (int partition : partitionConsumptionStateMap.keySet()) {
       subscribedPartitionToSize.get().put(partition, 0);

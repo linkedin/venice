@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
 import java.nio.ByteBuffer;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.log4j.Logger;
 import io.tehuti.metrics.MetricsRepository;
 
@@ -91,6 +92,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private final StoreBufferService storeBufferService;
 
+  private final KafkaConsumerService kafkaConsumerService;
+
   /**
    * A repository mapping each Kafka Topic to it corresponding Ingestion task responsible
    * for consuming messages and making changes to the local store accordingly.
@@ -100,7 +103,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final ExecutorService participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
 
-  private ExecutorService consumerExecutorService;
+  private ExecutorService ingestionExecutorService;
 
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
   private final AtomicBoolean isRunning;
@@ -177,6 +180,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           + "may not be killed if admin helix messaging channel is disabled");
     }
 
+    if (serverConfig.isSharedConsumerPoolEnabled()) {
+      kafkaConsumerService =
+          new KafkaConsumerService(veniceConsumerFactory, getCommonKafkaConsumerProperties(serverConfig), serverConfig,
+              consumptionBandwidthThrottler, consumptionRecordsCountThrottler, metricsRepository);
+    } else {
+      kafkaConsumerService = null;
+    }
+
     /**
      * Use the same diskUsage instance for all ingestion tasks; so that all the ingestion tasks can update the same
      * remaining disk space state to provide a more accurate alert.
@@ -202,6 +213,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
+        .setKafkaConsumerService(kafkaConsumerService)
         .build();
   }
 
@@ -210,12 +222,15 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   @Override
   public boolean startInner() {
-    logger.info("Enabling consumerExecutorService and kafka consumer tasks ");
-    consumerExecutorService = Executors.newCachedThreadPool();
-    topicNameToIngestionTaskMap.values().forEach(consumerExecutorService::submit);
+    logger.info("Enabling ingestion executor service and ingestion tasks.");
+    ingestionExecutorService = Executors.newCachedThreadPool();
+    topicNameToIngestionTaskMap.values().forEach(ingestionExecutorService::submit);
     isRunning.set(true);
 
     storeBufferService.start();
+    if (null != kafkaConsumerService) {
+      kafkaConsumerService.start();
+    }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
     }
@@ -258,11 +273,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
     boolean bufferReplayEnabledForHybrid = version.get().isBufferReplayEnabledForHybrid();
-
     Properties kafkaProperties = getKafkaConsumerProperties(veniceStoreConfig);
-    if (schemaReader.isPresent()) {
-      kafkaProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, schemaReader.get());
-    }
 
     return ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModel, kafkaProperties, isStoreVersionCurrent,
         hybridStoreConfig, store.isIncrementalPushEnabled(), veniceStoreConfig, bufferReplayEnabledForHybrid);
@@ -286,18 +297,23 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     topicNameToIngestionTaskMap.values().forEach(StoreIngestionTask::close);
 
-    if (consumerExecutorService != null) {
-      consumerExecutorService.shutdown();
+    if (ingestionExecutorService != null) {
+      ingestionExecutorService.shutdown();
       try {
-        consumerExecutorService.awaitTermination(30, TimeUnit.SECONDS);
+        ingestionExecutorService.awaitTermination(30, TimeUnit.SECONDS);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
       }
     }
 
+    if (null != kafkaConsumerService) {
+      kafkaConsumerService.stop();
+    }
+
     if (null != storeBufferService) {
       storeBufferService.stop();
     }
+
 
     for (VeniceNotifier notifier : notifiers) {
       notifier.close();
@@ -325,7 +341,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
         return;
       }
-      consumerExecutorService.submit(consumerTask);
+      ingestionExecutorService.submit(consumerTask);
     }
 
     /**
@@ -506,6 +522,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
       // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
+      if (null != kafkaConsumerService) {
+        kafkaConsumerService.detach(consumerTask);
+      }
 
       /**
        * For the same store, there will be only one task emitting metrics, if this is the only task that is emitting
@@ -564,14 +583,47 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   /**
-   * @return Properties Kafka properties corresponding to the venice store.
+   * So far, this function is only targeted to be used by shared consumer.
+   * @param serverConfig
+   * @return
    */
-  private static Properties getKafkaConsumerProperties(VeniceStoreConfig storeConfig) {
+  private Properties getCommonKafkaConsumerProperties(VeniceServerConfig serverConfig) {
     Properties kafkaConsumerProperties = new Properties();
-    kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, storeConfig.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     // Venice is persisting offset in local offset db.
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+        KafkaKeySerializer.class.getName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class.getName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
+        String.valueOf(serverConfig.getKafkaFetchMinSizePerSecond()));
+    kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
+        String.valueOf(serverConfig.getKafkaFetchMaxSizePerSecond()));
+    /**
+     * The following setting is used to control the maximum number of records to returned in one poll request.
+     */
+    kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(serverConfig.getKafkaMaxPollRecords()));
+    kafkaConsumerProperties
+        .setProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(serverConfig.getKafkaFetchMaxTimeMS()));
+    kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG,
+        String.valueOf(serverConfig.getKafkaFetchPartitionMaxSizePerSecond()));
+    kafkaConsumerProperties.setProperty(ApacheKafkaConsumer.CONSUMER_POLL_RETRY_TIMES_CONFIG,
+        String.valueOf(serverConfig.getKafkaPollRetryTimes()));
+    kafkaConsumerProperties.setProperty(ApacheKafkaConsumer.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
+        String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
+    if (schemaReader.isPresent()) {
+      kafkaConsumerProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, schemaReader.get());
+    }
+
+    return kafkaConsumerProperties;
+  }
+
+  /**
+   * @return Properties Kafka properties corresponding to the venice store.
+   */
+  private Properties getKafkaConsumerProperties(VeniceStoreConfig storeConfig) {
+    Properties kafkaConsumerProperties = getCommonKafkaConsumerProperties(storeConfig);
     String groupId = getGroupId(storeConfig.getStoreName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
     /**
@@ -580,25 +632,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
      * TODO: Kafka is throttling based on client_id, need to investigate whether we should use Kafka throttling or not.
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
-    kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
-        KafkaKeySerializer.class.getName());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, OptimizedKafkaValueSerializer.class.getName());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
-        String.valueOf(storeConfig.getKafkaFetchMinSizePerSecond()));
-    kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
-        String.valueOf(storeConfig.getKafkaFetchMaxSizePerSecond()));
-    /**
-     * The following setting is used to control the maximum number of records to returned in one poll request.
-     */
-    kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(storeConfig.getKafkaMaxPollRecords()));
-    kafkaConsumerProperties
-        .setProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(storeConfig.getKafkaFetchMaxTimeMS()));
-    kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG,
-        String.valueOf(storeConfig.getKafkaFetchPartitionMaxSizePerSecond()));
-    kafkaConsumerProperties.setProperty(ApacheKafkaConsumer.CONSUMER_POLL_RETRY_TIMES_CONFIG,
-        String.valueOf(storeConfig.getKafkaPollRetryTimes()));
-    kafkaConsumerProperties.setProperty(ApacheKafkaConsumer.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
-        String.valueOf(storeConfig.getKafkaPollRetryBackoffMs()));
     return kafkaConsumerProperties;
   }
 
