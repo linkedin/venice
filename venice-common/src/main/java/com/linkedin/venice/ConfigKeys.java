@@ -1056,4 +1056,9 @@ public class ConfigKeys {
    * The class name to use for the {@link com.linkedin.venice.kafka.admin.KafkaAdminWrapper}.
    */
   public static final String KAFKA_ADMIN_CLASS = "kafka.admin.class";
+
+  /**
+   * A config that determines whether to use Helix customized view
+   */
+  public static final String HELIX_CUSTOMIZED_VIEW_ENABLED = "helix.customized.view.enabled";
 }

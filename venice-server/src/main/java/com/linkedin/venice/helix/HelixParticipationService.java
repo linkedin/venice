@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.notifier.PartitionPushStatusNotifier;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Instance;
@@ -210,6 +211,14 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         instance.getNodeId());
 
     ingestionService.addNotifier(pushMonitorNotifier);
+
+    // If Helix customized view is enabled, do dual-write for offline push status update
+    if (veniceConfigLoader.getVeniceServerConfig().isHelixCustomizedViewEnabled()) {
+      PartitionPushStatusNotifier partitionPushStatusNotifier = new PartitionPushStatusNotifier(
+          new HelixPartitionPushStatusAccessor(manager.getOriginalManager(), instance.getNodeId()));
+      ingestionService.addNotifier(partitionPushStatusNotifier);
+    }
+
     CompletableFuture.runAsync(() -> {
       try {
         // Check node status before joining the cluster.

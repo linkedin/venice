@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -184,6 +185,11 @@ public class TestUtils {
     void execute() throws Exception;
   }
 
+  /**
+   * @deprecated
+   * TODO: migrate to use {@link ServiceFactory} for generating a participant
+   * */
+  @Deprecated
   public static SafeHelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {
     MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory();
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
