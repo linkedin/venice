@@ -1,16 +1,19 @@
 package com.linkedin.venice.helix;
 
+import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.PartitionStatus;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -19,7 +22,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
-import org.apache.helix.HelixProperty;
+import org.apache.helix.PropertyType;
 import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
 import org.apache.helix.api.listeners.BatchMode;
 import org.apache.helix.api.listeners.ControllerChangeListener;
@@ -27,6 +30,7 @@ import org.apache.helix.api.listeners.IdealStateChangeListener;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.api.listeners.RoutingTableChangeListener;
+import org.apache.helix.model.CustomizedView;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LiveInstance;
@@ -39,8 +43,9 @@ import org.apache.log4j.Logger;
  * Get routing data from Helix and convert it to our Venice partition and replica objects.
  * <p>
  * Although Helix RoutingTableProvider already cached routing data in local memory. But it only gets data from
- * /$cluster/EXTERNALVIEW and /$cluster/CONFIGS/PARTICIPANTS. Two parts of data are missed: Additional data in
- * /$cluster/LIVEINSTANCES and partition number in /$cluster/IDEALSTATES. So we cached Venice partitions and instances
+ * /$cluster/EXTERNALVIEW, /$cluster/CONFIGS/PARTICIPANTS, /$cluster/CUSTOMIZEDVIEW.
+ * Two parts of data are missed: Additional data in /$cluster/LIVEINSTANCES and
+ * partition number in /$cluster/IDEALSTATES. So we cached Venice partitions and instances
  * here to include all of them and also convert them from Helix data structure to Venice data structure.
  * <p>
  * As this repository is used by Router, so here only cached the online instance at first. If Venice needs some more
@@ -60,6 +65,11 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
      */
     private final PropertyKey.Builder keyBuilder;
 
+    /**
+     * Property to indicate the data the routing data repository stores
+     */
+    private final HelixViewPropertyType helixViewPropertyType;
+
     private ResourceAssignment resourceAssignment = new ResourceAssignment();
     /**
      * Master controller of cluster.
@@ -76,10 +86,30 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
 
     private RoutingTableProvider routingTableProvider;
 
-    public HelixRoutingDataRepository(SafeHelixManager manager) {
+    private Map<PropertyType, List<String>> dataSource;
+
+    public HelixRoutingDataRepository(SafeHelixManager manager, HelixViewPropertyType helixViewPropertyType) {
         this.manager = manager;
         listenerManager = new ListenerManager<>(); //TODO make thread count configurable
         keyBuilder = new PropertyKey.Builder(manager.getClusterName());
+        this.helixViewPropertyType = helixViewPropertyType;
+        this.dataSource = new HashMap<>();
+        switch (helixViewPropertyType) {
+            case EXTERNALVIEW:
+                dataSource = ImmutableMap.of(PropertyType.EXTERNALVIEW, Collections.emptyList());
+                break;
+            case CUSTOMIZEDVIEW:
+                /**
+                 * Currently we only have one state of customized view to listen to. If we add more enums in
+                 * {@link HelixPartitionState} in the future, we need to add them to the repository too.
+                 */
+                dataSource.put(PropertyType.CUSTOMIZEDVIEW, new ArrayList<>(Arrays.asList(HelixPartitionState.OFFLINE_PUSH.name())));
+                break;
+            case BOTH:
+                dataSource.put(PropertyType.EXTERNALVIEW, Collections.emptyList());
+                dataSource.put(PropertyType.CUSTOMIZEDVIEW, new ArrayList<>(Arrays.asList(HelixPartitionState.OFFLINE_PUSH.name())));
+                break;
+        }
     }
 
     /**
@@ -93,8 +123,9 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
             // and trigger the external view change event. In other words, venice will read the newest external view immediately.
             manager.addIdealStateChangeListener(this);
             manager.addControllerListener(this);
-            // Use routing table provider to get the notification of the external view change and live instances change.
-            routingTableProvider = new RoutingTableProvider(manager.getOriginalManager());
+            // Use routing table provider to get the notification of the external view change, customized view change,
+            // and live instances change.
+            routingTableProvider = new RoutingTableProvider(manager.getOriginalManager(), dataSource);
             routingTableProvider.addRoutingTableChangeListener(this, null);
             // Get the current external view and process at first. As the new helix API will not init a event after you add the listener.
             onRoutingTableChange(routingTableProvider.getRoutingTableSnapshot(), null);
@@ -231,7 +262,7 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
         }
         // Notify listeners of this routing update.
         listenerManager.trigger(resource, listener ->
-            listener.onRoutingDataChanged(resourceAssignment.getPartitionAssignment(resource)));
+            listener.onExternalViewChange(resourceAssignment.getPartitionAssignment(resource)));
     }
 
     @Override
@@ -293,8 +324,7 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
     }
 
     @Override
-    public void onIdealStateChange(List<IdealState> idealStates, NotificationContext changeContext)
-            throws InterruptedException {
+    public void onIdealStateChange(List<IdealState> idealStates, NotificationContext changeContext) {
         refreshResourceToIdealPartitionCountMap(idealStates);
     }
 
@@ -311,7 +341,22 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
 
     @Override
     public void onRoutingTableChange(RoutingTableSnapshot routingTableSnapshot, Object context) {
-        if(routingTableSnapshot == null || routingTableSnapshot.getExternalViews()==null || routingTableSnapshot.getExternalViews().size()<=0){
+        if (routingTableSnapshot == null) {
+            return;
+        }
+        PropertyType helixPropertyType = routingTableSnapshot.getPropertyType();
+        switch (helixPropertyType) {
+            case EXTERNALVIEW:
+                onExternalViewDataChange(routingTableSnapshot);
+                break;
+            case CUSTOMIZEDVIEW:
+                onCustomizedViewDataChange(routingTableSnapshot);
+                break;
+        }
+    }
+
+    private void onExternalViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
+        if (routingTableSnapshot.getExternalViews() == null || routingTableSnapshot.getExternalViews().size() <= 0){
             logger.info("Ignore the empty external view.");
             // Update live instances even if there is nonthing in the external view.
             synchronized (liveInstancesMap) {
@@ -397,12 +442,37 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
         // And assume that the listener would compare and decide how to handle this event.
         for (String kafkaTopic : resourceAssignment.getAssignedResources()) {
             PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
-            listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataChanged(partitionAssignment));
+            listenerManager.trigger(kafkaTopic, listener -> listener.onExternalViewChange(partitionAssignment));
         }
 
         //Notify events to the listeners which listen on deleted resources.
         for (String kafkaTopic : deletedResourceNames) {
             listenerManager.trigger(kafkaTopic, listener -> listener.onRoutingDataDeleted(kafkaTopic));
+        }
+    }
+
+    private void onCustomizedViewDataChange(RoutingTableSnapshot routingTableSnapshot) {
+        Collection<CustomizedView> customizedViewCollection = routingTableSnapshot.getCustomizeViews();
+        if (customizedViewCollection == null || customizedViewCollection.size() <= 0){
+            logger.info("Ignore the empty customized view.");
+            return;
+        }
+        /**
+         * onDataChange logic for offline push status
+         */
+        if (routingTableSnapshot.getCustomizedStateType().equals(HelixPartitionState.OFFLINE_PUSH.name())) {
+            for (CustomizedView customizedView: customizedViewCollection) {
+                String topic = customizedView.getResourceName();
+                for (String partitionName : customizedView.getPartitionSet()) {
+                    PartitionStatus partitionStatus = new PartitionStatus(HelixUtils.getPartitionId(partitionName));
+                    Map<String, String> instancesStatesMap = customizedView.getStateMap(partitionName);
+                    for (String instance: instancesStatesMap.keySet()) {
+                        // update partition status
+                        listenerManager.trigger(topic, listener -> listener.onPartitionStatusChange(topic,
+                            ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus)));
+                    }
+                }
+            }
         }
     }
 
@@ -414,8 +484,8 @@ public class HelixRoutingDataRepository implements RoutingDataRepository, Contro
         }
 
         if (instances.size() > 1) {
-            logger.error(String.format("Detect multiple leaders. Kafka topic: %s, partition: %d",
-                resourceName, partition));
+            logger.error(
+                String.format("Detect multiple leaders. Kafka topic: %s, partition: %d", resourceName, partition));
         }
 
         return instances.get(0);

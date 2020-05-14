@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import java.util.Map;
 
 
@@ -70,7 +71,10 @@ public interface RoutingDataRepository extends VeniceResource, OnlineInstanceFin
      * @param partitionAssignment Newest partitions assignments information including resource name and  all of instances assigned to this resource.
      *                            If the number of partition is 0, it means the kafka topic is deleted.
      */
-    void onRoutingDataChanged(PartitionAssignment partitionAssignment);
+
+    void onExternalViewChange(PartitionAssignment partitionAssignment);
+
+    void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus);
 
     void onRoutingDataDeleted(String kafkaTopic);
   }

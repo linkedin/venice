@@ -122,7 +122,7 @@ public class OfflinePushMonitorTest extends AbstractPushMonitorTest {
     Pair<ExecutionStatus, Optional<String>> statusAndDetails = new Pair<>(expectedStatus, Optional.empty());
     doReturn(statusAndDetails).when(decider).checkPushStatusAndDetails(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
-    ((OfflinePushMonitor) getMonitor()).onRoutingDataChanged(partitionAssignment);
+    ((OfflinePushMonitor) getMonitor()).onExternalViewChange(partitionAssignment);
     Assert.assertEquals(getMonitor().getOfflinePush(topic).getCurrentStatus(), expectedStatus);
     if (expectedStatus.equals(ExecutionStatus.COMPLETED)) {
       verify(getMockPushHealthStats(), times(1)).recordSuccessfulPush(eq(getStoreName()), anyLong());

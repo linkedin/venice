@@ -275,7 +275,7 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(1).when(assignment).getExpectedNumberOfPartitions();
     String topicName = Version.composeKafkaTopic(store.getName(), version);
     Mockito.doReturn(topicName).when(assignment).getTopic();
-    throttler.onRoutingDataChanged(assignment);
+    throttler.onExternalViewChange(assignment);
     // Make sure the current version is updated. The logic of updating storage node throttlers has been tested in StoreReadThrottlerTest.
     Assert.assertEquals(throttler.getStoreReadThrottler(store.getName()).getCurrentVersion(), version);
   }

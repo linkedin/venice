@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.stats.AggStoreStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.helix.HelixViewPropertyType;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
@@ -98,7 +99,7 @@ public class VeniceHelixResources implements VeniceResource {
       // Use a separate helix manger for listening on the external view to prevent it from blocking state transition and messages.
       spectatorManager = getSpectatorManager(clusterName, zkClient.getServers());
     }
-    this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager);
+    this.routingDataRepository = new HelixRoutingDataRepository(spectatorManager, HelixViewPropertyType.EXTERNALVIEW);
     this.messageChannel = new HelixStatusMessageChannel(helixManager,
         new HelixMessageChannelStats(metricsRepository, clusterName), config.getHelixSendMessageTimeoutMs());
     this.pushMonitor = new PushMonitorDelegator(config.getPushMonitorType(), clusterName, routingDataRepository,

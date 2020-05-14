@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
@@ -18,9 +19,8 @@ public class TestListenerManager {
     String key = "testSubscribeAndUnsubscribe";
     TestListener listener1 = new TestListener();
     manager.subscribe(key, listener1);
-    manager.trigger(key, listener -> listener.onRoutingDataChanged(new PartitionAssignment(key, 1)));
-    manager.trigger(key, listener -> listener.onRoutingDataChanged(new PartitionAssignment(key, 1)));
-
+    manager.trigger(key, listener -> listener.onExternalViewChange(new PartitionAssignment(key, 1)));
+    manager.trigger(key, listener -> listener.onExternalViewChange(new PartitionAssignment(key, 1)));
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener1.isExecuted);
 
     TestListener listener2 = new TestListener();
@@ -38,7 +38,7 @@ public class TestListenerManager {
     TestListener listener2 = new TestListener();
     manager.subscribe(Utils.WILDCARD_MATCH_ANY, listener1);
     manager.subscribe(key, listener2);
-    manager.trigger(key, listener -> listener.onRoutingDataChanged(new PartitionAssignment(key, 1)));
+    manager.trigger(key, listener -> listener.onExternalViewChange(new PartitionAssignment(key, 1)));
     // Both listeners should be triggered.
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener1.isExecuted);
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener2.isExecuted);
@@ -56,7 +56,12 @@ public class TestListenerManager {
     private boolean isExecuted = false;
 
     @Override
-    public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+    public void onExternalViewChange(PartitionAssignment partitionAssignment) {
+      isExecuted = true;
+    }
+
+    @Override
+    public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
       isExecuted = true;
     }
 

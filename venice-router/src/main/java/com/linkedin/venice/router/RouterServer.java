@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.HelixViewPropertyType;
 import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
@@ -232,7 +233,7 @@ public class RouterServer extends AbstractVeniceService {
     this.schemaRepository =
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName(),
             config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
-    this.routingDataRepository = new HelixRoutingDataRepository(manager);
+    this.routingDataRepository = new HelixRoutingDataRepository(manager, HelixViewPropertyType.EXTERNALVIEW);
     this.storeConfigRepository =
         new HelixReadOnlyStoreConfigRepository(zkClient, adapter, config.getRefreshAttemptsForZkReconnect(),
             config.getRefreshIntervalForZkReconnectInMs());

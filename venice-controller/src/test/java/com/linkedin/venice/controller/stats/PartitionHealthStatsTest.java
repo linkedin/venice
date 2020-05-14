@@ -38,7 +38,7 @@ public class PartitionHealthStatsTest {
     }
     assignment.addPartition(preparePartition( assignment, partitionCount - 1, replicationFactor));
 
-    stats.onRoutingDataChanged(assignment);
+    stats.onExternalViewChange(assignment);
     // Verify we have recorded the correct under replicated partition count
     Assert.assertEquals(stats.underReplicatedPartitionNumber, partitionCount - 1,
         "We give stats two under replicated partitions, but it did not recorded it correctly.");
@@ -46,7 +46,7 @@ public class PartitionHealthStatsTest {
     Mockito.doReturn(VersionStatus.STARTED).when(mockStore).getVersionStatus(Mockito.anyInt());stats = new MockPartitionHealthStats(mockStoreRepo, replicationFactor);
     // Reset stats.
     stats = new MockPartitionHealthStats(mockStoreRepo, replicationFactor);
-    stats.onRoutingDataChanged(assignment);
+    stats.onExternalViewChange(assignment);
     // Verify we have recorded the correct under replicated partition count
     Assert.assertEquals(stats.underReplicatedPartitionNumber, 0,
         "We should not count the under replicated partition in on-going push.");

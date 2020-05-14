@@ -454,7 +454,7 @@ public abstract class AbstractPushMonitor
   }
 
   @Override
-  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     pushMonitorWriteLock.lock();
     try {
       logger.info("Received the routing data changed notification for topic:" + partitionAssignment.getTopic());
@@ -480,6 +480,7 @@ public abstract class AbstractPushMonitor
       pushMonitorWriteLock.unlock();
     }
   }
+
 
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {

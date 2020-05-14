@@ -102,6 +102,7 @@ public class VeniceRouterConfig {
   private boolean earlyThrottleEnabled;
   private long routerQuotaCheckWindow;
   private long maxRouterReadCapacityCu;
+  private boolean helixCustomizedViewEnabled;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -233,6 +234,7 @@ public class VeniceRouterConfig {
     maxRouterReadCapacityCu = props.getLong(ROUTER_MAX_READ_CAPACITY, 6000);
     routerQuotaCheckWindow = props.getLong(ROUTER_QUOTA_CHECK_WINDOW, 30000);
     earlyThrottleEnabled = props.getBoolean(ROUTER_EARLY_THROTTLE_ENABLED, false);
+    helixCustomizedViewEnabled = props.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -557,6 +559,8 @@ public class VeniceRouterConfig {
   public boolean isEarlyThrottleEnabled() {
     return earlyThrottleEnabled;
   }
+
+  public boolean isHelixCustomizedViewEnabled() { return helixCustomizedViewEnabled; }
 
   /**
    * The expected config format is like the following:

@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.stats.AggServerQuotaUsageStats;
 import com.linkedin.venice.throttle.TokenBucket;
@@ -85,7 +86,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
       logger.error("Null resource assignment from RoutingDataRepository in ReadQuotaEnforcementHandler");
     } else {
       for (String resource : routingRepository.getResourceAssignment().getAssignedResources()) {
-        this.onRoutingDataChanged(routingRepository.getPartitionAssignments(resource));
+        this.onExternalViewChange(routingRepository.getPartitionAssignments(resource));
       }
     }
     this.initializedVolatile = true;
@@ -217,7 +218,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
    * @param partitionAssignment Newest partitions assignments information including resource name and  all of instances assigned to this resource.
    */
   @Override
-  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     String topic = partitionAssignment.getTopic();
     if (partitionAssignment.getAllPartitions().isEmpty()){
       logger.warn("QuotaEnforcementHandler updated with an empty partition map for topic: " + topic + ".  Skipping update process");
@@ -235,6 +236,11 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
     TokenBucket newStoreBucket = tokenBucketfromRcuPerSecond(
         quotaInRcu, thisNodeQuotaResponsibility);
     storeVersionBuckets.put(topic, newStoreBucket); //put is atomic, so this method is thread-safe
+  }
+
+  @Override
+  public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
+    // Ignore this event
   }
 
   /**
@@ -300,7 +306,7 @@ public class ReadQuotaEnforcementHandler extends SimpleChannelInboundHandler<Rou
          * a the future version will fail in most cases, because the new topic is not in the external view at all.
          *
          */
-        this.onRoutingDataChanged(routingRepository.getPartitionAssignments(topic));
+        this.onExternalViewChange(routingRepository.getPartitionAssignments(topic));
       } catch (VeniceNoHelixResourceException e) {
         Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(topic));
         if (version.isPresent() && version.get().getStatus().equals(VersionStatus.ONLINE)) {
