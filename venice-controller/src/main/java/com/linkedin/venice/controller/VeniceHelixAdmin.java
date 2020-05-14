@@ -22,6 +22,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -564,7 +565,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             resources.getPushMonitor().cleanupStoreStatus(storeName);
             // Clean up topics
             if (!store.isMigrating()) {
-                truncateKafkaTopic(Version.composeRealTimeTopic(storeName));
+                // for RT topic block on deletion so that next create store does not see the lingering RT topic which could have different partition count
+                String rtTopic = Version.composeRealTimeTopic(storeName);
+                truncateKafkaTopic(rtTopic);
+                if (getTopicManager().containsTopic(rtTopic)) {
+                    throw new VeniceRetriableException("Waiting for RT topic deletion for store: " + storeName);
+                }
             }
             if (store != null) {
                 truncateOldTopics(clusterName, store, true);
