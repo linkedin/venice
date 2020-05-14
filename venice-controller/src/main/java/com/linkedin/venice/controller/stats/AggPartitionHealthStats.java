@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.PushMonitor;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -53,7 +54,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   }
 
   @Override
-  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     int underReplicatedPartitions = 0;
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(partitionAssignment.getTopic());
@@ -72,6 +73,11 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
       }
     }
     reportUnderReplicatedPartition(partitionAssignment.getTopic(), underReplicatedPartitions);
+  }
+
+  @Override
+  public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
+    // Ignore this event
   }
 
   @Override

@@ -88,7 +88,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onRoutingDataChanged(pa);
+    quotaEnforcer.onExternalViewChange(pa);
 
     runTest(topic, storeReadQuota * 5 * 10, storeReadQuota * 10, 10000);
   }
@@ -119,7 +119,7 @@ public class ReadQuotaEnforcementHandlerTest {
     doReturn(storeReadQuota).when(store).getReadQuotaInCU();
     doReturn(store).when(storeRepository).getStore(any());
 
-    quotaEnforcer.onRoutingDataChanged(pa);
+    quotaEnforcer.onExternalViewChange(pa);
 
     runTest(topic, storeReadQuota/2 * 5 * 10, storeReadQuota/2 * 10, 10000);
   }

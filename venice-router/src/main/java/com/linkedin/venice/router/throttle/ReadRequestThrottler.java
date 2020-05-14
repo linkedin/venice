@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import java.util.List;
@@ -197,7 +198,7 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
   }
 
   @Override
-  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
     String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
     synchronized (storesThrottlers) {
       StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(storeName);
@@ -207,6 +208,11 @@ public class ReadRequestThrottler implements RouterThrottler, RoutersClusterMana
       }
       storeReadThrottler.updateStorageNodesThrottlers(partitionAssignment);
     }
+  }
+
+  @Override
+  public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
+
   }
 
   @Override

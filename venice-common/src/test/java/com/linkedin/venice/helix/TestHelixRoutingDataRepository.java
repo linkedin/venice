@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.routerapi.ReplicaState;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
@@ -82,7 +83,7 @@ public class TestHelixRoutingDataRepository {
 
     readManager = new SafeHelixManager(HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress));
     readManager.connect();
-    repository = new HelixRoutingDataRepository(readManager);
+    repository = new HelixRoutingDataRepository(readManager, HelixViewPropertyType.EXTERNALVIEW);
     repository.refresh();
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
         () -> repository.containsKafkaTopic(resourceName));
@@ -205,7 +206,12 @@ public class TestHelixRoutingDataRepository {
     final boolean[] isNoticed = {false};
     RoutingDataRepository.RoutingDataChangedListener listener = new RoutingDataRepository.RoutingDataChangedListener() {
       @Override
-      public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+      public void onExternalViewChange(PartitionAssignment partitionAssignment) {
+        isNoticed[0] = true;
+      }
+
+      @Override
+      public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
         isNoticed[0] = true;
       }
 

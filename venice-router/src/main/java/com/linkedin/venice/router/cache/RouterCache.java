@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
@@ -333,7 +334,12 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
   }
 
   @Override
-  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+  public void onExternalViewChange(PartitionAssignment partitionAssignment) {
+
+  }
+
+  @Override
+  public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
 
   }
 
