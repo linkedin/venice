@@ -1,0 +1,71 @@
+package com.linkedin.venice.helix;
+
+import java.util.Map;
+
+import com.linkedin.data.Null;
+import com.linkedin.venice.exceptions.VeniceException;
+import org.apache.helix.HelixManager;
+import org.apache.helix.api.exceptions.HelixMetaDataAccessException;
+import org.apache.helix.customizedstate.CustomizedStateProvider;
+import org.apache.helix.customizedstate.CustomizedStateProviderFactory;
+import org.apache.helix.model.CustomizedState;
+import org.apache.log4j.Logger;
+
+
+/**
+ * A parent class to access Helix customized partition state, which is different from the states
+ * defined in the state model. The partition state is stored on Zookeeper. This class provides
+ * the way to read/write the state.
+ * Note this class is only an accessor but not a repository so it will not cache anything in local
+ * memory. In other words it's stateless and Thread-Safe.
+ * The data structure on ZK would be:
+ * /VeniceClusterName/INSTANCES/instanceName/CUSTOMIZEDSTATE/$topic -> customized state for $topic
+*/
+
+public abstract class HelixPartitionStateAccessor {
+
+  private static Logger logger = Logger.getLogger(HelixPartitionStateAccessor.class);
+  CustomizedStateProvider customizedStateProvider;
+
+  public HelixPartitionStateAccessor(HelixManager helixManager, String instanceId) {
+    this.customizedStateProvider = CustomizedStateProviderFactory.getInstance()
+        .buildCustomizedStateProvider(helixManager, instanceId);
+  }
+
+  public void updateReplicaStatus(HelixPartitionState stateType, String topic, String partitionName,
+      String status) {
+    customizedStateProvider.updateCustomizedState(stateType.name(), topic, partitionName, status);
+  }
+
+  public String getReplicaStatus(HelixPartitionState stateType, String topic,
+      String partitionName) {
+    try {
+      return customizedStateProvider.getPerPartitionCustomizedState(stateType.name(), topic,
+          partitionName).get(CustomizedState.CustomizedStateProperty.CURRENT_STATE.name());
+    } catch (NullPointerException e) {
+      String errorMsg = String
+          .format("The partition %s does not have " + "state %s available in ZK", partitionName,
+              stateType.name());
+      logger.error(errorMsg, e);
+      throw new VeniceException(errorMsg, e);
+    } catch (HelixMetaDataAccessException e) {
+      String errorMsg = String
+          .format("Failed to get state %s for partition " + "%s", stateType.name(), partitionName);
+      logger.error(errorMsg, e);
+      throw new VeniceException(errorMsg, e);
+    }
+  }
+
+  public Map<String, String> getAllReplicaStatus(HelixPartitionState stateType, String topic) {
+    try {
+      return customizedStateProvider.getCustomizedState(stateType.name(), topic)
+          .getPartitionStateMap(CustomizedState.CustomizedStateProperty.CURRENT_STATE);
+    } catch (NullPointerException e) {
+      throw new VeniceException(String.format("The topic %s does not have "
+          + "state %s available in ZK", topic, stateType.name()), e);
+    } catch (HelixMetaDataAccessException e) {
+      throw new VeniceException(String.format("Failed to get state %s for topic "
+          + "%s", stateType.name(), topic), e);
+    }
+  }
+}

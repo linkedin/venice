@@ -21,6 +21,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
+import com.linkedin.venice.notifier.PartitionPushStatusNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
@@ -131,7 +132,7 @@ public class StoreIngestionTaskTest {
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
   private StorageEngineRepository mockStorageEngineRepository;
-  private VeniceNotifier mockNotifier;
+  private VeniceNotifier mockNotifier, mockPartitionStatusNotifier;
   private List<Object[]> mockNotifierProgress;
   private List<Object[]> mockNotifierEOPReveived;
   private List<Object[]> mockNotifierCompleted;
@@ -228,6 +229,8 @@ public class StoreIngestionTaskTest {
       mockNotifierError.add(args);
       return null;
     }).when(mockNotifier).error(anyString(), anyInt(), anyString(), any());
+
+    mockPartitionStatusNotifier = mock(PartitionPushStatusNotifier.class);
 
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
@@ -336,7 +339,8 @@ public class StoreIngestionTaskTest {
       }
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
-    Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
+    Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier,
+        new LogNotifier(), mockPartitionStatusNotifier));
     DiskUsage diskUsage;
     if (diskUsageForTest.isPresent()){
       diskUsage = diskUsageForTest.get();
@@ -596,7 +600,6 @@ public class StoreIngestionTaskTest {
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    //runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH},
@@ -604,6 +607,11 @@ public class StoreIngestionTaskTest {
        */
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset + 1);
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset  + 1);
+      verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+          fooLastOffset + 1);
+      verify(mockPartitionStatusNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+          barLastOffset  + 1);
+
       /**
        * It seems Mockito will mess up the verification if there are two functions with the same name:
        * {@link StorageMetadataService#put(String, StoreVersionState)}
@@ -623,6 +631,10 @@ public class StoreIngestionTaskTest {
       verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
       verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
       verify(mockNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
+      verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockPartitionStatusNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+      verify(mockPartitionStatusNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockPartitionStatusNotifier, atLeastOnce()).endOfPushReceived(topic, PARTITION_BAR, barLastOffset);
     }, isLeaderFollowerModelEnabled);
   }
 

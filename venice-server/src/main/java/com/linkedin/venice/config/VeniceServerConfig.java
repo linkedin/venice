@@ -182,6 +182,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final String kafkaAdminClass;
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
+  private boolean helixCustomizedViewEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -241,6 +242,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
     enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, true);
+    helixCustomizedViewEnabled = serverProperties.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
 
     /**
      * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
@@ -477,5 +479,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getRouterConnectionWarmingDelayMs() {
     return routerConnectionWarmingDelayMs;
+  }
+
+  public boolean isHelixCustomizedViewEnabled() {
+    return helixCustomizedViewEnabled;
   }
 }
