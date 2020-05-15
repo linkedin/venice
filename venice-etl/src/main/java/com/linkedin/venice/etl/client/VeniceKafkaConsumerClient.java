@@ -320,7 +320,9 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
     return offsets.get(topicPartition);
   }
 
-
+  /**
+   * This API will be invoked multiple times in extractor, we don't have to consume until maxOffset.
+   */
   @Override
   public Iterator<KafkaConsumerRecord> consume(KafkaPartition partition, long nextOffset, long maxOffset) {
     String topic = partition.getTopicName();
@@ -406,8 +408,13 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
         if (!hasRealMessages) {
           polledEmptyRealRecordsCount++;
         }
-        // stop polling more records if already digested more than max offset
-        if (lastRecordOffset >= maxOffset) {
+        /**
+         * Break the loop if:
+         * 1. already digested more than max offset;
+         * 2. encounter real data records; this API will be invoked multiple times in extractor;
+         * 3. couldn't consume any records for {@link MAX_ATTEMPTS_FOR_EMPTY_POLLING} times.
+         */
+        if (lastRecordOffset >= maxOffset || hasRealMessages) {
           break;
         }
       } while (polledEmptyRealRecordsCount <= MAX_ATTEMPTS_FOR_EMPTY_POLLING);
