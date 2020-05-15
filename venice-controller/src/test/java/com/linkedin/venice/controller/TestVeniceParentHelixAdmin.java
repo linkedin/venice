@@ -20,6 +20,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -1112,50 +1114,64 @@ public class TestVeniceParentHelixAdmin {
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testSuperSetSchemaGen(boolean isControllerSslEnabled) throws IOException {
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    VeniceControllerWrapper childControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
-    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
-    VeniceControllerWrapper controllerWrapper =
-        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled);
+    try (KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
+        VeniceControllerWrapper childControllerWrapper =
+            ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, isControllerSslEnabled);
+        ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+        VeniceControllerWrapper controllerWrapper =
+            ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+                new VeniceControllerWrapper[]{childControllerWrapper}, isControllerSslEnabled)) {
+      String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
+      Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
 
-    String controllerUrl = isControllerSslEnabled ? controllerWrapper.getSecureControllerUrl() : controllerWrapper.getControllerUrl();
-    Optional<SSLFactory> sslFactory = isControllerSslEnabled ? Optional.of(SslUtils.getVeniceLocalSslFactory()) : Optional.empty();
+      // Adding store
+      String storeName = "test_store";
+      String owner = "test_owner";
+      String keySchemaStr = "\"long\"";
+      Schema valueSchema = generateSchema(false);
 
-    // Adding store
-    String storeName = "test_store";
-    String owner = "test_owner";
-    String keySchemaStr = "\"long\"";
-    Schema valueSchema = generateSchema(false);
+      try (ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory)) {
+        NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+        Assert.assertNotNull(newStoreResponse);
+        Assert.assertFalse(newStoreResponse.isError(), "error in newStoreResponse: " + newStoreResponse.getError());
 
-    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl, sslFactory);
-    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchema.toString());
+        UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+        params.setReadComputationEnabled(true);
+        params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
+        params.setAutoSchemaPushJobEnabled(true);
+        ControllerResponse updateStoreResponse = controllerClient.updateStore(storeName, params);
+        Assert.assertNotNull(updateStoreResponse);
+        Assert.assertFalse(updateStoreResponse.isError(), "error in updateStoreResponse: " + updateStoreResponse.getError());
 
-    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
-    params.setReadComputationEnabled(true);
-    params.setAutoSupersetSchemaEnabledFromReadComputeStore(true);
-    params.setAutoSchemaPushJobEnabled(true);
-    controllerClient.updateStore(storeName, params);
+        valueSchema = generateSchema(true);
+        SchemaResponse addSchemaRespone = controllerClient.addValueSchema(storeName, valueSchema.toString());
+        Assert.assertNotNull(addSchemaRespone);
+        Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
 
-    valueSchema = generateSchema(true);
-    controllerClient.addValueSchema(storeName, valueSchema.toString());
+        MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
+        Assert.assertNotNull(schemaResponse);
+        Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+        Assert.assertNotNull(schemaResponse.getSchemas());
+        Assert.assertEquals(schemaResponse.getSchemas().length,3);
 
-    MultiSchemaResponse schemaResponse = controllerClient.getAllValueSchema(storeName);
+        StoreResponse storeResponse = controllerClient.getStore(storeName);
+        Assert.assertNotNull(storeResponse);
+        Assert.assertFalse(storeResponse.isError(), "error in storeResponse: " + storeResponse.getError());
+        Assert.assertNotNull(storeResponse.getStore());
+        Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
 
-    Assert.assertEquals(schemaResponse.getSchemas().length,3);
-    StoreResponse storeResponse = controllerClient.getStore(storeName);
-    Assert.assertTrue(storeResponse.getStore().getLatestSuperSetValueSchemaId() != -1);
+        valueSchema = generateSuperSetSchemaNewField();
+        addSchemaRespone = controllerClient.addValueSchema(storeName, valueSchema.toString());
+        Assert.assertNotNull(addSchemaRespone);
+        Assert.assertFalse(addSchemaRespone.isError(), "error in addSchemaRespone: " + addSchemaRespone.getError());
 
-    valueSchema = generateSuperSetSchemaNewField();
-    controllerClient.addValueSchema(storeName, valueSchema.toString());
-
-    schemaResponse = controllerClient.getAllValueSchema(storeName);
-    Assert.assertEquals(schemaResponse.getSchemas().length,4);
-
-    controllerWrapper.close();
-    childControllerWrapper.close();
-    kafkaBrokerWrapper.close();
+        schemaResponse = controllerClient.getAllValueSchema(storeName);
+        Assert.assertNotNull(schemaResponse);
+        Assert.assertFalse(schemaResponse.isError(), "error in schemaResponse: " + schemaResponse.getError());
+        Assert.assertNotNull(schemaResponse.getSchemas());
+        Assert.assertEquals(schemaResponse.getSchemas().length,4);
+      }
+    }
   }
 
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
