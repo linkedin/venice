@@ -337,7 +337,17 @@ public class VeniceServer {
       }
     } else {
       for (AbstractStorageEngine storageEngine : allStorageEngines) {
-        storageEngine.validateMigrationStatus();
+        /**
+         * Following method checks if a store was previously migrated to use RocksDB but still trying to start
+         * the server with config isRocksDBOffsetMetadataEnabled() set to false. For rolling back all the data
+         * needs to be wiped clean
+         */
+        if (storageEngine.isMetadataMigrationCompleted()) {
+          throw new VeniceException(String.format(
+              "Store %s has previously migrated to RocksDB metadata offset store, but now its set "
+                  + "(server.enable.rocksdb.offset.metadata = false) to use BDB. "
+                  + "Please delete all data including offset for this store", storageEngine.getName()));
+        }
       }
     }
     long end = System.currentTimeMillis();
