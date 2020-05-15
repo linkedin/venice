@@ -57,12 +57,9 @@ jar {
             exclude("**/org/apache/xerces/**")
             exclude("com/google/common/**")
             exclude("org/apache/avro/**")
-            // exclude("*.xml")
-            // exclude("hdfs*.xml")
-            // exclude("mapred*.xml")
-            // exclude("core*.xml")
             exclude("**/org.apache.hadoop*")
             exclude("javax/ws/rs/core/**")
+            exclude("org/glassfish/jersey/core/**")
         }
     }
 
@@ -90,6 +87,7 @@ task fatJar(type: Jar) {
             exclude("org/apache/avro/**")
             exclude("**/org.apache.hadoop*")
             exclude("javax/ws/rs/core/**")
+            exclude("org/glassfish/jersey/core/**")
         }
     }
 
