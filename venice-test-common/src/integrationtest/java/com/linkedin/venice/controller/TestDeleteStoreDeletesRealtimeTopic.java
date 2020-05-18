@@ -5,7 +5,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -46,7 +45,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
   }
 
   @Test
-  public void deletingHybridStoreDeletesRealtimeTopic(){
+  public void deletingHybridStoreDeletesRealtimeTopic() {
     venice = ServiceFactory.getVeniceCluster();
     controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
 
@@ -89,9 +88,11 @@ public class TestDeleteStoreDeletesRealtimeTopic {
         .setEnableReads(false)
         .setEnableWrites(false));
 
-    //delete store
-    TrackableControllerResponse response = controllerClient.deleteStore(storeName);
-    Assert.assertFalse(response.isError(), "Received an error on the delete store command: " + response.getError() + ".");
+    // wait on delete store as it blocks on deletion of RT topic
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
+      return !controllerClient.deleteStore(storeName).isError(); //error because store no longer exists
+    });
+
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       return controllerClient.getStore(storeName).isError(); //error because store no longer exists
     });
