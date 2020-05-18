@@ -180,7 +180,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
 
-  public static final String COMPRESSION_DICTIONARY_SAMPLING_FACTOR = "compression.dictionary.sampling.factor";
+  public static final String COMPRESSION_DICTIONARY_SAMPLE_SIZE = "compression.dictionary.sample.size";
   public static final String COMPRESSION_DICTIONARY_SIZE_LIMIT = "compression.dictionary.size.limit";
 
   public static final String SSL_CONFIGURATOR_CLASS_CONFIG = "ssl.configurator.class";
@@ -367,7 +367,7 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     ZstdDictTrainer zstdDictTrainer;
     int maxBytesPerFile;
     int dictSize;
-    int samplingFactor;
+    int sampleSize;
   }
 
   private ZstdConfig zstdConfig;
@@ -1639,10 +1639,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
 
     zstdConfig = new ZstdConfig();
     zstdConfig.dictSize = props.getInt(COMPRESSION_DICTIONARY_SIZE_LIMIT, VeniceWriter.DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES);
-    zstdConfig.samplingFactor = props.getInt(COMPRESSION_DICTIONARY_SAMPLING_FACTOR, 500);
-    zstdConfig.maxBytesPerFile = (zstdConfig.samplingFactor * zstdConfig.dictSize) / numFiles;
+    zstdConfig.sampleSize = props.getInt(COMPRESSION_DICTIONARY_SAMPLE_SIZE, 200 * 1024 * 1024); // 200 MB samples
+    zstdConfig.maxBytesPerFile = zstdConfig.sampleSize / numFiles;
 
-    zstdConfig.zstdDictTrainer = new ZstdDictTrainer(zstdConfig.samplingFactor * zstdConfig.dictSize, zstdConfig.dictSize);
+    zstdConfig.zstdDictTrainer = new ZstdDictTrainer(zstdConfig.sampleSize, zstdConfig.dictSize);
   }
 
   public String getKafkaTopic() {

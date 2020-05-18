@@ -229,8 +229,6 @@ public class TestVsonStoreBatch {
           properties.setProperty(KafkaPushJob.KEY_FIELD_PROP, "");
           properties.setProperty(VENICE_DISCOVER_URL_PROP, properties.getProperty(VENICE_URL_PROP));
           properties.setProperty(VENICE_URL_PROP, "invalid_venice_urls");
-          properties.setProperty(COMPRESSION_DICTIONARY_SAMPLING_FACTOR, String.valueOf(500));
-          properties.setProperty(COMPRESSION_DICTIONARY_SIZE_LIMIT, String.valueOf(1024 * 1024));
         },
         (avroClient, vsonClient, metricsRepository) -> {
           //test single get
