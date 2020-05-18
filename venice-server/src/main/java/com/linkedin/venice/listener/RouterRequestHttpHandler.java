@@ -103,6 +103,7 @@ public class RouterRequestHttpHandler extends SimpleChannelInboundHandler<FullHt
           break;
         case DICTIONARY:
           DictionaryFetchRequest dictionaryFetchRequest = DictionaryFetchRequest.parseGetHttpRequest(req);
+          statsHandler.setStoreName(dictionaryFetchRequest.getStoreName());
           ctx.fireChannelRead(dictionaryFetchRequest);
           break;
         default:
