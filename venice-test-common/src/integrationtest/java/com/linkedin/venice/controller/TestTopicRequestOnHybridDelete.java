@@ -95,8 +95,12 @@ public class TestTopicRequestOnHybridDelete {
       controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
           .setEnableReads(false)
           .setEnableWrites(false));
-      //delete store
-      controllerClient.deleteStore(storeName);
+
+      // wait on delete store as it blocks on deletion of RT topic
+      TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
+        return !finalControllerClient.deleteStore(storeName).isError(); //error because store no longer exists
+      });
+
       TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
         return finalControllerClient.getStore(storeName).isError(); //error because store no longer exists
       });
