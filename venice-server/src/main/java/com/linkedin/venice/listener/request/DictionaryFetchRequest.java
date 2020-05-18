@@ -7,8 +7,10 @@ import java.net.URI;
 
 
 public class DictionaryFetchRequest {
+  private final String storeName;
   private final String resourceName;
-  private DictionaryFetchRequest(String resourceName) {
+  private DictionaryFetchRequest(String storeName, String resourceName) {
+    this.storeName = storeName;
     this.resourceName = resourceName;
   }
 
@@ -28,7 +30,7 @@ public class DictionaryFetchRequest {
 
       String topicName = Version.composeKafkaTopic(storeName, storeVersion);
 
-      return new DictionaryFetchRequest(topicName);
+      return new DictionaryFetchRequest(storeName, topicName);
     } else {
       throw new VeniceException("Not a valid request for a DICTIONARY action: " + uri);
     }
@@ -36,5 +38,9 @@ public class DictionaryFetchRequest {
 
   public String getResourceName() {
     return resourceName;
+  }
+
+  public String getStoreName() {
+    return storeName;
   }
 }

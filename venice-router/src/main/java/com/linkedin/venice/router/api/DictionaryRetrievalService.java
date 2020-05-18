@@ -58,13 +58,14 @@ import static org.apache.http.HttpStatus.*;
  * maintained by CompressorFactory.
  */
 public class DictionaryRetrievalService extends AbstractVeniceService {
-  private final CloseableHttpAsyncClient httpClient;
   private static final Logger logger = Logger.getLogger(DictionaryRetrievalService.class);
+  private static final int DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS = 100;
   private final OnlineInstanceFinder onlineInstanceFinder;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final HelixReadOnlyStoreRepository metadataRepository;
   private final Thread dictionaryRetrieverThread;
   private final ExecutorService executor;
+  private final CloseableHttpAsyncClient httpClient;
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
   private BlockingQueue<String> dictionaryDownloadCandidates = new LinkedBlockingQueue<>();
@@ -160,6 +161,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
       while(true) {
         String kafkaTopic = null;
         try {
+          /**
+           * In order to avoid retry storm; back off before querying server again.
+           */
+          Thread.sleep(DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS);
           kafkaTopic = dictionaryDownloadCandidates.take();
         } catch (InterruptedException e) {
           logger.info("Thread was interrupted while waiting for a candidate to download dictionary. Will "
