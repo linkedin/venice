@@ -1,6 +1,5 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -34,8 +33,7 @@ public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
    * Stop ingesting a partition locally, and drop its associated local state.
    *
    * @param partitions the set of partition IDs to unsubscribe from
-   * @return a future which completes when the partitions’ state is cleaned up
    * @throws a VeniceException if cleanup failed for any of the partitions
    */
-  CompletableFuture<Void> unsubscribe(Set<Integer> partitions);
+  void unsubscribe(Set<Integer> partitions);
 }

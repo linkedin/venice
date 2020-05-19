@@ -15,6 +15,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ConcurrentRef;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.PartitionUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -29,7 +30,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
+
+import static java.lang.Thread.*;
 
 
 public class IngestionController implements Closeable {
@@ -55,7 +59,30 @@ public class IngestionController implements Closeable {
         ingestionService.stopConsumption(config, entry.getKey());
         entry.getValue().cancel(true);
       }
-      // TODO: Make sure partitions aren't consuming
+
+      // Make sure partitions aren't consuming
+      for (Map.Entry<Integer, CompletableFuture> entry : partitionFutures.entrySet()) {
+        try {
+          makeSurePartitionIsNotConsuming(entry.getKey());
+        } catch (InterruptedException e) {
+          logger.warn("Waiting for partition is not consuming is interrupted", e);
+          Thread.currentThread().interrupt();
+          return;
+        }
+      }
+    }
+
+    private void makeSurePartitionIsNotConsuming(int partitionId) throws InterruptedException {
+      final int SLEEP_SECONDS = 3;
+      final int RETRY_NUM = 100; // 5 mins
+      for (int i = 0; i < RETRY_NUM; i++) {
+        if (!ingestionService.isPartitionConsuming(config, partitionId)) {
+          return;
+        }
+        sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
+      }
+      throw new VeniceException("Partition: " + partitionId + " of store: " + config.getStoreName()
+          + " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
     }
 
     private synchronized void delete() {
@@ -105,10 +132,47 @@ public class IngestionController implements Closeable {
       return partitionFutures.computeIfAbsent(subPartitionId, k -> new CompletableFuture());
     }
 
+    private void unsubscribe(Set<Integer> partitions) {
+      for (Integer id : partitions) {
+        if (id < 0 || id >= version.getPartitionCount()) {
+          String msg = "Cannot unsubscribe from out of bounds partition" +
+              ", kafkaTopic=" + version.kafkaTopicName() +
+              ", partition=" + id +
+              ", partitionCount=" + version.getPartitionCount();
+          throw new VeniceException(msg);
+        }
+      }
+
+      int amplificationFactor = version.getPartitionerConfig().getAmplificationFactor();
+      logger.info("Amplification factor: " + amplificationFactor);
+      logger.info("Unsubscribing from partitions: " + partitions.toString());
+      Set<Integer> subPartitions = PartitionUtils.getSubPartitions(partitions, amplificationFactor);
+      logger.info("Unsubscribing from sub-partitions: " + subPartitions.toString());
+      for (Integer id : subPartitions) {
+        unsubscribeSubPartition(id);
+      }
+
+      for (Integer id : subPartitions) {
+        try {
+          makeSurePartitionIsNotConsuming(id);
+        } catch (InterruptedException e) {
+          logger.warn("Waiting for partition is not consuming is interrupted", e);
+          Thread.currentThread().interrupt();
+          return;
+        }
+        storageService.dropStorePartition(config, id);
+      }
+    }
+
+    private void unsubscribeSubPartition(int partitionId) {
+      ingestionService.stopConsumption(config, partitionId);
+      partitionFutures.get(partitionId).cancel(true);
+      partitionFutures.remove(partitionId);
+    }
+
     private synchronized void completeSubPartition(int subPartitionId) {
       partitionFutures.computeIfAbsent(subPartitionId, k -> new CompletableFuture()).complete(null);
     }
-
   }
 
 
@@ -207,6 +271,22 @@ public class IngestionController implements Closeable {
 
       ReferenceCounted<VersionBackend> ref = getCurrentVersion();
       return currentVersion.subscribe(partitions).whenComplete((v, t) -> ref.release());
+    }
+
+    public synchronized void unsubscribe(Set<Integer> partitions) {
+      String partitionsNotFound = partitions.stream().filter(i -> !subscription.contains(i)).map(Object::toString).collect(Collectors.joining(", "));
+      if (!partitionsNotFound.isEmpty()) {
+        throw new VeniceException("Partitions " + partitionsNotFound + " are not subscribed!");
+      }
+
+      subscription.removeAll(partitions);
+
+      if (currentVersion != null) {
+        currentVersion.unsubscribe(partitions);
+      }
+      if (futureVersion != null) {
+        futureVersion.unsubscribe(partitions);
+      }
     }
 
     private synchronized void trySubscribeFutureVersion() {
@@ -332,10 +412,9 @@ public class IngestionController implements Closeable {
     return store.subscribe(Optional.of(version), partitions);
   }
 
-  public synchronized CompletableFuture<Void> unsubscribe(String storeName, Set<Integer> partitions) {
+  public synchronized void unsubscribe(String storeName, Set<Integer> partitions) {
     StoreBackend store = getStoreOrThrow(storeName);
-    // TODO: implement StoreBackend::unsubscribe
-    return CompletableFuture.completedFuture(null);
+    store.unsubscribe(partitions);
   }
 
   private Optional<Version> getLatestVersion(String storeName) {

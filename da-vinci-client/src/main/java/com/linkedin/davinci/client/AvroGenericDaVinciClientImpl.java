@@ -185,8 +185,8 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<Void> unsubscribe(Set<Integer> partitions) {
-    return ingestionController.unsubscribe(getStoreName(), partitions);
+  public void unsubscribe(Set<Integer> partitions) {
+    ingestionController.unsubscribe(getStoreName(), partitions);
   }
 
   @Override

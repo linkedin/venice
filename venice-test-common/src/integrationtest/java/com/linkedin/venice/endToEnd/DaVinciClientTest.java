@@ -7,6 +7,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -116,7 +117,7 @@ public class DaVinciClientTest {
         final int key = i;
         assertThrows(VeniceClientException.class, () -> client.get(key).get());
       }
-      client.unsubscribe(Collections.singleton(emptyPartition)).get();
+      client.unsubscribe(Collections.singleton(emptyPartition));
 
       // subscribe to a partition with data
       client.subscribe(Collections.singleton(partition)).get();
@@ -153,6 +154,30 @@ public class DaVinciClientTest {
     setUpHybridStore(storeName, paramsConsumer);
 
     try (DaVinciClient<Integer, Integer> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {
+      client.subscribe(Collections.singleton(partition)).get();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          assertEquals(client.get(i).get(), i);
+        }
+      });
+
+      // unsubscribe to a partition with data
+      client.unsubscribe(Collections.singleton(partition));
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          final int key = i;
+          assertThrows(VeniceClientException.class, () -> client.get(key).get());
+        }
+      });
+
+      // unsubscribe not subscribed partitions
+      Set<Integer> partitionSet = new HashSet<>();
+      for (int i = 0; i < partitionCount; i++) {
+        partitionSet.add(i);
+      }
+      assertThrows(VeniceException.class, () -> client.unsubscribe(partitionSet));
+
+      // re-subscribe to a partition with data to test sub a unsub-ed partition
       client.subscribe(Collections.singleton(partition)).get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
