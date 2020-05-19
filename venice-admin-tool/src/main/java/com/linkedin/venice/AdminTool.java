@@ -327,6 +327,9 @@ public class AdminTool {
         case MIGRATION_STATUS:
           checkMigrationStatus(cmd);
           break;
+        case COMPLETE_MIGRATION:
+          completeMigration(cmd);
+          break;
         case ABORT_MIGRATION:
           abortMigration(cmd);
           break;
@@ -900,7 +903,6 @@ public class AdminTool {
     }
 
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
     StoreResponse storeResponse = srcControllerClient.getStore(storeName);
     if (storeResponse.isError()) {
@@ -927,19 +929,8 @@ public class AdminTool {
     // This maintains the ability to easily write scripts around the admin tool that do parsing of the output.
     System.err.println("\nThe migration request has been submitted successfully.\n"
         + "Make sure at least one version is online before deleting the original store.\n"
-        + "If you terminate this process, the migration will continue and "
-        + "you can verify the process by describing the store in the destination cluster.");
-
-    // Progress monitor
-    if (null != storeMigrationResponse.getChildControllerUrls()) {
-      // This must be parent controller
-      System.err.println("When complete, the \"cluster\" property of this store should become " + destClusterName);
-      monitorMultiClusterAfterMigration(destControllerClient, storeMigrationResponse);
-    } else {
-      // Child controller
-      System.err.println("When complete, this store should have at least one online version.");
-      monitorSingleClusterAfterMigration(srcControllerClient, destControllerClient, storeMigrationResponse);
-    }
+        + "You can check the migration process using admin-tool command --migration-status.\n"
+        + "To complete migration fabric by fabric, use admin-tool command --complete-migration.");
   }
 
   private static void printMigrationStatus(ControllerClient controller, String storeName) {
@@ -973,8 +964,8 @@ public class AdminTool {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
 
-    List<String> childControllerUrls = srcControllerClient.listChildControllers(srcClusterName).getChildControllerUrls();
-    if (childControllerUrls == null) {
+    Map<String, String> childClusterMap = srcControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
+    if (childClusterMap == null) {
       // This is a controller in single datacenter setup
       printMigrationStatus(srcControllerClient, storeName);
       printMigrationStatus(destControllerClient, storeName);
@@ -984,6 +975,7 @@ public class AdminTool {
       printMigrationStatus(srcControllerClient, storeName);
       printMigrationStatus(destControllerClient, storeName);
 
+      List<String> childControllerUrls = new ArrayList<>(childClusterMap.values());
       ControllerClient[] srcChildControllerClients = createControllerClients(srcClusterName, childControllerUrls);
       ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
 
@@ -992,6 +984,63 @@ public class AdminTool {
         printMigrationStatus(srcChildControllerClients[i], storeName);
         printMigrationStatus(destChildControllerClients[i], storeName);
       }
+    }
+  }
+
+  private static void completeMigration(CommandLine cmd) {
+    String veniceUrl = getRequiredArgument(cmd, Arg.URL);
+    String storeName = getRequiredArgument(cmd, Arg.STORE);
+    String srcClusterName = getRequiredArgument(cmd, Arg.CLUSTER_SRC);
+    String destClusterName = getRequiredArgument(cmd, Arg.CLUSTER_DEST);
+    String fabric = getRequiredArgument(cmd, Arg.FABRIC);
+
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, veniceUrl, sslFactory);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, veniceUrl, sslFactory);
+    Map<String, String> childClusterMap = srcControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
+    if (childClusterMap == null) {
+      // This is a controller in single datacenter setup
+      System.err.println("WARN: fabric option is ignored on child controller.");
+      if (isClonedStoreOnline(srcControllerClient, destControllerClient, storeName)) {
+        System.err.println("Cloned store is ready in dest cluster " + destClusterName + ". Updating cluster discovery info...");
+        srcControllerClient.completeMigration(storeName, destClusterName);
+      } else {
+        System.err.println("Cloned store is not ready in dest cluster " + destClusterName + ". Please try again later.");
+      }
+    } else {
+      // This is a parent controller
+      if (!childClusterMap.containsKey(fabric)) {
+        System.err.println("ERROR: " + fabric + " is not one of valid fabrics " + childClusterMap.keySet());
+        return;
+      }
+      String childControllerUrl = childClusterMap.get(fabric);
+      ControllerClient srcChildController = new ControllerClient(srcClusterName, childControllerUrl, sslFactory);
+      ControllerClient destChildController = new ControllerClient(destClusterName, childControllerUrl, sslFactory);
+
+      if (destChildController.discoverCluster(storeName).getCluster().equals(destClusterName)) {
+        System.err.println("ERROR: " + storeName + " already belongs to dest cluster " + destClusterName + " in fabric " + fabric);
+        return;
+      }
+
+      if (isClonedStoreOnline(srcChildController, destChildController, storeName)) {
+        System.err.println("Cloned store is ready in " + fabric + " dest cluster " + destClusterName + ". Updating cluster discovery info...");
+        srcChildController.completeMigration(storeName, destClusterName);
+      } else {
+        System.err.println("Cloned store is not ready in " + fabric + " dest cluster " + destClusterName + ". Please try again later.");
+        return;
+      }
+
+      // Update parent cluster discovery info if all child clusters are online.
+      for (String url : childClusterMap.values()) {
+        if (!url.equals(childControllerUrl)) {
+          destChildController = new ControllerClient(destClusterName, url, sslFactory);
+        }
+        if (!destChildController.discoverCluster(storeName).getCluster().equals(destClusterName)) {
+          // No need to update cluster discovery in parent if one child is not ready.
+          return;
+        }
+      }
+      System.err.println("\nCloned store is ready in all child clusters. Updating cluster discovery info in parent...");
+      srcControllerClient.completeMigration(storeName, destClusterName);
     }
   }
 
@@ -1024,38 +1073,6 @@ public class AdminTool {
     return destLatestOnlineVersion >= srcLatestOnlineVersion;
   }
 
-  private static void monitorSingleClusterAfterMigration(ControllerClient srcControllerClient,
-      ControllerClient destControllerClient, StoreMigrationResponse storeMigrationResponse) {
-
-    String srcClusterName = storeMigrationResponse.getSrcClusterName();
-    String destClusterName = storeMigrationResponse.getCluster();
-    String storeName = storeMigrationResponse.getName();
-
-    boolean isOnline = false;
-    while (!isOnline) {
-      Utils.sleep(5000);
-      System.err.println();
-      System.err.println(new java.util.Date());
-
-      isOnline = isClonedStoreOnline(srcControllerClient, destControllerClient, storeName);
-    }
-
-    // Cluster discovery info should be updated accordingly
-    System.err.println("\nCloned store is ready in dest cluster " + destClusterName + ". Checking cluster discovery info ...");
-    Utils.sleep(15000);
-    String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
-    if (destClusterName.equals(clusterDiscovered)) {
-      System.err.println("\nThe cloned store in " + destClusterName + " has bootstrapped successfully.");
-      System.err.println("Please verify that the original store in " + srcClusterName
-          + " has zero read activity, and then delete it.");
-    } else {
-      System.err.println("\nWARN: The cloned store in " + destClusterName
-          + " has bootstrapped successfully. BUT CLUSTER DISCOVERY INFORMATION IS NOT YET UPDATED!");
-      System.err.println("Expected cluster discovery result: " + destClusterName);
-      System.err.println("Actual cluster discovery result: " + clusterDiscovered);
-    }
-  }
-
   private static ControllerClient[] createControllerClients(String clusterName, List<String> controllerUrls) {
     int numChildDatacenters = controllerUrls.size();
     ControllerClient[] controllerClients = new ControllerClient[numChildDatacenters];
@@ -1064,69 +1081,6 @@ public class AdminTool {
       controllerClients[i] = new ControllerClient(clusterName, controllerUrl, sslFactory);
     }
     return controllerClients;
-  }
-
-  private static void monitorMultiClusterAfterMigration(ControllerClient destControllerClient,
-      StoreMigrationResponse storeMigrationResponse) {
-
-    String srcClusterName = storeMigrationResponse.getSrcClusterName();
-    String destClusterName = storeMigrationResponse.getCluster();
-    String storeName = storeMigrationResponse.getName();
-    List<String> childControllerUrls = storeMigrationResponse.getChildControllerUrls();
-    int numChildDatacenters = childControllerUrls.size();
-
-    ControllerClient[] srcChildControllerClients = createControllerClients(srcClusterName, childControllerUrls);
-    ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
-
-    boolean isOnline = false;
-    while (!isOnline) {
-      Utils.sleep(5000);
-      System.err.println();
-      System.err.println(new java.util.Date());
-
-      int onlineChildCount = 0;
-
-      for (int i = 0; i < numChildDatacenters; i++) {
-        ControllerClient srcChildController = srcChildControllerClients[i];
-        ControllerClient destChildController = destChildControllerClients[i];
-
-        if (isClonedStoreOnline(srcChildController, destChildController, storeName)) {
-          onlineChildCount++;
-        }
-      }
-
-      if (onlineChildCount == numChildDatacenters) {
-        isOnline = true;
-      }
-    }
-
-    // All child clusters are online, the parent cluster should also have update cluster discovery info
-    System.err.println("\nCloned store is ready in dest cluster " + destClusterName + ". Checking cluster discovery info ...");
-    String clusterDiscovered = null;
-    for (int i = 0; i < 60; i++) {
-      Utils.sleep(3000);  // Polls every 3 seconds for the next 3 minutes
-      clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
-
-      if (clusterDiscovered.equals(destClusterName)) {
-        System.err.println(
-            "\nStore migration complete.\n" + "Please make sure read activity to the original cluster is zero, "
-                + "and then delete the original store using admin-tool command --end-migration");
-        return;
-      }
-    }
-
-    System.err.println("\nWARN: Store migration complete in child clusters but not in parent yet. "
-        + "Make sure cluster discovery in parent controller gets updated, "
-        + "then confirm the original store has zero read activity and delete it using --end-migration command");
-
-    System.err.println("\nExpected cluster discovery result: " + destClusterName);
-    System.err.println("Actual cluster discovery result in parent: " + clusterDiscovered);
-    for (int i = 0; i < numChildDatacenters; i++) {
-      ControllerClient destChildController = destChildControllerClients[i];
-      String childControllerUrl = destChildController.getMasterControllerUrl();
-      String clusterDiscoveredInChild = destChildController.discoverCluster(storeName).getCluster();
-      System.err.println("Actual cluster discovery result in " + childControllerUrl + " : " + clusterDiscoveredInChild);
-    }
   }
 
   private static int getLatestOnlineVersionNum(List<Version> versions) {
@@ -1230,8 +1184,9 @@ public class AdminTool {
     if (destControllerClient.getStore(storeName).getStore() == null) {
       // Cloned store has not been created
       // Directly delete cloned stores in children datacenters if two layer setup, otherwise skip
-      List<String> childControllerUrls = abortMigrationResponse.getChildControllerUrls();
-      if (childControllerUrls != null) {
+      Map<String, String> childClusterMap = abortMigrationResponse.getChildClusterMap();
+      if (childClusterMap != null) {
+        List<String> childControllerUrls = new ArrayList<>(childClusterMap.values());
         int numChildDatacenters = childControllerUrls.size();
         int deletedStoreCount = 0;
         ControllerClient[] destChildControllerClients = createControllerClients(destClusterName, childControllerUrls);
@@ -1313,7 +1268,7 @@ public class AdminTool {
     String clusterDiscovered = destControllerClient.discoverCluster(storeName).getCluster();
     if (!clusterDiscovered.equals(destClusterName)) {
       System.err.println("ERROR: store " + storeName + " belongs to cluster " + clusterDiscovered
-          + ", which is different from the src cluster name " + destClusterName + " in your command!");
+          + ", which is different from the dest cluster name " + destClusterName + " in your command!");
       return;
     }
 

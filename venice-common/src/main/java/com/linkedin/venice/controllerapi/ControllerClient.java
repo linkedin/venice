@@ -3,39 +3,33 @@ package com.linkedin.venice.controllerapi;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.security.SSLFactory;
-import com.linkedin.venice.status.protocol.enums.PushJobStatus;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-
+import java.io.Closeable;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Arrays;
-import java.util.Collections;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
-import java.util.function.Function;
-
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.ExecutionException;
-
-import java.io.Closeable;
-import java.nio.charset.StandardCharsets;
-
-import org.apache.log4j.Logger;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.meta.Version.PushType;
+import static com.linkedin.venice.meta.Version.*;
 
 public class ControllerClient implements Closeable {
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
@@ -301,6 +295,13 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(CLUSTER_DEST, destClusterName);
     return request(ControllerRoute.MIGRATE_STORE, params, StoreMigrationResponse.class);
+  }
+
+  public StoreMigrationResponse completeMigration(String storeName, String destClusterName) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(CLUSTER_DEST, destClusterName);
+    return request(ControllerRoute.COMPLETE_MIGRATION, params, StoreMigrationResponse.class);
   }
 
   /**

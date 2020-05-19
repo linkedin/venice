@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.StoreMigrationResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -24,6 +23,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -39,11 +39,16 @@ public class StoreMigrationTest {
   private static final String STORE_NAME = "testStore";
   private static final String OWNER = "";
   private static final String NEW_OWNER = "tester";
+  private static final String FABRIC0 = "dc-0";
+  private static final String FABRIC1 = "dc-1";
+  private static final boolean[] ABORT_MIGRATION_PROMPTS_OVERRIDE = {false, true, true};
+
   private VeniceTwoLayerMultiColoMultiClusterWrapper twoLayerMultiColoMultiClusterWrapper;
   private List<VeniceMultiClusterWrapper> multiClusterWrappers;
   private String srcClusterName;
   private String destClusterName;
   private String parentControllerUrl;
+  private String childControllerUrl0;
 
   @BeforeClass
   public void setup() {
@@ -61,6 +66,7 @@ public class StoreMigrationTest {
     parentControllerUrl = twoLayerMultiColoMultiClusterWrapper.getParentControllers().stream()
         .map(veniceControllerWrapper -> veniceControllerWrapper.getControllerUrl())
         .collect(Collectors.joining(","));
+    childControllerUrl0 = multiClusterWrappers.get(0).getControllerConnectString();
 
     // Create and populate testStore in src cluster
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
@@ -69,6 +75,11 @@ public class StoreMigrationTest {
 
     // Populate store
     populateStore(parentControllerUrl, STORE_NAME, 1);
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      StoreResponse storeResponse = srcControllerClient.getStore(STORE_NAME);
+      Assert.assertNotNull(storeResponse.getStore());
+    });
   }
 
   @AfterClass
@@ -83,32 +94,29 @@ public class StoreMigrationTest {
   }
 
   @Test
-  public void testMigrateStoreWithExistingVersions() throws Exception {
-    String[] startMigrationArgs = {"--migrate-store",
-        "--url", parentControllerUrl,
-        "--store", STORE_NAME,
-        "--cluster-src", srcClusterName,
-        "--cluster-dest", destClusterName};
-    AdminTool.main(startMigrationArgs);
+  public void testMigrateStoreMultiDatacenter() throws Exception {
+    D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrappers.get(0).getClusters().get(srcClusterName).getZk().getAddress());
+    AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(ClientConfig
+        .defaultGenericClientConfig(STORE_NAME)
+        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+        .setD2Client(d2Client));
 
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Store discovery should point to the new cluster after migration
-      ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
-      ControllerResponse discoveryResponse = destControllerClient.discoverCluster(STORE_NAME);
-      String newCluster = discoveryResponse.getCluster();
-      Assert.assertEquals(newCluster, destClusterName);
-    });
+    verifyStoreData(client);
 
-    endMigration();
+    startMigration(parentControllerUrl);
+    completeMigration();
+    endMigration(parentControllerUrl);
+
+    // Test automatic cluster info update in the client, requests should be redirected
+    verifyStoreData(client);
   }
 
   @Test
-  public void testMigrateStoreWithNewPushes() throws Exception {
+  public void testMigrateStoreWithPushesAndUpdatesMultiDatacenter() throws Exception {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
 
-    StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(STORE_NAME, destClusterName);
-    Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
+    startMigration(parentControllerUrl);
     // Ensure migration status is updated in source parent controller
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
       Assert.assertTrue(srcControllerClient.getStore(STORE_NAME).getStore().isMigrating());
@@ -116,13 +124,12 @@ public class StoreMigrationTest {
 
     // Push v2
     populateStore(parentControllerUrl, STORE_NAME, 2);
+    // Update store
+    srcControllerClient.updateStore(STORE_NAME, new UpdateStoreQueryParams().setOwner(NEW_OWNER));
+
+    completeMigration();
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Store discovery should point to the new cluster after migration
-      ControllerResponse discoveryResponse = destControllerClient.discoverCluster(STORE_NAME);
-      String newCluster = discoveryResponse.getCluster();
-      Assert.assertEquals(newCluster, destClusterName);
-
       // Largest used version number in dest cluster store should be 2
       StoreResponse storeResponse = destControllerClient.getStore(STORE_NAME);
       int largestUsedVersionNumber = storeResponse.getStore().getLargestUsedVersionNumber();
@@ -132,39 +139,9 @@ public class StoreMigrationTest {
       storeResponse = srcControllerClient.getStore(STORE_NAME);
       largestUsedVersionNumber = storeResponse.getStore().getLargestUsedVersionNumber();
       Assert.assertEquals(largestUsedVersionNumber, 2);
-    });
-
-    endMigration();
-  }
-
-  @Test
-  public void testMigrateStoreWithWithStoreUpdates() throws Exception {
-    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
-    ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
-
-    StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(STORE_NAME, destClusterName);
-    Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
-    // Ensure migration status is updated in source parent controller
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
-      Assert.assertTrue(srcControllerClient.getStore(STORE_NAME).getStore().isMigrating());
-    });
-
-    String cluster = srcControllerClient.discoverCluster(STORE_NAME).getCluster();
-    String[] updateStoreArgs = {"--update-store",
-        "--url", parentControllerUrl,
-        "--cluster", cluster,
-        "--store", STORE_NAME,
-        "--owner", NEW_OWNER};
-    AdminTool.main(updateStoreArgs);
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Store discovery should point to the new cluster after migration
-      ControllerResponse discoveryResponse = destControllerClient.discoverCluster(STORE_NAME);
-      String newCluster = discoveryResponse.getCluster();
-      Assert.assertEquals(newCluster, destClusterName);
 
       // Owner of dest cluster store should be updated
-      StoreResponse storeResponse = destControllerClient.getStore(STORE_NAME);
+      storeResponse = destControllerClient.getStore(STORE_NAME);
       String owner = storeResponse.getStore().getOwner();
       Assert.assertEquals(owner, NEW_OWNER);
 
@@ -174,42 +151,129 @@ public class StoreMigrationTest {
       Assert.assertEquals(owner, NEW_OWNER);
     });
 
-    endMigration();
+    endMigration(parentControllerUrl);
   }
 
   @Test
-  public void testMigrateStoreWithClientAutoUpdate() throws Exception {
+  public void testCompleteMigrationMultiDatacenter() throws Exception {
+    ControllerClient srcParentControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+
+    startMigration(parentControllerUrl);
+    String[] completeMigration0 = {"--complete-migration",
+        "--url", parentControllerUrl,
+        "--store", STORE_NAME,
+        "--cluster-src", srcClusterName,
+        "--cluster-dest", destClusterName,
+        "--fabric", FABRIC0};
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Store discovery should point to the new cluster in fabric0
+      AdminTool.main(completeMigration0);
+      Map<String, String> childClusterMap = srcParentControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
+      ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, childClusterMap.get(FABRIC0));
+      ControllerResponse discoveryResponse = srcChildControllerClient.discoverCluster(STORE_NAME);
+      Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
+
+      // Store discovery should still point to the old cluster in fabric1
+      srcChildControllerClient = new ControllerClient(srcClusterName, childClusterMap.get(FABRIC1));
+      discoveryResponse = srcChildControllerClient.discoverCluster(STORE_NAME);
+      Assert.assertEquals(discoveryResponse.getCluster(), srcClusterName);
+    });
+
+    String[] completeMigration1 = {"--complete-migration",
+        "--url", parentControllerUrl,
+        "--store", STORE_NAME,
+        "--cluster-src", srcClusterName,
+        "--cluster-dest", destClusterName,
+        "--fabric", FABRIC1};
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Store discovery should point to the new cluster in fabric1
+      AdminTool.main(completeMigration1);
+      Map<String, String> childClusterMap = srcParentControllerClient.listChildControllers(srcClusterName).getChildClusterMap();
+      ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, childClusterMap.get(FABRIC1));
+      ControllerResponse discoveryResponse = srcChildControllerClient.discoverCluster(STORE_NAME);
+      Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
+
+      // Store discovery should point to the new cluster in parent
+      discoveryResponse = srcParentControllerClient.discoverCluster(STORE_NAME);
+      Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
+    });
+
+    endMigration(parentControllerUrl);
+  }
+
+  @Test
+  public void testAbortMigrationMultiDatacenter() throws Exception {
     ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
     ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
 
-    D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrappers.get(0).getClusters().get(srcClusterName).getZk().getAddress());
-    AvroGenericStoreClient<String, String> client = ClientFactory.getAndStartGenericAvroClient(ClientConfig
-        .defaultGenericClientConfig(STORE_NAME)
-        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
-        .setD2Client(d2Client));
-
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      String value = client.get("key").get();
-      Assert.assertNull(value);
+    // Test 1. Abort immediately
+    startMigration(parentControllerUrl);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      Assert.assertTrue(srcControllerClient.getStore(STORE_NAME).getStore().isMigrating());
     });
 
-    // Migrate store from src to dest cluster
-    StoreMigrationResponse storeMigrationResponse = srcControllerClient.migrateStore(STORE_NAME, destClusterName);
-    Assert.assertFalse(storeMigrationResponse.isError(), storeMigrationResponse.getError());
+    abortMigration(parentControllerUrl, false);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      checkStatusAfterAbortMigration(srcControllerClient, destControllerClient);
+    });
+    checkChildStatusAfterAbortMigration();
+
+    // Test 2. Migrate again and wait until cloned store being created in both parent and child
+    // cluster discovery is not updated yet
+    startMigration(parentControllerUrl);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      Assert.assertNotNull(destControllerClient.getStore(STORE_NAME).getStore());
+      for (VeniceMultiClusterWrapper multiClusterWrapper : multiClusterWrappers) {
+        ControllerClient destChildControllerClient = new ControllerClient(destClusterName, multiClusterWrapper.getControllerConnectString());
+        Assert.assertNotNull(destChildControllerClient.getStore(STORE_NAME).getStore());
+      }
+    });
+
+    abortMigration(parentControllerUrl, false);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      checkStatusAfterAbortMigration(srcControllerClient, destControllerClient);
+    });
+    checkChildStatusAfterAbortMigration();
+
+    // Test 3. Migrate again and wait until cloned store being created in both parent and child
+    // cluster discovery points to dest cluster in both parent and child
+    startMigration(parentControllerUrl);
+    completeMigration();
+
+    abortMigration(parentControllerUrl, true);
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      checkStatusAfterAbortMigration(srcControllerClient, destControllerClient);
+    });
+    checkChildStatusAfterAbortMigration();
+  }
+
+  @Test
+  public void testMigrateStoreSingleDatacenter() throws Exception {
+    ControllerClient srcControllerClient = new ControllerClient(srcClusterName, childControllerUrl0);
+    ControllerClient destControllerClient = new ControllerClient(destClusterName, childControllerUrl0);
+
+    // Preforms store migration on child controller
+    startMigration(childControllerUrl0);
+    String[] completeMigration0 = {"--complete-migration",
+        "--url", childControllerUrl0,
+        "--store", STORE_NAME,
+        "--cluster-src", srcClusterName,
+        "--cluster-dest", destClusterName,
+        "--fabric", FABRIC0};
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      // Store discovery should point to the new cluster after migration
+      // Store discovery should point to the new cluster in datacenter0
+      AdminTool.main(completeMigration0);
       ControllerResponse discoveryResponse = destControllerClient.discoverCluster(STORE_NAME);
-      String newCluster = discoveryResponse.getCluster();
-      Assert.assertEquals(newCluster, destClusterName);
+      Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
     });
 
-    endMigration();
-
-    // No exception since request will be redirected
+    // Test single datacenter abort migration
+    abortMigration(childControllerUrl0, true);
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
-      String value = client.get("key").get();
-      Assert.assertNull(value);
+      checkStatusAfterAbortMigration(srcControllerClient, destControllerClient);
     });
   }
 
@@ -236,9 +300,42 @@ public class StoreMigrationTest {
     }
   }
 
-  private void endMigration() throws Exception {
-    String[] endMigration = {"--end-migration",
+  private void startMigration(String controllerUrl) throws Exception {
+    String[] startMigrationArgs = {"--migrate-store",
+        "--url", controllerUrl,
+        "--store", STORE_NAME,
+        "--cluster-src", srcClusterName,
+        "--cluster-dest", destClusterName};
+    AdminTool.main(startMigrationArgs);
+  }
+
+  private void completeMigration() throws Exception {
+    String[] completeMigration0 = {"--complete-migration",
         "--url", parentControllerUrl,
+        "--store", STORE_NAME,
+        "--cluster-src", srcClusterName,
+        "--cluster-dest", destClusterName,
+        "--fabric", FABRIC0};
+    String[] completeMigration1 = {"--complete-migration",
+        "--url", parentControllerUrl,
+        "--store", STORE_NAME,
+        "--cluster-src", srcClusterName,
+        "--cluster-dest", destClusterName,
+        "--fabric", FABRIC1};
+
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
+      // Store discovery should point to the new cluster after completing migration
+      AdminTool.main(completeMigration0);
+      AdminTool.main(completeMigration1);
+      ControllerClient destControllerClient = new ControllerClient(destClusterName, parentControllerUrl);
+      ControllerResponse discoveryResponse = destControllerClient.discoverCluster(STORE_NAME);
+      Assert.assertEquals(discoveryResponse.getCluster(), destClusterName);
+    });
+  }
+
+  private void endMigration(String controllerUrl) throws Exception {
+    String[] endMigration = {"--end-migration",
+        "--url", controllerUrl,
         "--store", STORE_NAME,
         "--cluster-src", srcClusterName,
         "--cluster-dest", destClusterName};
@@ -246,7 +343,7 @@ public class StoreMigrationTest {
 
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Store should be deleted in source cluster
-      ControllerClient srcControllerClient = new ControllerClient(srcClusterName, parentControllerUrl);
+      ControllerClient srcControllerClient = new ControllerClient(srcClusterName, controllerUrl);
       StoreResponse storeResponse = srcControllerClient.getStore(STORE_NAME);
       Assert.assertNull(storeResponse.getStore());
     });
@@ -258,5 +355,40 @@ public class StoreMigrationTest {
     String tmp = srcClusterName;
     srcClusterName = destClusterName;
     destClusterName = tmp;
+  }
+
+  private void verifyStoreData(AvroGenericStoreClient<String, Object> client) throws Exception {
+    for (int i = 1; i <= 100; ++i) {
+      String expected = "test_name_" + i;
+      String actual = client.get(Integer.toString(i)).get().toString();
+      Assert.assertEquals(actual, expected);
+    }
+  }
+
+  private void abortMigration(String controllerUrl, boolean force) {
+    AdminTool.abortMigration(controllerUrl, STORE_NAME, srcClusterName, destClusterName, force, ABORT_MIGRATION_PROMPTS_OVERRIDE);
+  }
+
+  private void checkStatusAfterAbortMigration(ControllerClient srcControllerClient, ControllerClient destControllerClient) {
+    // Migration flag should be false
+    // Store should be deleted in dest cluster
+    // Cluster discovery should point to src cluster
+    StoreResponse storeResponse = srcControllerClient.getStore(STORE_NAME);
+    Assert.assertNotNull(storeResponse.getStore());
+    Assert.assertFalse(storeResponse.getStore().isMigrating());
+    storeResponse = destControllerClient.getStore(STORE_NAME);
+    Assert.assertNull(storeResponse.getStore());
+    ControllerResponse discoveryResponse = destControllerClient.discoverCluster(STORE_NAME);
+    Assert.assertEquals(discoveryResponse.getCluster(), srcClusterName);
+  }
+
+  private void checkChildStatusAfterAbortMigration() {
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, false, () -> {
+      for (VeniceMultiClusterWrapper multiClusterWrapper : multiClusterWrappers) {
+        ControllerClient srcChildControllerClient = new ControllerClient(srcClusterName, multiClusterWrapper.getControllerConnectString());
+        ControllerClient destChildControllerClient = new ControllerClient(destClusterName, multiClusterWrapper.getControllerConnectString());
+        checkStatusAfterAbortMigration(srcChildControllerClient, destChildControllerClient);
+      }
+    });
   }
 }

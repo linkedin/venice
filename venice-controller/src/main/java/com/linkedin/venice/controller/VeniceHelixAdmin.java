@@ -325,11 +325,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         // Start store migration monitor background thread
         storeConfigRepo.refresh();
-        // This is child controller store migration monitor.
-        // Reusing the monitor in parent controller leads to early cluster discovery update.
-        if (!multiClusterConfigs.isParent()) {
-            startStoreMigrationMonitor();
-        }
     }
 
     private void initLevel1Controller(boolean isParticipantOnly) {
@@ -695,6 +690,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             throw new VeniceException("Source cluster and destination cluster cannot be the same!");
         }
 
+        // Update store and storeConfig to support single datacenter store migration
+        this.updateStore(srcClusterName, storeName, new UpdateStoreQueryParams().setStoreMigration(true));
+        this.setStoreConfigForMigration(storeName, srcClusterName, destClusterName);
+
         String destControllerUrl = this.getMasterController(destClusterName).getUrl(false);
         ControllerClient destControllerClient = new ControllerClient(destClusterName, destControllerUrl, sslFactory);
 
@@ -753,6 +752,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public void completeMigration(String srcClusterName, String destClusterName, String storeName) {
+        this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
+    }
+
+    @Override
     public void abortMigration(String srcClusterName, String destClusterName, String storeName) {
         if (srcClusterName.equals(destClusterName)) {
             throw new VeniceException("Source cluster and destination cluster cannot be the same!");
@@ -787,18 +791,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeConfig.setCluster(newCluster);
         this.storeConfigAccessor.updateConfig(storeConfig);
         logger.info("Store " + storeName + " now belongs to cluster " + newCluster + " instead of " + oldCluster);
-    }
-
-    protected void checkPreConditionForCloneStore(String clusterName, String storeName) {
-        checkControllerMastership(clusterName);
-        checkStoreNameConflict(storeName, true);
-
-        if (storeConfigAccessor.containsConfig(storeName)) {
-            if (storeConfigAccessor.getStoreConfig(storeName).getCluster().equals(clusterName)) {
-                // store exists in dest cluster
-                throwStoreAlreadyExists(clusterName, storeName);
-            }
-        }
     }
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema,
@@ -3666,99 +3658,5 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         storeConfig.setMigrationSrcCluster(srcClusterName);
         storeConfig.setMigrationDestCluster(destClusterName);
         storeConfigAccessor.updateConfig(storeConfig);
-    }
-
-    /**
-     * This thread will run in the background and update cluster discovery information when necessary
-     */
-    private void startStoreMigrationMonitor() {
-        Thread thread = new Thread(() -> {
-            Map<String, ControllerClient> srcControllerClients = new HashMap<>();
-
-            while (true) {
-                try {
-                    Utils.sleep(10000);
-
-                    // Get a list of clusters that this controller is responsible for
-                    List<String> activeClusters = this.multiClusterConfigs.getClusters()
-                        .stream()
-                        .filter(cluster -> this.isMasterController(cluster))
-                        .collect(Collectors.toList());
-
-                    for (String clusterName : activeClusters) {
-                        // For each cluster, get a list of stores that are migrating
-                        HelixReadWriteStoreRepository storeRepo = this.getVeniceHelixResource(clusterName).getMetadataRepository();
-                        List<Store> migratingStores = storeRepo.getAllStores()
-                            .stream()
-                            .filter(s -> s.isMigrating())
-                            .filter(s -> this.storeConfigRepo.getStoreConfig(s.getName()).get().getMigrationSrcCluster() != null)
-                            .filter(s -> this.storeConfigRepo.getStoreConfig(s.getName()).get().getMigrationDestCluster() != null)
-                            .collect(Collectors.toList());
-
-                        // For each migrating stores, check if store migration is complete.
-                        // If so, update cluster discovery according to storeConfig
-                        for (Store store : migratingStores) {
-                            String storeName = store.getName();
-                            StoreConfig storeConfig = this.storeConfigRepo.getStoreConfig(storeName).get();
-                            String srcClusterName = storeConfig.getMigrationSrcCluster();
-                            String destClusterName = storeConfig.getMigrationDestCluster();
-                            String clusterDiscovered = storeConfig.getCluster();
-
-                            // Both src and dest controller can do the job. Just pick one.
-                            if (!clusterName.equals(destClusterName)) {
-                                // Source controller will ignore
-                                continue;
-                            }
-
-                            if (clusterDiscovered.equals(destClusterName)) {
-                                // Migration complete already
-                                continue;
-                            }
-
-                            ControllerClient srcControllerClient =
-                                srcControllerClients.computeIfAbsent(srcClusterName,
-                                    src_cluster_name -> new ControllerClient(src_cluster_name,
-                                        this.getMasterController(src_cluster_name).getUrl(false), sslFactory));
-
-                            List<Version> srcSortedOnlineVersions = srcControllerClient.getStore(storeName)
-                                .getStore()
-                                .getVersions()
-                                .stream()
-                                .sorted(Comparator.comparingInt(Version::getNumber).reversed()) // descending order
-                                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE))
-                                .collect(Collectors.toList());
-
-                            if (srcSortedOnlineVersions.size() == 0) {
-                                logger.warn("Original store " + storeName + " in cluster " + srcClusterName + " does not have any online versions!");
-                                // In this case updating cluster discovery information won't make it worse
-                                this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-                                continue;
-                            }
-                            int srcLatestOnlineVersionNum = srcSortedOnlineVersions.get(0).getNumber();
-
-                            Optional<Version> destLatestOnlineVersion = this.getStore(destClusterName, storeName)
-                                .getVersions()
-                                .stream()
-                                .filter(version -> version.getStatus().equals(VersionStatus.ONLINE)
-                                    && version.getNumber() >= srcLatestOnlineVersionNum)
-                                .findAny();
-
-                            if (destLatestOnlineVersion.isPresent()) {
-                                logger.info(storeName + " cloned store in " + destClusterName
-                                    + " is ready. Will update cluster discovery.");
-                                // Switch read traffic from new clients;
-                                // existing d2 clients will talk to the new cluster automatically
-                                this.updateClusterDiscovery(storeName, srcClusterName, destClusterName);
-                                continue;
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    logger.error("Caught exception in store migration monitor", e);
-                }
-            }
-        });
-
-        thread.start();
     }
 }
