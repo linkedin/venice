@@ -82,6 +82,8 @@ public interface Admin extends AutoCloseable, Closeable {
 
     void migrateStore(String srcClusterName, String destClusterName, String storeName);
 
+    void completeMigration(String srcClusterName, String destClusterName, String storeName);
+
     void abortMigration(String srcClusterName, String destClusterName, String storeName);
 
     /**

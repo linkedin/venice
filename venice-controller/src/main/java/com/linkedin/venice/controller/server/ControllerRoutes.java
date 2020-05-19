@@ -6,7 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.ChildAwareResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
-import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import spark.Request;
 import spark.Route;
@@ -51,8 +51,8 @@ public class ControllerRoutes extends AbstractRoute {
         veniceResponse.setCluster(clusterName);
 
         if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
-          List<String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildControllerUrls(clusterName);
-          veniceResponse.setChildControllerUrls(childControllerUrls);
+          Map<String, String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildClusterMap(clusterName);
+          veniceResponse.setChildClusterMap(childControllerUrls);
         }
       }
     };

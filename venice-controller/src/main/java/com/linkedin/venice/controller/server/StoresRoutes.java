@@ -128,7 +128,7 @@ public class StoresRoutes extends AbstractRoute {
         String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
         // Store should belong to src cluster already
         if (!clusterDiscovered.equals(srcClusterName)) {
-          veniceResponse.setError("Store " + storeName + " belongs to cluster " + destClusterName
+          veniceResponse.setError("Store " + storeName + " belongs to cluster " + clusterDiscovered
               + ", which is different from the given src cluster name " + srcClusterName);
           return;
         }
@@ -140,11 +140,47 @@ public class StoresRoutes extends AbstractRoute {
 
         // return child controller(s) url to admin-tool monitor if this is parent controller
         if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
-          List<String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildControllerUrls(destClusterName);
-          veniceResponse.setChildControllerUrls(childControllerUrls);
+          Map<String, String> childClusterMap = ((VeniceParentHelixAdmin) admin).getChildClusterMap(destClusterName);
+          veniceResponse.setChildClusterMap(childClusterMap);
         }
 
         admin.migrateStore(srcClusterName, destClusterName, storeName);
+      }
+    };
+  }
+
+  public Route completeMigration(Admin admin) {
+    return new VeniceRouteHandler<StoreMigrationResponse>(StoreMigrationResponse.class) {
+      @Override
+      public void internalHandle(Request request, StoreMigrationResponse veniceResponse) {
+        // Only allow whitelist users to run this command
+        if (!isWhitelistUsers(request)) {
+          veniceResponse.setError("Only admin users are allowed to run " + request.url());
+          return;
+        }
+        AdminSparkServer.validateParams(request, COMPLETE_MIGRATION.getParams(), admin);
+        String srcClusterName = request.queryParams(CLUSTER);
+        String destClusterName = request.queryParams(CLUSTER_DEST);
+        String storeName = request.queryParams(NAME);
+
+        veniceResponse.setSrcClusterName(srcClusterName);
+        veniceResponse.setCluster(destClusterName);
+        veniceResponse.setName(storeName);
+
+        String clusterDiscovered = admin.discoverCluster(storeName).getFirst();
+        // Store should belong to src cluster already
+        if (!clusterDiscovered.equals(srcClusterName)) {
+          veniceResponse.setError("Store " + storeName + " belongs to cluster " + clusterDiscovered
+              + ", which is different from the given src cluster name " + srcClusterName);
+          return;
+        }
+        // Store should not belong to dest cluster already
+        if (clusterDiscovered.equals(destClusterName)) {
+          veniceResponse.setError("Store " + storeName + " already belongs to cluster " + destClusterName);
+          return;
+        }
+
+        admin.completeMigration(srcClusterName, destClusterName, storeName);
       }
     };
   }
@@ -168,8 +204,8 @@ public class StoresRoutes extends AbstractRoute {
 
           // return child controller(s) url to admin-tool monitor if this is parent controller
           if (admin.getClass().isAssignableFrom(VeniceParentHelixAdmin.class)) {
-            List<String> childControllerUrls = ((VeniceParentHelixAdmin) admin).getChildControllerUrls(destClusterName);
-            veniceResponse.setChildControllerUrls(childControllerUrls);
+            Map<String, String> childClusterMap = ((VeniceParentHelixAdmin) admin).getChildClusterMap(destClusterName);
+            veniceResponse.setChildClusterMap(childClusterMap);
           }
 
           String clusterDiscovered = admin.discoverCluster(storeName).getFirst();

@@ -1,26 +1,26 @@
 package com.linkedin.venice.controllerapi;
 
-import java.util.List;
+import java.util.Map;
 
 
 public class ChildAwareResponse extends ControllerResponse {
-  private List<String> childControllerUrls;
+  private Map<String, String> childClusterMap;
 
-  public List<String> getChildControllerUrls() {
-    return childControllerUrls;
+  public Map<String, String> getChildClusterMap() {
+    return childClusterMap;
   }
 
-  public void setChildControllerUrls(List<String> childControllerUrls) {
-    this.childControllerUrls = childControllerUrls;
+  public void setChildClusterMap(Map<String, String> childClusterMap) {
+    this.childClusterMap = childClusterMap;
   }
 
 
   @Override
   public String toString() {
-    if (childControllerUrls == null) {
+    if (childClusterMap == null) {
       return super.toString();
     } else {
-      return ChildAwareResponse.class.getSimpleName() + "(childControllers: " + childControllerUrls + ", super: "
+      return ChildAwareResponse.class.getSimpleName() + "(childControllers: " + childClusterMap + ", super: "
           + super.toString() + ")";
     }
   }
