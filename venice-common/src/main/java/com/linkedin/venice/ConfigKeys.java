@@ -1,25 +1,17 @@
 package com.linkedin.venice;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-
 public class ConfigKeys {
-  private ConfigKeys(){}
+  private ConfigKeys() {}
 
   // cluster specific properties
   public static final String CLUSTER_NAME = "cluster.name";
-  public static final String PARTITION_NODE_ASSIGNMENT_SCHEME = "partition.node.assignment.scheme";
   public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
   public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
   public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
   public static final String OFFSET_MANAGER_LOG_FILE_MAX_BYTES = "offset.manager.log.file.max.bytes";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
-  public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
-      .asList(CLUSTER_NAME, PARTITION_NODE_ASSIGNMENT_SCHEME,
-          ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
-          OFFSET_MANAGER_FLUSH_INTERVAL_MS, ZOOKEEPER_ADDRESS));
+
 
   public static final String ADMIN_PORT="admin.port";
   public static final String ADMIN_SECURE_PORT="admin.secure.port";

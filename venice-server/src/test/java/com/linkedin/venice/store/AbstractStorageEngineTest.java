@@ -51,8 +51,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   public static VeniceConfigLoader getVeniceConfigLoader(VeniceProperties serverProperties) {
-    VeniceProperties emptyProperties = new VeniceProperties(new Properties());
-    return new VeniceConfigLoader(emptyProperties, serverProperties, emptyProperties);
+    return new VeniceConfigLoader(new VeniceProperties(new Properties()), serverProperties);
   }
 
   // creates instance for testStoreEngine
@@ -68,13 +67,11 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     testStore = testStoreEngine;
   }
 
-  public void doAddPartition(int partitionId)
-      throws Exception {
+  public void doAddPartition(int partitionId) {
     testStoreEngine.addStoragePartition(partitionId);
   }
 
-  public void doRemovePartition(int partitionId)
-      throws Exception {
+  public void doRemovePartition(int partitionId) {
     testStoreEngine.dropPartition(partitionId);
   }
 
