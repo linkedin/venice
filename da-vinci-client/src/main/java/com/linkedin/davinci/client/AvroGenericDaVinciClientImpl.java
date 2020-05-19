@@ -131,10 +131,22 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   private VeniceConfigLoader buildVeniceConfig() {
     D2ServiceDiscoveryResponseV2 discoveryResponse = discoverService();
-    String clusterName = backendConfig.getString(ConfigKeys.CLUSTER_NAME, discoveryResponse.getCluster());
-    String zkAddress = backendConfig.getString(ConfigKeys.ZOOKEEPER_ADDRESS, discoveryResponse.getZkAddress());
-    String kafkaZkAddress = backendConfig.getString(ConfigKeys.KAFKA_ZK_ADDRESS, discoveryResponse.getKafkaZkAddress());
-    String kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, discoveryResponse.getKafkaBootstrapServers());
+    String clusterName = discoveryResponse.getCluster();
+    String zkAddress = discoveryResponse.getZkAddress();
+    String kafkaZkAddress = discoveryResponse.getKafkaZkAddress();
+    String kafkaBootstrapServers = discoveryResponse.getKafkaBootstrapServers();
+
+    if (zkAddress == null) {
+      zkAddress = backendConfig.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
+    }
+
+    if (kafkaZkAddress == null) {
+      kafkaZkAddress = backendConfig.getString(ConfigKeys.KAFKA_ZK_ADDRESS);
+    }
+
+    if (kafkaBootstrapServers == null) {
+      kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    }
 
     VeniceProperties clusterProperties = new PropertyBuilder()
         .put(backendConfig.toProperties())
@@ -147,16 +159,14 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     VeniceProperties serverProperties = new PropertyBuilder()
         .put(backendConfig.toProperties())
-        .put(ConfigKeys.LISTENER_PORT, 0) // not used by Da Vinci
+        /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
+        .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
         .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
             daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
-
-        /** allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
-        .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
         .build();
     logger.info("serverConfig=" + serverProperties.toString(true));
 
-    return new VeniceConfigLoader(clusterProperties, serverProperties, new VeniceProperties(new Properties()));
+    return new VeniceConfigLoader(clusterProperties, serverProperties);
   }
 
   @Override

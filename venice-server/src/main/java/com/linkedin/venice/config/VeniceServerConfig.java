@@ -186,7 +186,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
-    listenerPort = serverProperties.getInt(LISTENER_PORT);
+    listenerPort = serverProperties.getInt(LISTENER_PORT, 0);
     dataBasePath = serverProperties.getString(DATA_BASE_PATH,
         Paths.get(System.getProperty("java.io.tmpdir"), "venice-server-data").toAbsolutePath().toString());
     autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));

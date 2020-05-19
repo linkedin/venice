@@ -19,13 +19,14 @@ import java.util.function.Supplier;
 
 
 public class VeniceProperties {
+  private final Map<String, String> props = new HashMap<>();
 
-  private final Map<String, String> props;
+  public VeniceProperties() {
+  }
 
   public VeniceProperties(Properties properties) {
-    this.props = new HashMap<>();
     for (Map.Entry<Object, Object> e : properties.entrySet()) {
-      this.props.put(
+      props.put(
           (String) e.getKey(),
           null == e.getValue() ? null : e.getValue().toString()
       );
