@@ -27,10 +27,10 @@ import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -64,7 +64,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final HelixReadOnlyStoreRepository metadataRepository;
   private final Thread dictionaryRetrieverThread;
-  private final ExecutorService executor;
+  private final ScheduledExecutorService executor;
   private final CloseableHttpAsyncClient httpClient;
 
   // Shared queue between producer and consumer where topics whose dictionaries have to be downloaded are put in.
@@ -164,12 +164,10 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
           /**
            * In order to avoid retry storm; back off before querying server again.
            */
-          Thread.sleep(DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS);
           kafkaTopic = dictionaryDownloadCandidates.take();
         } catch (InterruptedException e) {
-          logger.info("Thread was interrupted while waiting for a candidate to download dictionary. Will "
-              + "continue to wait unless the thread has been killed.", e);
-          continue;
+          logger.warn("Thread was interrupted while waiting for a candidate to download dictionary.", e);
+          break;
         }
 
         // If the dictionary has already been downloaded, skip it.
@@ -187,7 +185,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
     };
 
     this.dictionaryRetrieverThread = new Thread(runnable);
-    executor = Executors.newFixedThreadPool(numThreads);
+    executor = Executors.newScheduledThreadPool(numThreads);
   }
 
   private CompletableFuture<byte[]> getDictionary(String store, int version){
@@ -324,7 +322,9 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
             logger.warn("Exception encountered when asynchronously downloading dictionary for resource: " + kafkaTopic +
                 " : " + exception.getMessage());
             downloadingDictionaryFutures.remove(kafkaTopic);
-            dictionaryDownloadCandidates.add(kafkaTopic);
+
+            executor.schedule(() -> dictionaryDownloadCandidates.add(kafkaTopic),
+                DEFAULT_DICTIONARY_DOWNLOAD_INTERNAL_IN_MS, TimeUnit.MILLISECONDS);
           }
         } else {
           logger.info("Dictionary downloaded asynchronously for resource: " + kafkaTopic);
@@ -375,6 +375,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   @Override
   public void stopInner() throws IOException {
     dictionaryRetrieverThread.interrupt();
+    executor.shutdownNow();
     downloadingDictionaryFutures.forEach((topic, future) -> future.completeExceptionally(new InterruptedException("Dictionary download thread stopped")));
     httpClient.close();
   }
