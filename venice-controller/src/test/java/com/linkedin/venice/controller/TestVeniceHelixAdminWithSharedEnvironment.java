@@ -241,10 +241,9 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     }
 
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
-        () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 2);
+        () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 1);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber() - 1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(1).getNumber(), version.getNumber());
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber() );
 
     Version deletedVersion = new Version(storeName, version.getNumber() - 2);
     // Ensure job and topic are deleted
@@ -445,7 +444,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
     // try to add same version again
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
 
     veniceAdmin.getHelixAdmin().enableMaintenanceMode(clusterName, false);
 
@@ -565,7 +564,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     store = veniceAdmin.getStore(clusterName, storeName);
     // version 1 and version 2 are added to this store.
     Assert.assertTrue(store.isEnableWrites());
-    Assert.assertEquals(store.getVersions().size(), 2);
+    Assert.assertEquals(store.getVersions().size(), 1);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     // two offline jobs are running.
     PushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getPushMonitor();
@@ -713,7 +712,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
           stateModelFactory.makeTransitionCompleted(lastVersion.kafkaTopicName(), 0);
         }
       }
-      Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 3);
+      Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2);
       // Store has not been disabled.
       Assert.assertThrows(VeniceException.class, () -> veniceAdmin.deleteAllVersionsInStore(clusterName, storeName));
 
@@ -812,7 +811,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
         });
     veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.retireOldStoreVersions(clusterName, storeName, false);
-    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 2,
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
         " Versions should be deleted.");
   }
 
