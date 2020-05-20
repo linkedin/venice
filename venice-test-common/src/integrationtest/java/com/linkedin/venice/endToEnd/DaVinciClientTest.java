@@ -178,10 +178,19 @@ public class DaVinciClientTest {
       assertThrows(VeniceException.class, () -> client.unsubscribe(partitionSet));
 
       // re-subscribe to a partition with data to test sub a unsub-ed partition
-      client.subscribe(Collections.singleton(partition)).get();
+      client.subscribeToAllPartitions().get();
       TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
         for (Integer i = 0; i < KEY_COUNT; i++) {
           assertEquals(client.get(i).get(), i);
+        }
+      });
+
+      // test unsubscribe from all partitions
+      client.unsubscribeFromAllPartitions();
+      TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+        for (Integer i = 0; i < KEY_COUNT; i++) {
+          final int key = i;
+          assertThrows(VeniceClientException.class, () -> client.get(key).get());
         }
       });
     }

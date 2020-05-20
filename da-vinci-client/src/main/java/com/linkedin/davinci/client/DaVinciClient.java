@@ -30,6 +30,13 @@ public interface DaVinciClient<K, V> extends AvroGenericStoreClient<K, V> {
   CompletableFuture<Void> subscribe(Set<Integer> partitions);
 
   /**
+   * Stop ingesting all subscribed partition locally, and drop their associated local states.
+   *
+   * @throws a VeniceException if cleanup failed for any of the partitions
+   */
+  void unsubscribeFromAllPartitions();
+
+  /**
    * Stop ingesting a partition locally, and drop its associated local state.
    *
    * @param partitions the set of partition IDs to unsubscribe from

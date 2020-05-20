@@ -289,6 +289,23 @@ public class IngestionController implements Closeable {
       }
     }
 
+    public synchronized void unsubscribeFromAllPartitions() {
+      if (subscription.isEmpty()) {
+        logger.warn(String.format("No partitions are subscribed for store %s, "
+            + "so unsubscribeFromAllPartitions finished immediately.", storeName));
+        return;
+      }
+
+      if (currentVersion != null) {
+        currentVersion.unsubscribe(subscription);
+      }
+      if (futureVersion != null) {
+        futureVersion.unsubscribe(subscription);
+      }
+
+      subscription.clear();
+    }
+
     private synchronized void trySubscribeFutureVersion() {
       if (currentVersion == null || futureVersion != null) {
         return;
@@ -410,6 +427,11 @@ public class IngestionController implements Closeable {
   private synchronized CompletableFuture<Void> subscribe(String storeName, Version version, Set<Integer> partitions) {
     StoreBackend store = storeByNameMap.computeIfAbsent(storeName, StoreBackend::new);
     return store.subscribe(Optional.of(version), partitions);
+  }
+
+  public synchronized void unsubscribeFromAllPartitions(String storeName) {
+    StoreBackend store = getStoreOrThrow(storeName);
+    store.unsubscribeFromAllPartitions();
   }
 
   public synchronized void unsubscribe(String storeName, Set<Integer> partitions) {
