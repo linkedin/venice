@@ -62,6 +62,12 @@ public class VeniceControllerClusterConfig {
   private boolean skipBufferRelayForHybrid;
 
   /**
+   * When this option is enabled, all new store versions created will have native replication enabled so long
+   * as the store has leader follower also enabled.
+   */
+  private boolean nativeReplicationEnabled;
+
+  /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
   private long delayToRebalanceMS;
@@ -155,6 +161,9 @@ public class VeniceControllerClusterConfig {
     } else {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
+    // TODO: This should throw an error if leader follower isn't also enabled by default.  Needs Leader/Follower cluster config to be added
+    nativeReplicationEnabled = props.getBoolean(ENABLE_NATIVE_REPLICATION_AS_DEFAULT, false);
+    
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
     // Enable ssl to kafka
@@ -342,5 +351,9 @@ public class VeniceControllerClusterConfig {
 
   public boolean isSkipBufferRelayForHybrid() {
     return skipBufferRelayForHybrid;
+  }
+
+  public boolean getNativeReplicationEnabled() {
+    return nativeReplicationEnabled;
   }
 }

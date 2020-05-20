@@ -467,6 +467,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             Store newStore = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
                 config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
             HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
+            if(newStore.isLeaderFollowerModelEnabled()) {
+                newStore.setNativeReplicationEnabled(config.getNativeReplicationEnabled());
+            } else {
+                newStore.setNativeReplicationEnabled(false);
+            }
             storeRepo.lock();
             try {
                 Store existingStore = storeRepo.getStore(storeName);
@@ -1066,6 +1071,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         }
                         version = new Version(storeName, versionNumber, pushJobId, numberOfPartitions);
                     }
+                    // TODO: Should perform leader/follower at check at cluster config level before doing this
+
+                    version.setNativeReplicationEnabled(clusterConfig.getNativeReplicationEnabled());
                 } finally {
                     repository.unLock();
                 }

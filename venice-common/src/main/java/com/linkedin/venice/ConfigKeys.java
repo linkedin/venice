@@ -89,6 +89,11 @@ public class ConfigKeys {
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
 
   /**
+   * Sets the default for weather or not native replication is enabled or not for a venice store.
+   */
+  public static final String ENABLE_NATIVE_REPLICATION_AS_DEFAULT = "enable.native.replication.as.default";
+
+  /**
    * Fallback to remain compatible with the old config spelling.
    *
    * Ignored if {@value KAFKA_REPLICATION_FACTOR} is present.
