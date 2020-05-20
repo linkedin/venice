@@ -185,6 +185,11 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
   }
 
   @Override
+  public void unsubscribeFromAllPartitions() {
+    ingestionController.unsubscribeFromAllPartitions(getStoreName());
+  }
+
+  @Override
   public void unsubscribe(Set<Integer> partitions) {
     ingestionController.unsubscribe(getStoreName(), partitions);
   }
