@@ -48,11 +48,13 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
   private final VeniceConfigLoader config;
   private final Optional<ClientConfig> consumerClientConfig;
   private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final File dataDirectory;
 
   VeniceServerWrapper(String serviceName, File dataDirectory, TestVeniceServer veniceServer,
       VeniceProperties serverProps, VeniceConfigLoader config, Optional<ClientConfig> consumerClientConfig,
       Optional<SSLEngineComponentFactory> sslFactory) {
     super(serviceName, dataDirectory);
+    this.dataDirectory = dataDirectory;
     this.veniceServer = veniceServer;
     this.serverProps = serverProps;
     this.config = config;
@@ -137,6 +139,10 @@ public class VeniceServerWrapper extends ProcessWrapper implements MetricsAware 
     try (WhitelistAccessor accessor = new ZkWhitelistAccessor(zkAddress)) {
       accessor.addInstanceToWhiteList(clusterName, Utils.getHelixNodeIdentifier(port));
     }
+  }
+
+  public File getDataDirectory() {
+    return dataDirectory;
   }
 
   @Override

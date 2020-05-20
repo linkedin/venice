@@ -1058,4 +1058,8 @@ public class ConfigKeys {
    * A config that determines whether to use Helix customized view
    */
   public static final String HELIX_CUSTOMIZED_VIEW_ENABLED = "helix.customized.view.enabled";
+  /**
+   * A time after which a bad SSD will trigger server shutdown.
+   */
+  public static final String SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS = "server.shutdown.ssd.unhealthy.time.ms";
 }

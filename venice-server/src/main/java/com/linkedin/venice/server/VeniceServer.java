@@ -105,6 +105,7 @@ public class VeniceServer {
     this.sslFactory = sslFactory;
     this.accessController = accessController;
     this.clientConfigForConsumer = clientConfigForConsumer;
+
     if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
                              veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
                              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
@@ -206,7 +207,7 @@ public class VeniceServer {
         serverConfig.isDiskHealthCheckServiceEnabled(),
         serverConfig.getDiskHealthCheckIntervalInMS(),
         serverConfig.getDiskHealthCheckTimeoutInMs(),
-        serverConfig.getDataBasePath());
+        serverConfig.getDataBasePath(), serverConfig.getSsdHealthCheckShutdownTimeMs());
     services.add(diskHealthCheckService);
     // create stats for disk health check service
     new DiskHealthStats(metricsRepository, diskHealthCheckService, "disk_health_check_service");
@@ -463,18 +464,16 @@ public class VeniceServer {
     if (!server.isStarted()) {
       server.start();
     }
+    addShutdownHook(server);
+  }
 
-    Runtime.getRuntime().addShutdownHook(new Thread() {
-      @Override
-      public void run() {
-        if (server.isStarted()) {
-          try {
-            server.shutdown();
-          } catch (Exception e) {
-            logger.error("Error shutting the server. ", e);
-          }
-        }
-      }
-    });
+  private static void addShutdownHook(VeniceServer server) {
+    Runtime.getRuntime().addShutdownHook(new Thread(() -> server.shutdown()));
+
+    try {
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      logger.error("Unable to join thread in shutdown hook. ", e);
+    }
   }
 }
