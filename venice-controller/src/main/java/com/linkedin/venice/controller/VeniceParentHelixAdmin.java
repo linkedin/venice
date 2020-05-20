@@ -53,6 +53,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.Store;
@@ -1132,7 +1133,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> futureVersionETLEnabled,
       Optional<String> etledUserProxyAccount,
       Optional<Boolean> nativeReplicationEnabled,
-      Optional<String> pushStreamSourceAddress) {
+      Optional<String> pushStreamSourceAddress,
+      Optional<IncrementalPushPolicy> incrementalPushPolicy) {
     acquireLock(clusterName, storeName);
 
     try {
@@ -1250,6 +1252,9 @@ public class VeniceParentHelixAdmin implements Admin {
       veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store, incrementalPushEnabled,
           null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
           singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
+      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(store, incrementalPushEnabled,
+          incrementalPushPolicy, Optional.ofNullable(hybridStoreConfig));
+
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
       setStore.numVersionsToPreserve =
           numVersionsToPreserve.isPresent() ? numVersionsToPreserve.get() : store.getNumVersionsToPreserve();
@@ -1275,6 +1280,8 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.ETLStoreConfig = mergeNewSettingIntoOldETLStoreConfig(store, regularVersionETLEnabled, futureVersionETLEnabled, etledUserProxyAccount);
 
       setStore.largestUsedVersionNumber = largestUsedVersionNumber.isPresent() ? largestUsedVersionNumber.get() : store.getLargestUsedVersionNumber();
+
+      setStore.incrementalPushPolicy = incrementalPushPolicy.map(IncrementalPushPolicy::getValue).orElseGet(() -> store.getIncrementalPushPolicy().getValue());
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();

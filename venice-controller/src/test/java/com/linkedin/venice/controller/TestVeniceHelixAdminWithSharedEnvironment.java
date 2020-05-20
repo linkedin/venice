@@ -14,6 +14,7 @@ import com.linkedin.venice.helix.SafeHelixManager;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.PartitionerConfig;
@@ -1283,5 +1284,125 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
 
     //set topic original topic manager back
     veniceAdmin.setTopicManager(originalTopicManager);
+  }
+
+  @Test
+  public void testUpdateStoreFailsWhenIncrementalAndHybridAreEnabledWithoutCorrectPolicy() {
+    String incrementalEnabledStoreName = TestUtils.getUniqueString("testIncrementalStore");
+    veniceAdmin.addStore(clusterName, incrementalEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+
+    String hybridEnabledStoreName = TestUtils.getUniqueString("testHybridStore");
+    veniceAdmin.addStore(clusterName, hybridEnabledStoreName, storeOwner, "\"string\"", "\"string\"");
+
+    veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true));
+    veniceAdmin.updateStore(clusterName, hybridEnabledStoreName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(1).setHybridRewindSeconds(0));
+
+    // Incremental push enabled store can not be enabled as hybrid store without setting incremental push policy
+    Assert.assertThrows(() -> veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(0).setHybridRewindSeconds(0)));
+    // Incremental push enabled store can not set push policy to anything other than PUSH_TO_VERSION_TOPIC if it is not enabled for hybrid
+    Assert.assertThrows(() -> veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushPolicy(
+        IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)));
+    // Incremental push enabled store has no effect if hybrid store is being made batch only
+    veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams().setHybridOffsetLagThreshold(-1).setHybridRewindSeconds(-1));
+    // Incremental push enabled store can be made a hybrid store if the incremental push policy is also updated
+    veniceAdmin.updateStore(clusterName, incrementalEnabledStoreName, new UpdateStoreQueryParams()
+        .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+        .setHybridOffsetLagThreshold(0)
+        .setHybridRewindSeconds(0)
+    );
+
+    // Hybrid store can not be enabled for incremental push without setting incremental push policy
+    Assert.assertThrows(() -> veniceAdmin.updateStore(clusterName, hybridEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true)));
+    // Hybrid store can be enabled for incremental push if the incremental push policy is also updated
+    veniceAdmin.updateStore(clusterName, hybridEnabledStoreName, new UpdateStoreQueryParams()
+        .setIncrementalPushEnabled(true)
+        .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+    );
+
+    // A hybrid and incremental push enabled store can not change the incremental push policy to PUSH_TO_VERSION_TOPIC
+    Assert.assertThrows(() -> veniceAdmin.updateStore(clusterName, hybridEnabledStoreName, new UpdateStoreQueryParams().setIncrementalPushPolicy(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)));
+  }
+
+  @Test
+  public void testCheckWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid() {
+    String incrementalEnabledStoreName = TestUtils.getUniqueString("testIncrementalStore");
+    Store incrementalEnabledStore = mock(Store.class);
+
+    String hybridEnabledStoreName = TestUtils.getUniqueString("testHybridStore");
+    Store hybridEnabledStore = mock(Store.class);
+
+    String incrementalAndHybridEnabledStoreName = TestUtils.getUniqueString("testHybridIncrementalStore");
+    Store incrementalAndHybridEnabledStore = mock(Store.class);
+
+    HybridStoreConfig mockHybridConfig = mock(HybridStoreConfig.class);
+    HybridStoreConfig mockHybridToBatchConfig = mock(HybridStoreConfig.class);
+    HybridStoreConfig mockHybridToBatchConfigNegativeRewind = mock(HybridStoreConfig.class);
+    HybridStoreConfig mockHybridToBatchConfigNegativeThreshold = mock(HybridStoreConfig.class);
+
+    doReturn(incrementalEnabledStoreName).when(incrementalEnabledStore).getName();
+    doReturn(false).when(incrementalEnabledStore).isHybrid();
+    doReturn(true).when(incrementalEnabledStore).isIncrementalPushEnabled();
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(incrementalEnabledStore).getIncrementalPushPolicy();
+
+    doReturn(hybridEnabledStoreName).when(hybridEnabledStore).getName();
+    doReturn(true).when(hybridEnabledStore).isHybrid();
+    doReturn(false).when(hybridEnabledStore).isIncrementalPushEnabled();
+    doReturn(mockHybridConfig).when(hybridEnabledStore).getHybridStoreConfig();
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(hybridEnabledStore).getIncrementalPushPolicy();
+
+    doReturn(incrementalAndHybridEnabledStoreName).when(incrementalAndHybridEnabledStore).getName();
+    doReturn(true).when(incrementalAndHybridEnabledStore).isHybrid();
+    doReturn(true).when(incrementalAndHybridEnabledStore).isIncrementalPushEnabled();
+    doReturn(mockHybridConfig).when(incrementalAndHybridEnabledStore).getHybridStoreConfig();
+    doReturn(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC).when(incrementalAndHybridEnabledStore).getIncrementalPushPolicy();
+
+    doReturn(0L).when(mockHybridConfig).getRewindTimeInSeconds();
+    doReturn(0L).when(mockHybridConfig).getOffsetLagThresholdToGoOnline();
+
+    doReturn(-1L).when(mockHybridToBatchConfig).getRewindTimeInSeconds();
+    doReturn(-1L).when(mockHybridToBatchConfig).getOffsetLagThresholdToGoOnline();
+
+    doReturn(-1L).when(mockHybridToBatchConfigNegativeRewind).getRewindTimeInSeconds();
+    doReturn(0L).when(mockHybridToBatchConfigNegativeRewind).getOffsetLagThresholdToGoOnline();
+
+    doReturn(0L).when(mockHybridToBatchConfigNegativeThreshold).getRewindTimeInSeconds();
+    doReturn(-1L).when(mockHybridToBatchConfigNegativeThreshold).getOffsetLagThresholdToGoOnline();
+
+    Optional<Boolean> newIncrementalPushEnabled = Optional.of(true);
+    Optional<Boolean> newIncrementalPushDisabled = Optional.of(false);
+    Optional<Boolean> newIncrementalPushNotDefined = Optional.empty();
+
+    Optional<IncrementalPushPolicy> newIncrementalPushPolicyIncompatibleWithHybrid = Optional.of(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    Optional<IncrementalPushPolicy> newIncrementalPushPolicyCompatibleWithHybrid = Optional.of(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+    Optional<IncrementalPushPolicy> newIncrementalPushPolicyIncompatibleWithBatchOnly = Optional.of(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME);
+    Optional<IncrementalPushPolicy> newIncrementalPushPolicyCompatibleWithBatchOnly = Optional.of(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC);
+    Optional<IncrementalPushPolicy> newIncrementalPushPolicyNotDefined = Optional.empty();
+
+    // Incremental push enabled store can be made a hybrid store if the incremental push policy is also updated
+    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalEnabledStore, newIncrementalPushNotDefined, newIncrementalPushPolicyCompatibleWithHybrid, Optional.of(mockHybridConfig));
+
+    // Incremental push enabled store can not be enabled as hybrid store without setting a compatible incremental push policy
+    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalEnabledStore, newIncrementalPushNotDefined, newIncrementalPushPolicyIncompatibleWithHybrid, Optional.of(mockHybridConfig)));
+
+    // Incremental push enabled store can not set push policy to hybrid store incompatible policy if it is not enabled for hybrid
+    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalEnabledStore, newIncrementalPushNotDefined, newIncrementalPushPolicyIncompatibleWithBatchOnly, Optional.of(mockHybridToBatchConfig)));
+
+    // Incremental push enabled store has no effect if hybrid store is being made batch only
+    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalEnabledStore, newIncrementalPushNotDefined, newIncrementalPushPolicyCompatibleWithBatchOnly, Optional.of(mockHybridToBatchConfig));
+
+    // Incremental push enabled store can be made a hybrid store if the incremental push policy is also updated
+    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalEnabledStore, newIncrementalPushNotDefined, newIncrementalPushPolicyCompatibleWithHybrid, Optional.of(mockHybridConfig));
+
+    // Hybrid store can not be enabled for incremental push without setting incremental push policy
+    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(hybridEnabledStore, newIncrementalPushEnabled, newIncrementalPushPolicyNotDefined, Optional.empty()));
+
+    // Hybrid store can be enabled for incremental push if the incremental push policy is also updated
+    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(hybridEnabledStore, newIncrementalPushEnabled, newIncrementalPushPolicyCompatibleWithHybrid, Optional.empty());
+
+    // A hybrid and incremental push enabled store can not change the incremental push policy to PUSH_TO_VERSION_TOPIC
+    Assert.assertThrows(() -> veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalAndHybridEnabledStore, newIncrementalPushNotDefined, newIncrementalPushPolicyIncompatibleWithHybrid, Optional.empty()));
+
+    // A hybrid and incremental push enabled store can disable incremental push without changing the policy since there'll be no more incremental pushes
+    veniceAdmin.checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(incrementalAndHybridEnabledStore, newIncrementalPushDisabled, newIncrementalPushPolicyNotDefined, Optional.empty());
   }
 }

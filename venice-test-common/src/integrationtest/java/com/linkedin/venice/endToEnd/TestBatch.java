@@ -12,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.read.RequestType;
@@ -31,6 +32,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.LongBinaryOperator;
@@ -43,10 +45,12 @@ import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*;
+import static org.testng.Assert.*;
 
 //TODO: write a H2VWrapper that can handle the whole flow
 
@@ -353,6 +357,50 @@ public abstract class TestBatch {
         Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
       }
     }, storeName, new UpdateStoreQueryParams().setIncrementalPushEnabled(true), false);
+  }
+
+  @Test
+  public void testIncrementalPushWritesToRealTimeTopicWithPolicy() throws Exception {
+    String storeName = testBatchStore(inputDir -> {
+        Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+        return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+      }, properties -> {
+      }, (avroClient, vsonClient, metricsRepository) -> {
+        for (int i = 1; i <= 100; i++) {
+          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+        }
+      }, new UpdateStoreQueryParams()
+          .setIncrementalPushEnabled(true)
+          .setHybridOffsetLagThreshold(1)
+          .setHybridRewindSeconds(0)
+          .setIncrementalPushPolicy(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)
+    );
+
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema2(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+      properties.setProperty(INCREMENTAL_PUSH, "true");
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      for (int i = 51; i <= 150; i++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + (i * 2));
+      }
+    }, storeName, null,false);
+
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(), recordSchema.getField("name").schema());
+    }, properties -> {
+    }, (avroClient, vsonClient, metricsRepository) -> {
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, true, () -> {
+        for (int i = 1; i <= 100; i++) {
+          Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+        }
+        for (int i = 101; i <= 150; i++) {
+          Assert.assertNull(avroClient.get(Integer.toString(i)).get());
+        }
+      });
+    }, storeName, null, false);
   }
 
   @Test(timeOut = TEST_TIMEOUT, invocationCount = 3)

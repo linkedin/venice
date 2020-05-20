@@ -121,6 +121,11 @@ public class Version implements Comparable<Version> {
   private PartitionerConfig partitionerConfig;
 
   /**
+   * Incremental Push Policy to reconcile with real time pushes.
+   */
+  private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
+
+  /**
    * Use the constructor that specifies a pushJobId instead
    */
   @Deprecated
@@ -248,6 +253,14 @@ public class Version implements Comparable<Version> {
     this.partitionerConfig = partitionerConfig;
   }
 
+  public IncrementalPushPolicy getIncrementalPushPolicy() {
+    return incrementalPushPolicy;
+  }
+
+  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
+    this.incrementalPushPolicy = incrementalPushPolicy;
+  }
+
   @Override
   public String toString() {
     return "Version{" +
@@ -337,6 +350,10 @@ public class Version implements Comparable<Version> {
       return false;
     }
 
+    if (incrementalPushPolicy != version.incrementalPushPolicy) {
+      return false;
+    }
+
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -353,6 +370,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + (nativeReplicationEnabled ? 1 : 0);
     result = 31 * result + pushStreamSourceAddress.hashCode();
     result = 31 * result + partitionCount;
+    result = 31 * result + incrementalPushPolicy.hashCode();
     return result;
   }
 
@@ -374,6 +392,7 @@ public class Version implements Comparable<Version> {
     clonedVersion.setPushType(pushType);
     clonedVersion.setNativeReplicationEnabled(nativeReplicationEnabled);
     clonedVersion.setPushStreamSourceAddress(pushStreamSourceAddress);
+    clonedVersion.setIncrementalPushPolicy(incrementalPushPolicy);
     return clonedVersion;
   }
 

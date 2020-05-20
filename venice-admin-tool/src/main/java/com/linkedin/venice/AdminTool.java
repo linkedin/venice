@@ -36,6 +36,7 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -624,6 +625,7 @@ public class AdminTool {
     integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p), argSet);
     integerParam(cmd, Arg.NUM_VERSIONS_TO_PRESERVE, p -> params.setNumVersionsToPreserve(p), argSet);
     booleanParam(cmd, Arg.INCREMENTAL_PUSH_ENABLED, p -> params.setIncrementalPushEnabled(p), argSet);
+    genericParam(cmd, Arg.INCREMENTAL_PUSH_POLICY, s -> IncrementalPushPolicy.valueOf(s), p -> params.setIncrementalPushPolicy(p), argSet);
     booleanParam(cmd, Arg.WRITE_COMPUTATION_ENABLED, p -> params.setWriteComputationEnabled(p), argSet);
     booleanParam(cmd, Arg.READ_COMPUTATION_ENABLED, p -> params.setReadComputationEnabled(p), argSet);
     integerParam(cmd, Arg.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOUR, p -> params.setBootstrapToOnlineTimeoutInHours(p), argSet);

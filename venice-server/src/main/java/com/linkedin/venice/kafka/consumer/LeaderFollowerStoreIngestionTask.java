@@ -586,6 +586,24 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     super.processEndOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
   }
 
+  /**
+   * For incremental push in hybrid store, the control messages should be produced to the version topic because leader
+   * gets these control message inside real time topic, or in other words, `shouldProduceToVersionTopic` would return true.
+   */
+  @Override
+  protected void processStartOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
+    super.processStartOfIncrementalPush(controlMessage, partitionConsumptionState);
+
+    checkAndProduceToVersionTopic(controlMessage, partitionConsumptionState);
+  }
+
+  @Override
+  protected void processEndOfIncrementalPush(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
+    super.processEndOfIncrementalPush(controlMessage, partitionConsumptionState);
+
+    checkAndProduceToVersionTopic(controlMessage, partitionConsumptionState);
+  }
+
   @Override
   protected void processTopicSwitch(ControlMessage controlMessage, int partition, long offset,
       PartitionConsumptionState partitionConsumptionState) {
@@ -960,6 +978,21 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
 
     return super.shouldProcessRecord(record);
+  }
+
+  private void checkAndProduceToVersionTopic(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState) {
+    int partition = partitionConsumptionState.getPartition();
+    long offset = partitionConsumptionState.getOffsetRecord().getOffset();
+    checkAndProduceToVersionTopic(controlMessage, partitionConsumptionState, partition, offset);
+  }
+
+  private void checkAndProduceToVersionTopic(ControlMessage controlMessage, PartitionConsumptionState partitionConsumptionState, int partition, long offset) {
+    if (shouldProduceToVersionTopic(partitionConsumptionState)) {
+      String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
+      LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
+          kafkaTopic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
+      getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
+    }
   }
 
   private class LeaderProducerMessageCallback implements ChunkAwareCallback {
