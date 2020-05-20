@@ -24,29 +24,9 @@ import com.linkedin.venice.serialization.avro.VeniceAvroKafkaSerializer;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
-import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
-
-import io.tehuti.Metric;
-import io.tehuti.metrics.MetricsRepository;
-
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.io.IOUtils;
-import org.apache.http.Header;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.BasicHttpEntity;
-import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Logger;
-import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
-import org.testng.annotations.Test;
-
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -61,6 +41,21 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.httpclient.HttpStatus;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.Header;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.BasicHttpEntity;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.log4j.Logger;
+import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
@@ -258,7 +253,8 @@ public class StorageNodeReadTest {
     CloseableHttpAsyncClient client = null;
     try {
       Properties serverProperties = new Properties();
-      serverProperties.put(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 10); // set health check interval to 10 seconds
+      serverProperties.put(SERVER_DISK_HEALTH_CHECK_INTERVAL_IN_SECONDS, 5); // set health check interval to 10 seconds
+      serverProperties.put(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 1000); // set health check ssd shutdown to 1 second
       serverWrapper = veniceCluster.addVeniceServer(serverProperties);
       String testServerAddr = serverWrapper.getAddress();
 
@@ -269,9 +265,18 @@ public class StorageNodeReadTest {
       Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
 
       // wait for the next health check cycle
-      Thread.sleep(TimeUnit.SECONDS.toMillis(15));
+      Thread.sleep(TimeUnit.SECONDS.toMillis(5));
       response = sendHeartbeatRequest(client, testServerAddr);
       Assert.assertEquals(response.getStatusLine().getStatusCode(), 200);
+
+      // delete the db path
+      FileUtils.deleteDirectory(serverWrapper.getDataDirectory());
+
+      Thread.sleep(TimeUnit.SECONDS.toMillis(5));
+      response = sendHeartbeatRequest(client, testServerAddr);
+
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), 500);
+
     } finally {
       if (serverWrapper != null) {
         /**

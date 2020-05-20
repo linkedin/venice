@@ -183,6 +183,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean kafkaOpenSSLEnabled;
   private final long routerConnectionWarmingDelayMs;
   private boolean helixCustomizedViewEnabled;
+  private final long ssdHealthCheckShutdownTimeMs;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -243,6 +244,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
     kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, true);
     helixCustomizedViewEnabled = serverProperties.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
+    ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
 
     /**
      * {@link com.linkedin.venice.utils.queues.FairBlockingQueue} could cause non-deterministic behavior during test.
@@ -483,5 +485,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isHelixCustomizedViewEnabled() {
     return helixCustomizedViewEnabled;
+  }
+
+  public long getSsdHealthCheckShutdownTimeMs() {
+    return ssdHealthCheckShutdownTimeMs;
   }
 }

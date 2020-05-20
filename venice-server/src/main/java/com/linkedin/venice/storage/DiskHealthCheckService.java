@@ -2,14 +2,12 @@ package com.linkedin.venice.storage;
 
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.LatencyUtils;
-import java.io.BufferedInputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
-import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
@@ -44,13 +42,15 @@ public class DiskHealthCheckService extends AbstractVeniceService {
   private String errorMessage;
   private DiskHealthCheckTask healthCheckTask;
   private Thread runner;
+  private long diskFailServerShutdownTimeMs;
 
-  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout, String databasePath) {
+  public DiskHealthCheckService(boolean serviceEnabled, long healthCheckIntervalMs, long diskOperationTimeout, String databasePath, long diskFailServerShutdownTimeMs) {
     this.serviceEnabled = serviceEnabled;
     this.healthCheckIntervalMs = healthCheckIntervalMs;
     this.healthCheckTimeoutMs = Math.max(HEALTH_CHECK_HARD_TIMEOUT, healthCheckIntervalMs + diskOperationTimeout);
     this.databasePath = databasePath;
     errorMessage = null;
+    this.diskFailServerShutdownTimeMs = diskFailServerShutdownTimeMs;
   }
 
   @Override
@@ -105,12 +105,28 @@ public class DiskHealthCheckService extends AbstractVeniceService {
     protected void setStop(){
       stop = true;
     }
+    private long unhealthyStartTime;
 
     @Override
     public void run() {
       while (!stop) {
         try {
           Thread.sleep(healthCheckIntervalMs);
+
+          if (!diskHealthy) {
+            if (unhealthyStartTime != 0) {
+              long duration = System.currentTimeMillis() - unhealthyStartTime;
+              if (duration > diskFailServerShutdownTimeMs) {
+                logger.error("Disk health service reported unhealthy disk for " + duration/1000 + " seconds, STOPPING THE SERVER NOW!");
+                System.exit(1);
+                break;
+              }
+            } else {
+              unhealthyStartTime = System.currentTimeMillis();
+            }
+          } else {
+            unhealthyStartTime = 0;
+          }
 
           File databaseDir = new File(databasePath);
           if (!databaseDir.exists() || !databaseDir.isDirectory()) {
