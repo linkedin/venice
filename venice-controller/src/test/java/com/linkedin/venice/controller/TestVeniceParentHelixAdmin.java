@@ -40,6 +40,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -278,7 +279,8 @@ public class TestVeniceParentHelixAdmin {
         Optional<Boolean> futureVersionETLEnabled,
         Optional<String> etledUserProxyAccount,
         Optional<Boolean> nativeReplicationEnabled,
-        Optional<String> pushStreamSourceAddress) {
+        Optional<String> pushStreamSourceAddress,
+        Optional<IncrementalPushPolicy> incrementalPushPolicy) {
       if (!systemStores.containsKey(storeName)) {
         throw new VeniceNoStoreException("Cannot update store " + storeName + " because it's missing.");
       }

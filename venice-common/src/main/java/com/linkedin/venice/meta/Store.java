@@ -247,6 +247,11 @@ public class Store {
   private ETLStoreConfig etlStoreConfig = new ETLStoreConfig();
   private PartitionerConfig partitionerConfig;
 
+  /**
+   * Incremental Push Policy to reconcile with real time pushes.
+   */
+  private IncrementalPushPolicy incrementalPushPolicy = IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -654,6 +659,14 @@ public class Store {
     this.storeMetadataSystemStoreEnabled = storeMetadataSystemStoreEnabled;
   }
 
+  public IncrementalPushPolicy getIncrementalPushPolicy() {
+    return incrementalPushPolicy;
+  }
+
+  public void setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
+    this.incrementalPushPolicy = incrementalPushPolicy;
+  }
+
   /**
    * Add a version into store.
    *
@@ -705,6 +718,8 @@ public class Store {
       version.setPartitionerConfig(partitionerConfig);
 
       version.setNativeReplicationEnabled(nativeReplicationEnabled);
+
+      version.setIncrementalPushPolicy(incrementalPushPolicy);
     }
 
     versions.add(index, version);
@@ -906,6 +921,7 @@ public class Store {
     result = 31 * result + (etlStoreConfig != null ? etlStoreConfig.hashCode() : 0);
     result = 31 * result + (partitionerConfig != null ? partitionerConfig.hashCode() : 0);
     result = 31 * result + (storeMetadataSystemStoreEnabled ? 1 : 0);
+    result = 31 * result + incrementalPushPolicy.hashCode();
     return result;
   }
 
@@ -953,6 +969,7 @@ public class Store {
     if (hybridStoreDiskQuotaEnabled != store.hybridStoreDiskQuotaEnabled) return false;
     if (!partitionerConfig.equals(store.partitionerConfig)) return false;
     if (storeMetadataSystemStoreEnabled != store.storeMetadataSystemStoreEnabled) return false;
+    if (incrementalPushPolicy != store.incrementalPushPolicy) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null)
         && !(etlStoreConfig != null ? !etlStoreConfig.equals(store.etlStoreConfig) : store.etlStoreConfig != null);
   }
@@ -1002,6 +1019,7 @@ public class Store {
     clonedStore.setHybridStoreDiskQuotaEnabled(hybridStoreDiskQuotaEnabled);
     clonedStore.setEtlStoreConfig(etlStoreConfig);
     clonedStore.setStoreMetadataSystemStoreEnabled(storeMetadataSystemStoreEnabled);
+    clonedStore.setIncrementalPushPolicy(incrementalPushPolicy);
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion(), true);
     }

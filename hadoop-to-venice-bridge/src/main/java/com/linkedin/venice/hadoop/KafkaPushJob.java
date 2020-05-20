@@ -1137,8 +1137,15 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
         Utils.sleep(pollTime - currentTime);
         continue;
       }
+      String topicToMonitor;
+      if (Version.isRealTimeTopic(versionTopicInfo.topic)) {
+        topicToMonitor = Version.composeKafkaTopic(pushJobSetting.storeName, versionTopicInfo.version);
+      } else {
+        topicToMonitor = versionTopicInfo.topic;
+      }
+
       JobStatusQueryResponse response = controllerClient.retryableRequest(pushJobSetting.controllerStatusPollRetries,
-          c -> c.queryOverallJobStatus(versionTopicInfo.topic, incrementalPushVersion));
+          c -> c.queryOverallJobStatus(topicToMonitor, incrementalPushVersion));
       // response#isError() means the status could not be queried which could be due to a communication error.
       if (response.isError()) {
         throw new RuntimeException("Failed to connect to: " + pushJobSetting.veniceControllerUrl +

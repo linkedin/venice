@@ -46,6 +46,7 @@ import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -2061,8 +2062,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized void setIncrementalPushEnabled(String clusterName, String storeName,
         boolean incrementalPushEnabled) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (incrementalPushEnabled && store.isHybrid()) {
-                throw new VeniceException("hybrid store doesn't support incremental push");
+            IncrementalPushPolicy incrementalPushPolicy = store.getIncrementalPushPolicy();
+            if (incrementalPushEnabled && store.isHybrid() && incrementalPushPolicy.equals(IncrementalPushPolicy.PUSH_TO_VERSION_TOPIC)) {
+                throw new VeniceException("hybrid store doesn't support incremental push with policy " + incrementalPushPolicy);
             }
             store.setIncrementalPushEnabled(incrementalPushEnabled);
 
@@ -2193,6 +2195,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public void setIncrementalPushPolicy(String clusterName, String storeName,
+        IncrementalPushPolicy incrementalPushPolicy) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setIncrementalPushPolicy(incrementalPushPolicy);
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid or incremental push store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -2225,6 +2235,35 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         if ((store.isSingleGetRouterCacheEnabled() || store.isBatchGetRouterCacheEnabled()) && (newHybridStoreConfig.isPresent() || newIncrementalPushConfig.orElse(false))) {
             throw new VeniceException("Hybrid/incremental push couldn't be enabled for store: " + storeName + " since it enables router-cache");
+        }
+    }
+
+    /**
+     * This function will check whether the store update will cause the case that a store can not have the specified
+     * hybrid store and incremental push configs.
+     *
+     * @param store The store object whose configs are being updated
+     * @param newIncrementalPushEnabled The new incremental push enabled config that will be set for the store
+     * @param newIncrementalPushPolicy The new incremental push policy that will be set for the store
+     * @param newHybridStoreConfig The new hybrid store config that will be set for the store
+     */
+    protected void checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(Store store,
+        Optional<Boolean> newIncrementalPushEnabled,
+        Optional<IncrementalPushPolicy> newIncrementalPushPolicy,
+        Optional<HybridStoreConfig> newHybridStoreConfig) {
+        String storeName = store.getName();
+
+        boolean finalIncrementalPushEnabled = newIncrementalPushEnabled.orElse(store.isIncrementalPushEnabled());
+        IncrementalPushPolicy finalIncrementalPushPolicy = newIncrementalPushPolicy.orElse(store.getIncrementalPushPolicy());
+        HybridStoreConfig finalHybridStoreConfig = newHybridStoreConfig.orElse(store.getHybridStoreConfig());
+        boolean finalHybridEnabled = finalHybridStoreConfig != null && finalHybridStoreConfig.getRewindTimeInSeconds() >= 0 && finalHybridStoreConfig.getOffsetLagThresholdToGoOnline() >= 0;
+
+        if (finalIncrementalPushEnabled && finalHybridEnabled && !finalIncrementalPushPolicy.isCompatibleWithHybridStores()) {
+            throw new VeniceException("Hybrid and incremental push cannot be enabled simultaneously for store: " + storeName
+                + " since it has incremental push policy: " + finalIncrementalPushPolicy.name());
+        } else if (finalIncrementalPushEnabled && !finalHybridEnabled && !finalIncrementalPushPolicy.isCompatibleWithNonHybridStores()) {
+            throw new VeniceException("Incremental push with incremental push policy " + finalIncrementalPushPolicy.name()
+                + " cannot be enabled for store: " + storeName + " unless it also enables hybrid store.");
         }
     }
 
@@ -2273,23 +2312,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> futureVersionETLEnabled,
         Optional<String> etledUserProxyAccount,
         Optional<Boolean> nativeReplicationEnabled,
-        Optional<String> pushStreamSourceAddress) {
+        Optional<String> pushStreamSourceAddress,
+        Optional<IncrementalPushPolicy> incrementalPushPolicy) {
         Store originalStoreToBeCloned = getStore(clusterName, storeName);
         if (null == originalStoreToBeCloned) {
             throw new VeniceException("The store '" + storeName + "' in cluster '" + clusterName + "' does not exist, and thus cannot be updated.");
         }
         Store originalStore = originalStoreToBeCloned.cloneStore();
 
-        Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
+        Optional<HybridStoreConfig> hybridStoreConfig;
         if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
             HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
                 originalStore, hybridRewindSeconds, hybridOffsetLagThreshold);
-            if (null != hybridConfig) {
-                hybridStoreConfig = Optional.of(hybridConfig);
-            }
+            hybridStoreConfig = Optional.ofNullable(hybridConfig);
+        } else {
+            hybridStoreConfig = Optional.empty();
         }
 
-        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, incrementalPushEnabled,hybridStoreConfig, singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
+        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, incrementalPushEnabled, hybridStoreConfig, singleGetRouterCacheEnabled, batchGetRouterCacheEnabled);
+
+        checkWhetherStoreWillHaveConflictConfigForIncrementalAndHybrid(originalStore, incrementalPushEnabled, incrementalPushPolicy, hybridStoreConfig);
 
         try {
             if (owner.isPresent()) {
@@ -2340,9 +2382,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // To fix the final variable problem in the lambda expression
                 final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
                 storeMetadataUpdate(clusterName, storeName, store -> {
-                    if (store.isIncrementalPushEnabled()) {
-                        throw new VeniceException("incremental push store could not support hybrid");
-                    }
                     if (finalHybridConfig.getRewindTimeInSeconds() < 0 || finalHybridConfig.getOffsetLagThresholdToGoOnline() < 0) {
                         /**
                          * If one of the config values is negative, it indicates that the store is being set back to batch-only store.
@@ -2397,6 +2436,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (numVersionsToPreserve.isPresent()) {
                 setNumVersionsToPreserve(clusterName, storeName, numVersionsToPreserve.get());
+            }
+
+            if (incrementalPushPolicy.isPresent()) {
+                setIncrementalPushPolicy(clusterName, storeName, incrementalPushPolicy.get());
             }
 
             if (incrementalPushEnabled.isPresent()) {

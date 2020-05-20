@@ -33,6 +33,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceRetriableException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.BackupStrategy;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -451,7 +452,8 @@ public class AdminExecutionTask implements Callable<Void> {
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.futureVersionETLEnabled),
         Optional.ofNullable(message.ETLStoreConfig == null ? null : message.ETLStoreConfig.etledUserProxyAccount.toString()),
         Optional.ofNullable(message.nativeReplicationEnabled),
-        Optional.ofNullable(message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString()));
+        Optional.ofNullable(message.pushStreamSourceAddress == null ? null : message.pushStreamSourceAddress.toString()),
+        IncrementalPushPolicy.optionalValueOf(message.incrementalPushPolicy));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

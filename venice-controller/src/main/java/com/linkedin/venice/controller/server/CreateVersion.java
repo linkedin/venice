@@ -11,6 +11,7 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -173,8 +174,14 @@ public class CreateVersion extends AbstractRoute {
             if (version.getPartitionCount() != partitionCount) {
               responseObject.setPartitions(version.getPartitionCount());
             }
-            String responseTopic = version.getPushType().isStreamReprocessing()
-                ? Version.composeStreamReprocessingTopic(storeName, version.getNumber()) : version.kafkaTopicName();
+            String responseTopic;
+            if(pushType.isStreamReprocessing()) {
+              responseTopic = Version.composeStreamReprocessingTopic(storeName, version.getNumber());
+            } else if (pushType.isIncremental() && version.getIncrementalPushPolicy().equals(IncrementalPushPolicy.INCREMENTAL_PUSH_SAME_AS_REAL_TIME)) {
+              responseTopic = admin.getRealTimeTopic(clusterName, storeName);
+            } else {
+              responseTopic = version.kafkaTopicName();
+            }
 
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(responseTopic);

@@ -86,7 +86,7 @@ public class ReplicaStatus {
         /**
          * For grandfathering, it's possible that END_OF_PUSH_RECEIVED status will come after a TOPIC_SWITCH status
          */
-        isValid = Utils.verifyTransition(newStatus, STARTED, TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, WARNING, ERROR, PROGRESS, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, TOPIC_SWITCH_RECEIVED, END_OF_PUSH_RECEIVED, WARNING, ERROR, PROGRESS, COMPLETED, START_OF_INCREMENTAL_PUSH_RECEIVED);
         break;
       case START_OF_INCREMENTAL_PUSH_RECEIVED:
       case END_OF_INCREMENTAL_PUSH_RECEIVED:

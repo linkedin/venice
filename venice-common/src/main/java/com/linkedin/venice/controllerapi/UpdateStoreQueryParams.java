@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.BackupStrategy;
 import com.linkedin.venice.meta.ETLStoreConfig;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.IncrementalPushPolicy;
 import com.linkedin.venice.meta.PartitionerConfig;
 import com.linkedin.venice.meta.Store;
 import java.io.IOException;
@@ -60,7 +61,8 @@ public class UpdateStoreQueryParams extends QueryParams {
             .setBackupStrategy(srcStore.getBackupStrategy())
             .setHybridStoreDiskQuotaEnabled(srcStore.isHybridStoreDiskQuotaEnabled())
             .setNativeReplicationEnabled(srcStore.isNativeReplicationEnabled())
-            .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress());
+            .setPushStreamSourceAddress(srcStore.getPushStreamSourceAddress())
+            .setIncrementalPushPolicy(srcStore.getIncrementalPushPolicy());
 
     HybridStoreConfig hybridStoreConfig = srcStore.getHybridStoreConfig();
     if (hybridStoreConfig != null) {
@@ -356,6 +358,13 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getString(PUSH_STREAM_SOURCE_ADDRESS);
   }
 
+  public UpdateStoreQueryParams setIncrementalPushPolicy(IncrementalPushPolicy incrementalPushPolicy) {
+    params.put(INCREMENTAL_PUSH_POLICY, incrementalPushPolicy.name());
+    return this;
+  }
+  public Optional<IncrementalPushPolicy> getIncrementalPushPolicy() {
+    return Optional.ofNullable(params.get(INCREMENTAL_PUSH_POLICY)).map(IncrementalPushPolicy::valueOf);
+  }
 
   //***************** above this line are getters and setters *****************
   private UpdateStoreQueryParams putInteger(String name, int value) {
