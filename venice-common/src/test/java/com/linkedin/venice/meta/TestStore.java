@@ -286,6 +286,23 @@ public class TestStore {
   }
 
   @Test
+  public void testNativeReplicationConfigOnVersionPush() {
+    // Test that it's set to false if the cluster is set to false
+    String storeName = TestUtils.getUniqueString("store");
+    String pushJobID = TestUtils.getUniqueString("FOO-ID");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setNativeReplicationEnabled(false);
+    store.addVersion(new Version(storeName, 0, pushJobID));
+    Assert.assertFalse(store.getVersion(0).get().isNativeReplicationEnabled());
+
+    // Test that tne next new version is true if the cluster is later set to true
+    store.setNativeReplicationEnabled(true);
+    String anotherPushJonID = TestUtils.getUniqueString("FOO-ID-AGAIN");
+    store.addVersion(new Version(storeName, 1, anotherPushJonID));
+    Assert.assertTrue(store.getVersion(1).get().isNativeReplicationEnabled());
+  }
+
+  @Test
   public void testValidStoreNames(){
     List<String> valid = Arrays.asList("foo", "Bar", "foo_bar", "foo-bar", "f00Bar");
     List<String> invalid = Arrays.asList("foo bar", "foo.bar", " foo", ".bar", "!", "@", "#", "$", "%");
