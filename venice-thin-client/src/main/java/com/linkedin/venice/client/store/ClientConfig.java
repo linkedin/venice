@@ -336,4 +336,37 @@ public class ClientConfig<T extends SpecificRecord> {
     this.time = time;
     return this;
   }
+
+  @Override
+  public int hashCode() {
+    int result = getStoreName().hashCode();
+    result = 31 * result + (isVsonClient() ? 1 : 0);
+    result = 31 * result + (getSpecificValueClass() != null ? getSpecificValueClass().hashCode() : 0);
+    return result;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    ClientConfig anotherClientConfig = (ClientConfig) o;
+
+    if (!this.getStoreName().equals(anotherClientConfig.getStoreName())) {
+      return false;
+    }
+
+    if (this.isVsonClient() != anotherClientConfig.isVsonClient()) {
+      return false;
+    }
+
+    return this.getSpecificValueClass() != null
+        ? this.getSpecificValueClass().equals(anotherClientConfig.getSpecificValueClass())
+        : anotherClientConfig.getSpecificValueClass() == null;
+  }
 }
