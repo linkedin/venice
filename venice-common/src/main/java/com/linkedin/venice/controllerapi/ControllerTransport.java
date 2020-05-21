@@ -13,6 +13,7 @@ import java.util.concurrent.ExecutionException;
 
 import java.nio.charset.StandardCharsets;
 
+import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.log4j.Logger;
 import org.apache.commons.io.IOUtils;
@@ -72,16 +73,19 @@ public class ControllerTransport implements AutoCloseable {
 
   public <T extends ControllerResponse> T request(String controllerUrl, ControllerRoute route, QueryParams params, Class<T> responseType)
       throws ExecutionException, TimeoutException {
-    return request(controllerUrl, route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS);
+    return request(controllerUrl, route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, null);
   }
 
-  public <T extends ControllerResponse> T request(String controllerUrl, ControllerRoute route, QueryParams params, Class<T> responseType, int timeoutMs)
+  public <T extends ControllerResponse> T request(String controllerUrl, ControllerRoute route, QueryParams params,
+      Class<T> responseType, int timeoutMs, byte[] data)
       throws ExecutionException, TimeoutException {
     HttpMethod httpMethod = route.getHttpMethod();
     if (httpMethod.equals(HttpMethod.GET)) {
       return executeGet(controllerUrl, route.getPath(), params, responseType, timeoutMs);
     } else if (httpMethod.equals(HttpMethod.POST)) {
-      return executePost(controllerUrl, route.getPath(), params, responseType, timeoutMs);
+      return data == null
+          ? executePost(controllerUrl, route.getPath(), params, responseType, timeoutMs)
+          : executePost(controllerUrl, route.getPath(), params, responseType, timeoutMs, data);
     }
     throw new VeniceException("Controller route specifies unsupported http method: " + httpMethod);
   }
@@ -110,6 +114,22 @@ public class ControllerTransport implements AutoCloseable {
       request.setEntity(new UrlEncodedFormEntity(params.getNameValuePairs()));
     } catch (Exception e) {
       throw new VeniceException("Unable to encode controller query params", e);
+    }
+    return executeRequest(request, responseType, timeoutMs);
+  }
+
+  /**
+   * This method shoves the POST string query params into the URL so the body will only contain the byte array data
+   * to make processing/deserializing easier. Please make sure the query params doesn't exceed the URL limit of 2048 chars.
+   */
+  public <T extends ControllerResponse> T executePost(String controllerUrl, String path, QueryParams params,
+      Class<T> responseType, int timeoutMs, byte[] data) throws TimeoutException, ExecutionException {
+    String encodedParams = URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
+    HttpPost request = new HttpPost(controllerUrl + "/" + path + "?" + encodedParams);
+    try {
+      request.setEntity(new ByteArrayEntity(data));
+    } catch (Exception e) {
+      throw new VeniceException("Unable to encode the provided byte array data", e);
     }
     return executeRequest(request, responseType, timeoutMs);
   }

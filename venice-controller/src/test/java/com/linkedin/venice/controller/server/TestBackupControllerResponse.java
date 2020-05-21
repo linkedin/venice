@@ -62,7 +62,7 @@ public class TestBackupControllerResponse {
           JOB,
           new QueryParams().add(CLUSTER, clusterName),
           VersionCreationResponse.class,
-          timeoutMs);
+          timeoutMs, null);
       Assert.fail("Expected TimeoutException did not happen");
     } catch (TimeoutException e) {
     } catch (Exception e) {

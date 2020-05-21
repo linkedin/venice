@@ -7,6 +7,8 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.routes.PushJobStatusUploadResponse;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.Utils;
@@ -22,6 +24,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 public class JobRoutes extends AbstractRoute {
+  private InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
+
   public JobRoutes(Optional<DynamicAccessController> accessController) {
     super(accessController);
   }
@@ -132,11 +137,16 @@ public class JobRoutes extends AbstractRoute {
         PushJobStatusRecordKey key = new PushJobStatusRecordKey();
         key.storeName = storeName;
         key.versionNumber = versionNumber;
-
-        String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
-        DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$);
-        PushJobDetails pushJobDetails =
-            reader.read(null, DecoderFactory.defaultFactory().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+        PushJobDetails pushJobDetails;
+        // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
+        if (request.queryParams().contains(PUSH_JOB_DETAILS)) {
+          String pushJobDetailsString = request.queryParams(PUSH_JOB_DETAILS);
+          DatumReader<PushJobDetails> reader = new SpecificDatumReader<>(PushJobDetails.SCHEMA$);
+          pushJobDetails =
+              reader.read(null, DecoderFactory.defaultFactory().jsonDecoder(PushJobDetails.SCHEMA$, pushJobDetailsString));
+        } else {
+          pushJobDetails = pushJobDetailsSerializer.deserialize(null, request.bodyAsBytes());
+        }
         admin.sendPushJobDetails(key, pushJobDetails);
       } catch (Throwable e) {
         controllerResponse.setError(e.getMessage());
