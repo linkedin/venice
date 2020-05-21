@@ -28,6 +28,8 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonSchema;
 import com.linkedin.venice.security.SSLFactory;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.status.PushJobDetailsStatus;
 import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
@@ -352,6 +354,8 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
   private VersionTopicInfo versionTopicInfo;
 
   private PushJobDetails pushJobDetails;
+  private InternalAvroSpecificSerializer<PushJobDetails> pushJobDetailsSerializer =
+      AvroProtocolDefinition.PUSH_JOB_DETAILS.getSerializer();
 
   protected class StoreSetting {
     boolean isChunkingEnabled;
@@ -849,15 +853,10 @@ public class KafkaPushJob extends AbstractJob implements AutoCloseable, Cloneabl
     }
     try {
       pushJobDetails.reportTimestamp = System.currentTimeMillis();
-      ByteArrayOutputStream output = new ByteArrayOutputStream();
-      JsonEncoder jsonEncoder = EncoderFactory.get().jsonEncoder(PushJobDetails.SCHEMA$, output);
-      DatumWriter<PushJobDetails> writer = new SpecificDatumWriter<>(PushJobDetails.SCHEMA$);
-      writer.write(pushJobDetails, jsonEncoder);
-      jsonEncoder.flush();
-      output.flush();
       int version = versionTopicInfo == null ? -1 : versionTopicInfo.version;
       ControllerResponse response =
-          controllerClient.sendPushJobDetails(pushJobSetting.storeName, version, output.toString());
+          controllerClient.sendPushJobDetails(pushJobSetting.storeName, version,
+              pushJobDetailsSerializer.serialize(null, pushJobDetails));
       if (response.isError()) {
         logger.warn("Failed to send push job details. " + NON_CRITICAL_EXCEPTION + " Details: " + response.getError());
       }

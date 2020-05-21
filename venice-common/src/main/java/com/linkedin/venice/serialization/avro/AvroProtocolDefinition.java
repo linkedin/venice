@@ -1,11 +1,15 @@
 package com.linkedin.venice.serialization.avro;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.state.*;
+import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.storage.protocol.*;
 import java.nio.ByteBuffer;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificRecord;
@@ -33,6 +37,11 @@ public enum AvroProtocolDefinition {
    * offsets and whether the input is sorted.
    */
   STORE_VERSION_STATE(25, 5, StoreVersionState.class),
+
+  /**
+   * Used to encode push job details records to be written to the PushJobDetails system store.
+   */
+  PUSH_JOB_DETAILS(26, 2, PushJobDetails.class),
 
   /**
    * Used to encode metadata changes about the system as a whole. Records of this type
@@ -66,6 +75,22 @@ public enum AvroProtocolDefinition {
    * This protocol is actually un-evolvable.
    */
   CHUNKED_KEY_SUFFIX(ChunkedKeySuffix.class);
+
+  private static final Set<Byte> magicByteSet = validateMagicBytes();
+
+  private static Set<Byte> validateMagicBytes() {
+    Set<Byte> magicByteSet = new HashSet<>();
+    for (AvroProtocolDefinition avroProtocolDefinition : AvroProtocolDefinition.values()) {
+      if (avroProtocolDefinition.magicByte.isPresent()) {
+        if (magicByteSet.contains(avroProtocolDefinition.magicByte.get())) {
+          throw new VeniceException("Duplicate magic byte found for: " + avroProtocolDefinition.name());
+        } else {
+          magicByteSet.add(avroProtocolDefinition.magicByte.get());
+        }
+      }
+    }
+    return magicByteSet;
+  }
 
   /**
    * The first byte at the beginning of a serialized byte array.

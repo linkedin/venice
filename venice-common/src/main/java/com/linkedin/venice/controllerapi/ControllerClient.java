@@ -36,6 +36,7 @@ public class ControllerClient implements Closeable {
 
   private static final int DEFAULT_MAX_ATTEMPTS = 10;
   private static final int QUERY_JOB_STATUS_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_REQUEST_TIMEOUT_MS = 600 * Time.MS_PER_SECOND;
   private final Optional<SSLFactory> sslFactory;
   private final String clusterName;
   private final String localHostName;
@@ -414,15 +415,23 @@ public class ControllerClient implements Closeable {
         .add(NAME, storeName)
         .add(VERSION, version)
         .add(INCREMENTAL_PUSH_VERSION, incrementalPushVersion);
-    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1);
+    return request(ControllerRoute.JOB, params, JobStatusQueryResponse.class, timeoutMs, 1, null);
   }
 
+  // TODO remove passing PushJobDetails as JSON string once all H2V plugins are updated.
   public ControllerResponse sendPushJobDetails(String storeName, int version, String pushJobDetailsString) {
     QueryParams params = newParams()
         .add(NAME, storeName)
         .add(VERSION, version)
         .add(PUSH_JOB_DETAILS, pushJobDetailsString);
     return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class);
+  }
+
+  public ControllerResponse sendPushJobDetails(String storeName, int version, byte[] pushJobDetails) {
+    QueryParams params = newParams()
+        .add(NAME, storeName)
+        .add(VERSION, version);
+    return request(ControllerRoute.SEND_PUSH_JOB_DETAILS, params, ControllerResponse.class, pushJobDetails);
   }
 
   public MultiStoreResponse queryStoreList() {
@@ -718,16 +727,21 @@ public class ControllerClient implements Closeable {
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType) {
-    return request(route, params, responseType, 600 * Time.MS_PER_SECOND, DEFAULT_MAX_ATTEMPTS);
+    return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, null);
   }
 
   private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType,
-      int timeoutMs, int maxAttempts) {
+      byte[] data) {
+    return request(route, params, responseType, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_ATTEMPTS, data);
+  }
+
+  private <T extends ControllerResponse> T request(ControllerRoute route, QueryParams params, Class<T> responseType,
+      int timeoutMs, int maxAttempts, byte[] data) {
     Exception lastException = null;
     try (ControllerTransport transport = new ControllerTransport(sslFactory)) {
       for (int attempt = 1; attempt <= maxAttempts; ++attempt) {
         try {
-          return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs);
+          return transport.request(getMasterControllerUrl(), route, params, responseType, timeoutMs, data);
         } catch (ExecutionException | TimeoutException e) {
           // Controller is unreachable. Let's wait for a new master to be elected.
           // Total wait time should be at least master election time (~30 seconds)

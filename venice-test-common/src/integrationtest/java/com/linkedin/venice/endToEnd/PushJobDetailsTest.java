@@ -19,12 +19,15 @@ import com.linkedin.venice.status.protocol.PushJobDetails;
 import com.linkedin.venice.status.protocol.PushJobDetailsStatusTuple;
 import com.linkedin.venice.status.protocol.PushJobStatusRecordKey;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
@@ -42,8 +45,10 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
 
 
-public class TestPushJobStatusUpload {
-  private static final Logger logger = Logger.getLogger(TestPushJobStatusUpload.class);
+public class PushJobDetailsTest {
+  private final Map<Integer, Schema> schemaVersionMap = new HashMap<>();
+  private final int latestSchemaId = 2;
+  private static final Logger logger = Logger.getLogger(PushJobDetailsTest.class);
   private VeniceClusterWrapper venice;
   private VeniceControllerWrapper parentController;
   private ZkServerWrapper zkWrapper;
@@ -72,6 +77,11 @@ public class TestPushJobStatusUpload {
     File inputDir = getTempDataDirectory();
     inputDirPath = "file://" + inputDir.getAbsolutePath();
     recordSchema = writeSimpleAvroFileWithUserSchema(inputDir, false);
+    for (int i=1; i<= latestSchemaId; i++) {
+      schemaVersionMap.put(i,
+          Utils.getSchemaFromResource("avro/PushJobDetails/v"
+              + i + "/PushJobDetails.avsc"));
+    }
   }
 
   @AfterClass
