@@ -562,15 +562,13 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     veniceAdmin.incrementVersionIdempotent(clusterName, storeName, Version.guidBasedDummyPushId(), 1, 1);
 
     store = veniceAdmin.getStore(clusterName, storeName);
-    // version 1 and version 2 are added to this store.
+    // version 1 and version 2 are added to this store. version 1 is deleted since early delete backup is turned on.
     Assert.assertTrue(store.isEnableWrites());
     Assert.assertEquals(store.getVersions().size(), 1);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
-    // two offline jobs are running.
     PushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getPushMonitor();
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
-        () -> monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 1), Optional.empty()).getFirst().equals(ExecutionStatus.COMPLETED)
-            && monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 2), Optional.empty()).getFirst().equals(ExecutionStatus.COMPLETED)
+        () -> monitor.getPushStatusAndDetails(Version.composeKafkaTopic(storeName, 2), Optional.empty()).getFirst().equals(ExecutionStatus.COMPLETED)
     );
   }
 
