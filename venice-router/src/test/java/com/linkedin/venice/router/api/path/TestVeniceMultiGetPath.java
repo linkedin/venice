@@ -3,10 +3,12 @@ package com.linkedin.venice.router.api.path;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
@@ -14,6 +16,9 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpVersion;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -73,8 +78,10 @@ public class TestVeniceMultiGetPath {
     for (int i = 0; i < 5; ++i) {
       keys.add(ByteBuffer.wrap((keyPrefix + i).getBytes()));
     }
+    RecordSerializer<ByteBuffer> multiGetRequestSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
-
+    request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY).set(multiGetRequestSerializer.serializeObjects(keys));
     new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 3, false, -1, 1);
   }
 
@@ -100,13 +107,17 @@ public class TestVeniceMultiGetPath {
     for (int i = 0; i < 5; ++i) {
       keys.add(ByteBuffer.wrap((keyPrefix + i).getBytes()));
     }
+    RecordSerializer<ByteBuffer> multiGetRequestSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
     BasicFullHttpRequest request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
+    request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY).set(multiGetRequestSerializer.serializeObjects(keys));
 
     VenicePath path = new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, 1);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertFalse(path.isLongTailRetryAllowedForNewRoute());
 
     request = getMultiGetHttpRequest(resourceName, keys, Optional.empty());
+    request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY).set(multiGetRequestSerializer.serializeObjects(keys));
     path = new VeniceMultiGetPath(resourceName, request, getVenicePartitionFinder(-1), 10, false, -1, -1);
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());
     Assert.assertTrue(path.isLongTailRetryAllowedForNewRoute());

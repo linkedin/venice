@@ -5,6 +5,7 @@ import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
+import com.linkedin.venice.router.RouterThrottleHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterKey;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -12,9 +13,9 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
@@ -51,11 +52,17 @@ public class VeniceMultiGetPath extends VeniceMultiKeyPath<MultiGetRouterRequest
           BAD_REQUEST, "Expected api version: " + EXPECTED_PROTOCOL.getProtocolVersion() + ", but received: " + apiVersion);
     }
 
-    Iterable<ByteBuffer> keys = null;
-    byte[] content = new byte[request.content().readableBytes()];
-    request.content().readBytes(content);
-    keys = deserialize(content);
+    Iterable<ByteBuffer> keys;
+    byte[] content;
 
+    if (request.hasAttr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY)) {
+      content = request.attr(RouterThrottleHandler.THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY).get();
+    } else {
+      content = new byte[request.content().readableBytes()];
+      request.content().readBytes(content);
+    }
+
+    keys = deserialize(content);
     initialize(resourceName, keys, partitionFinder, maxKeyCount, stats);
   }
 
