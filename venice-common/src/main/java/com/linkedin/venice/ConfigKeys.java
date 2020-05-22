@@ -181,6 +181,9 @@ public class ConfigKeys {
   public static final String HYBRID_QUOTA_ENFORCEMENT_ENABLED = "server.hybrid.quota.enforcement.enabled";
   public static final String SERVER_DATABASE_MEMORY_STATS_ENABLED = "server.database.memory.stats.enabled";
 
+  public static final String ROUTER_MAX_READ_CAPACITY = "router.max.read.capacity";
+  public static final String ROUTER_QUOTA_CHECK_WINDOW = "router.quota.check.window";
+
   /**
    * Whether to enable epoll in rest service layer.
    * This will be a best-effort since epoll support is only available in Linux, not Mac.
@@ -1071,4 +1074,9 @@ public class ConfigKeys {
    * A time after which a bad SSD will trigger server shutdown.
    */
   public static final String SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS = "server.shutdown.ssd.unhealthy.time.ms";
+
+  /**
+   * Turns on early router throttling before allocating most of the router resources.
+   */
+  public static final String ROUTER_EARLY_THROTTLE_ENABLED = "router.early.throttle.enabled";
 }
