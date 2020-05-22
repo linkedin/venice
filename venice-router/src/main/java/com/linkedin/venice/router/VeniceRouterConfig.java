@@ -99,6 +99,9 @@ public class VeniceRouterConfig {
   private int httpasyncclientConnectionWarmingExecutorThreadNum;
   private long httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
   private boolean asyncStartEnabled;
+  private boolean earlyThrottleEnabled;
+  private long routerQuotaCheckWindow;
+  private long maxRouterReadCapacityCu;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -226,6 +229,10 @@ public class VeniceRouterConfig {
     httpasyncclientConnectionWarmingExecutorThreadNum = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
     httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2 mins
     asyncStartEnabled = props.getBoolean(ROUTER_ASYNC_START_ENABLED, false);
+
+    maxRouterReadCapacityCu = props.getLong(ROUTER_MAX_READ_CAPACITY, 6000);
+    routerQuotaCheckWindow = props.getLong(ROUTER_QUOTA_CHECK_WINDOW, 30000);
+    earlyThrottleEnabled = props.getBoolean(ROUTER_EARLY_THROTTLE_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -537,6 +544,18 @@ public class VeniceRouterConfig {
 
   public boolean isAsyncStartEnabled() {
     return asyncStartEnabled;
+  }
+
+  public long getMaxRouterReadCapacityCu() {
+    return maxRouterReadCapacityCu;
+  }
+
+  public long getRouterQuotaCheckWindow() {
+    return routerQuotaCheckWindow;
+  }
+
+  public boolean isEarlyThrottleEnabled() {
+    return earlyThrottleEnabled;
   }
 
   /**
