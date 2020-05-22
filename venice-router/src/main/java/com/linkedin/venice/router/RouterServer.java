@@ -43,6 +43,7 @@ import com.linkedin.venice.router.stats.LongTailRetryStatsProvider;
 import com.linkedin.venice.router.stats.RouteHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.stats.RouterStats;
+import com.linkedin.venice.router.stats.RouterThrottleStats;
 import com.linkedin.venice.router.stats.SecurityStats;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.router.streaming.VeniceChunkedWriteHandler;
@@ -54,6 +55,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.VeniceJVMStats;
 import com.linkedin.venice.stats.ZkClientStatusStats;
+import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
@@ -148,6 +150,7 @@ public class RouterServer extends AbstractVeniceService {
   private MultithreadEventLoopGroup serverEventLoopGroup;
 
   private ExecutorService workerExecutor;
+  private EventThrottler routerEarlyThrottler;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
 
@@ -479,6 +482,9 @@ public class RouterServer extends AbstractVeniceService {
 
     SecurityStats securityStats = new SecurityStats(this.metricsRepository, "security",
         () -> secureRouter != null ? secureRouter.getConnectedCount() : 0);
+    RouterThrottleStats routerThrottleStats = new RouterThrottleStats(this.metricsRepository, "router_throttler_stats");
+    routerEarlyThrottler = new EventThrottler(config.getMaxRouterReadCapacityCu(), config.getRouterQuotaCheckWindow(), "router-early-throttler", true, EventThrottler.REJECT_STRATEGY);
+
     VerifySslHandler unsecureVerifySslHandler = new VerifySslHandler(securityStats, config.isEnforcingSecureOnly());
     HealthCheckStats healthCheckStats = new HealthCheckStats(this.metricsRepository, "healthcheck_stats");
     router = Router.builder(scatterGather)
@@ -491,6 +497,7 @@ public class RouterServer extends AbstractVeniceService {
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+          pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
           pipeline.addLast("HealthCheckHandler", new HealthCheckHandler(healthCheckStats));
           pipeline.addLast("VerifySslHandler", unsecureVerifySslHandler);
           pipeline.addLast("MetadataHandler", metaDataHandler);
@@ -510,6 +517,7 @@ public class RouterServer extends AbstractVeniceService {
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
     HealthCheckHandler secureRouterHealthCheckHander = new HealthCheckHandler(healthCheckStats);
     Consumer<ChannelPipeline> withoutAcl = pipeline -> {
+      pipeline.addLast("RouterThrottleHandler", new RouterThrottleHandler(routerThrottleStats, routerEarlyThrottler, config));
       pipeline.addLast("HealthCheckHandler", secureRouterHealthCheckHander);
       pipeline.addLast("VerifySslHandler", verifySslHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
