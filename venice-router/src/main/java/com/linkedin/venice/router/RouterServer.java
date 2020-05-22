@@ -537,10 +537,14 @@ public class RouterServer extends AbstractVeniceService {
         .idleTimeout(3, TimeUnit.HOURS)
         .build();
 
-    asyncStart();
-
-    // The start up process is not finished yet, because it is continuing asynchronously.
-    return false;
+    boolean asyncStart = config.isAsyncStartEnabled();
+    CompletableFuture startFuture = startServices(asyncStart);
+    if (!asyncStart) {
+      startFuture.get();
+      logger.info("All the required services have been started");
+    }
+    // The start up process is not finished yet if async start is enabled, because it is continuing asynchronously.
+    return !asyncStart;
   }
 
   private void addStreamingHandler(ChannelPipeline pipeline) {
@@ -632,6 +636,17 @@ public class RouterServer extends AbstractVeniceService {
     return metadataRepository;
   }
 
+
+  private void handleExceptionInStartServices(VeniceException e, boolean async) throws VeniceException {
+    if (async) {
+      // TODO: Clean up all System.exit() calls... this is not proper.
+      logger.error("'startServices' encountered exception", e);
+      logger.error(this.toString() + " is able to exit");
+      System.exit(1);
+    } else {
+      throw e;
+    }
+  }
   /**
    * a few tasks will be done asynchronously during the service startup and are moved into this method.
    * We are doing this because there is no way to specify Venice component startup order in "mint deploy".
@@ -639,8 +654,8 @@ public class RouterServer extends AbstractVeniceService {
    * helix manager throw unknown cluster name exception.) We terminate the process if helix connection
    * cannot be established.
    */
-  private void asyncStart() {
-    CompletableFuture.runAsync(() -> {
+  private CompletableFuture startServices(boolean async) {
+    return CompletableFuture.runAsync(() -> {
       try {
         if (null == this.manager) {
           // TODO: Remove this check once test constructor is removed or otherwise fixed.
@@ -651,9 +666,7 @@ public class RouterServer extends AbstractVeniceService {
         }
       } catch (VeniceException ve) {
         logger.error(this.toString() + " got an exception while trying to connectHelixManager()", ve);
-        logger.error(this.toString() + " is about to exit");
-
-        System.exit(1); // TODO: Clean up all System.exit() calls... this is not proper.
+        handleExceptionInStartServices(ve, async);
       }
       // Should refresh after Helix cluster is setup
       liveInstanceMonitor.refresh();
@@ -665,7 +678,7 @@ public class RouterServer extends AbstractVeniceService {
         storageNodeClient.start();
       } catch (VeniceException e) {
         logger.error("Encountered issue when starting storage node client", e);
-        System.exit(1);
+        handleExceptionInStartServices(e, async);
       }
 
       // Register current router into ZK.
@@ -694,7 +707,7 @@ public class RouterServer extends AbstractVeniceService {
         dictionaryRetrievalService.startInner();
       } catch (VeniceException e) {
         logger.error("Encountered issue when starting dictionary retriever", e);
-        System.exit(1);
+        handleExceptionInStartServices(e, async);
       }
 
       /**
@@ -706,8 +719,7 @@ public class RouterServer extends AbstractVeniceService {
         serverFuture.await();
         secureServerFuture.await();
       } catch (InterruptedException e) {
-        logger.error("Received InterruptedException, will exit", e);
-        System.exit(1);
+        handleExceptionInStartServices(new VeniceException(e), async);
       }
 
       for (D2Server d2Server : d2ServerList) {
@@ -723,7 +735,7 @@ public class RouterServer extends AbstractVeniceService {
       } catch (Exception e) {
         logger.error("Exception while waiting for " + this.toString() + " to start", e);
         serviceState.set(ServiceState.STOPPED);
-        throw new VeniceException(e);
+        handleExceptionInStartServices(new VeniceException(e), async);
       }
 
       serviceState.set(ServiceState.STARTED);

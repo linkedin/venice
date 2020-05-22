@@ -98,6 +98,7 @@ public class VeniceRouterConfig {
   private int httpasyncclientConnectionWarmingLowWaterMark;
   private int httpasyncclientConnectionWarmingExecutorThreadNum;
   private long httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
+  private boolean asyncStartEnabled;
 
 
   public VeniceRouterConfig(VeniceProperties props) {
@@ -224,6 +225,7 @@ public class VeniceRouterConfig {
     httpasyncclientConnectionWarmingLowWaterMark = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_LOW_WATER_MARK, 60);
     httpasyncclientConnectionWarmingExecutorThreadNum = props.getInt(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_EXECUTOR_THREAD_NUM, 6); // 6 threads
     httpasyncclientConnectionWarmingNewInstanceDelayJoinMs = props.getLong(ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS, TimeUnit.MINUTES.toMillis(2)); // 2 mins
+    asyncStartEnabled = props.getBoolean(ROUTER_ASYNC_START_ENABLED, false);
   }
 
   public String getClusterName() {
@@ -531,6 +533,10 @@ public class VeniceRouterConfig {
 
   public long getHttpasyncclientConnectionWarmingNewInstanceDelayJoinMs() {
     return httpasyncclientConnectionWarmingNewInstanceDelayJoinMs;
+  }
+
+  public boolean isAsyncStartEnabled() {
+    return asyncStartEnabled;
   }
 
   /**
