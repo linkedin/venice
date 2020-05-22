@@ -648,6 +648,15 @@ public class ConfigKeys {
   public static final String ROUTER_HTTPASYNCCLIENT_CONNECTION_WARMING_NEW_INSTANCE_DELAY_JOIN_MS  = "router.httpasyncclient.connection.warming.new.instance.delay.join.ms";
 
   /**
+   * Whether to enable async start in Router startup procedure.
+   * The reason to introduce this feature is that in some env, the dependent services could be started out of order.
+   *
+   * IMPORTANT: enabling this feature won't guarantee that a successful restarted Router will be in a healthy state,
+   * since async start will exit later if it detects any errors.
+   */
+  public static final String ROUTER_ASYNC_START_ENABLED = "router.async.start.enabled";
+
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */
