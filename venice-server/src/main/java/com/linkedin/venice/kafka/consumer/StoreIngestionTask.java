@@ -55,6 +55,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -201,6 +202,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<String> topicWithLogCompaction = new ConcurrentSkipListSet<>();
 
   private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
+  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
 
   public StoreIngestionTask(VeniceWriterFactory writerFactory,
@@ -892,20 +894,20 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         storeIngestionStats.recordUnexpectedMessage(storeNameWithoutVersionInfo, 1);
       }
 
-      if (record.offset() % 100 == 0) {
-          // Report such kind of message once per 100 messages to reduce logging volume
-          /**
-           * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
-           * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
-           *
-           * Same thing for {@link #isIncrementalPushEnabled}.
-           *
-           * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
-           * incremental push feature of the store.
-           */
-          logger.warn(
-              "The record was received after 'EOP', but the store: " + topic +
-                  " is neither hybrid nor incremental push enabled, so will skip it.");
+      // Report such kind of message once per minute to reduce logging volume
+      /**
+       * TODO: right now, if we update a store to enable hybrid, {@link StoreIngestionTask} for the existing versions
+       * won't know it since {@link #hybridStoreConfig} parameter is passed during construction.
+       *
+       * Same thing for {@link #isIncrementalPushEnabled}.
+       *
+       * So far, to make hybrid store/incremental store work, customer needs to do a new push after enabling hybrid/
+       * incremental push feature of the store.
+       */
+      String message = "The record was received after 'EOP', but the store: " + topic +
+          " is neither hybrid nor incremental push enabled, so will skip it.";
+      if (!filter.isRedundantException(message)) {
+        logger.warn(message);
       }
       return false;
     }
