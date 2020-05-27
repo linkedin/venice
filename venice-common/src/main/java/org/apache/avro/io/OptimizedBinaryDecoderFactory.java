@@ -1,5 +1,8 @@
 package org.apache.avro.io;
 
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+
 public class OptimizedBinaryDecoderFactory {
   private final ThreadLocal<OptimizedBinaryDecoder> localBinaryDecoder = ThreadLocal.withInitial(
       () -> new OptimizedBinaryDecoder()
@@ -20,7 +23,7 @@ public class OptimizedBinaryDecoderFactory {
    */
   public OptimizedBinaryDecoder createOptimizedBinaryDecoder(byte[] data, int offset, int length) {
     OptimizedBinaryDecoder decoder = localBinaryDecoder.get();
-    decoder.configure(data, offset, length);
+    AvroCompatibilityHelper.newBinaryDecoder(data, offset, length, decoder);
     return decoder;
   }
 }
