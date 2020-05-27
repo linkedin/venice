@@ -1459,12 +1459,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * array, which is big enough to pre-append schema id, so we just reuse it to avoid unnecessary byte array allocation.
      */
     if (putValue.position() < SCHEMA_HEADER_LENGTH) {
-      // using {@link com.linkedin.venice.serialization.avro.KafkaValueSerializer}
-      ByteBuffer value = ByteBuffer.allocate(SCHEMA_HEADER_LENGTH + putValue.remaining());
-      value.putInt(schemaId);
-      value.put(putValue.asReadOnlyBuffer());
-      value.rewind();
-      writeToStorageEngine(storageEngineRepository.getLocalStorageEngine(topic), partition, keyBytes, value);
+      throw new VeniceException("Start position of 'putValue' ByteBuffer shouldn't be less than " + SCHEMA_HEADER_LENGTH);
     } else {
       // Back up the original 4 bytes
       putValue.position(putValue.position() - SCHEMA_HEADER_LENGTH);
