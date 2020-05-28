@@ -27,6 +27,8 @@ public class HttpConstants {
   public static final String VENICE_STREAMING = "X-VENICE-STREAMING";
   public static final String VENICE_STREAMING_RESPONSE = "X-VENICE-STREAMING-RESPONSE";
 
+  public static final String VENICE_KEY_COUNT = "X-VENICE-KEY-COUNT";
+
   public static final int SC_MISDIRECTED_REQUEST = 421;
 
   private HttpConstants() {}

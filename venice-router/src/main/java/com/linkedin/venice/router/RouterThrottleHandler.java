@@ -18,10 +18,12 @@ import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.Optional;
 import org.apache.avro.io.OptimizedBinaryDecoder;
 import org.apache.avro.io.OptimizedBinaryDecoderFactory;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -56,28 +58,36 @@ public class RouterThrottleHandler extends SimpleChannelInboundHandler<HttpReque
     }
 
     VenicePathParserHelper helper = new VenicePathParserHelper(msg.uri());
-    // Only throttle storage requests
-    // TODO: Support compute operation throttling through key count being passed from the client in http header. Also for multi-get fall back to this
-    // only if header does not contain the key count
-    if (helper.getResourceType().equals(TYPE_STORAGE)) {
+
+    if (helper.getResourceType().equals(TYPE_STORAGE) || helper.getResourceType().equals(TYPE_COMPUTE)) {
       try {
         int keyCount;
-        BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest)msg;
 
         // single-get
         if (VeniceRouterUtils.isHttpGet(msg.method().name())) {
           keyCount = 1;
-        } else { // batch-get requests
-          ByteBuf byteBuf = basicFullHttpRequest.content();
-          byte[] bytes = new byte[byteBuf.readableBytes()];
-          int readerIndex = byteBuf.readerIndex();
+        } else { // batch-get/compute requests
+          BasicFullHttpRequest basicFullHttpRequest = (BasicFullHttpRequest)msg;
+          Optional<CharSequence> keyCountsHeader = basicFullHttpRequest.getRequestHeaders().get(VENICE_KEY_COUNT);
+          if (keyCountsHeader.isPresent()) {
+            keyCount = Integer.parseInt((String)keyCountsHeader.get());
+          } else if (helper.getResourceType().equals(TYPE_STORAGE)) {
+            ByteBuf byteBuf = basicFullHttpRequest.content();
+            byte[] bytes = new byte[byteBuf.readableBytes()];
+            int readerIndex = byteBuf.readerIndex();
 
-          byteBuf.getBytes(readerIndex, bytes);
-          OptimizedBinaryDecoder binaryDecoder =
-              OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(bytes, 0, bytes.length);
-          keyCount = getKeyCount(binaryDecoder);
-          // Reuse the byte array in VeniceMultiGetPath
-          basicFullHttpRequest.attr(THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY).set(bytes);
+            byteBuf.getBytes(readerIndex, bytes);
+            OptimizedBinaryDecoder binaryDecoder =
+                OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(bytes, 0, bytes.length);
+            keyCount = getKeyCount(binaryDecoder);
+            // Reuse the byte array in VeniceMultiGetPath
+            basicFullHttpRequest.attr(THROTTLE_HANDLER_BYTE_ATTRIBUTE_KEY).set(bytes);
+          } else {
+            // Pass request to the next channel for compute request with older client
+            ReferenceCountUtil.retain(msg);
+            ctx.fireChannelRead(msg);
+            return;
+          }
         }
         throttler.maybeThrottle(keyCount);
       } catch (QuotaExceededException e) {

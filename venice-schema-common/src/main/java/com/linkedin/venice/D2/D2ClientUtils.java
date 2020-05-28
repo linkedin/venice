@@ -17,6 +17,9 @@ import java.net.URISyntaxException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static com.linkedin.venice.HttpConstants.*;
+
+
 public class D2ClientUtils {
   private static Logger logger = Logger.getLogger(D2ClientUtils.class);
   private static long DEFAULT_D2_STARTUP_TIMEOUT_MS = 5000;
@@ -121,11 +124,7 @@ public class D2ClientUtils {
      return response;
    }
 
-  public static RestRequest createD2PostRequest(String requestPath, byte[] body) {
-    return createD2PostRequest(requestPath, Collections.EMPTY_MAP, body);
-  }
-
-  public static RestRequest createD2PostRequest(String requestPath, Map<String, String> headers, byte[] body) {
+  public static RestRequest createD2PostRequest(String requestPath, Map<String, String> headers, byte[] body, int keyCount) {
     URI requestUri;
     try {
       requestUri = new URI(requestPath);
@@ -133,6 +132,11 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    return new RestRequestBuilder(requestUri).setMethod("post").setHeaders(headers).setEntity(body).build();
+    RestRequestBuilder builder = new RestRequestBuilder(requestUri).setMethod("post").setHeaders(headers).setEntity(body);
+    if (keyCount != 0) {
+      builder.setHeader(VENICE_KEY_COUNT, Integer.toString(keyCount));
+    }
+
+    return builder.build();
   }
 }

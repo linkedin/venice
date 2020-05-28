@@ -59,6 +59,7 @@ import org.apache.avro.io.ByteBufferOptimizedBinaryDecoder;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
 import static com.linkedin.venice.VeniceConstants.*;
 import static com.linkedin.venice.streaming.StreamingConstants.*;
 
@@ -356,12 +357,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     LongAdder decompressionTime = new LongAdder();
     byte[] multiGetBody = serializeMultiGetRequest(keyList);
     CompletableFuture<Map<K, V>> valueFuture = new CompletableFuture();
-
     requestSubmissionWithStatsHandling(
         stats,
         preRequestTimeInNS,
         true,
-        () -> transportClient.post(getStorageRequestPath(), MULTI_GET_HEADER_MAP, multiGetBody),
+        () -> transportClient.post(getStorageRequestPath(), MULTI_GET_HEADER_MAP, multiGetBody, keyList.size()),
         (response, throwable, responseDeserializationComplete) -> {
           try {
             if (null != throwable) {
@@ -512,7 +512,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         stats,
         preRequestTimeInNS,
         true,
-        () -> transportClient.post(getComputeRequestPath(), headerMap, serializedFullComputeRequest),
+        () -> transportClient.post(getComputeRequestPath(), headerMap, serializedFullComputeRequest, keyList.size()),
         (clientResponse, throwable, responseDeserializationComplete) -> {
           try {
             if (null != throwable) {
@@ -914,7 +914,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             },
             envelope -> envelope.keyIndex,
             envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)
-        )
+        ), keyList.size()
     );
   }
 
@@ -953,7 +953,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             },
             envelope -> envelope.keyIndex,
             envelope -> streamingFooterRecordDeserializer.deserialize(envelope.value)
-        )
+        ), keyList.size()
     );
   }
 }
