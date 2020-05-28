@@ -66,26 +66,34 @@ public class VeniceSystemProducer implements SystemProducer {
   private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
   private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
-  private final Schema keySchema;
-  private final VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
+  // Immutable state
+  private final String veniceD2ZKHost;
+  private final String d2ServiceName;
+  private final String storeName;
+  private final String samzaJobId;
+  private final Version.PushType pushType;
+  private final Optional<SSLFactory> sslFactory;
+  private final VeniceSystemFactory factory;
+  private final Optional<String> partitioners;
+  private final Time time;
+
+  // Mutable, lazily initialized, state
+  private Schema keySchema;
+  private VeniceConcurrentHashMap<Schema, Pair<Integer, Integer>> valueSchemaIds = new VeniceConcurrentHashMap<>();
 
   /**
    * key is schema
    * value is Avro serializer
    */
-  private final Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
-
-  private final VersionCreationResponse versionCreationResponse;
-
-  private final D2Client d2Client;
-  private final D2ControllerClient controllerClient;
-  private final String storeName;
+  private Map<String, VeniceAvroKafkaSerializer> serializers = new VeniceConcurrentHashMap<>();
+  private D2Client d2Client;
+  private D2ControllerClient controllerClient;
   // It can be version topic, real-time topic or stream reprocessing topic, depending on push type
-  private final String topicName;
-  private final Version.PushType pushType;
-  private final Time time;
+  private String topicName;
 
   private boolean isWriteComputeEnabled = false;
+
+  private boolean isStarted = false;
 
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter = null;
   private Optional<RouterBasedPushMonitor> pushMonitor = Optional.empty();
@@ -100,60 +108,15 @@ public class VeniceSystemProducer implements SystemProducer {
   public VeniceSystemProducer(String veniceD2ZKHost, String d2ServiceName, String storeName,
       Version.PushType pushType, String samzaJobId, VeniceSystemFactory factory, Optional<SSLFactory> sslFactory,
       Optional<String> partitioners, Time time) {
+    this.veniceD2ZKHost = veniceD2ZKHost;
+    this.d2ServiceName = d2ServiceName;
     this.storeName = storeName;
     this.pushType = pushType;
+    this.samzaJobId = samzaJobId;
+    this.factory = factory;
+    this.sslFactory = sslFactory;
+    this.partitioners = partitioners;
     this.time = time;
-
-    this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost).build();
-    D2ClientUtils.startClient(d2Client);
-    // Discover cluster
-    D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse)
-        controllerRequestWithRetry(() -> D2ControllerClient.discoverCluster(this.d2Client, d2ServiceName, this.storeName)
-        );
-    String clusterName = discoveryResponse.getCluster();
-    LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
-
-    this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, this.d2Client, sslFactory);
-
-    // Request all the necessary info from Venice Controller
-    this.versionCreationResponse = (VersionCreationResponse)controllerRequestWithRetry(
-        () -> this.controllerClient.requestTopicForWrites(
-            this.storeName,
-            1,
-            pushType,
-            samzaJobId,
-            true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
-            false, // Samza jobs, including batch ones, are expected to write data out of order
-            partitioners,
-            Optional.empty()
-        )
-    );
-    LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + this.versionCreationResponse);
-    this.topicName = versionCreationResponse.getKafkaTopic();
-
-    StoreResponse storeResponse = (StoreResponse) controllerRequestWithRetry(
-        () -> this.controllerClient.getStore(storeName));
-    this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
-
-    SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
-        () -> this.controllerClient.getKeySchema(this.storeName)
-    );
-    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
-    this.keySchema = Schema.parse(keySchemaResponse.getSchemaStr());
-
-    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
-        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName)
-    );
-    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
-    for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
-      valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
-    }
-
-    if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
-      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
-      pushMonitor = Optional.of(new RouterBasedPushMonitor(veniceD2ZKHost, versionTopic, factory, this));
-      pushMonitor.get().start();
-    }
   }
 
   protected ControllerResponse controllerRequestWithRetry(Supplier<ControllerResponse> supplier) {
@@ -191,9 +154,64 @@ public class VeniceSystemProducer implements SystemProducer {
 
   @Override
   public synchronized void start() {
-    if (null == veniceWriter) {
-      this.veniceWriter = getVeniceWriter(this.versionCreationResponse);
+    if (this.isStarted) {
+      return;
     }
+    this.isStarted = true;
+
+    this.d2Client = new D2ClientBuilder().setZkHosts(veniceD2ZKHost).build();
+    D2ClientUtils.startClient(d2Client);
+    // Discover cluster
+    D2ServiceDiscoveryResponse discoveryResponse = (D2ServiceDiscoveryResponse)
+        controllerRequestWithRetry(() -> D2ControllerClient.discoverCluster(d2Client, d2ServiceName, this.storeName)
+        );
+    String clusterName = discoveryResponse.getCluster();
+    LOGGER.info("Found cluster: " + clusterName + " for store: " + storeName);
+
+    this.controllerClient = new D2ControllerClient(d2ServiceName, clusterName, d2Client, sslFactory);
+
+    // Request all the necessary info from Venice Controller
+    VersionCreationResponse versionCreationResponse = (VersionCreationResponse)controllerRequestWithRetry(
+        () -> this.controllerClient.requestTopicForWrites(
+            this.storeName,
+            1,
+            pushType,
+            samzaJobId,
+            true, // sendStartOfPush must be true in order to support batch push to Venice from Samza app
+            false, // Samza jobs, including batch ones, are expected to write data out of order
+            partitioners,
+            Optional.empty()
+        )
+    );
+    LOGGER.info("Got [store: " + this.storeName + "] VersionCreationResponse: " + versionCreationResponse);
+    this.topicName = versionCreationResponse.getKafkaTopic();
+
+    StoreResponse storeResponse = (StoreResponse) controllerRequestWithRetry(
+        () -> this.controllerClient.getStore(storeName));
+    this.isWriteComputeEnabled = storeResponse.getStore().isWriteComputationEnabled();
+
+    SchemaResponse keySchemaResponse = (SchemaResponse)controllerRequestWithRetry(
+        () -> this.controllerClient.getKeySchema(this.storeName)
+    );
+    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for key schema: " + keySchemaResponse);
+    this.keySchema = Schema.parse(keySchemaResponse.getSchemaStr());
+
+    MultiSchemaResponse valueSchemaResponse = (MultiSchemaResponse)controllerRequestWithRetry(
+        () -> this.controllerClient.getAllValueAndDerivedSchema(this.storeName)
+    );
+    LOGGER.info("Got [store: " + this.storeName + "] SchemaResponse for value schemas: " + valueSchemaResponse);
+    for (MultiSchemaResponse.Schema valueSchema : valueSchemaResponse.getSchemas()) {
+      valueSchemaIds.put(Schema.parse(valueSchema.getSchemaStr()), new Pair<>(valueSchema.getId(), valueSchema.getDerivedSchemaId()));
+    }
+
+    if (pushType.equals(Version.PushType.STREAM_REPROCESSING)) {
+      String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
+      pushMonitor = Optional.of(new RouterBasedPushMonitor(veniceD2ZKHost, versionTopic, factory, this));
+      pushMonitor.get().start();
+    }
+
+    this.veniceWriter = getVeniceWriter(versionCreationResponse);
+
     if (pushMonitor.isPresent()) {
       /**
        * If the stream reprocessing job has finished, push monitor will exit the Samza process directly.
@@ -206,7 +224,8 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   @Override
-  public void stop() {
+  public synchronized void stop() {
+    this.isStarted = false;
     veniceWriter.close();
     if (Version.PushType.STREAM_REPROCESSING.equals(pushType) && pushMonitor.isPresent()) {
       String versionTopic = Version.composeVersionTopicFromStreamReprocessingTopic(topicName);
@@ -272,8 +291,6 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   protected CompletableFuture<Void> send(Object keyObject, Object valueObject) {
-
-    String topic = versionCreationResponse.getKafkaTopic();
     Schema keyObjectSchema = getSchemaFromObject(keyObject);
 
     if (!keySchema.equals(keyObjectSchema)) {
@@ -289,7 +306,7 @@ public class VeniceSystemProducer implements SystemProducer {
           + " which does not match Venice key schema " + keySchema + ".  Key object: " + serializedObject);
     }
 
-    byte[] key = serializeObject(topic, keyObject);
+    byte[] key = serializeObject(topicName, keyObject);
     final CompletableFuture<Void> completableFuture = new CompletableFuture<>();
     final Callback callback = new VeniceWriter.CompletableFutureCallback(
         completableFuture);
@@ -307,7 +324,7 @@ public class VeniceSystemProducer implements SystemProducer {
         return new Pair<>(valueSchemaResponse.getId(), valueSchemaResponse.getDerivedSchemaId());
       });
 
-       byte[] value = serializeObject(topic, valueObject);
+       byte[] value = serializeObject(topicName, valueObject);
 
       if (valueSchemaIdPair.getSecond() == -1) {
         veniceWriter.put(key, value, valueSchemaIdPair.getFirst(), callback);
@@ -316,7 +333,7 @@ public class VeniceSystemProducer implements SystemProducer {
           throw new SamzaException("Cannot write partial update record to Venice store " + storeName + " "
               + "because write-compute is not enabled for it. Please contact Venice team to configure it.");
         }
-        
+
         veniceWriter.update(key, value, valueSchemaIdPair.getFirst(), valueSchemaIdPair.getSecond(), callback);
       }
     }
