@@ -1,7 +1,5 @@
 package com.linkedin.venice.server;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.cleaner.LeakedResourceCleaner;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -45,8 +43,14 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.Utils;
+
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+
 import io.tehuti.metrics.MetricsRepository;
-import java.io.File;
+
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
+
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -55,8 +59,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
 
 
 // TODO curate all comments later
@@ -100,42 +102,24 @@ public class VeniceServer {
       Optional<SSLEngineComponentFactory> sslFactory, // TODO: Clean this up. We shouldn't use proprietary abstractions.
       Optional<StaticAccessController> accessController,
       Optional<ClientConfig> clientConfigForConsumer) {
+
+    // force out any potential config errors using a wildcard store name
+    veniceConfigLoader.getStoreConfig("");
+
+    if (!isServerInWhiteList(
+        veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
+        veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
+        veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
+        veniceConfigLoader.getVeniceServerConfig().isServerWhitelistEnabled())) {
+      throw new VeniceException("Can not create a venice server because this server has not been added into white list.");
+    }
+
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
     this.metricsRepository = metricsRepository;
     this.sslFactory = sslFactory;
     this.accessController = accessController;
     this.clientConfigForConsumer = clientConfigForConsumer;
-
-    if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
-                             veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
-                             veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
-                             veniceConfigLoader.getVeniceServerConfig().isServerWhitelistEnabled())) {
-      throw new VeniceException(
-          "Can not create a venice server because this server has not been added into white list.");
-    }
-
-    String databasePath = veniceConfigLoader.getVeniceServerConfig().getDataBasePath();
-    if (!directoryExists(databasePath)) {
-      if (!veniceConfigLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
-        throw new VeniceException(
-            "Data directory: " + databasePath + " does not exist and " + ConfigKeys.AUTOCREATE_DATA_PATH + " is set to false.  Cannot create server.");
-      } else {
-        File databaseDir = new File(databasePath);
-        logger.info("Creating database directory " + databaseDir.getAbsolutePath() + ".");
-        databaseDir.mkdirs();
-      }
-    }
-
-    /*
-     * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
-     * 2. Check Hostnames like in Voldemort to make sure that local host and ips match up.
-     */
-
-    // force out any potential config errors using a wildcard store name
-    veniceConfigLoader.getStoreConfig("");
-
-    //create all services
     this.services = createServices();
   }
 
@@ -395,7 +379,7 @@ public class VeniceServer {
     }
   }
 
-  protected boolean isServerInWhiteList(String zkAddress, String clusterName, int listenPort, boolean enableServerWhitelist) {
+  protected static boolean isServerInWhiteList(String zkAddress, String clusterName, int listenPort, boolean enableServerWhitelist) {
     if (!enableServerWhitelist) {
       logger.info("Check whitelist is disable, continue to start participant.");
       return true;
@@ -416,10 +400,6 @@ public class VeniceServer {
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
-  }
-
-  protected static boolean directoryExists(String dataDirectory) {
-    return Files.isDirectory(Paths.get(dataDirectory));
   }
 
   protected VeniceConfigLoader getConfigLoader() {

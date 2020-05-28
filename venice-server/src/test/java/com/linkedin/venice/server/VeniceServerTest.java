@@ -12,9 +12,6 @@ import com.linkedin.venice.utils.Utils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Properties;
 
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -50,18 +47,6 @@ public class VeniceServerTest {
       cluster.addVeniceServer(featureProperties, new Properties());
       Assert.assertTrue(cluster.getVeniceServers().get(0).getVeniceServer().isStarted());
     }
-  }
-
-  @Test
-  public void testDirectoryExists() throws Exception {
-    Path directoryPath = Files.createTempDirectory(null);
-    Path filePath = Files.createTempFile(null, null);
-    Path nonExistingPath = Paths.get(TestUtils.getUniqueTempPath());
-    Assert.assertTrue(VeniceServer.directoryExists(directoryPath.toString()));
-    Assert.assertFalse(VeniceServer.directoryExists(filePath.toString()));
-    Assert.assertFalse(VeniceServer.directoryExists(nonExistingPath.toString()));
-    Files.delete(directoryPath);
-    Files.delete(filePath);
   }
 
   @Test

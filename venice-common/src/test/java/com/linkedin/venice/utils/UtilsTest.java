@@ -1,22 +1,23 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import static org.testng.Assert.*;
-
-import static org.apache.avro.Schema.*;
-
 import com.linkedin.venice.meta.Store;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.SortedMap;
-import java.util.TreeMap;
+
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+import static org.apache.avro.Schema.*;
+import static org.testng.Assert.*;
 
 
 /**
@@ -176,6 +177,18 @@ public class UtilsTest {
             Utils.makeTimePretty(entry.getKey()),
             entry.getValue(),
             entry.getKey() + " does not get converted properly!"));
+  }
+
+  @Test
+  public void testDirectoryExists() throws Exception {
+    Path directoryPath = Files.createTempDirectory(null);
+    Path filePath = Files.createTempFile(null, null);
+    Path nonExistingPath = Paths.get(TestUtils.getUniqueTempPath());
+    Assert.assertTrue(Utils.directoryExists(directoryPath.toString()));
+    Assert.assertFalse(Utils.directoryExists(filePath.toString()));
+    Assert.assertFalse(Utils.directoryExists(nonExistingPath.toString()));
+    Files.delete(directoryPath);
+    Files.delete(filePath);
   }
 
   private void populateIntegerList(List<Integer> list) {

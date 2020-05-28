@@ -8,6 +8,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 
+import java.nio.file.Files;
 import java.util.AbstractList;
 import java.util.Objects;
 import java.util.RandomAccess;
@@ -260,6 +261,10 @@ public class Utils {
     } catch (IOException ex) {
       return fileName;
     }
+  }
+
+  public static boolean directoryExists(String dataDirectory) {
+    return Files.isDirectory(Paths.get(dataDirectory));
   }
 
   private static boolean localhost = false;

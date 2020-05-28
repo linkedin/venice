@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,22 +12,24 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggVersionedBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
-import com.linkedin.venice.stats.RocksDBStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.blackhole.BlackHoleStorageEngineFactory;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.store.rocksdb.RocksDBStorageEngineFactory;
+import com.linkedin.venice.utils.Utils;
+
+import org.apache.log4j.Logger;
+import org.rocksdb.Statistics;
+
+import java.io.File;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.log4j.Logger;
-
-import java.util.Map;
 import java.util.function.Consumer;
-import org.rocksdb.Statistics;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
 
@@ -43,17 +46,31 @@ public class StorageService extends AbstractVeniceService {
   private final StorageEngineRepository storageEngineRepository;
   private final VeniceConfigLoader configLoader;
   private final VeniceServerConfig serverConfig;
-
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
   private final Consumer<String> storeVersionStateDeleter;
-
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
-
   private final RocksDBMemoryStats rocksDBMemoryStats;
 
-  public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter,
-      AggVersionedBdbStorageEngineStats bdbStorageEngineStats, AggVersionedStorageEngineStats storageEngineStats, RocksDBMemoryStats rocksDBMemoryStats) {
+  public StorageService(
+      VeniceConfigLoader configLoader,
+      Consumer<String> storeVersionStateDeleter,
+      AggVersionedBdbStorageEngineStats bdbStorageEngineStats,
+      AggVersionedStorageEngineStats storageEngineStats,
+      RocksDBMemoryStats rocksDBMemoryStats) {
+
+    String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
+    if (!Utils.directoryExists(dataPath)) {
+      if (!configLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
+        throw new VeniceException(
+            "Data directory '" + dataPath + "' does not exist and " + ConfigKeys.AUTOCREATE_DATA_PATH + " is disabled.");
+      }
+
+      File dataDir = new File(dataPath);
+      logger.info("Creating data directory " + dataDir.getAbsolutePath() + ".");
+      dataDir.mkdirs();
+    }
+
     this.configLoader = configLoader;
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storageEngineRepository = new StorageEngineRepository();
@@ -66,7 +83,6 @@ public class StorageService extends AbstractVeniceService {
     this.aggVersionedStorageEngineStats = storageEngineStats;
     this.rocksDBMemoryStats = rocksDBMemoryStats;
     initInternalStorageEngineFactories();
-    // Restore all the stores persisted previously
     restoreAllStores(configLoader);
   }
 
