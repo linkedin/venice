@@ -298,7 +298,7 @@ public class StatTrackingStoreClientTest {
       return value;
     });
 
-    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any());
+    doReturn(transportFuture).when(mockTransportClient).post(any(), any(), any(), anyInt());
     String storeName = "test_store";
     SimpleStoreClient<String, GenericRecord>
         storeClient = new SimpleStoreClient<>(mockTransportClient, storeName,

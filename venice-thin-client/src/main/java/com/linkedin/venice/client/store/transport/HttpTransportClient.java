@@ -23,6 +23,9 @@ import java.io.InputStream;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+import static com.linkedin.venice.HttpConstants.*;
+
+
 /**
  * {@link CloseableHttpAsyncClient} based TransportClient implementation.
  */
@@ -53,8 +56,9 @@ public class HttpTransportClient extends TransportClient {
 
   @Override
   public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-      byte[] requestBody) {
+      byte[] requestBody, int keyCount) {
     HttpPost request = getHttpPostRequest(requestPath, headers, requestBody);
+    request.addHeader(VENICE_KEY_COUNT, Integer.toString(keyCount));
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     httpClient.execute(request, new HttpTransportClientCallback(valueFuture));
     return valueFuture;
@@ -62,7 +66,7 @@ public class HttpTransportClient extends TransportClient {
 
   @Override
   public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-      TransportClientStreamingCallback callback) {
+      TransportClientStreamingCallback callback, int keyCount) {
     throw new VeniceClientException("streamPost is not supported");
   }
 

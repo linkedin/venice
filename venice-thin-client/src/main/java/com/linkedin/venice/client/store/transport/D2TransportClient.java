@@ -33,6 +33,9 @@ import org.apache.commons.httpclient.HttpStatus;
 import org.apache.http.HttpHeaders;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
+
+
 /**
  * {@link D2Client} based TransportClient implementation.
  */
@@ -96,8 +99,8 @@ public class D2TransportClient extends TransportClient {
 
   @Override
   public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
-      byte[] requestBody) {
-    RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
+      byte[] requestBody, int keyCount) {
+    RestRequest request = getRestPostRequest(requestPath, headers, requestBody, keyCount);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
 
     restRequest(request, getRequestContextForPost(), new D2TransportClientCallback(valueFuture));
@@ -114,11 +117,12 @@ public class D2TransportClient extends TransportClient {
 
   @Override
   public void streamPost(String requestPath, Map<String, String> headers, byte[] requestBody,
-      TransportClientStreamingCallback callback) {
+      TransportClientStreamingCallback callback, int keyCount) {
     try {
       String requestUrl = getD2RequestUrl(requestPath);
       StreamRequestBuilder requestBuilder = new StreamRequestBuilder(URI.create(requestUrl));
       headers.forEach((name, value) -> requestBuilder.addHeaderValue(name, value));
+      requestBuilder.addHeaderValue(VENICE_KEY_COUNT, Integer.toString(keyCount));
       requestBuilder.setMethod(RestMethod.POST);
       StreamRequest streamRequest = requestBuilder.build(EntityStreams.newEntityStream(new ByteStringWriter(ByteString.unsafeWrap(requestBody))));
 
@@ -218,9 +222,9 @@ public class D2TransportClient extends TransportClient {
     return D2ClientUtils.createD2GetRequest(requestUrl, headers);
   }
 
-  private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body) {
+  private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body, int keyCount) {
     String requestUrl = getD2RequestUrl(requestPath);
-    return D2ClientUtils.createD2PostRequest(requestUrl, headers, body);
+    return D2ClientUtils.createD2PostRequest(requestUrl, headers, body, keyCount);
   }
 
   private void restRequest(RestRequest request, RequestContext requestContext, Callback<RestResponse> callback) {
