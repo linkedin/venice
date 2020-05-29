@@ -19,8 +19,7 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   private int offset;
   private int length;
 
-  OptimizedBinaryDecoder() {
-  }
+  OptimizedBinaryDecoder() {}
 
   /** This function ensures that the class fails fast in Avro 1.4 as well, by redirecting to the other signature. */
   void init(int bufferSize, InputStream in) {
@@ -32,19 +31,18 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
     throw new RuntimeException(this.getClass().getSimpleName() + " is not compatible with InputStream!");
   }
 
-  /** This function ensures that the class works in Avro 1.4 as well, by redirecting to the other signature. */
-  void init(byte[] data, int offset, int length) {
-    configure(data, offset, length);
-  }
-
-  @Override
-  BinaryDecoder configure(byte[] data, int offset, int length) {
-    super.configure(data, offset, length);
+  void configureByteBuffer(byte[] data, int offset, int length) {
+    if (data != getBuf()) {
+      if (data.length >= 16) {
+        throw new IllegalArgumentException(
+            "The data byte[] parameter should be the same instance that was previously passed to configure or init.");
+      }
+      // Avro does a copy when the data is very small... so we will tolerate it in that case.
+    }
     byteBuffer = ByteBuffer.wrap(data, offset, length);
     byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
     this.offset = offset;
     this.length = length;
-    return this;
   }
 
   @Override
@@ -68,7 +66,7 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
 
   private void checkInit() {
     if (null == byteBuffer) {
-      throw new IllegalStateException("byteBuffer is not initialized! Should call init or configure before using.");
+      throw new IllegalStateException("byteBuffer is not initialized! Should call configureByteBuffer before using.");
     }
   }
 }
