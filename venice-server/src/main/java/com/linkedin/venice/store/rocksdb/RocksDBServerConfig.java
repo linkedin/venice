@@ -159,6 +159,13 @@ public class RocksDBServerConfig {
    */
   public static final String ROCKSDB_DB_OPEN_OPERATION_THROTTLE = "rocksdb.db.open.operation.throttle";
 
+  /**
+   * Check the following link for more details:
+   * https://github.com/facebook/rocksdb/wiki/Rate-Limiter
+   * This is used to throttle flush and compaction.
+   */
+  public static final String ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND = "rocksdb.write.quota.bytes.per.second";
+
   private final boolean rocksDBUseDirectReads;
 
   private final int rocksDBEnvFlushPoolSize;
@@ -201,6 +208,7 @@ public class RocksDBServerConfig {
   private final int databaseOpenOperationThrottle;
   private final int cappedPrefixExtractorLength;
 
+  private final long writeQuotaBytesPerSecond;
 
   public RocksDBServerConfig(VeniceProperties props) {
     // Do not use Direct IO for reads by default
@@ -274,6 +282,8 @@ public class RocksDBServerConfig {
     this.maxFileOpeningThreads = props.getInt(ROCKSDB_MAX_FILE_OPENING_THREADS, 16);
     this.databaseOpenOperationThrottle = props.getInt(ROCKSDB_DB_OPEN_OPERATION_THROTTLE, 3);
     this.cappedPrefixExtractorLength = props.getInt(CAPPED_PREFIX_EXTRACTOR_LENGTH, 16);
+
+    this.writeQuotaBytesPerSecond = props.getSizeInBytes(ROCKSDB_WRITE_QUOTA_BYTES_PER_SECOND, 100L * 1024 * 1024); // 100MB by default
   }
 
   public boolean getRocksDBUseDirectReads() {
@@ -388,5 +398,9 @@ public class RocksDBServerConfig {
 
   public int getCappedPrefixExtractorLength() {
     return cappedPrefixExtractorLength;
+  }
+
+  public long getWriteQuotaBytesPerSecond() {
+    return writeQuotaBytesPerSecond;
   }
 }
