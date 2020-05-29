@@ -1,6 +1,5 @@
 package com.linkedin.davinci.client;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
@@ -46,7 +45,18 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.ReferenceCounted;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
 import io.tehuti.metrics.MetricsRepository;
+
+import org.apache.avro.Schema;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
+import org.apache.avro.io.DecoderFactory;
+import org.apache.helix.zookeeper.impl.client.ZkClient;
+import org.apache.log4j.Logger;
+
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -61,12 +71,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import org.apache.avro.Schema;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.helix.zookeeper.impl.client.ZkClient;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.client.store.ClientFactory.*;
 
@@ -158,6 +162,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     logger.info("clusterConfig=" + clusterProperties.toString(true));
 
     VeniceProperties serverProperties = new PropertyBuilder()
+        .put(ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL, false)
         .put(backendConfig.toProperties())
         /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
         .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
