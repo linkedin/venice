@@ -30,7 +30,7 @@ dependencies {
         exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
     }
 
-    api libraries.avroMigrationHelper
+    api libraries.avroUtilCompatibilityHelper
     api libraries.commonsIo
 
     api (libraries.d2Client) {
@@ -49,7 +49,7 @@ dependencies {
     api libraries.tehuti
     api libraries.xerces // d2Client brings in an old version of xerces
 
-    implementation libraries.linkedinAvroFastserde
+    implementation libraries.avroUtilFastserde
 
     implementation libraries.zstd
 

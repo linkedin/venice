@@ -138,8 +138,8 @@ dependencies {
   implementation libraries.routerApi
   implementation libraries.spark
   implementation libraries.samzaApi
-  implementation libraries.avroMigrationHelper
-  implementation libraries.linkedinAvroFastserde
+  implementation libraries.avroUtilCompatibilityHelper
+  implementation libraries.avroUtilFastserde
   implementation libraries.flatbufferJava
   implementation libraries.scalaLogging
 
