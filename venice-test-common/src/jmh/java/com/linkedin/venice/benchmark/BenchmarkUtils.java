@@ -1,15 +1,24 @@
 package com.linkedin.venice.benchmark;
 
-import com.google.common.collect.ImmutableSet;
-import com.google.flatbuffers.FlatBufferBuilder;
-import com.google.inject.internal.asm.$FieldVisitor;
-import com.linkedin.avro.fastserde.PrimitiveFloatList;
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serializer.FastSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
+
+import com.linkedin.avro.api.PrimitiveFloatList;
+import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
+
+import com.google.common.collect.ImmutableSet;
+import com.google.flatbuffers.FlatBufferBuilder;
+
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.BinaryEncoder;
+import org.openjdk.jmh.infra.Blackhole;
+
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.lang.management.GarbageCollectorMXBean;
@@ -25,15 +34,6 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericData;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.BinaryEncoder;
-import org.apache.avro.io.DecoderFactory;
-import org.apache.avro.io.Encoder;
-import org.apache.avro.io.EncoderFactory;
-import org.openjdk.jmh.infra.Blackhole;
 
 import static com.linkedin.venice.serializer.FastSerializerDeserializerFactory.*;
 import static java.lang.Float.*;
