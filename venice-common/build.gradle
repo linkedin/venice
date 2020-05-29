@@ -30,7 +30,7 @@ dependencies {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
-  implementation libraries.avroMigrationHelper
+  implementation libraries.avroUtilCompatibilityHelper
   implementation libraries.asyncHttpClient
 
   implementation libraries.bouncyCastle
