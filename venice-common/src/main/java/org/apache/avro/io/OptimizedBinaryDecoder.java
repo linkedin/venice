@@ -22,9 +22,19 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   OptimizedBinaryDecoder() {
   }
 
+  /** This function ensures that the class fails fast in Avro 1.4 as well, by redirecting to the other signature. */
+  void init(int bufferSize, InputStream in) {
+    configure(in, bufferSize);
+  }
+
   @Override
   BinaryDecoder configure(InputStream in, int bufferSize) {
     throw new RuntimeException(this.getClass().getSimpleName() + " is not compatible with InputStream!");
+  }
+
+  /** This function ensures that the class works in Avro 1.4 as well, by redirecting to the other signature. */
+  void init(byte[] data, int offset, int length) {
+    configure(data, offset, length);
   }
 
   @Override
@@ -39,6 +49,7 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
 
   @Override
   public ByteBuffer readBytes(ByteBuffer old) throws IOException {
+    checkInit();
     int bytesLength = readInt();
     int bytesLeft = inputStream().available();
     int relativeStartPosition = length - bytesLeft;
@@ -49,8 +60,15 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
 
  @Override
   public float readFloat() throws IOException {
+    checkInit();
     float f = byteBuffer.getFloat(getPos());
     doSkipBytes(Float.BYTES);
     return f;
+  }
+
+  private void checkInit() {
+    if (null == byteBuffer) {
+      throw new IllegalStateException("byteBuffer is not initialized! Should call init or configure before using.");
+    }
   }
 }
