@@ -11,6 +11,7 @@ import org.testng.annotations.Test;
 
 
 public class OptimizedBinaryDecoderTest {
+  private static final OptimizedBinaryDecoderFactory FACTORY = OptimizedBinaryDecoderFactory.defaultFactory();
   @Test(dataProvider = "True-and-False", dataProviderClass = DataProviderUtils.class)
   public void testHappyPath(boolean buffered) throws IOException {
     BinaryEncoder encoder = testHappyPath(null, buffered);
@@ -36,7 +37,7 @@ public class OptimizedBinaryDecoderTest {
     encoder.flush();
     byte[] wholeArray = byteArrayOutputStream.toByteArray();
 
-    BinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(wholeArray, 0, wholeArray.length);
+    BinaryDecoder decoder = FACTORY.createOptimizedBinaryDecoder(wholeArray, 0, wholeArray.length);
     float deserializedFloat1 = decoder.readFloat();
     ByteBuffer deserializedByteBuffer = decoder.readBytes(null);
     float deserializedFloat2 = decoder.readFloat();
@@ -67,22 +68,24 @@ public class OptimizedBinaryDecoderTest {
   public void testBadInitFailsWithProperErrorMessage() throws IOException {
     byte[] wholeArray1 = new byte[100];
     byte[] wholeArray2 = new byte[100];
-    OptimizedBinaryDecoder decoder = OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(wholeArray1, 0, wholeArray1.length);
-    decoder.configure(wholeArray2, 0 , wholeArray2.length);
-    try {
-      decoder.readFloat();
-      Assert.fail("Should have thrown an IllegalStateException");
-    } catch (IllegalStateException e) {
-      // expected
-    }
 
-    decoder = OptimizedBinaryDecoderFactory.defaultFactory().createOptimizedBinaryDecoder(wholeArray1, 0, wholeArray1.length);
-    decoder.configureByteBuffer(wholeArray2, 0 , wholeArray2.length);
-    try {
-      decoder.readFloat();
-      Assert.fail("Should have thrown an IllegalStateException");
-    } catch (IllegalStateException e) {
-      // expected
-    }
+    /**
+     * There should be no code that directly instantiates the decoder, besides the {@link OptimizedBinaryDecoderFactory}
+     * because otherwise they risk calling {@link BinaryDecoder#configure(byte[], int, int)} without then calling
+     * {@link OptimizedBinaryDecoder#configureByteBuffer(byte[], int, int)}. In this test, we check that we have
+     * proper defensive code to catch this improper usage...
+     */
+    OptimizedBinaryDecoder decoder = new OptimizedBinaryDecoder();
+    decoder.configure(wholeArray1, 0 , wholeArray1.length);
+    Assert.assertThrows(IllegalStateException.class, () -> decoder.readFloat());
+
+    /**
+     * It should also not be allowed to call {@link OptimizedBinaryDecoder#configureByteBuffer(byte[], int, int)} with
+     * a different array than the one passed into {@link BinaryDecoder#configure(byte[], int, int)}. We again check
+     * that de defensive code will flag this other flavor of improper usage.
+     */
+    OptimizedBinaryDecoder decoder2 = FACTORY.createOptimizedBinaryDecoder(wholeArray1, 0, wholeArray1.length);
+    Assert.assertThrows(IllegalArgumentException.class, () ->
+        decoder2.configureByteBuffer(wholeArray2, 0 , wholeArray2.length));
   }
 }
