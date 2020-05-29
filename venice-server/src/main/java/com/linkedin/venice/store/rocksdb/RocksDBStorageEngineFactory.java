@@ -18,6 +18,7 @@ import org.rocksdb.LRUCache;
 import org.rocksdb.Options;
 import org.rocksdb.PlainTableConfig;
 import org.rocksdb.Priority;
+import org.rocksdb.RateLimiter;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileManager;
@@ -78,6 +79,11 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
    */
   private final RocksDBThrottler rocksDBThrottler;
 
+  /**
+   * Rate limiter for flush and compaction.
+   */
+  private final RateLimiter rateLimiter;
+
   public RocksDBStorageEngineFactory(VeniceServerConfig serverConfig) {
     this(serverConfig, null);
   }
@@ -118,6 +124,8 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
       throw new VeniceException("Failed to create the shared SstFileManager", e);
     }
     this.rocksDBThrottler = new RocksDBThrottler(rocksDBServerConfig.getDatabaseOpenOperationThrottle());
+
+    this.rateLimiter = new RateLimiter(rocksDBServerConfig.getWriteQuotaBytesPerSecond());
   }
 
   public Optional<Statistics> getAggStatistics() {
@@ -142,6 +150,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     options.setWriteBufferManager(writeBufferManager);
     options.setSstFileManager(sstFileManager);
     options.setMaxFileOpeningThreads(rocksDBServerConfig.getMaxFileOpeningThreads());
+    options.setRateLimiter(rateLimiter);
 
     /**
      * Disable the stat dump threads, which will create excessive threads, which will eventually crash
@@ -230,6 +239,7 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     storageEngineOptions.clear();
     sharedCache.close();
     writeBufferManager.close();
+    rateLimiter.close();
     this.env.close();
     LOGGER.info("Closed RocksDBStorageEngineFactory");
   }
