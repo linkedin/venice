@@ -13,8 +13,8 @@ public class ConfigKeys {
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
 
 
-  public static final String ADMIN_PORT="admin.port";
-  public static final String ADMIN_SECURE_PORT="admin.secure.port";
+  public static final String ADMIN_PORT = "admin.port";
+  public static final String ADMIN_SECURE_PORT = "admin.secure.port";
 
   /**
    * Whether controller should check "Read" method against Kafka wildcard ACL while users request
@@ -34,23 +34,29 @@ public class ConfigKeys {
   public static final String KAFKA_BROKER_PORT = "kafka.broker.port";
   public static final String KAFKA_CONSUMER_FETCH_BUFFER_SIZE = "kafka.consumer.fetch.buffer.size";
   public static final String KAFKA_CONSUMER_SOCKET_TIMEOUT_MS = "kafka.consumer.socket.timeout.ms";
-  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES =
-      "kafka.consumer.num.metadata.refresh.retries";
+  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES = "kafka.consumer.num.metadata.refresh.retries";
   public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
+
+  /**
+   * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
+   * compare with the quota accumulated in the time window to see whether the usage exceeds quota or not.
+   */
+  public static final String KAFKA_FETCH_QUOTA_TIME_WINDOW_MS = "kafka.fetch.quota.time.window.ms";
+
   public static final String KAFKA_FETCH_QUOTA_BYTES_PER_SECOND = "kafka.fetch.quota.bytes.per.second";
   /**
    * How many records that one server could consume from Kafka at most in one second.
    * If the consume rate reached this quota, the consumption thread will be blocked until there is the available quota.
    */
   public static final String KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND = "kafka.fetch.quota.records.per.second";
-  /**
-   * The time window used by the consumption throttler. Throttler will sum the requests during the time window and
-   * compare with the quota accumulated in the time window to see whether the usage exceeds quota or not.
-   */
-  public static final String KAFKA_FETCH_QUOTA_TIME_WINDOW_MS = "kafka.fetch.quota.time.window.ms";
+
+  // Unordered throttlers aren't compatible with Shared Kafka Consumer and have no effect when Shared Consumer is used.
+  public static final String KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND = "kafka.fetch.quota.unordered.bytes.per.second";
+  public static final String KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND = "kafka.fetch.quota.unordered.records.per.second";
+
   // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "security.protocol";
 
@@ -84,7 +90,7 @@ public class ConfigKeys {
   public static final String KAFKA_MIN_ISR = "kafka.min.isr";
 
   /**
-   * The replication factor to set for real-time bufffer topics and store-version topics, at topic creation time.
+   * The replication factor to set for real-time buffer topics and store-version topics, at topic creation time.
    */
   public static final String KAFKA_REPLICATION_FACTOR = "kafka.replication.factor";
 
