@@ -363,8 +363,11 @@ public class StoreIngestionTaskTest {
     doReturn(inMemoryKafkaBroker.getKafkaBootstrapServer()).when(serverConfig).getKafkaBootstrapServers();
     doReturn(false).when(serverConfig).isHybridQuotaEnabled();
     Store mockStore = mock(Store.class);
-    doReturn(mockStore).when(mockMetadataRepo).getStore(storeNameWithoutVersionInfo);
+    doReturn(mockStore).when(mockMetadataRepo).getStoreOrThrow(storeNameWithoutVersionInfo);
     doReturn(false).when(mockStore).isHybridStoreDiskQuotaEnabled();
+
+    EventThrottler mockUnorderedBandwidthThrottler = mock(EventThrottler.class);
+    EventThrottler mockUnorderedRecordsThrottler = mock(EventThrottler.class);
     StoreIngestionTaskFactory ingestionTaskFactory = StoreIngestionTaskFactory.builder()
         .setVeniceWriterFactory(mockWriterFactory)
         .setKafkaClientFactory(mockFactory)
@@ -373,6 +376,8 @@ public class StoreIngestionTaskTest {
         .setNotifiersQueue(notifiers)
         .setBandwidthThrottler(mockBandwidthThrottler)
         .setRecordsThrottler(mockRecordsThrottler)
+        .setUnorderedBandwidthThrottler(mockUnorderedBandwidthThrottler)
+        .setUnorderedRecordsThrottler(mockUnorderedRecordsThrottler)
         .setSchemaRepository(mockSchemaRepo)
         .setMetadataRepository(mockMetadataRepo)
         .setTopicManager(mockTopicManager)

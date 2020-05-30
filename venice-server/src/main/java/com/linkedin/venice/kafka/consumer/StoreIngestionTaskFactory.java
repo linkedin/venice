@@ -16,11 +16,12 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+
+import javax.validation.constraints.NotNull;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.function.BooleanSupplier;
-import javax.validation.constraints.NotNull;
 
 
 public class StoreIngestionTaskFactory {
@@ -44,20 +45,58 @@ public class StoreIngestionTaskFactory {
       boolean bufferReplayEnabledForHybrid
   ) {
     if (isLeaderFollowerModelEnabled) {
-      return new LeaderFollowerStoreIngestionTask(builder.veniceWriterFactory, builder._kafkaClientFactory,
-          kafkaConsumerProperties, builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers,
-          builder.bandwidthThrottler, builder.recordsThrottler, builder.schemaRepo, builder.metadataRepo,
-          builder.topicManager, builder.ingestionStats, builder.versionedDIVStats,
-          builder.versionedStorageIngestionStats, builder.storeBufferService, isCurrentVersion, hybridStoreConfig,
-          isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.kafkaConsumerService,
+      return new LeaderFollowerStoreIngestionTask(
+          builder.veniceWriterFactory,
+          builder.kafkaClientFactory,
+          kafkaConsumerProperties,
+          builder.storageEngineRepository,
+          builder.storageMetadataService,
+          builder.notifiers,
+          builder.bandwidthThrottler,
+          builder.recordsThrottler,
+          builder.unorderedBandwidthThrottler,
+          builder.unorderedRecordsThrottler,
+          builder.schemaRepo,
+          builder.metadataRepo,
+          builder.topicManager,
+          builder.ingestionStats,
+          builder.versionedDIVStats,
+          builder.versionedStorageIngestionStats,
+          builder.storeBufferService,
+          isCurrentVersion,
+          hybridStoreConfig,
+          isIncrementalPushEnabled,
+          storeConfig,
+          builder.diskUsage,
+          bufferReplayEnabledForHybrid,
+          builder.kafkaConsumerService,
           builder.serverConfig);
     } else {
-      return new OnlineOfflineStoreIngestionTask(builder.veniceWriterFactory, builder._kafkaClientFactory,
-          kafkaConsumerProperties, builder.storageEngineRepository, builder.storageMetadataService, builder.notifiers,
-          builder.bandwidthThrottler, builder.recordsThrottler, builder.schemaRepo, builder.metadataRepo,
-          builder.topicManager, builder.ingestionStats, builder.versionedDIVStats,
-          builder.versionedStorageIngestionStats, builder.storeBufferService, isCurrentVersion, hybridStoreConfig,
-          isIncrementalPushEnabled, storeConfig, builder.diskUsage, bufferReplayEnabledForHybrid, builder.kafkaConsumerService,
+      return new OnlineOfflineStoreIngestionTask(
+          builder.veniceWriterFactory,
+          builder.kafkaClientFactory,
+          kafkaConsumerProperties,
+          builder.storageEngineRepository,
+          builder.storageMetadataService,
+          builder.notifiers,
+          builder.bandwidthThrottler,
+          builder.recordsThrottler,
+          builder.unorderedBandwidthThrottler,
+          builder.unorderedRecordsThrottler,
+          builder.schemaRepo,
+          builder.metadataRepo,
+          builder.topicManager,
+          builder.ingestionStats,
+          builder.versionedDIVStats,
+          builder.versionedStorageIngestionStats,
+          builder.storeBufferService,
+          isCurrentVersion,
+          hybridStoreConfig,
+          isIncrementalPushEnabled,
+          storeConfig,
+          builder.diskUsage,
+          bufferReplayEnabledForHybrid,
+          builder.kafkaConsumerService,
           builder.serverConfig);
     }
   }
@@ -77,12 +116,14 @@ public class StoreIngestionTaskFactory {
     private volatile boolean built = false;
 
     private VeniceWriterFactory veniceWriterFactory;
-    private KafkaClientFactory _kafkaClientFactory;
+    private KafkaClientFactory kafkaClientFactory;
     private StorageEngineRepository storageEngineRepository;
     private StorageMetadataService storageMetadataService;
     private Queue<VeniceNotifier> notifiers;
     private EventThrottler bandwidthThrottler;
     private EventThrottler recordsThrottler;
+    private EventThrottler unorderedBandwidthThrottler;
+    private EventThrottler unorderedRecordsThrottler;
     private ReadOnlySchemaRepository schemaRepo;
     private ReadOnlyStoreRepository metadataRepo;
     private TopicManager topicManager;
@@ -109,7 +150,7 @@ public class StoreIngestionTaskFactory {
 
     public Builder setKafkaClientFactory(KafkaClientFactory consumerFactory) {
       if (!built) {
-        this._kafkaClientFactory = consumerFactory;
+        this.kafkaClientFactory = consumerFactory;
       }
       return this;
     }
@@ -145,6 +186,20 @@ public class StoreIngestionTaskFactory {
     public Builder setRecordsThrottler(EventThrottler recordsThrottler) {
       if (!built) {
         this.recordsThrottler = recordsThrottler;
+      }
+      return this;
+    }
+
+    public Builder setUnorderedBandwidthThrottler(EventThrottler throttler) {
+      if (!built) {
+        this.unorderedBandwidthThrottler = throttler;
+      }
+      return this;
+    }
+
+    public Builder setUnorderedRecordsThrottler(EventThrottler throttler) {
+      if (!built) {
+        this.unorderedRecordsThrottler = throttler;
       }
       return this;
     }

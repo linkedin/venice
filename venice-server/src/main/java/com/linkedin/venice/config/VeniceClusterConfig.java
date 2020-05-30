@@ -1,22 +1,22 @@
 package com.linkedin.venice.config;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 
 import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.common.protocol.SecurityProtocol;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -34,9 +34,11 @@ public class VeniceClusterConfig {
   private PersistenceType persistenceType;
   private String kafkaBootstrapServers;
   private String kafkaZkAddress;
-  private long KafkaFetchQuotaBytesPerSecond = 0;
   private long kafkaFetchQuotaTimeWindow;
+  private long kafkaFetchQuotaBytesPerSecond;
   private long kafkaFetchQuotaRecordPerSecond;
+  private long kafkaFetchQuotaUnorderedBytesPerSecond;
+  private long kafkaFetchQuotaUnorderedRecordPerSecond;
   private int statusMessageRetryCount;
   private long statusMessageRetryDurationMs ;
   private int offsetManagerLogFileMaxBytes;
@@ -84,9 +86,13 @@ public class VeniceClusterConfig {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
     kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
-    KafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, 0);
+
+    kafkaFetchQuotaTimeWindow = clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5));
+    kafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, 0);
     kafkaFetchQuotaRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_RECORDS_PER_SECOND, 0);
-    kafkaFetchQuotaTimeWindow = clusterProps.getLong(KAFKA_FETCH_QUOTA_TIME_WINDOW_MS, TimeUnit.SECONDS.toMillis(5)); //5sec
+    kafkaFetchQuotaUnorderedBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_UNORDERED_BYTES_PER_SECOND, 0);
+    kafkaFetchQuotaUnorderedRecordPerSecond = clusterProps.getLong(KAFKA_FETCH_QUOTA_UNORDERED_RECORDS_PER_SECOND, 0);
+
     statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
 
@@ -124,10 +130,6 @@ public class VeniceClusterConfig {
 
   public long getStatusMessageRetryDurationMs() {
     return statusMessageRetryDurationMs;
-  }
-
-  public long getKafkaFetchQuotaBytesPerSecond() {
-    return KafkaFetchQuotaBytesPerSecond;
   }
 
   public String getClusterName() {
@@ -214,8 +216,20 @@ public class VeniceClusterConfig {
     return kafkaFetchQuotaTimeWindow;
   }
 
+  public long getKafkaFetchQuotaBytesPerSecond() {
+    return kafkaFetchQuotaBytesPerSecond;
+  }
+
   public long getKafkaFetchQuotaRecordPerSecond() {
     return kafkaFetchQuotaRecordPerSecond;
+  }
+
+  public long getKafkaFetchQuotaUnorderedBytesPerSecond() {
+    return kafkaFetchQuotaUnorderedBytesPerSecond;
+  }
+
+  public long getKafkaFetchQuotaUnorderedRecordPerSecond() {
+    return kafkaFetchQuotaUnorderedRecordPerSecond;
   }
 
   public VeniceProperties getClusterProperties() {

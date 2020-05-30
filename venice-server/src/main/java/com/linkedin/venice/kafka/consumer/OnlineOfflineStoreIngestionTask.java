@@ -46,6 +46,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       Queue<VeniceNotifier> notifiers,
       EventThrottler bandwidthThrottler,
       EventThrottler recordsThrottler,
+      EventThrottler unorderedBandwidthThrottler,
+      EventThrottler unorderedRecordsThrottler,
       ReadOnlySchemaRepository schemaRepo,
       ReadOnlyStoreRepository storeRepo,
       TopicManager topicManager,
@@ -61,10 +63,32 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       boolean bufferReplayEnabledForHybrid,
       KafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig) {
-    super(writerFactory, consumerFactory, kafkaConsumerProperties, storageEngineRepository, storageMetadataService,
-        notifiers, bandwidthThrottler, recordsThrottler, schemaRepo, storeRepo, topicManager, storeIngestionStats,
-        versionedDIVStats, versionedStorageIngestionStats, storeBufferService, isCurrentVersion, hybridStoreConfig,
-        isIncrementalPushEnabled, storeConfig, diskUsage, bufferReplayEnabledForHybrid, kafkaConsumerService, serverConfig);
+    super(
+        writerFactory,
+        consumerFactory,
+        kafkaConsumerProperties,
+        storageEngineRepository,
+        storageMetadataService,
+        notifiers,
+        bandwidthThrottler,
+        recordsThrottler,
+        unorderedBandwidthThrottler,
+        unorderedRecordsThrottler,
+        schemaRepo,
+        storeRepo,
+        topicManager,
+        storeIngestionStats,
+        versionedDIVStats,
+        versionedStorageIngestionStats,
+        storeBufferService,
+        isCurrentVersion,
+        hybridStoreConfig,
+        isIncrementalPushEnabled,
+        storeConfig,
+        diskUsage,
+        bufferReplayEnabledForHybrid,
+        kafkaConsumerService,
+        serverConfig);
   }
 
   @Override
@@ -115,7 +139,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
    */
   @Override
   protected long measureHybridOffsetLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag) {
-    Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
+    Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(kafkaTopic);
     Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
     if (!(storeVersionStateOptional.isPresent() && sobrDestinationOffsetOptional.isPresent())) {
       // In this case, we have a hybrid store which has received its EOP, but has not yet received its SOBR.
@@ -131,7 +155,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
      * partitionConsumptionState. This will cause storeVersionState to be recreated without startOfBufferReplay.
      */
     if (storeVersionStateOptional.get().startOfBufferReplay == null) {
-      throw new VeniceInconsistentStoreMetadataException("Inconsistent store metadata detected for topic " + topic
+      throw new VeniceInconsistentStoreMetadataException("Inconsistent store metadata detected for topic " + kafkaTopic
           + ", partition " + partitionConsumptionState.getPartition()
           +". Will clear the metadata and restart ingestion.");
     }
@@ -165,7 +189,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
       return lag;
     } else {
-      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(topic, partition);
+      long storeVersionTopicLatestOffset = cachedLatestOffsetGetter.getOffset(kafkaTopic, partition);
       long lag = storeVersionTopicLatestOffset - currentOffset;
       if (shouldLogLag) {
         logger.info(String.format("Store buffer replay was disabled, and %s partition %d lag offset is: (Dest Latest [%d] - Dest Current [%d]) = Lag [%d]",
@@ -183,14 +207,14 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   @Override
   protected boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     String recordTopic = record.topic();
-    if(!topic.equals(recordTopic)) {
-      throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.topic + " Actual " + recordTopic);
+    if(!kafkaTopic.equals(recordTopic)) {
+      throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.kafkaTopic + " Actual " + recordTopic);
     }
 
     int partitionId = record.partition();
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
     if(null == partitionConsumptionState) {
-      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + topic + " Partition Id: " + partitionId);
+      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + kafkaTopic + " Partition Id: " + partitionId);
       return false;
     }
     long lastOffset = partitionConsumptionState.getOffsetRecord()

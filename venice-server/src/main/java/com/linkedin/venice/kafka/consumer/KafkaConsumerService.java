@@ -19,14 +19,12 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
 
@@ -169,7 +167,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
           + " the existing consumers have subscribed the same store, and that might be caused by a bug or resource leaking");
     }
     versionTopicToConsumerMap.put(versionTopic, chosenConsumer);
-    LOGGER.info("Assigned a shared consumer for topic: " + ingestionTask.topic);
+    LOGGER.info("Assigned a shared consumer for topic: " + ingestionTask.kafkaTopic);
     return chosenConsumer;
   }
 

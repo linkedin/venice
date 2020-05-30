@@ -1,7 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
-import com.linkedin.avroutil1.compatibility.AvroVersion;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.compression.CompressionStrategy;
@@ -20,7 +18,6 @@ import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -37,22 +34,22 @@ import com.linkedin.venice.utils.DiskUsage;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 
-import java.util.NavigableMap;
-import java.util.concurrent.ConcurrentSkipListMap;
-import java.nio.ByteBuffer;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.log4j.Logger;
 import io.tehuti.metrics.MetricsRepository;
 
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.log4j.Logger;
+
+import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -141,11 +138,34 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
     VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
 
-    EventThrottler consumptionBandwidthThrottler =
-        new EventThrottler(serverConfig.getKafkaFetchQuotaBytesPerSecond(), serverConfig.getKafkaFetchQuotaTimeWindow(),
-            "Kafka_consumption_bandwidth", false, EventThrottler.BLOCK_STRATEGY);
-    EventThrottler consumptionRecordsCountThrottler = new EventThrottler(serverConfig.getKafkaFetchQuotaRecordPerSecond(),
-        serverConfig.getKafkaFetchQuotaTimeWindow(), "kafka_consumption_records_count", false, EventThrottler.BLOCK_STRATEGY);
+    EventThrottler bandwidthThrottler = new EventThrottler(
+        serverConfig.getKafkaFetchQuotaBytesPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "kafka_consumption_bandwidth",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+
+    EventThrottler recordsThrottler = new EventThrottler(
+        serverConfig.getKafkaFetchQuotaRecordPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "kafka_consumption_records_count",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+
+    EventThrottler unorderedBandwidthThrottler = new EventThrottler(
+        serverConfig.getKafkaFetchQuotaUnorderedBytesPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "kafka_consumption_unordered_bandwidth",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+
+    EventThrottler unorderedRecordsThrottler = new EventThrottler(
+        serverConfig.getKafkaFetchQuotaUnorderedRecordPerSecond(),
+        serverConfig.getKafkaFetchQuotaTimeWindow(),
+        "kafka_consumption_unordered_records_count",
+        false,
+        EventThrottler.BLOCK_STRATEGY);
+
     TopicManager topicManager = new TopicManager(veniceConsumerFactory);
 
     VeniceNotifier notifier = new LogNotifier();
@@ -181,9 +201,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
 
     if (serverConfig.isSharedConsumerPoolEnabled()) {
-      kafkaConsumerService =
-          new KafkaConsumerService(veniceConsumerFactory, getCommonKafkaConsumerProperties(serverConfig), serverConfig,
-              consumptionBandwidthThrottler, consumptionRecordsCountThrottler, metricsRepository);
+      kafkaConsumerService = new KafkaConsumerService(
+          veniceConsumerFactory,
+          getCommonKafkaConsumerProperties(serverConfig),
+          serverConfig,
+          bandwidthThrottler,
+          recordsThrottler,
+          metricsRepository);
     } else {
       kafkaConsumerService = null;
     }
@@ -202,8 +226,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStorageEngineRepository(storageEngineRepository)
         .setStorageMetadataService(storageMetadataService)
         .setNotifiersQueue(notifiers)
-        .setBandwidthThrottler(consumptionBandwidthThrottler)
-        .setRecordsThrottler(consumptionRecordsCountThrottler)
+        .setBandwidthThrottler(bandwidthThrottler)
+        .setRecordsThrottler(recordsThrottler)
+        .setUnorderedBandwidthThrottler(unorderedBandwidthThrottler)
+        .setUnorderedRecordsThrottler(unorderedRecordsThrottler)
         .setSchemaRepository(schemaRepo)
         .setMetadataRepository(metadataRepo)
         .setTopicManager(topicManager)
