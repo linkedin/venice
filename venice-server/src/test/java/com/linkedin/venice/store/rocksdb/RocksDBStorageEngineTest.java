@@ -14,6 +14,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.File;
 import java.util.Optional;
 import java.util.Set;
 import org.testng.Assert;
@@ -30,6 +31,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   private VeniceStoreConfig storeConfig;
   private BdbStorageMetadataService bdbStorageMetadataService;
   private VeniceClusterConfig clusterConfig;
+  private File bdbDir;
 
   private String storeName;
   private static final int PARTITION_ID = 0;
@@ -53,6 +55,9 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     VeniceProperties clusterProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY, 1000L);
 
     clusterConfig = new VeniceClusterConfig(clusterProps);
+    // delete the bdb offset dir from previous tests as it could lead to EnvironmentLockedException
+    bdbDir = new File(clusterConfig.getOffsetDatabasePath());
+    bdbDir.delete();
     bdbStorageMetadataService = getOffsetManager(clusterConfig);
     createStoreForTest();
   }
@@ -63,9 +68,10 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
   }
 
   @AfterClass
-  public void tearDown() {
+  public void tearDown() throws Exception {
     if(service != null && storeConfig != null) {
       service.dropStorePartition(storeConfig , PARTITION_ID);
+      bdbStorageMetadataService.stop();
     }
   }
 
