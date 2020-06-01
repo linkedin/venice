@@ -78,14 +78,5 @@ public class OptimizedBinaryDecoderTest {
     OptimizedBinaryDecoder decoder = new OptimizedBinaryDecoder();
     decoder.configure(wholeArray1, 0 , wholeArray1.length);
     Assert.assertThrows(IllegalStateException.class, () -> decoder.readFloat());
-
-    /**
-     * It should also not be allowed to call {@link OptimizedBinaryDecoder#configureByteBuffer(byte[], int, int)} with
-     * a different array than the one passed into {@link BinaryDecoder#configure(byte[], int, int)}. We again check
-     * that de defensive code will flag this other flavor of improper usage.
-     */
-    OptimizedBinaryDecoder decoder2 = FACTORY.createOptimizedBinaryDecoder(wholeArray1, 0, wholeArray1.length);
-    Assert.assertThrows(IllegalArgumentException.class, () ->
-        decoder2.configureByteBuffer(wholeArray2, 0 , wholeArray2.length));
   }
 }
