@@ -17,7 +17,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.router.stats.StaleVersionReason;
 import com.linkedin.venice.router.stats.StaleVersionStats;
 import com.linkedin.venice.utils.RedundantExceptionFilter;
-import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,16 +32,19 @@ public class VeniceVersionFinder {
   private final StaleVersionStats stats;
   private final HelixReadOnlyStoreConfigRepository storeConfigRepo;
   private final Map<String, String> clusterToD2Map;
+  private final String clusterName;
   private ConcurrentMap<String, Integer> lastCurrentVersion = new ConcurrentHashMap<>();
   private OnlineInstanceFinder onlineInstanceFinder;
 
   public VeniceVersionFinder(ReadOnlyStoreRepository metadataRepository, OnlineInstanceFinder onlineInstanceFinder,
-      StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map) {
+      StaleVersionStats stats, HelixReadOnlyStoreConfigRepository storeConfigRepo,
+      Map<String, String> clusterToD2Map, String clusterName) {
     this.metadataRepository = metadataRepository;
     this.onlineInstanceFinder = onlineInstanceFinder;
     this.stats = stats;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
+    this.clusterName = clusterName;
   }
 
   public int getVersion(String store) throws VeniceException {
@@ -52,18 +54,20 @@ public class VeniceVersionFinder {
      */
     Store veniceStore = metadataRepository.getStore(store);
     if (null == veniceStore){
-      Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(store);
-      if (config.isPresent()) {
-        String newCluster = config.get().getCluster();
-        if (!Utils.isNullOrEmpty(newCluster)) {
-          String d2Service = clusterToD2Map.get(newCluster);
-          throw new VeniceStoreIsMigratedException(store, newCluster, d2Service);
-        }
-      }
       throw new VeniceNoStoreException(store);
     }
     if (!veniceStore.isEnableReads()) {
       throw new StoreDisabledException(store, "read");
+    }
+    if (veniceStore.isMigrating()) {
+      Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(store);
+      if (config.isPresent()) {
+        String newCluster = config.get().getCluster();
+        if (!clusterName.equals(newCluster)) {
+          String d2Service = clusterToD2Map.get(newCluster);
+          throw new VeniceStoreIsMigratedException(store, newCluster, d2Service);
+        }
+      }
     }
 
     int metadataCurrentVersion = veniceStore.getCurrentVersion();

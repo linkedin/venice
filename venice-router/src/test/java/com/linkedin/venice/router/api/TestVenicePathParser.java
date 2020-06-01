@@ -32,8 +32,8 @@ import static org.mockito.Mockito.*;
  * Created by mwise on 3/4/16.
  */
 public class TestVenicePathParser {
-  private final int TEST_MAX_KEY_COUNT_IN_MULTI_GET_REQ = 100;
   private final Map<String, String> clusterToD2Map = new HashMap<>();
+  private final static String CLUSTER = "cluster";
 
   VeniceVersionFinder getVersionFinder(){
     //Mock objects
@@ -45,7 +45,8 @@ public class TestVenicePathParser {
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
-    return new VeniceVersionFinder(mockMetadataRepository, TestVeniceVersionFinder.getDefaultInstanceFinder(), stats, storeConfigRepo, clusterToD2Map);
+    return new VeniceVersionFinder(mockMetadataRepository, TestVeniceVersionFinder.getDefaultInstanceFinder(),
+        stats, storeConfigRepo, clusterToD2Map, CLUSTER);
   }
 
   RouterStats getMockedStats() {

@@ -133,6 +133,15 @@ public class D2TestUtils {
     return d2List;
   }
 
+  public static List<D2Server> getD2Servers(String zkHosts,  String[] localUris, String clusterName){
+    List<D2Server> d2List = new ArrayList<>();
+    for (String localUri : localUris) {
+      D2Server d2 = getD2Server(zkHosts, localUri, clusterName);
+      d2List.add(d2);
+    }
+    return d2List;
+  }
+
   public static D2Client getAndStartD2Client(String zkHosts) {
     return getAndStartD2Client(zkHosts, false);
   }

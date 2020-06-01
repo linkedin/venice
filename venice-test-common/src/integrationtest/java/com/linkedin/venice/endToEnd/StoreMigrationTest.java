@@ -2,9 +2,11 @@ package com.linkedin.venice.endToEnd;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.venice.AdminTool;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -57,7 +59,7 @@ public class StoreMigrationTest {
     properties.setProperty(TOPIC_CLEANUP_SLEEP_INTERVAL_BETWEEN_TOPIC_LIST_FETCH_MS, String.valueOf(Long.MAX_VALUE));
     VeniceProperties veniceProperties = new VeniceProperties(properties);
     twoLayerMultiColoMultiClusterWrapper = ServiceFactory.getVeniceTwoLayerMultiColoMultiClusterWrapper(2, 2,
-        3, 3, 1, 1, veniceProperties);
+        3, 3, 1, 1, veniceProperties, true);
     multiClusterWrappers = twoLayerMultiColoMultiClusterWrapper.getClusters();
     String[] clusterNames = multiClusterWrappers.get(0).getClusterNames();
     Arrays.sort(clusterNames);
@@ -95,20 +97,26 @@ public class StoreMigrationTest {
 
   @Test
   public void testMigrateStoreMultiDatacenter() throws Exception {
+    String srcD2ServiceName = "venice-" + srcClusterName.substring(srcClusterName.length() - 1);
+    String destD2ServiceName = "venice-" + destClusterName.substring(destClusterName.length() - 1);
     D2Client d2Client = D2TestUtils.getAndStartD2Client(multiClusterWrappers.get(0).getClusters().get(srcClusterName).getZk().getAddress());
     AvroGenericStoreClient<String, Object> client = ClientFactory.getAndStartGenericAvroClient(ClientConfig
         .defaultGenericClientConfig(STORE_NAME)
-        .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME)
+        .setD2ServiceName(srcD2ServiceName)
         .setD2Client(d2Client));
 
     verifyStoreData(client);
 
     startMigration(parentControllerUrl);
     completeMigration();
-    endMigration(parentControllerUrl);
 
-    // Test automatic cluster info update in the client, requests should be redirected
     verifyStoreData(client);
+    AbstractAvroStoreClient<String, Object> castClient =
+        (AbstractAvroStoreClient<String, Object>) ((StatTrackingStoreClient<String, Object>) client).getInnerStoreClient();
+    // Client d2ServiceName should be updated
+    Assert.assertTrue(castClient.toString().contains(destD2ServiceName));
+
+    endMigration(parentControllerUrl);
   }
 
   @Test

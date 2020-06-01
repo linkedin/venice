@@ -412,7 +412,8 @@ public class RouterServer extends AbstractVeniceService {
         onlineInstanceFinder,
         new StaleVersionStats(metricsRepository, "stale_version"),
         storeConfigRepository,
-        config.getClusterToD2Map());
+        config.getClusterToD2Map(),
+        config.getClusterName());
     VenicePathParser pathParser = new VenicePathParser(versionFinder, partitionFinder,
         routerStats, metadataRepository, config);
 
