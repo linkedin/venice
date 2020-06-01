@@ -170,6 +170,11 @@ public class ZkHelixAdminClient implements HelixAdminClient {
   }
 
   @Override
+  public void resetPartition(String clusterName, String instanceName, String resourceName, List<String> partitionNames) {
+    helixAdmin.resetPartition(clusterName, instanceName, resourceName, partitionNames);
+  }
+
+  @Override
   public void close() {
     helixAdmin.close();
   }

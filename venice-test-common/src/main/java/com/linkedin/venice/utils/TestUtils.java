@@ -279,4 +279,14 @@ public class TestUtils {
       }
     };
   }
+
+  public static Store getRandomStore() {
+    return new Store(TestUtils.getUniqueString("RandomStore"),
+        TestUtils.getUniqueString("RandomOwner"),
+        System.currentTimeMillis(),
+        PersistenceType.ROCKS_DB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS);
+  }
 }
