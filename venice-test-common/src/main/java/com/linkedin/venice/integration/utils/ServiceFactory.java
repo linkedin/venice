@@ -361,19 +361,19 @@ public class ServiceFactory {
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES,
-            Optional.empty(), true, false));
+            Optional.empty(), true, false, false));
   }
 
   /**
    * Preditable cluster name
    */
   public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
-      int numberOfServers, int numberOfRouter, boolean randomizeClusterName, boolean multiColoSetup) {
+      int numberOfServers, int numberOfRouter, boolean randomizeClusterName, boolean multiColoSetup, boolean multiD2) {
     return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES, Optional.empty(), randomizeClusterName,
-            multiColoSetup));
+            multiColoSetup, multiD2));
   }
 
   /**
@@ -385,7 +385,7 @@ public class ServiceFactory {
         VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
             numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
             DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL_TO_STORAGE_NODES,
-            Optional.of(zkPort), true, false));
+            Optional.of(zkPort), true, false, false));
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
@@ -403,10 +403,12 @@ public class ServiceFactory {
   }
 
   public static VeniceTwoLayerMultiColoMultiClusterWrapper getVeniceTwoLayerMultiColoMultiClusterWrapper(int numberOfColos,
-      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters, VeniceProperties veniceProperties) {
+      int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers, int numberOfRouters,
+      VeniceProperties veniceProperties, boolean multiD2) {
     return getService(VeniceTwoLayerMultiColoMultiClusterWrapper.SERVICE_NAME,
         VeniceTwoLayerMultiColoMultiClusterWrapper.generateService(numberOfColos, numberOfClustersInEachColo,
-            numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters, Optional.empty(), Optional.of(veniceProperties)));
+            numberOfParentControllers, numberOfControllers, numberOfServers, numberOfRouters,
+            Optional.empty(), Optional.of(veniceProperties), multiD2));
   }
 
   public static HelixAsAServiceWrapper getHelixController(String zkAddress) {

@@ -39,16 +39,20 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
       int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
       boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
-      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup) {
+      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup, boolean multiD2) {
     ZkServerWrapper zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
-    String clusterToD2="";
+    String clusterToD2 = "";
     String[] clusterNames = new String[numberOfClusters];
     for (int i = 0; i < numberOfClusters; i++) {
       String clusterName = randomizeClusterName ? TestUtils.getUniqueString("venice-cluster" + i) : "venice-cluster" + i;
       clusterNames[i] = clusterName;
-      clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName)+",";
+      if (multiD2) {
+        clusterToD2 += clusterName + ":venice-" + i + ",";
+      } else {
+        clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
+      }
     }
     clusterToD2 = clusterToD2.substring(0, clusterToD2.length()-1);
 

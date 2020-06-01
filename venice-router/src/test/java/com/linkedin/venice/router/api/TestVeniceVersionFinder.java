@@ -8,10 +8,14 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceStoreIsMigratedException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.OnlineInstanceFinder;
 import com.linkedin.venice.meta.OnlineInstanceFinderDelegator;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -37,6 +41,7 @@ public class TestVeniceVersionFinder {
   private final Map<String, String> clusterToD2Map = new HashMap<>();
   private final static String DEST_CLUSTER = "destCluster";
   private final static String D2_SERVICE = "d2Service";
+  private final static String CLUSTER = "cluster";
 
   @BeforeClass
   public void setUp() {
@@ -49,7 +54,8 @@ public class TestVeniceVersionFinder {
     doReturn(null).when(mockRepo).getStore(anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
-    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(), stats, storeConfigRepo, clusterToD2Map);
+    VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(),
+        stats, storeConfigRepo, clusterToD2Map, CLUSTER);
     try{
       versionFinder.getVersion("");
       Assert.fail("versionFinder.getVersion() on previous line should throw a "
@@ -62,14 +68,17 @@ public class TestVeniceVersionFinder {
   @Test
   public void throws301onMigratedStore() {
     ReadOnlyStoreRepository mockRepo = Mockito.mock(ReadOnlyStoreRepository.class);
-    doReturn(null).when(mockRepo).getStore(anyString());
+    Store store = new Store("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY,
+        RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    store.setMigrating(true);
+    doReturn(store).when(mockRepo).getStore(anyString());
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     StoreConfig storeConfig = new StoreConfig("store");
     storeConfig.setCluster(DEST_CLUSTER);
     doReturn(Optional.of(storeConfig)).when(storeConfigRepo).getStoreConfig("store");
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(),
-        stats, storeConfigRepo, clusterToD2Map);
+        stats, storeConfigRepo, clusterToD2Map, CLUSTER);
     try {
       versionFinder.getVersion("store");
       Assert.fail("versionFinder.getVersion() on previous line should throw a "
@@ -93,7 +102,7 @@ public class TestVeniceVersionFinder {
     StaleVersionStats stats = mock(StaleVersionStats.class);
     HelixReadOnlyStoreConfigRepository storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo, getDefaultInstanceFinder(),
-        stats, storeConfigRepo, clusterToD2Map);
+        stats, storeConfigRepo, clusterToD2Map, CLUSTER);
     try {
       versionFinder.getVersion(storeName);
       Assert.fail("Store should be disabled and forbidden to read.");
@@ -137,7 +146,7 @@ public class TestVeniceVersionFinder {
     //Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
         new OnlineInstanceFinderDelegator(storeRepository, routingData, partitionStatusOnlineInstanceFinder),
-        stats, storeConfigRepo, clusterToD2Map);
+        stats, storeConfigRepo, clusterToD2Map, CLUSTER);
 
     // for a new store, the versionFinder returns the current version, no matter the online replicas
     Assert.assertEquals(versionFinder.getVersion(storeName), firstVersion);
@@ -203,7 +212,7 @@ public class TestVeniceVersionFinder {
 
     //Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
-        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER);
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
@@ -241,7 +250,7 @@ public class TestVeniceVersionFinder {
 
     //Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
-        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER);
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
 
@@ -276,7 +285,7 @@ public class TestVeniceVersionFinder {
 
     //Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
-        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER);
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
     String secondVersionKafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);
@@ -323,7 +332,7 @@ public class TestVeniceVersionFinder {
 
     //Object under test
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(storeRepository,
-        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map);
+        onlineInstanceFinder, stats, storeConfigRepo, clusterToD2Map, CLUSTER);
 
     String firstVersionKafkaTopic = Version.composeKafkaTopic(storeName, firstVersion);
     String secondVersionKafkaTopic = Version.composeKafkaTopic(storeName, secondVersion);

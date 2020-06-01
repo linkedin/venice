@@ -36,12 +36,12 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
       int numberOfRouters, Optional<Integer> zkPort) {
     return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
-        numberOfServers, numberOfRouters, zkPort, Optional.empty());
+        numberOfServers, numberOfRouters, zkPort, Optional.empty(), false);
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, Optional<Integer> zkPort, Optional<VeniceProperties> veniceProperties) {
+      int numberOfRouters, Optional<Integer> zkPort, Optional<VeniceProperties> veniceProperties, boolean multiD2) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
@@ -55,7 +55,11 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     for (int i = 0; i < numberOfClustersInEachColo; i++) {
       String clusterName = "venice-cluster" + i;
       clusterNames[i] = clusterName;
-      clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
+      if (multiD2) {
+        clusterToD2 += clusterName + ":venice-" + i + ",";
+      } else {
+        clusterToD2 += TestUtils.getClusterToDefaultD2String(clusterName) + ",";
+      }
     }
     clusterToD2 = clusterToD2.substring(0, clusterToD2.length() - 1);
 
@@ -63,7 +67,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     for (int i = 0; i < numberOfColos; i++) {
       VeniceMultiClusterWrapper multiClusterWrapper =
           ServiceFactory.getVeniceMultiClusterWrapper(numberOfClustersInEachColo, numberOfControllers, numberOfServers,
-              numberOfRouters, false, true);
+              numberOfRouters, false, true, multiD2);
       multiClusters.add(multiClusterWrapper);
     }
 
