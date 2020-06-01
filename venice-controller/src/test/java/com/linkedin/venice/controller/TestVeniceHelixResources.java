@@ -35,10 +35,9 @@ public class TestVeniceHelixResources {
     ZKHelixManager controller = new ZKHelixManager(cluster, "localhost_1234", InstanceType.CONTROLLER, zk.getAddress());
     ZKHelixAdmin admin = new ZKHelixAdmin(zk.getAddress());
     admin.addCluster(cluster);
-    return new VeniceHelixResources(cluster, zkClient, new HelixAdapterSerializer(),
-        new SafeHelixManager(controller), mock(VeniceControllerClusterConfig.class),
-        mock(StoreCleaner.class), metricsRepository, lock, Optional.empty(), Optional.empty(), Optional.empty(),
-        mock(MetadataStoreWriter.class));
+    return new VeniceHelixResources(cluster, zkClient, new HelixAdapterSerializer(), new SafeHelixManager(controller),
+        mock(VeniceControllerConfig.class), mock(StoreCleaner.class), metricsRepository, lock, Optional.empty(),
+        Optional.empty(), Optional.empty(), mock(MetadataStoreWriter.class), mock(HelixAdminClient.class));
   }
 
   @Test

@@ -1117,4 +1117,15 @@ public class ConfigKeys {
    * Number of IO threads used for AHAC client.
    */
   public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT = "router.httpasyncclient.client.pool.io.thread.count";
+
+  /** Maximum number of times controller will automatically reset an error partition for the current/serving version
+   * to mitigate impact of transient or long running issues during re-balance or restart.
+   */
+  public static final String ERROR_PARTITION_AUTO_RESET_LIMIT = "error.partition.auto.reset.limit";
+
+  /**
+   * The delay between each cycle where we iterate over all applicable resources and their partition to reset error
+   * partitions and collect data on the effectiveness of previous resets.
+   */
+  public static final String ERROR_PARTITION_PROCESSING_CYCLE_DELAY = "error.partition.processing.cycle.delay";
 }

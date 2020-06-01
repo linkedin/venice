@@ -66,6 +66,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String kafkaAdminClass;
   private final Map<String, String> childDataCenterKafkaUrlMap;
   private final String nativeReplicationSourceFabric;
+  private final int errorPartitionAutoResetLimit;
+  private final long errorPartitionProcessingCycleDelay;
 
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -147,6 +149,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.sendConcurrentTopicDeleteRequestsEnabled = props.getBoolean(TOPIC_CLEANUP_SEND_CONCURRENT_DELETES_REQUESTS, false);
     this.enableBatchPushFromAdminInChildController = props.getBoolean(CONTROLLER_ENABLE_BATCH_PUSH_FROM_ADMIN_IN_CHILD, true);
     this.kafkaAdminClass = props.getString(KAFKA_ADMIN_CLASS, ScalaAdminUtils.class.getName());
+    this.errorPartitionAutoResetLimit = props.getInt(ERROR_PARTITION_AUTO_RESET_LIMIT, 0);
+    this.errorPartitionProcessingCycleDelay = props.getLong(ERROR_PARTITION_PROCESSING_CYCLE_DELAY, 5 * Time.MS_PER_MINUTE);
   }
 
   public int getAdminPort() {
@@ -297,6 +301,14 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public String getKafkaAdminClass() {
     return kafkaAdminClass;
+  }
+
+  public int getErrorPartitionAutoResetLimit() {
+    return errorPartitionAutoResetLimit;
+  }
+
+  public long getErrorPartitionProcessingCycleDelay() {
+    return errorPartitionProcessingCycleDelay;
   }
 
   /**

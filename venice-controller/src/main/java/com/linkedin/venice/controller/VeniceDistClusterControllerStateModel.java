@@ -43,6 +43,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final ClusterLeaderInitializationRoutine controllerInitialization;
   private final Optional<DynamicAccessController> accessController;
   private final String clusterName;
+  private final HelixAdminClient helixAdminClient;
 
   private VeniceControllerConfig clusterConfig;
   private SafeHelixManager controller;
@@ -57,7 +58,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       VeniceControllerMultiClusterConfig multiClusterConfigs, StoreCleaner storeCleaner, MetricsRepository metricsRepository,
       ClusterLeaderInitializationRoutine controllerInitialization, Optional<TopicReplicator> onlineOfflineTopicReplicator,
       Optional<TopicReplicator> leaderFollowerTopicReplicator, Optional<DynamicAccessController> accessController,
-      MetadataStoreWriter metadataStoreWriter) {
+      MetadataStoreWriter metadataStoreWriter, HelixAdminClient helixAdminClient) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.clusterName = clusterName;
@@ -71,6 +72,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     this.leaderFollowerTopicReplicator = leaderFollowerTopicReplicator;
     this.accessController = accessController;
     this.metadataStoreWriter = metadataStoreWriter;
+    this.helixAdminClient = helixAdminClient;
   }
 
   /**
@@ -122,8 +124,9 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
         controller.startTimerTasks();
         resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterConfig,
             storeCleaner, metricsRepository, onlineOfflineTopicReplicator, leaderFollowerTopicReplicator,
-            accessController, metadataStoreWriter);
+            accessController, metadataStoreWriter, helixAdminClient);
         resources.refresh();
+        resources.startErrorPartitionResetTask();
         logger.info(controllerName + " is the leader of " + clusterName);
       } else {
         // TODO: It seems like this should throw an exception.  Otherwise the case would be you'd have an instance be leader
@@ -209,6 +212,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private void clearResources() {
     if (resources != null) {
       resources.clear();
+      resources.stopErrorPartitionResetTask();
       resources = null;
     }
   }

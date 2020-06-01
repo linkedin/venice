@@ -22,6 +22,8 @@ import org.testng.annotations.Test;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.linkedin.venice.utils.TestUtils.*;
+
 
 public class TestHelixReadOnlyStorageEngineRepository {
   private static Logger logger = Logger.getLogger(TestHelixReadOnlyStorageEngineRepository.class);
@@ -225,15 +227,5 @@ public class TestHelixReadOnlyStorageEngineRepository {
 
       logger.info("Successfully asserted that notifications work after " + details);
     });
-  }
-
-  private Store getRandomStore() {
-    return new Store(TestUtils.getUniqueString("RandomStore"),
-        TestUtils.getUniqueString("RandomOwner"),
-        System.currentTimeMillis(),
-        PersistenceType.ROCKS_DB,
-        RoutingStrategy.CONSISTENT_HASH,
-        ReadStrategy.ANY_OF_ONLINE,
-        OfflinePushStrategy.WAIT_ALL_REPLICAS);
   }
 }

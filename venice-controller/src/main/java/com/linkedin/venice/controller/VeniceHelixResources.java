@@ -26,6 +26,9 @@ import com.linkedin.venice.utils.concurrent.VeniceReentrantReadWriteLock;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import com.linkedin.venice.pushmonitor.PushMonitorDelegator;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -55,20 +58,24 @@ public class VeniceHelixResources implements VeniceResource {
   private final VeniceLock veniceHelixResourceReadLock;
   private final VeniceLock veniceHelixResourceWriteLock;
   private final Optional<DynamicAccessController> accessController;
+  private final ExecutorService errorPartitionResetExecutorService = Executors.newSingleThreadExecutor();
+
+  private ErrorPartitionResetTask errorPartitionResetTask = null;
 
   public VeniceHelixResources(String clusterName,
       ZkClient zkClient,
       HelixAdapterSerializer adapterSerializer,
       SafeHelixManager helixManager,
-      VeniceControllerClusterConfig config,
+      VeniceControllerConfig config,
       StoreCleaner storeCleaner,
       MetricsRepository metricsRepository,
       Optional<TopicReplicator> onlineOfflineTopicReplicator,
       Optional<TopicReplicator> leaderFollowerTopicReplicator,
       Optional<DynamicAccessController> accessController,
-      MetadataStoreWriter metadataStoreWriter) {
+      MetadataStoreWriter metadataStoreWriter,
+      HelixAdminClient helixAdminClient) {
     this(clusterName, zkClient, adapterSerializer, helixManager, config, storeCleaner, metricsRepository, new VeniceReentrantReadWriteLock(),
-        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter);
+        onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter, helixAdminClient);
   }
 
   /**
@@ -78,14 +85,15 @@ public class VeniceHelixResources implements VeniceResource {
                               ZkClient zkClient,
                               HelixAdapterSerializer adapterSerializer,
                               SafeHelixManager helixManager,
-                              VeniceControllerClusterConfig config,
+                              VeniceControllerConfig config,
                               StoreCleaner storeCleaner,
                               MetricsRepository metricsRepository,
                               VeniceReentrantReadWriteLock shutdownLock,
                               Optional<TopicReplicator> onlineOfflineTopicReplicator,
                               Optional<TopicReplicator> leaderFollowerTopicReplicator,
                               Optional<DynamicAccessController> accessController,
-                              MetadataStoreWriter metadataStoreWriter) {
+                              MetadataStoreWriter metadataStoreWriter,
+                              HelixAdminClient helixAdminClient) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
@@ -123,6 +131,11 @@ public class VeniceHelixResources implements VeniceResource {
     String writeLockDescription = this.getClass().getSimpleName() + "-" + clusterName + "-writeLock";
     this.veniceHelixResourceWriteLock = new VeniceLock(shutdownLock.writeLock(), writeLockDescription, metricsRepository);
     this.accessController = accessController;
+    if (config.getErrorPartitionAutoResetLimit() > 0) {
+      errorPartitionResetTask = new ErrorPartitionResetTask(clusterName, helixAdminClient, metadataRepository,
+          routingDataRepository, metricsRepository, config.getErrorPartitionAutoResetLimit(),
+          config.getErrorPartitionProcessingCycleDelay());
+    }
   }
 
   @Override
@@ -157,6 +170,24 @@ public class VeniceHelixResources implements VeniceResource {
     schemaRepository.clear();
     routingDataRepository.clear();
     routersClusterManager.clear();
+  }
+
+  public void startErrorPartitionResetTask() {
+    if (errorPartitionResetTask != null) {
+      errorPartitionResetExecutorService.submit(errorPartitionResetTask);
+    }
+  }
+
+  public void stopErrorPartitionResetTask() {
+    if (errorPartitionResetTask != null) {
+      errorPartitionResetTask.close();
+      errorPartitionResetExecutorService.shutdown();
+      try {
+        errorPartitionResetExecutorService.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
   }
 
   public HelixReadWriteStoreRepository getMetadataRepository() {

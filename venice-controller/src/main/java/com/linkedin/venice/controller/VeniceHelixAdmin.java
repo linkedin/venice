@@ -323,8 +323,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         controllerStateModelFactory = new VeniceDistClusterControllerStateModelFactory(
             zkClient, adapterSerializer, this, multiClusterConfigs, metricsRepository, controllerInitialization,
-            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter);
-
+            onlineOfflineTopicReplicator, leaderFollowerTopicReplicator, accessController, metadataStoreWriter,
+            helixAdminClient);
         // Initialized the helix manger for the level1 controller. If the controller cluster leader is going to be in
         // HaaS then level1 controllers should be only in participant mode.
         initLevel1Controller(isControllerClusterHAAS);

@@ -6,9 +6,5 @@ package com.linkedin.venice;
 public interface VeniceResource {
   void refresh();
 
-  /**
-   * TODO: we may need to rename this function to be 'close' since this resource should not used any more
-   * after calling this function.
-   */
   void clear();
 }

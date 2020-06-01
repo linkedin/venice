@@ -103,6 +103,17 @@ public interface HelixAdminClient {
   void dropStorageInstance(String clusterName, String instanceName);
 
   /**
+   * Reset a list of partitions in error state for an instance
+   * The partitions are assume to be in error state and reset will bring them from error
+   * to initial state. An error to initial state transition is required for reset.
+   * @param clusterName
+   * @param instanceName
+   * @param resourceName
+   * @param partitionNames
+   */
+  void resetPartition(String clusterName, String instanceName, String resourceName, List<String> partitionNames);
+
+  /**
    * Release resources.
    */
   void close();
