@@ -32,13 +32,6 @@ public class OptimizedBinaryDecoder extends BinaryDecoder {
   }
 
   void configureByteBuffer(byte[] data, int offset, int length) {
-    if (data != getBuf()) {
-      if (data.length >= 16) {
-        throw new IllegalArgumentException(
-            "The data byte[] parameter should be the same instance that was previously passed to configure or init.");
-      }
-      // Avro does a copy when the data is very small... so we will tolerate it in that case.
-    }
     byteBuffer = ByteBuffer.wrap(data, offset, length);
     byteBuffer.order(ByteOrder.LITTLE_ENDIAN);
     this.offset = offset;
