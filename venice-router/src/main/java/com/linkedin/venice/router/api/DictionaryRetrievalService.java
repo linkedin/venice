@@ -191,6 +191,7 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   private CompletableFuture<byte[]> getDictionary(String store, int version){
     String kafkaTopic = Version.composeKafkaTopic(store, version);
     Instance instance = getOnlineInstance(kafkaTopic);
+
     if (instance == null) {
       return CompletableFuture.supplyAsync(() -> {
         throw new VeniceException("No online storage instance for resource: " + kafkaTopic);
@@ -245,14 +246,18 @@ public class DictionaryRetrievalService extends AbstractVeniceService {
   }
 
   private Instance getOnlineInstance(String kafkaTopic) {
-    int partitionCount = onlineInstanceFinder.getNumberOfPartitions(kafkaTopic);
-    List<Instance> onlineInstances = new ArrayList<>();
-    for (int p = 0; p < partitionCount; p++) {
-      onlineInstances.addAll(onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, p));
-    }
+    try {
+      int partitionCount = onlineInstanceFinder.getNumberOfPartitions(kafkaTopic);
+      List<Instance> onlineInstances = new ArrayList<>();
+      for (int p = 0; p < partitionCount; p++) {
+        onlineInstances.addAll(onlineInstanceFinder.getReadyToServeInstances(kafkaTopic, p));
+      }
 
-    if (!onlineInstances.isEmpty()) {
-      return onlineInstances.get((int) (Math.random() * onlineInstances.size()));
+      if (!onlineInstances.isEmpty()) {
+        return onlineInstances.get((int) (Math.random() * onlineInstances.size()));
+      }
+    } catch (Exception e) {
+      logger.warn("Exception caught in getting online instances for resource: " + kafkaTopic + " : " + e.getMessage());
     }
 
     return null;
