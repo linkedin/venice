@@ -251,7 +251,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseLookupQueueCapacity = serverProperties.getInt(SERVER_DATABASE_LOOKUP_QUEUE_CAPACITY, Integer.MAX_VALUE);
     computeQueueCapacity = serverProperties.getInt(SERVER_COMPUTE_QUEUE_CAPACITY, Integer.MAX_VALUE);
     enableRocksDBOffsetMetadata = serverProperties.getBoolean(SERVER_ENABLE_ROCKSDB_METADATA, false);
-    kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, true);
+    // Disable Kafka OpenSSL for now; kafka 2.3.2 and 2.4.0 contains the fix for KAFKA-9203
+    kafkaOpenSSLEnabled = false;
+//    kafkaOpenSSLEnabled = serverProperties.getBoolean(SERVER_ENABLE_KAFKA_OPENSSL, false);
     helixCustomizedViewEnabled = serverProperties.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
     ssdHealthCheckShutdownTimeMs = serverProperties.getLong(SERVER_SHUTDOWN_DISK_UNHEALTHY_TIME_MS, 200000);
 
