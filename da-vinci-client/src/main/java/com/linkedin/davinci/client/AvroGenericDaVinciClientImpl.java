@@ -152,26 +152,21 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       kafkaBootstrapServers = backendConfig.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
     }
 
-    VeniceProperties clusterProperties = new PropertyBuilder()
+    VeniceProperties config = new PropertyBuilder()
+        /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
+        .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
+        .put(ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL, false)
         .put(backendConfig.toProperties())
         .put(ConfigKeys.CLUSTER_NAME, clusterName)
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, zkAddress)
         .put(ConfigKeys.KAFKA_ZK_ADDRESS, kafkaZkAddress)
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers)
-        .build();
-    logger.info("clusterConfig=" + clusterProperties.toString(true));
-
-    VeniceProperties serverProperties = new PropertyBuilder()
-        .put(ConfigKeys.SERVER_ENABLE_KAFKA_OPENSSL, false)
-        .put(backendConfig.toProperties())
-        /** Allows {@link com.linkedin.venice.kafka.TopicManager} to work Scala-free */
-        .put(ConfigKeys.KAFKA_ADMIN_CLASS, KafkaAdminClient.class.getName())
         .put(RocksDBServerConfig.ROCKSDB_PLAIN_TABLE_FORMAT_ENABLED,
             daVinciConfig.getStorageClass() == StorageClass.DISK_BACKED_MEMORY)
         .build();
-    logger.info("serverConfig=" + serverProperties.toString(true));
+    logger.info("backendConfig=" + config.toString(true));
 
-    return new VeniceConfigLoader(clusterProperties, serverProperties);
+    return new VeniceConfigLoader(config, config);
   }
 
   @Override
