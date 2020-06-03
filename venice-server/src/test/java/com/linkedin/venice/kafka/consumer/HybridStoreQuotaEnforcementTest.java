@@ -5,7 +5,9 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.testng.Assert;
@@ -137,7 +139,9 @@ public class HybridStoreQuotaEnforcementTest {
 
   private void setUpRTJob() {
     KafkaConsumerWrapper consumer = mock(KafkaConsumerWrapper.class);
-    when(storeIngestionTask.getConsumer()).thenReturn(consumer);
+    List<KafkaConsumerWrapper> consumerList = new ArrayList<>();
+    consumerList.add(consumer);
+    when(storeIngestionTask.getConsumer()).thenReturn(consumerList);
     when(version.getStatus()).thenReturn(VersionStatus.ONLINE);
     quotaEnforcer.handleStoreChanged(store);
   }

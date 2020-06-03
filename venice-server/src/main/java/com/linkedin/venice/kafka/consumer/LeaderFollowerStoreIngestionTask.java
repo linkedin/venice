@@ -48,6 +48,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -98,7 +99,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * The new leader will stay inactive (not switch to any new topic or produce anything) for
    * some time after seeing the last messages in version topic.
    */
-  public final long newLeaderInactiveTime;
+  private final long newLeaderInactiveTime;
+  private final boolean isNativeReplicationEnabled;
+  private final String nativeReplicationSourceAddress;
 
   /**
    * A set of boolean that check if partitions owned by this task have released the latch.
@@ -135,7 +138,9 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
-      VeniceServerConfig serverConfig) {
+      VeniceServerConfig serverConfig,
+      boolean isNativeReplicationEnabled,
+      String nativeReplicationSourceAddress) {
     super(
         writerFactory,
         consumerFactory,
@@ -163,6 +168,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         aggKafkaConsumerService,
         serverConfig);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
+    this.isNativeReplicationEnabled = isNativeReplicationEnabled;
+    this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;
   }
 
   @Override
@@ -243,7 +250,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         String leaderTopic = offsetRecord.getLeaderTopic();
         long versionTopicOffset = offsetRecord.getOffset();
         if (!topic.equals(leaderTopic)) {
-          consumer.unSubscribe(leaderTopic, partition);
+          consumerUnSubscribe(leaderTopic, partitionConsumptionState);
 
           // finish consuming and producing all the things in queue
           storeBufferService.drainBufferedRecordsFromTopicPartition(leaderTopic, partition);
@@ -264,7 +271,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
           }
 
           // subscribe back to VT/partition
-          subscribe(topic, partition, versionTopicOffset);
+          consumerSubscribe(topic, partitionConsumptionState, versionTopicOffset);
           logger.info(consumerTaskId + " demoted to standby for partition " + partition + "\n" + offsetRecord.toDetailedString());
         }
         partitionConsumptionStateMap.get(partition).setLeaderState(STANDBY);
@@ -316,7 +323,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
              * this replica can finally be promoted to leader.
              */
             // unsubscribe from previous topic/partition
-            consumer.unSubscribe(kafkaTopic, partition);
+            consumerUnSubscribe(kafkaTopic, partitionConsumptionState);
 
             OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
             if (null == offsetRecord.getLeaderTopic()) {
@@ -327,8 +334,31 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
               offsetRecord.setLeaderConsumptionState(kafkaTopic, offsetRecord.getOffset());
             }
 
+            /**
+             * When a leader replica is actually promoted to LEADER role and if native replication is enabled, there could
+             * be 3 cases:
+             * 1. Local fabric hasn't consumed anything from remote yet; in this case, EOP is not received, source topic
+             * still exists, leader will rebuild the consumer with the proper remote Kafka bootstrap server url and start
+             * consuming remotely;
+             * 2. Local fabric hasn't finish the consumption, but the host is restarted or leadership is handed over; in
+             * this case, EOP is also not received, leader will resume the consumption from remote at the specific offset
+             * which is checkpointed in the leader offset metadata;
+             * 3. A re-balance happens, leader is bootstrapping a new replica for a version that is already online; in this
+             * case, source topic might be removed already and the {@link isCurrentVersion} flag should be true; so leader
+             * doesn't need to switch to remote, all the data messages have been replicated to local fabric, leader just
+             * needs to consume locally.
+             */
+            if (isNativeReplicationEnabled && !partitionConsumptionState.isEndOfPushReceived() && !isCurrentVersion.getAsBoolean()) {
+              if (null == nativeReplicationSourceAddress || nativeReplicationSourceAddress.length() == 0) {
+                throw new VeniceException("Native replication is enabled but remote source address is not found");
+              }
+              partitionConsumptionState.setConsumeRemotely(true);
+              // Add a new consumer using remote bootstrap address
+              getConsumer(partitionConsumptionState);
+            }
+
             // subscribe to the new upstream
-            subscribe(offsetRecord.getLeaderTopic(), partition, offsetRecord.getLeaderOffset());
+            consumerSubscribe(offsetRecord.getLeaderTopic(), partitionConsumptionState, offsetRecord.getLeaderOffset());
             partitionConsumptionState.setLeaderState(LEADER);
 
             logger.info(consumerTaskId + " promoted to leader for partition " + partition
@@ -355,6 +385,18 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
                 + partitionConsumptionState.getOffsetRecord().toDetailedString();
             logger.error(errorMsg);
             throw new VeniceException(errorMsg);
+          }
+
+          /**
+           * If LEADER is consuming remotely and EOP is already received, switch back to local fabrics.
+           * TODO: The logic needs to be updated in order to support native replication for incremental push and hybrid.
+           */
+          if (partitionConsumptionState.consumeRemotely() && partitionConsumptionState.isEndOfPushReceived()) {
+            // Unsubscribe from remote Kafka topic, but keep the consumer in cache.
+            consumerUnSubscribe(kafkaTopic, partitionConsumptionState);
+            partitionConsumptionState.setConsumeRemotely(false);
+            // Subscribe to local Kafka topic
+            consumerSubscribe(kafkaTopic, partitionConsumptionState, partitionConsumptionState.getOffsetRecord().getOffset());
           }
 
           TopicSwitch topicSwitch = partitionConsumptionState.getTopicSwitch();
@@ -385,7 +427,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             }
 
             // unsubscribe the old source and subscribe to the new source
-            consumer.unSubscribe(currentLeaderTopic, partition);
+            consumerUnSubscribe(currentLeaderTopic, partitionConsumptionState);
 
             // wait for the last callback to complete
             try {
@@ -404,7 +446,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
             // subscribe to the new upstream
             partitionConsumptionState.getOffsetRecord().setLeaderConsumptionState(newSourceTopicName, upstreamStartOffset);
-            subscribe(newSourceTopicName, partition, upstreamStartOffset);
+            consumerSubscribe(newSourceTopicName, partitionConsumptionState, upstreamStartOffset);
 
             if (!kafkaTopic.equals(currentLeaderTopic)) {
               /**
@@ -442,6 +484,11 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
+  protected String getBatchWriteSourceAddress() {
+    return isNativeReplicationEnabled ? nativeReplicationSourceAddress : this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  }
+
   /**
    * This method get the timestamp of the "last" message in topic/partition; notice that when the function
    * returns, new messages can be appended to the partition already, so it's not guaranteed that this timestamp
@@ -466,14 +513,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   /**
    * For the corresponding partition being tracked in `partitionConsumptionState`, if it's in LEADER state and it's
-   * not consuming from version topic, it should produce the new message to version topic.
+   * not consuming from version topic, it should produce the new message to version topic; besides, if LEADER is
+   * consuming remotely, it should also produce to local fabric.
    *
    * If buffer replay is disable, all replicas will stick to version topic, no one is going to produce any message.
    */
   private boolean shouldProduceToVersionTopic(PartitionConsumptionState partitionConsumptionState) {
     boolean isLeader = partitionConsumptionState.getLeaderState().equals(LEADER);
     String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-    return isLeader && !kafkaTopic.equals(leaderTopic) && bufferReplayEnabledForHybrid;
+    return isLeader && bufferReplayEnabledForHybrid &&
+        (!kafkaTopic.equals(leaderTopic) || partitionConsumptionState.consumeRemotely());
   }
 
   /**
@@ -485,35 +534,56 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * leader should produce these messages to version topic so that followers understands that the push starts or ends.
    */
   @Override
-  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    super.processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
+  protected void processStartOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+    super.processStartOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
 
-    if (shouldProduceToVersionTopic(partitionConsumptionState)) {
-      String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-          kafkaTopic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
+    /**
+     * N.B.: This is expected to be the first time time we call {@link #getVeniceWriter()}, which is important
+     *       because that function relies on the Start of Push's flags having been set in the
+     *       {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}. The flag setting happens in
+     *       {@link StoreIngestionTask#processStartOfPush(ControlMessage, int, long, PartitionConsumptionState)},
+     *       which is called at the start of the current function.
+     *
+     * Note update: the first time we call {@link #getVeniceWriter()} is different in various use cases:
+     * 1. For hybrid store with L/F enabled, the first time a VeniceWriter is created is after leader switches to RT and
+     *    consumes the first message; potential message type: SOS, EOS, data message.
+     * 2. For store version generated by stream reprocessing push type, the first time is after leader switches to
+     *    SR topic and consumes the first message; potential message type: SOS, EOS, data message (consider server restart).
+     * 3. For store with native replication enabled, the first time is after leader switches to remote topic and start
+     *    consumes the first message; potential message type: SOS, EOS, SOP, EOP, data message (consider server restart).
+     */
+    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
+        getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
 
-      /**
-       * N.B.: This is expected to be the first time time we call {@link #getVeniceWriter()}, which is important
-       *       because that function relies on the Start of Push's flags having been set in the
-       *       {@link com.linkedin.venice.kafka.protocol.state.StoreVersionState}. The flag setting happens in
-       *       {@link StoreIngestionTask#processStartOfPush(ControlMessage, int, long, PartitionConsumptionState)},
-       *       which is called at the start of the current function.
-       */
-      getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
-    }
   }
 
   @Override
-  protected void processEndOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    super.processEndOfPush(controlMessage, partition, offset, partitionConsumptionState);
+  protected void processEndOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+    /**
+     * DIV pass through mode for producing EOP message.
+     */
+    produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
+        getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
 
-    if (shouldProduceToVersionTopic(partitionConsumptionState)) {
-      String leaderTopic = partitionConsumptionState.getOffsetRecord().getLeaderTopic();
-      LeaderProducerMessageCallback callback = new LeaderProducerMessageCallback(partitionConsumptionState, leaderTopic,
-          kafkaTopic, partition, offset, defaultReadyToServeChecker, Optional.empty(), versionedDIVStats, logger);
-      getVeniceWriter().sendControlMessage(controlMessage, partition, new HashMap<>(), callback, offset);
+    /**
+     * Before ending the batch write and converting the storage engine to read-only mode, make sure that all the messages
+     * have been writen into storage engine by waiting on the last producer future.
+     */
+    try {
+      long synchronizeStartTimeInNS = System.nanoTime();
+      Future<RecordMetadata> lastLeaderProduceFuture =
+          partitionConsumptionStateMap.get(partition).getLastLeaderProduceFuture();
+      if (lastLeaderProduceFuture != null) {
+        lastLeaderProduceFuture.get();
+      }
+      storeIngestionStats.recordLeaderProducerSynchronizeLatency(storeName, LatencyUtils.getLatencyInMS(synchronizeStartTimeInNS));
+    } catch (Exception e) {
+      versionedDIVStats.recordLeaderProducerFailure(storeName, versionNumber);
     }
+    // End batch write.
+    super.processEndOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
   }
 
   @Override
@@ -750,9 +820,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
+      PartitionConsumptionState partitionConsumptionState, WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
     int partition = consumerRecord.partition();
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
     if (shouldProduceToVersionTopic(partitionConsumptionState)) {
       String leaderTopic = consumerRecord.topic();
       long sourceTopicOffset = consumerRecord.offset();

@@ -17,7 +17,7 @@ import org.apache.log4j.Logger;
 public class MirrorMakerWrapper extends ProcessWrapper {
   public static final Logger logger = Logger.getLogger(MirrorMakerWrapper.class);
   public static final String SERVICE_NAME = "MirrorMaker";
-  private static final String DEFAULT_TOPIC_WHITELIST = ".*";
+  public static final String DEFAULT_TOPIC_WHITELIST = ".*";
 
   private final String topicWhitelist;
   private final String consumerConfigPath;
@@ -28,11 +28,19 @@ public class MirrorMakerWrapper extends ProcessWrapper {
       KafkaBrokerWrapper sourceKafka,
       KafkaBrokerWrapper targetKafka) {
 
+    return generateService(sourceKafka, targetKafka, DEFAULT_TOPIC_WHITELIST);
+  }
+
+  static StatefulServiceProvider<MirrorMakerWrapper> generateService(
+      KafkaBrokerWrapper sourceKafka,
+      KafkaBrokerWrapper targetKafka,
+      String whitelistForKMM) {
+
     return generateService(
         sourceKafka.getAddress(),
         targetKafka.getAddress(),
         targetKafka.getZkAddress(),
-        DEFAULT_TOPIC_WHITELIST,
+        whitelistForKMM,
         new Properties(),
         new Properties());
   }

@@ -52,7 +52,11 @@ class PartitionConsumptionState {
   private long lastTimeOfSourceTopicOffsetLookup;
   private long sourceTopicMaxOffset;
 
-  private KafkaConsumerService consumerService = null;
+  /**
+   * An in-memory state to track whether the leader consumer is consuming from remote or not; it will be updated with
+   * correct value during ingestion.
+   */
+  private boolean consumeRemotely;
 
   public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
     this.sourceTopicMaxOffset = sourceTopicMaxOffset;
@@ -232,11 +236,11 @@ class PartitionConsumptionState {
     return this.topicSwitch;
   }
 
-  public void setConsumerService(KafkaConsumerService consumerService) {
-    this.consumerService = consumerService;
+  public void setConsumeRemotely(boolean isConsumingRemotely) {
+    this.consumeRemotely = isConsumingRemotely;
   }
 
-  public KafkaConsumerService getConsumerService() {
-    return this.consumerService;
+  public boolean consumeRemotely() {
+    return consumeRemotely;
   }
 }

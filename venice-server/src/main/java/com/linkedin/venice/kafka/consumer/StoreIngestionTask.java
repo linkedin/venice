@@ -62,7 +62,9 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -82,6 +84,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.Callback;
@@ -185,7 +188,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   // Non-final
   /** Should never be accessed directly. Always use {@link #getVeniceWriter()} instead, so that lazy init can occur. */
   private VeniceWriter<byte[], byte[], byte[]> veniceWriter;
-  protected KafkaConsumerWrapper consumer;
+  // Kafka bootstrap url to consumer
+  protected Map<String, KafkaConsumerWrapper> consumerMap;
 
   protected Set<Integer> availableSchemaIds;
   protected int idleCounter = 0;
@@ -261,6 +265,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     this.availableSchemaIds = new HashSet<>();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY);
+    this.consumerMap = new VeniceConcurrentHashMap<>();
 
     // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
     this.partitionConsumptionStateMap = new VeniceConcurrentHashMap<>();
@@ -589,7 +594,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
      * Check whether current consumer has any subscription or not since 'poll' function will throw
      * {@link IllegalStateException} with empty subscription.
      */
-    if (!consumer.hasSubscription(everSubscribedTopics)) {
+    if (!consumerHasSubscription()) {
       if (++idleCounter <= MAX_IDLE_COUNTER) {
         logger.warn(consumerTaskId + " No Partitions are subscribed to for store attempt " + idleCounter);
         if (usingSharedConsumer) {
@@ -635,8 +640,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     long beforePollingTimestamp = System.currentTimeMillis();
 
     boolean wasIdle = (recordCount == 0);
-    ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = consumer.poll(readCycleDelayMs);
-    recordCount = (records == null ? 0 : records.count());
+    List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = consumerPoll(readCycleDelayMs);
+    recordCount = 0;
+    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records) {
+      recordCount += ((consumerRecords == null) ? 0 : consumerRecords.count());
+    }
 
     long afterPollingTimestamp = System.currentTimeMillis();
 
@@ -657,7 +665,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       return;
     }
 
-    produceToStoreBufferService(records, true);
+    for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records) {
+      produceToStoreBufferService(consumerRecords, true);
+    }
   }
 
   /**
@@ -671,12 +681,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     logger.info("Running " + consumerTaskId);
     try {
+      /**
+       * Consumers will be initialized lazily
+       */
       versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeName, versionNumber);
-      if (serverConfig.isSharedConsumerPoolEnabled()) {
-        this.consumer = aggKafkaConsumerService.getConsumer(kafkaProps, this);
-      } else {
-        this.consumer = factory.getConsumer(kafkaProps);
-      }
       /**
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
        * acquired by some other synchronized function, such as {@link #kill()}.
@@ -704,7 +712,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)},
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
-        this.consumer.unSubscribe(kafkaTopic, partitionConsumptionState.getPartition());
+        consumerUnSubscribe(kafkaTopic, partitionConsumptionState);
         storeBufferService.drainBufferedRecordsFromTopicPartition(kafkaTopic, partitionConsumptionState.getPartition());
         syncOffset(kafkaTopic, partitionConsumptionState);
       }
@@ -760,12 +768,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
     }
 
-    if (consumer == null) {
+    if (consumerMap == null || consumerMap.size() == 0) {
       // Consumer constructor error-ed out, nothing can be cleaned up.
-      logger.info("Error in consumer creation, skipping close for topic " + kafkaTopic);
+      logger.warn("Error in consumer creation, skipping close for topic " + kafkaTopic);
       return;
     }
-    consumer.close(everSubscribedTopics);
+    consumerMap.values().forEach(consumer -> consumer.close(everSubscribedTopics));
     isRunning.set(false);
     logger.info("Store ingestion task for store: " + kafkaTopic + " is closed");
   }
@@ -867,25 +875,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return everSubscribedTopics;
   }
 
-  /**
-   * All the subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function instead of
-   * {@link KafkaConsumerWrapper#subscribe} directly since we need to let {@link KafkaConsumerService} knows which
-   * {@link StoreIngestionTask} to use when receiving result for any specific topic.
-   * @param topic
-   * @param partition
-   */
-  protected synchronized void subscribe(String topic, int partition, long offset) {
-    if (serverConfig.isSharedConsumerPoolEnabled()) {
-      /**
-       * We need to let {@link KafkaConsumerService} know that the messages from this topic will be handled by the
-       * current {@link StoreIngestionTask}.
-       */
-      partitionConsumptionStateMap.get(partition).getConsumerService().attach(consumer, topic, this);
-    }
-    consumer.subscribe(topic, partition, offset);
-    everSubscribedTopics.add(topic);
-  }
-
   protected void processCommonConsumerAction(ConsumerActionType operation, String topic, int partition)
       throws InterruptedException {
     switch (operation) {
@@ -897,9 +886,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // First let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
-        if (serverConfig.isSharedConsumerPoolEnabled()) {
-          newPartitionConsumptionState.setConsumerService(aggKafkaConsumerService.getKafkaConsumerService(kafkaProps));
-        }
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -910,13 +896,13 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         );
 
         checkConsumptionStateWhenStart(record, newPartitionConsumptionState);
-        this.subscribe(topic, partition, record.getOffset());
+        consumerSubscribe(topic, newPartitionConsumptionState, record.getOffset());
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
             + record.getOffset());
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
-        consumer.unSubscribe(topic, partition);
+        consumerUnSubscribe(topic, partitionConsumptionStateMap.get(partition));
         // Drain the buffered message by last subscription.
         storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
         /**
@@ -935,7 +921,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * from the topic/partition before resetting offset, which is unnecessary; but we decided to keep this action
          * for now in case that in future, we do want to reset the consumer without unsubscription.
          */
-        if (consumer.hasSubscription(topic, partition)) {
+        if (partitionConsumptionStateMap.containsKey(partition) && consumerHasSubscription(topic, partitionConsumptionStateMap.get(partition))) {
           logger.error("This shouldn't happen since unsubscription should happen before reset offset for topic: " + topic + ", partition: " + partition);
           /**
            * Only update the consumer and partitionConsumptionStateMap when consumer actually has
@@ -943,17 +929,14 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
            * and mess up other operations on the StateMap.
            */
           try {
-            consumer.resetOffset(topic, partition);
+            consumerResetOffset(topic, partitionConsumptionStateMap.get(partition));
             logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition);
           } catch (UnsubscribedTopicPartitionException e) {
             logger.error(consumerTaskId + " Kafka consumer should have subscribed to the partition already but it fails "
                 + "on resetting offset for Topic: " + topic + " Partition Id: " + partition);
           }
-          PartitionConsumptionState newPCS = new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
-          if (serverConfig.isSharedConsumerPoolEnabled()) {
-            newPCS.setConsumerService(aggKafkaConsumerService.getKafkaConsumerService(kafkaProps));
-          }
-          partitionConsumptionStateMap.put(partition, newPCS);
+          partitionConsumptionStateMap.put(partition,
+              new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
@@ -974,6 +957,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected abstract void checkLongRunningTaskState() throws InterruptedException;
   protected abstract void processConsumerAction(ConsumerAction message) throws InterruptedException;
+  protected abstract String getBatchWriteSourceAddress();
 
   /**
    * Common record check for different state models:
@@ -1198,7 +1182,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
-  protected void processStartOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processStartOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
     StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
     /**
      * Notify the underlying store engine about starting batch push.
@@ -1215,6 +1200,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       newStoreVersionState.compressionStrategy = startOfPush.compressionStrategy;
       newStoreVersionState.compressionDictionary = startOfPush.compressionDictionary;
       storageMetadataService.put(kafkaTopic, newStoreVersionState);
+      // Update chunking flag in VeniceWriter
+      if (startOfPush.chunked && veniceWriter != null) {
+        veniceWriter.updateChunckingEnabled(startOfPush.chunked);
+      }
     } else if (storeVersionState.get().sorted != startOfPush.sorted) {
       // Something very wrong is going on ): ...
       throw new VeniceException("Unexpected: received multiple " + ControlMessageType.START_OF_PUSH.name() +
@@ -1226,7 +1215,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     } // else, no need to persist it once more.
   }
 
-  protected void processEndOfPush(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+  protected void processEndOfPush(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
     // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
     partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
 
@@ -1323,10 +1313,10 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
     switch(type) {
       case START_OF_PUSH:
-        processStartOfPush(controlMessage, partition, offset, partitionConsumptionState);
+        processStartOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case END_OF_PUSH:
-        processEndOfPush(controlMessage, partition, offset, partitionConsumptionState);
+        processEndOfPush(consumerRecord, controlMessage, partition, offset, partitionConsumptionState);
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
@@ -1335,7 +1325,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * need to re-produce SOS and EOS to make DIV work.
          */
         if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
-          produceAndWriteToDatabase(consumerRecord, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
+          produceAndWriteToDatabase(consumerRecord, partitionConsumptionState, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
             getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
         }
         break;
@@ -1426,7 +1416,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
         int keySize = kafkaKey.getKeyLength();
-        int valueSize = processVeniceMessage(consumerRecord);
+        int valueSize = processVeniceMessage(consumerRecord, partitionConsumptionState);
         if (emitMetrics.get()) {
           storeIngestionStats.recordKeySize(storeName, keySize);
           storeIngestionStats.recordValueSize(storeName, valueSize);
@@ -1567,7 +1557,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Write to database and potentially produce to version topic
    */
   protected abstract void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      WriteToStorageEngine writeFunction, ProduceToTopic produceFunction);
+      PartitionConsumptionState partitionConsumptionState, WriteToStorageEngine writeFunction, ProduceToTopic produceFunction);
 
   /**
    * Write to the storage engine with the optimization that we leverage the padding in front of the {@param putValue}
@@ -1621,18 +1611,94 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       if (storeVersionState.isPresent()) {
         veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaTopic, storeVersionState.get().chunked);
       } else {
-        throw new IllegalStateException(
-            "Should not attempt to call createVeniceWriter() prior to having received the Start of Push, "
-                + "specifying whether the store-version is chunked.");
+        /**
+         * In general, a partition in version topic follows this pattern:
+         * {Start_of_Segment, Start_of_Push, End_of_Segment, Start_of_Segment, data..., End_of_Segment, Start_of_Segment, End_of_Push, End_of_Segment}
+         * Therefore, in native replication where leader needs to producer all messages it consumes from remote, the first
+         * message that leader consumes is not SOP, in this case, leader doesn't know whether chunking is enabled.
+         *
+         * Notice that the pattern is different in stream reprocessing which contains a lot more segments and is also
+         * different in some test cases which reuse the same VeniceWriter.
+         */
+        veniceWriter = veniceWriterFactory.createBasicVeniceWriter(kafkaTopic);
       }
     }
     return veniceWriter;
   }
 
   /**
+   * All the subscriptions belonging to the same {@link StoreIngestionTask} SHOULD use this function instead of
+   * {@link KafkaConsumerWrapper#subscribe} directly since we need to let {@link KafkaConsumerService} knows which
+   * {@link StoreIngestionTask} to use when receiving result for any specific topic.
+   * @param topic
+   * @param partition
+   */
+  protected synchronized void subscribe(KafkaConsumerWrapper consumer, String topic, int partition, long offset) {
+    if (serverConfig.isSharedConsumerPoolEnabled() && consumer instanceof SharedKafkaConsumer) {
+      /**
+       * We need to let {@link KafkaConsumerService} know that the messages from this topic will be handled by the
+       * current {@link StoreIngestionTask}.
+       */
+      ((SharedKafkaConsumer) consumer).getKafkaConsumerService().attach(consumer, topic, this);
+    }
+    consumer.subscribe(topic, partition, offset);
+    everSubscribedTopics.add(topic);
+  }
+
+  public boolean consumerHasSubscription() {
+    return consumerMap.values().stream().anyMatch(consumer -> consumer.hasSubscription(everSubscribedTopics));
+  }
+
+  public boolean consumerHasSubscription(String topic, PartitionConsumptionState partitionConsumptionState) {
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    return consumer.hasSubscription(topic, partitionConsumptionState.getPartition());
+  }
+
+  public void consumerUnSubscribe(String topic, PartitionConsumptionState partitionConsumptionState) {
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    consumer.unSubscribe(topic, partitionConsumptionState.getPartition());
+  }
+
+  public void consumerSubscribe(String topic, PartitionConsumptionState partitionConsumptionState, long offset) {
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    subscribe(consumer, topic, partitionConsumptionState.getPartition(), offset);
+  }
+
+  public void consumerResetOffset(String topic, PartitionConsumptionState partitionConsumptionState) {
+    KafkaConsumerWrapper consumer = getConsumer(partitionConsumptionState);
+    consumer.resetOffset(topic, partitionConsumptionState.getPartition());
+  }
+
+  public List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerPoll(long pollTimeout) {
+    List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = new ArrayList<>(consumerMap.size());
+    consumerMap.values().stream().forEach(consumer -> {
+      if (consumer.hasSubscription()) {
+        ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = consumer.poll(pollTimeout);
+        if (consumerRecords != null) {
+          records.add(consumerRecords);
+        }
+      }
+    });
+    return records;
+  }
+
+  public KafkaConsumerWrapper getConsumer(PartitionConsumptionState partitionConsumptionState) {
+    String kafkaSourceAddress = partitionConsumptionState.consumeRemotely() ? getBatchWriteSourceAddress()
+        : this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+    return consumerMap.computeIfAbsent(kafkaSourceAddress, source -> {
+      Properties consumerProps = updateKafkaConsumerProperties(kafkaProps, kafkaSourceAddress);
+      if (serverConfig.isSharedConsumerPoolEnabled()) {
+        return aggKafkaConsumerService.getConsumer(consumerProps,this);
+      } else {
+        return factory.getConsumer(consumerProps);
+      }
+    });
+  }
+
+  /**
    * @return the size of the data which was written to persistent storage.
    */
-  private int processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+  private int processVeniceMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, PartitionConsumptionState partitionConsumptionState) {
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int partition = consumerRecord.partition();
@@ -1648,7 +1714,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         int valueLen = putValue.remaining();
 
         // Write to storage engine; potentially produce the PUT message to version topic
-        produceAndWriteToDatabase(consumerRecord,
+        produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
             key -> prependHeaderAndWriteToStorageEngine(kafkaTopic, partition, key, putValue, put.schemaId),
             (callback, sourceTopicOffset) -> {
               /**
@@ -1668,7 +1734,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                * followers when the leadership failover happens.
                */
 
-              if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
+              if (!partitionConsumptionState.isEndOfPushReceived()) {
                 return getVeniceWriter().put(kafkaKey, kafkaValue, callback, partition, sourceTopicOffset);
               }
 
@@ -1691,7 +1757,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         try {
           long synchronizeStartTimeInNS = System.nanoTime();
           Future<RecordMetadata> lastLeaderProduceFuture =
-              partitionConsumptionStateMap.get(partition).getLastLeaderProduceFuture();
+              partitionConsumptionState.getLastLeaderProduceFuture();
           if (lastLeaderProduceFuture != null) {
             lastLeaderProduceFuture.get();
           }
@@ -1722,7 +1788,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // Write to storage engine; potentially produce the PUT message to version topic
         // TODO: tweak here. write compute doesn't need to do fancy offset manipulation here.
-        produceAndWriteToDatabase(consumerRecord,
+        produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
             key -> {
               if (isChunkedTopic) {
                 // Samza VeniceWriter doesn't handle chunking config properly. It reads chuncking config
@@ -1741,7 +1807,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         return valueLen;
       case DELETE:
         // Write to storage engine; potentially produce the DELETE message to version topic
-        produceAndWriteToDatabase(consumerRecord,
+        produceAndWriteToDatabase(consumerRecord, partitionConsumptionState,
             key -> {
               long deleteStartTimeNs = System.nanoTime();
               storageEngine.delete(partition, key);
@@ -1905,8 +1971,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     return kafkaTopic;
   }
 
-  KafkaConsumerWrapper getConsumer() {
-    return consumer;
+  Collection<KafkaConsumerWrapper> getConsumer() {
+    return consumerMap.values();
   }
 
   public boolean isMetricsEmissionEnabled() {
@@ -1945,19 +2011,27 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * these partitions need to be resumed.
    * @param records
    */
-  private void refillPartitionToSizeMap(Iterable<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
+  private void refillPartitionToSizeMap(List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> records) {
     subscribedPartitionToSize.get().clear();
     for (int partition : partitionConsumptionStateMap.keySet()) {
       subscribedPartitionToSize.get().put(partition, 0);
     }
-    if (records != null) {
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
         int partition = record.partition();
         int recordSize = record.serializedKeySize() + record.serializedValueSize();
         subscribedPartitionToSize.get().put(partition,
                                             subscribedPartitionToSize.get().getOrDefault(partition, 0) + recordSize);
       }
-    }
+  }
+
+  /**
+   * Override the {@link CommonClientConfigs#BOOTSTRAP_SERVERS_CONFIG} config with a remote Kafka bootstrap url.
+   */
+  protected Properties updateKafkaConsumerProperties(Properties localConsumerProps, String remoteKafkaSourceAddress) {
+    Properties remoteConsumerProps = new Properties();
+    remoteConsumerProps.putAll(localConsumerProps);
+    remoteConsumerProps.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, remoteKafkaSourceAddress);
+    return remoteConsumerProps;
   }
 
   /**

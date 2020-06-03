@@ -79,7 +79,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
        * The consumer properties doesn't specify `client.id` explicitly, and internally Kafka client will assign an unique
        * client id for each consumer.
        */
-      SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties));
+      SharedKafkaConsumer newConsumer = new SharedKafkaConsumer(consumerFactory.getConsumer(consumerProperties), this);
       consumerExecutor.submit(new ConsumptionTask(newConsumer));
       consumers.add(newConsumer);
     }
