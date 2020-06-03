@@ -297,6 +297,7 @@ public class AvroGenericDaVinciClient<K, V> implements DaVinciClient<K, V> {
 
     try {
       storeBackend = daVinciBackend.get().getStoreOrThrow(getStoreName());
+      daVinciBackend.get().registerRocksDBMemoryLimit(getStoreName(), daVinciConfig.getRocksDBMemoryLimit());
 
       Schema keySchema = daVinciBackend.get().getSchemaRepository().getKeySchema(getStoreName()).getSchema();
       keySerializer = FastSerializerDeserializerFactory.getFastAvroGenericSerializer(keySchema, false);

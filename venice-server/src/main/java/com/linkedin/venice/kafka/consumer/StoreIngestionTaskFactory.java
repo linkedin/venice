@@ -12,6 +12,7 @@ import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
@@ -70,6 +71,7 @@ public class StoreIngestionTaskFactory {
           isIncrementalPushEnabled,
           storeConfig,
           builder.diskUsage,
+          builder.rocksDBMemoryStats,
           bufferReplayEnabledForHybrid,
           builder.aggKafkaConsumerService,
           builder.serverConfig,
@@ -100,6 +102,7 @@ public class StoreIngestionTaskFactory {
           isIncrementalPushEnabled,
           storeConfig,
           builder.diskUsage,
+          builder.rocksDBMemoryStats,
           bufferReplayEnabledForHybrid,
           builder.aggKafkaConsumerService,
           builder.serverConfig,
@@ -140,6 +143,7 @@ public class StoreIngestionTaskFactory {
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
     private AggKafkaConsumerService aggKafkaConsumerService;
+    private RocksDBMemoryStats rocksDBMemoryStats;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -276,6 +280,13 @@ public class StoreIngestionTaskFactory {
     public Builder setAggKafkaConsumerService(AggKafkaConsumerService aggKafkaConsumerService) {
       if (!built) {
         this.aggKafkaConsumerService = aggKafkaConsumerService;
+      }
+      return this;
+    }
+
+    public Builder setRocksDBMemoryStats(RocksDBMemoryStats rocksDBMemoryStats) {
+      if (!built) {
+        this.rocksDBMemoryStats = rocksDBMemoryStats;
       }
       return this;
     }

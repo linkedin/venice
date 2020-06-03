@@ -1,11 +1,18 @@
 package com.linkedin.venice.stats;
 
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import org.apache.log4j.Logger;
+import org.rocksdb.MemoryUsageType;
+import org.rocksdb.MemoryUtil;
 import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 
@@ -59,8 +66,17 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
       "rocksdb.block-cache-usage"
   );
 
+  private static final String ROCKSDB_MEMORY_USAGE_SUFFIX = ".rocksdb.memory-usage";
+
+  private static final Set<MemoryUsageType> MEMORY_USAGE_TYPES =
+      Collections.unmodifiableSet(new HashSet<>(Arrays.asList(
+          MemoryUsageType.kMemTableTotal,
+          MemoryUsageType.kTableReadersTotal,
+          MemoryUsageType.kCacheTotal)));
 
   private Map<String, RocksDB> hostedRocksDBPartitions = new ConcurrentHashMap<>();
+
+  private Map<String, MemoryInfo> storeMemoryInfos = new ConcurrentHashMap<>();
 
   public RocksDBMemoryStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
@@ -98,5 +114,96 @@ public class RocksDBMemoryStats extends AbstractVeniceStats{
     synchronized (hostedRocksDBPartitions) {
       hostedRocksDBPartitions.remove(partitionName);
     }
+  }
+
+  class MemoryInfo {
+    private static final double RATIO = 0.1;
+    private final String storeName;
+    private final long limit;
+    private volatile long size;
+    private AtomicLong bufferSize;
+
+    MemoryInfo(String storeName, long limit) {
+      this.storeName = storeName;
+      this.limit = limit;
+      this.size = 0;
+      this.bufferSize = new AtomicLong(0L);
+    }
+
+    private synchronized boolean innerIsFull(long bytesWritten) {
+      size = getTotalMemoryUsageInBytes();
+      boolean isFull = size + bytesWritten >= limit;
+      if (isFull) {
+        bufferSize.set(0L);
+      } else {
+        bufferSize.set(bytesWritten);
+      }
+      return isFull;
+    }
+
+    public boolean isFull(long bytesWritten) {
+      // unlimited memory
+      if (limit == 0) {
+        return false;
+      }
+      // lazy evaluate size when the first query comes
+      // bufferSize limit = 10% of available memory space
+      if (size == 0L || bufferSize.addAndGet(bytesWritten) >= RATIO * (limit - size)) {
+        return innerIsFull(bytesWritten);
+      }
+      return false;
+    }
+
+    // getTotalMemoryUsageInBytes does not include memory usage in the block cache since RocksDB
+    // does not provide api to query memory used by a RocksDB in the block cache
+    // when the block cache is shared by multiple RocksDB instances
+    private long getTotalMemoryUsageInBytes() {
+      List<RocksDB> dbs = new ArrayList<>();
+      for (Map.Entry<String, RocksDB> entry : hostedRocksDBPartitions.entrySet()) {
+        if (entry.getKey().startsWith(storeName)) {
+          dbs.add(entry.getValue());
+        }
+      }
+      Map<MemoryUsageType, Long> memoryUsages = MemoryUtil.getApproximateMemoryUsageByType(dbs, null);
+      long total = 0;
+      for (Map.Entry<MemoryUsageType, Long> entry : memoryUsages.entrySet()) {
+        if (MEMORY_USAGE_TYPES.contains(entry.getKey())) {
+          total += entry.getValue();
+        }
+      }
+      return total;
+    }
+
+    public String getStoreName() {
+      return storeName;
+    }
+
+    public long getLimit() {
+      return limit;
+    }
+
+    public synchronized long getTotalSize() {
+      return size + bufferSize.get();
+    }
+  }
+
+  public void registerStore(String storeName, long limit) {
+    storeMemoryInfos.computeIfAbsent(storeName, name -> {
+      MemoryInfo memoryInfo = new MemoryInfo(name, limit);
+      if (limit != 0) {
+        String metric = storeName + ROCKSDB_MEMORY_USAGE_SUFFIX;
+        registerSensor(metric, new Gauge(memoryInfo::getTotalSize));
+      }
+      return memoryInfo;
+    });
+  }
+
+  public boolean isMemoryFull(String storeName, long bytesWritten) {
+    MemoryInfo memoryInfo = storeMemoryInfos.get(storeName);
+    // store not registered
+    if (memoryInfo == null || memoryInfo.getLimit() == 0) {
+      return false;
+    }
+    return memoryInfo.isFull(bytesWritten);
   }
 }

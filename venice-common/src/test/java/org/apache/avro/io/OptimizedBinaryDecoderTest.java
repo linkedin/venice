@@ -67,7 +67,6 @@ public class OptimizedBinaryDecoderTest {
   @Test
   public void testBadInitFailsWithProperErrorMessage() throws IOException {
     byte[] wholeArray1 = new byte[100];
-    byte[] wholeArray2 = new byte[100];
 
     /**
      * There should be no code that directly instantiates the decoder, besides the {@link OptimizedBinaryDecoderFactory}

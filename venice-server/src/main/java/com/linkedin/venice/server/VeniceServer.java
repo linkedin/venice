@@ -181,6 +181,7 @@ public class VeniceServer {
         metadataRepo,
         schemaRepo,
         metricsRepository,
+        null,
         schemaReader,
         clientConfigForConsumer);
 

@@ -17,6 +17,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.stats.ZkClientStatusStats;
 import com.linkedin.venice.storage.StorageEngineMetadataService;
@@ -52,6 +53,7 @@ public class DaVinciBackend implements Closeable {
   private final DaVinciStoreRepository storeRepository;
   private final ReadOnlySchemaRepository schemaRepository;
   private final MetricsRepository metricsRepository;
+  private final RocksDBMemoryStats rocksDBMemoryStats;
   private final StorageService storageService;
   private final KafkaStoreIngestionService ingestionService;
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -77,7 +79,10 @@ public class DaVinciBackend implements Closeable {
     schemaRepository.refresh();
 
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    storageService = new StorageService(configLoader, storageEngineStats);
+    rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
+        new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats") : null;
+    storageService = new StorageService(configLoader, s -> {},
+        null, storageEngineStats, rocksDBMemoryStats);
     storageService.start();
 
     SchemaReader schemaReader = getSchemaReader(
@@ -91,6 +96,7 @@ public class DaVinciBackend implements Closeable {
         storeRepository,
         schemaRepository,
         metricsRepository,
+        rocksDBMemoryStats,
         Optional.of(schemaReader),
         Optional.of(clientConfig));
     ingestionService.start();
@@ -187,6 +193,12 @@ public class DaVinciBackend implements Closeable {
 
   Map<String, VersionBackend> getVersionByTopicMap() {
     return versionByTopicMap;
+  }
+
+  public void registerRocksDBMemoryLimit(String storeName, long limit) {
+    if (rocksDBMemoryStats != null) {
+      rocksDBMemoryStats.registerStore(storeName, limit);
+    }
   }
 
   Optional<Version> getLatestVersion(String storeName) {
