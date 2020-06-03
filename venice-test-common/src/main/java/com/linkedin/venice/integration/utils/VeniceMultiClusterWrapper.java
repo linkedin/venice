@@ -6,6 +6,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.commons.io.IOUtils;
 
 import java.io.File;
@@ -39,7 +40,8 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
   static ServiceProvider<VeniceMultiClusterWrapper> generateService(int numberOfClusters, int numberOfControllers,
       int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
       boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes,
-      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup, boolean multiD2) {
+      Optional<Integer> zkPort, boolean randomizeClusterName, boolean multiColoSetup, Optional<VeniceProperties> veniceProperties,
+      boolean multiD2) {
     ZkServerWrapper zkServerWrapper = zkPort.isPresent() ? ServiceFactory.getZkServer(zkPort.get()) : ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
@@ -75,7 +77,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
       VeniceClusterWrapper clusterWrapper =
           ServiceFactory.getVeniceClusterWrapperForMultiCluster(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
               clusterNames[i], clusterToD2, 0, numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist,
-              enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false);
+              enableAutoJoinWhitelist, delayToReblanceMS, minActiveReplica, sslToStorageNodes, false, veniceProperties);
       clusterWrapperMap.put(clusterWrapper.getClusterName(), clusterWrapper);
     }
     return (serviceName, port) -> new VeniceMultiClusterWrapper(null, zkServerWrapper, kafkaBrokerWrapper,

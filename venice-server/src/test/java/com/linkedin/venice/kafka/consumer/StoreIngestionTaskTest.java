@@ -72,6 +72,7 @@ import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -91,6 +92,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
@@ -322,6 +324,7 @@ public class StoreIngestionTaskTest {
                        boolean isLeaderFollowerModelEnabled) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
+    kafkaProps.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, inMemoryKafkaBroker.getKafkaBootstrapServer());
     KafkaClientFactory mockFactory = mock(KafkaClientFactory.class);
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
     VeniceWriterFactory mockWriterFactory = mock(VeniceWriterFactory.class);
@@ -389,7 +392,7 @@ public class StoreIngestionTaskTest {
         .setDiskUsage(diskUsage)
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
-        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true);
+        isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true, false, "");
     doReturn(new DeepCopyStorageEngine(mockAbstractStorageEngine)).when(mockStorageEngineRepository).getLocalStorageEngine(topic);
     Future testSubscribeTaskFuture = null;
     try {
@@ -1004,15 +1007,17 @@ public class StoreIngestionTaskTest {
       verify(mockStorageMetadataService, after(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.getConsumer() != null);
-      MockInMemoryConsumer mockConsumer = (MockInMemoryConsumer)(storeIngestionTaskUnderTest.getConsumer());
-      assertEquals(mockConsumer.getOffsets().size(), 0,
+      Collection<KafkaConsumerWrapper> consumers = (storeIngestionTaskUnderTest.getConsumer());
+      /**
+       * Consumers are constructed lazily; if the store ingestion task is killed before it tries to subscribe to any
+       * topics, there is no consumer.
+       */
+      assertEquals(consumers.size(), 0,
           "subscribe should not be processed in this consumer.");
 
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
-      assertEquals(mockConsumer.getOffsets().size(), 0,
-          "reset should not be processed in this consumer.");
 
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeIngestionTaskUnderTest.isRunning() == false);

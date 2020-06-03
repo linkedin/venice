@@ -29,6 +29,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.function.BooleanSupplier;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.log4j.Logger;
 
@@ -122,6 +123,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
   }
 
   @Override
+  protected String getBatchWriteSourceAddress() {
+    return this.kafkaProps.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
+  }
+
+  @Override
   protected void updateOffset(PartitionConsumptionState partitionConsumptionState, OffsetRecord offsetRecord,
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
     offsetRecord.setOffset(consumerRecord.offset());
@@ -129,7 +135,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
 
   @Override
   protected void produceAndWriteToDatabase(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-      WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
+      PartitionConsumptionState partitionConsumptionState, WriteToStorageEngine writeFunction, ProduceToTopic produceFunction) {
     // Execute the write function immediately
     writeFunction.apply(consumerRecord.key().getKey());
   }

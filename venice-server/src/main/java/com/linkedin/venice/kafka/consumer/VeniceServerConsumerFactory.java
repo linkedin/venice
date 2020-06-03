@@ -35,7 +35,12 @@ public class VeniceServerConsumerFactory extends KafkaClientFactory {
         properties.setProperty(SSL_CONTEXT_PROVIDER_CLASS_CONFIG, DEFAULT_KAFKA_SSL_CONTEXT_PROVIDER_CLASS_NAME);
       }
     }
-    properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
+    /**
+     * Only override the bootstrap servers config if it's not set in the proposed properties.
+     */
+    if (!properties.containsKey(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG)) {
+      properties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, serverConfig.getKafkaBootstrapServers());
+    }
     return properties;
   }
 

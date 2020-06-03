@@ -124,7 +124,6 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final int numberOfPartitions;
   private final int closeTimeOut;
   private final CheckSumType checkSumType;
-  private final boolean isChunkingEnabled;
   private final int maxSizeForUserPayloadPerMessageInBytes;
   private final int maxAttemptsWhenTopicMissing;
   private final long sleepTimeMsWhenTopicMissing;
@@ -133,7 +132,21 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
   private final KeyWithChunkingSuffixSerializer keyWithChunkingSuffixSerializer = new KeyWithChunkingSuffixSerializer();
   private final ChunkedValueManifestSerializer chunkedValueManifestSerializer = new ChunkedValueManifestSerializer(true);
   private final Map<CharSequence, CharSequence> defaultDebugInfo;
+
   private String writerId;
+  /**
+   * N.B.: chunking enabled flag is mutable; if users attempt to update the flag after VeniceWriter is created, they
+   * need to be aware that the message format sent before changing the flag is different from the message format sent
+   * after changing the flag, which usually breaks the consumption side unless the consumer is aware of the exact offset
+   * where the format changes.
+   *
+   * A recommended way to update the chunking flag after it's created: when VeniceWriter is producing in a pass-through
+   * mode (a.k.a {@link VeniceWriter#put(KafkaKey, KafkaMessageEnvelope, Callback, int, long)}), it doesn't care about the
+   * chunking flag, it's okay to update this flag during pass-through mode; once VeniceWriter starts producing in a non
+   * pass-through fashion, the chunking flag shouldn't be updated anymore.
+   */
+  private volatile boolean isChunkingEnabled;
+  private volatile boolean isChunkingFlagInvoked;
 
   protected VeniceWriter(
       VeniceProperties props,
@@ -161,6 +174,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
           + DEFAULT_MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES + " unless "
           + ENABLE_CHUNKING + " is true");
     }
+    this.isChunkingFlagInvoked = false;
     this.maxAttemptsWhenTopicMissing = props.getInt(MAX_ATTEMPTS_WHEN_TOPIC_MISSING, DEFAULT_MAX_ATTEMPTS_WHEN_TOPIC_MISSING);
     this.sleepTimeMsWhenTopicMissing = props.getInt(SLEEP_TIME_MS_WHEN_TOPIC_MISSING, DEFAULT_SLEEP_TIME_MS_WHEN_TOPIC_MISSING);
     this.defaultDebugInfo = Utils.getDebugInfo();
@@ -277,6 +291,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    */
   public Future<RecordMetadata> delete(K key, Callback callback, long upstreamOffset) {
     byte[] serializedKey = keySerializer.serialize(topicName, key);
+    isChunkingFlagInvoked = true;
     if (isChunkingEnabled) {
       serializedKey = keyWithChunkingSuffixSerializer.serializeNonChunkedKey(serializedKey);
     }
@@ -319,6 +334,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     byte[] serializedValue = valueSerializer.serialize(topicName, value);
     int partition = getPartition(serializedKey);
 
+    isChunkingFlagInvoked = true;
     if (serializedKey.length + serializedValue.length > maxSizeForUserPayloadPerMessageInBytes) {
       if (isChunkingEnabled) {
         return putLargeValue(serializedKey, serializedValue, valueSchemaId, callback, partition, upstreamOffset);
@@ -369,6 +385,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
 
   @Override
   public Future<RecordMetadata> update(K key, U update, int valueSchemaId, int derivedSchemaId, Callback callback) {
+    isChunkingFlagInvoked = true;
     if (isChunkingEnabled) {
       throw new VeniceException("Chunking is not supported for update operation in VeniceWriter");
     }
@@ -503,6 +520,19 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
     controlMessage.controlMessageUnion = endOfIncrementalPush;
     broadcastControlMessage(controlMessage, debugInfo);
     producer.flush();
+  }
+
+  /**
+   * 1. If the isChunkingEnabled flag has never been used in the VeniceWriter (regular put will use this flag;
+   *    pass-though mode doesn't use this flag), it's okay to update this chunking flag;
+   * 2. If the isChunkingEnabled flas has been used, it's not allowed to update this flag anymore.
+   */
+  public synchronized void updateChunckingEnabled(boolean isChunkingEnabled) {
+    if (isChunkingFlagInvoked) {
+      throw new VeniceException("Chunking enabled config shouldn't be updated after VeniceWriter has explitly produced a regular or chunked message");
+    }
+    logger.info("Chunking enabled config is updated from " + this.isChunkingEnabled + " to " + isChunkingEnabled);
+    this.isChunkingEnabled = isChunkingEnabled;
   }
 
   /**

@@ -68,7 +68,9 @@ public class AggKafkaConsumerService extends AbstractVeniceService {
    */
   public KafkaConsumerWrapper getConsumer(final Properties consumerProperties, StoreIngestionTask ingestionTask) {
     KafkaConsumerService consumerService = getKafkaConsumerService(consumerProperties);
-    return consumerService.getConsumer(ingestionTask);
+    KafkaConsumerWrapper selectedConsumer = consumerService.getConsumer(ingestionTask);
+    consumerService.attach(selectedConsumer, ingestionTask.getVersionTopic(), ingestionTask);
+    return selectedConsumer;
   }
 
   /**

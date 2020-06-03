@@ -1162,8 +1162,13 @@ public class VeniceParentHelixAdmin implements Admin {
 
       /**
        * If the update requests sets nativeReplicationEnabled, the store must already be in leader/follower mode
+       *
+       * TODO: We should build an UpdateStoreHelper that takes current store config and update command as input, and
+       *       return whether the update command is valid.
        */
-      if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !store.isLeaderFollowerModelEnabled())  {
+      boolean isLeaderFollowerModelEnabled = (!leaderFollowerModelEnabled.isPresent() && store.isLeaderFollowerModelEnabled())
+                                             || (leaderFollowerModelEnabled.isPresent() && leaderFollowerModelEnabled.get());
+      if(nativeReplicationEnabled.isPresent() && nativeReplicationEnabled.get() && !isLeaderFollowerModelEnabled)  {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "Native Replication cannot be enabled for a store which is not leader follower enabled");
       }
       setStore.nativeReplicationEnabled = nativeReplicationEnabled.isPresent() ? nativeReplicationEnabled.get() : store.isNativeReplicationEnabled();

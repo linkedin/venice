@@ -32,16 +32,19 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     this.clusters = clusters;
     this.mirrorMakers = mirrorMakers;
   }
+
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, Optional<Integer> zkPort) {
-    return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers,
-        numberOfServers, numberOfRouters, zkPort, Optional.empty(), false);
+      int numberOfRouters, int replicationFactor, Optional<Integer> zkPort, Optional<VeniceProperties> parentControllerProperties,
+      Optional<VeniceProperties> serverProperties) {
+    return generateService(numberOfColos, numberOfClustersInEachColo, numberOfParentControllers, numberOfControllers, numberOfServers,
+        numberOfRouters, replicationFactor, zkPort, parentControllerProperties, serverProperties, false, MirrorMakerWrapper.DEFAULT_TOPIC_WHITELIST);
   }
 
   static ServiceProvider<VeniceTwoLayerMultiColoMultiClusterWrapper> generateService(int numberOfColos,
       int numberOfClustersInEachColo, int numberOfParentControllers, int numberOfControllers, int numberOfServers,
-      int numberOfRouters, Optional<Integer> zkPort, Optional<VeniceProperties> veniceProperties, boolean multiD2) {
+      int numberOfRouters, int replicationFactor, Optional<Integer> zkPort, Optional<VeniceProperties> parentControllerProperties,
+      Optional<VeniceProperties> serverProperties, boolean multiD2, String whitelistConfigForKMM) {
 
     final List<VeniceControllerWrapper> parentControllers = new ArrayList<>(numberOfParentControllers);
     final List<VeniceMultiClusterWrapper> multiClusters = new ArrayList<>(numberOfColos);
@@ -67,7 +70,7 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
     for (int i = 0; i < numberOfColos; i++) {
       VeniceMultiClusterWrapper multiClusterWrapper =
           ServiceFactory.getVeniceMultiClusterWrapper(numberOfClustersInEachColo, numberOfControllers, numberOfServers,
-              numberOfRouters, false, true, multiD2);
+              numberOfRouters, replicationFactor, false, true, multiD2, serverProperties);
       multiClusters.add(multiClusterWrapper);
     }
 
@@ -76,26 +79,26 @@ public class VeniceTwoLayerMultiColoMultiClusterWrapper extends ProcessWrapper {
 
     // Create parentControllers for multi-cluster
     for (int i = 0; i < numberOfParentControllers; i++) {
-      if (veniceProperties.isPresent()) {
+      if (parentControllerProperties.isPresent()) {
         VeniceControllerWrapper parentController =
             ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
                 childControllers,
                 // random controller from each multicluster, in reality this should include all controllers, not just one
-                clusterToD2, false, veniceProperties.get());
+                clusterToD2, false, replicationFactor, parentControllerProperties.get());
         parentControllers.add(parentController);
       } else {
         VeniceControllerWrapper parentController =
             ServiceFactory.getVeniceParentController(clusterNames, parentKafka.getZkAddress(), parentKafka,
                 childControllers,
                 // random controller from each multicluster, in reality this should include all controllers, not just one
-                clusterToD2, false);
+                clusterToD2, false, replicationFactor);
         parentControllers.add(parentController);
       }
     }
 
     // Create MirrorMakers
     for (VeniceMultiClusterWrapper multicluster : multiClusters) {
-      MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multicluster.getKafkaBrokerWrapper());
+      MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(parentKafka, multicluster.getKafkaBrokerWrapper(), whitelistConfigForKMM);
       mirrorMakers.add(mirrorMakerWrapper);
     }
 

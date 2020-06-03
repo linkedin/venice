@@ -29,6 +29,10 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   private final KafkaConsumerWrapper delegate;
   /**
+   * This field records the reference to the {@link KafkaConsumerService} that creates this {@link SharedKafkaConsumer}
+   */
+  private final KafkaConsumerService kafkaConsumerService;
+  /**
    * This cached assignment is for performance optimization purpose since {@link #hasSubscription} could be invoked frequently.
    */
   private Set<TopicPartition> currentAssignment = Collections.emptySet();
@@ -41,13 +45,13 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
    */
   private final Map<String, StoreIngestionTask> topicToIngestionTaskMap = new VeniceConcurrentHashMap<>();
 
-  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate) {
+  public SharedKafkaConsumer(final KafkaConsumerWrapper delegate, final KafkaConsumerService service) {
     this.delegate = delegate;
+    this.kafkaConsumerService = service;
   }
 
   /**
    * If {@param isClosed} is true, this function will update the {@link #currentAssignment} to be empty.
-   * @param isClosed
    */
   private void updateCurrentAssignment(boolean isClosed) {
     if (isClosed) {
@@ -110,9 +114,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   /**
    * This function will return true as long as any topic in the passed {@param topics} has been subscribed.
-   *
-   * @param topics
-   * @return
    */
   @Override
   public synchronized boolean hasSubscription(Set<String> topics) {
@@ -178,8 +179,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   /**
    * Attach the messages belonging to {@param topic} to the passed {@param ingestionTask}
-   * @param topic
-   * @param ingestionTask
    */
   public void attach(String topic, StoreIngestionTask ingestionTask) {
     topicToIngestionTaskMap.put(topic, ingestionTask);
@@ -189,7 +188,6 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   /**
    * Detach the messages processing belonging to the topics of the passed {@param ingestionTask}
-   * @param ingestionTask
    */
   public void detach(StoreIngestionTask ingestionTask) {
     Set<String> subscribedTopics = ingestionTask.getEverSubscribedTopics();
@@ -199,10 +197,15 @@ public class SharedKafkaConsumer implements KafkaConsumerWrapper {
 
   /**
    * Get the corresponding {@link StoreIngestionTask} for the subscribed topic.
-   * @param topic
-   * @return
    */
   public StoreIngestionTask getIngestionTaskForTopic(String topic) {
     return topicToIngestionTaskMap.get(topic);
+  }
+
+  /**
+   * Get the {@link KafkaConsumerService} that creates this consumer.
+   */
+  public KafkaConsumerService getKafkaConsumerService() {
+    return this.kafkaConsumerService;
   }
 }
