@@ -69,7 +69,7 @@ public class StoreIngestionTaskFactory {
           storeConfig,
           builder.diskUsage,
           bufferReplayEnabledForHybrid,
-          builder.kafkaConsumerService,
+          builder.aggKafkaConsumerService,
           builder.serverConfig);
     } else {
       return new OnlineOfflineStoreIngestionTask(
@@ -96,7 +96,7 @@ public class StoreIngestionTaskFactory {
           storeConfig,
           builder.diskUsage,
           bufferReplayEnabledForHybrid,
-          builder.kafkaConsumerService,
+          builder.aggKafkaConsumerService,
           builder.serverConfig);
     }
   }
@@ -133,7 +133,7 @@ public class StoreIngestionTaskFactory {
     private StoreBufferService storeBufferService;
     private VeniceServerConfig serverConfig;
     private DiskUsage diskUsage;
-    private KafkaConsumerService kafkaConsumerService;
+    private AggKafkaConsumerService aggKafkaConsumerService;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -267,9 +267,9 @@ public class StoreIngestionTaskFactory {
       return this;
     }
 
-    public Builder setKafkaConsumerService(KafkaConsumerService kafkaConsumerService) {
+    public Builder setAggKafkaConsumerService(AggKafkaConsumerService aggKafkaConsumerService) {
       if (!built) {
-        this.kafkaConsumerService = kafkaConsumerService;
+        this.aggKafkaConsumerService = aggKafkaConsumerService;
       }
       return this;
     }

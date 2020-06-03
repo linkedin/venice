@@ -89,7 +89,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private final StoreBufferService storeBufferService;
 
-  private final KafkaConsumerService kafkaConsumerService;
+  private final AggKafkaConsumerService aggKafkaConsumerService;
 
   /**
    * A repository mapping each Kafka Topic to it corresponding Ingestion task responsible
@@ -201,15 +201,20 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     }
 
     if (serverConfig.isSharedConsumerPoolEnabled()) {
-      kafkaConsumerService = new KafkaConsumerService(
+      aggKafkaConsumerService = new AggKafkaConsumerService(
           veniceConsumerFactory,
-          getCommonKafkaConsumerProperties(serverConfig),
           serverConfig,
           bandwidthThrottler,
           recordsThrottler,
           metricsRepository);
+      /**
+       * After initializing a {@link AggKafkaConsumerService} service, it doesn't contain any consumer pool yet until
+       * a new Kafka cluster is registered; here we explicitly register the local Kafka cluster by invoking
+       * {@link AggKafkaConsumerService#getKafkaConsumerService(Properties)}
+       */
+      aggKafkaConsumerService.getKafkaConsumerService(getCommonKafkaConsumerProperties(serverConfig));
     } else {
-      kafkaConsumerService = null;
+      aggKafkaConsumerService = null;
     }
 
     /**
@@ -239,7 +244,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setStoreBufferService(storeBufferService)
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
-        .setKafkaConsumerService(kafkaConsumerService)
+        .setAggKafkaConsumerService(aggKafkaConsumerService)
         .build();
   }
 
@@ -254,8 +259,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     isRunning.set(true);
 
     storeBufferService.start();
-    if (null != kafkaConsumerService) {
-      kafkaConsumerService.start();
+    if (null != aggKafkaConsumerService) {
+      aggKafkaConsumerService.start();
     }
     if (participantStoreConsumptionTask != null) {
       participantStoreConsumerExecutorService.submit(participantStoreConsumptionTask);
@@ -332,8 +337,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       }
     }
 
-    if (null != kafkaConsumerService) {
-      kafkaConsumerService.stop();
+    if (null != aggKafkaConsumerService) {
+      aggKafkaConsumerService.stop();
     }
 
     if (null != storeBufferService) {
@@ -548,8 +553,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       // cleanup the map regardless if the task was running or not to prevent mem leak where errored tasks will linger
       // in the map since isRunning is set to false already.
       topicNameToIngestionTaskMap.remove(topicName);
-      if (null != kafkaConsumerService) {
-        kafkaConsumerService.detach(consumerTask);
+      if (null != aggKafkaConsumerService) {
+        aggKafkaConsumerService.detach(consumerTask);
       }
 
       /**

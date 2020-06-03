@@ -210,7 +210,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private IngestionTaskWriteComputeAdapter ingestionTaskWriteComputeAdapter;
   private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
 
-  private final KafkaConsumerService kafkaConsumerService;
+  private final AggKafkaConsumerService aggKafkaConsumerService;
   /**
    * This topic set is used to track all the topics, which have ever been subscribed.
    * It may not reflect the current subscriptions.
@@ -242,7 +242,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
-      KafkaConsumerService kafkaConsumerService,
+      AggKafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
@@ -310,7 +310,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       buildHybridQuotaEnforcer();
     }
 
-    this.kafkaConsumerService = kafkaConsumerService;
+    this.aggKafkaConsumerService = kafkaConsumerService;
   }
 
   protected void validateState() {
@@ -670,7 +670,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     try {
       versionedStorageIngestionStats.resetIngestionTaskErroredGauge(storeName, versionNumber);
       if (serverConfig.isSharedConsumerPoolEnabled()) {
-        this.consumer = kafkaConsumerService.getConsumer(this);
+        this.consumer = aggKafkaConsumerService.getConsumer(kafkaProps, this);
       } else {
         this.consumer = factory.getConsumer(kafkaProps);
       }
@@ -879,7 +879,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
        * We need to let {@link KafkaConsumerService} know that the messages from this topic will be handled by the
        * current {@link StoreIngestionTask}.
        */
-        kafkaConsumerService.attach(consumer, topic, this);
+      partitionConsumptionStateMap.get(partition).getConsumerService().attach(consumer, topic, this);
     }
     consumer.subscribe(topic, partition, offset);
     everSubscribedTopics.add(topic);
@@ -896,6 +896,9 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
         // First let's try to restore the state retrieved from the OffsetManager
         PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
+        if (serverConfig.isSharedConsumerPoolEnabled()) {
+          newPartitionConsumptionState.setConsumerService(aggKafkaConsumerService.getKafkaConsumerService(kafkaProps));
+        }
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -945,9 +948,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
             logger.error(consumerTaskId + " Kafka consumer should have subscribed to the partition already but it fails "
                 + "on resetting offset for Topic: " + topic + " Partition Id: " + partition);
           }
-          partitionConsumptionStateMap.put(
-              partition,
-              new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
+          PartitionConsumptionState newPCS = new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled);
+          if (serverConfig.isSharedConsumerPoolEnabled()) {
+            newPCS.setConsumerService(aggKafkaConsumerService.getKafkaConsumerService(kafkaProps));
+          }
+          partitionConsumptionStateMap.put(partition, newPCS);
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);

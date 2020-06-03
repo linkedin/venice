@@ -1,13 +1,12 @@
 package com.linkedin.venice.kafka.consumer;
 
 
-import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.stats.KafkaConsumerServiceStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.TestUtils;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.testng.Assert;
@@ -29,14 +28,11 @@ public class KafkaConsumerServiceTest {
     KafkaClientFactory factory = mock(KafkaClientFactory.class);
     when(factory.getConsumer(any())).thenReturn(consumer1, consumer2);
 
-    VeniceServerConfig serverConfig = mock(VeniceServerConfig.class);
-    when(serverConfig.getKafkaReadCycleDelayMs()).thenReturn(1000l);
-    when(serverConfig.getConsumerPoolSizePerKafkaCluster()).thenReturn(2);
     Properties properties = new Properties();
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, "test_kafka_url");
 
-    KafkaConsumerService consumerService = new KafkaConsumerService(factory, properties, serverConfig, mock(
-        EventThrottler.class), mock(EventThrottler.class), new MetricsRepository());
+    KafkaConsumerService consumerService = new KafkaConsumerService(factory, properties, 1000l,
+        2, mock(EventThrottler.class), mock(EventThrottler.class), mock(KafkaConsumerServiceStats.class));
 
     String storeName = TestUtils.getUniqueString("test_consumer_service");
     StoreIngestionTask task1 = mock(StoreIngestionTask.class);

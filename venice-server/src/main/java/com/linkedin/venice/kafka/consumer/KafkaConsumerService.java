@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -12,7 +11,6 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -36,14 +34,6 @@ import org.apache.log4j.Logger;
  * 2. This shared consumer pool is expected to reduce the GC overhead when there are a lot of store versions bootstrapping/ingesting at the same;
  * 3. With the shared consumer pool, the total resources occupied by the consumers become configurable no matter how many
  *    store versions are being hosted in the same instances;
- *
- * TODO: So far, the current implementation is assuming all the topics are in the same Kafka cluster, and it won't be this case
- * when Active/Active replication is available, and we need to make the following changes to support it:
- * 1. This class needs to maintain a consumer pool/consumer executors per Kafka cluster;
- * 2. Functions: {@link #getConsumer}, {@link #attach} and {@link #detach} need to have a 'kafkaUrl' to decide which
- *    consumer pool to use;
- * 3. {@link StoreIngestionTask} needs to have something like ConsumerManager since it will be using consumers for
- *    multiple different Kafka clusters;
  *
  * The main idea of shared consumer pool:
  * 1. This class will be mostly in charge of managing subscriptions/unsubscriptions;
@@ -73,13 +63,13 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
 
   public KafkaConsumerService(final KafkaClientFactory consumerFactory, final Properties consumerProperties,
-      final VeniceServerConfig serverConfig, final EventThrottler bandwidthThrottler, final EventThrottler recordsThrottler,
-      final MetricsRepository metricsRepository) {
-    this.readCycleDelayMs = serverConfig.getKafkaReadCycleDelayMs();
-    this.numOfConsumersPerKafkaCluster = serverConfig.getConsumerPoolSizePerKafkaCluster();
+      final long readCycleDelayMs, final int numOfConsumersPerKafkaCluster, final EventThrottler bandwidthThrottler,
+      final EventThrottler recordsThrottler, final KafkaConsumerServiceStats stats) {
+    this.readCycleDelayMs = readCycleDelayMs;
+    this.numOfConsumersPerKafkaCluster = numOfConsumersPerKafkaCluster;
     this.bandwidthThrottler = bandwidthThrottler;
     this.recordsThrottler = recordsThrottler;
-    this.stats = new KafkaConsumerServiceStats(metricsRepository);
+    this.stats = stats;
 
     String kafkaUrl = consumerProperties.getProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG);
     // Initialize consumers and consumerExecutor
