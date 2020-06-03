@@ -41,6 +41,8 @@ class PartitionConsumptionState {
   private long lastTimeOfSourceTopicOffsetLookup;
   private long sourceTopicMaxOffset;
 
+  private KafkaConsumerService consumerService = null;
+
   public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
     this.sourceTopicMaxOffset = sourceTopicMaxOffset;
   }
@@ -211,5 +213,13 @@ class PartitionConsumptionState {
 
   public TopicSwitch getTopicSwitch() {
     return this.topicSwitch;
+  }
+
+  public void setConsumerService(KafkaConsumerService consumerService) {
+    this.consumerService = consumerService;
+  }
+
+  public KafkaConsumerService getConsumerService() {
+    return this.consumerService;
   }
 }

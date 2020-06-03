@@ -122,7 +122,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
       boolean bufferReplayEnabledForHybrid,
-      KafkaConsumerService kafkaConsumerService,
+      AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig) {
     super(
         writerFactory,
@@ -148,7 +148,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         storeConfig,
         diskUsage,
         bufferReplayEnabledForHybrid,
-        kafkaConsumerService,
+        aggKafkaConsumerService,
         serverConfig);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
   }
