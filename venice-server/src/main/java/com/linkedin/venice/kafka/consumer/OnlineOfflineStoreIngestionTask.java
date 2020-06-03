@@ -21,6 +21,7 @@ import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DiskUsage;
@@ -61,6 +62,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       boolean isIncrementalPushEnabled,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
+      RocksDBMemoryStats rocksDBMemoryStats,
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
@@ -88,6 +90,7 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         isIncrementalPushEnabled,
         storeConfig,
         diskUsage,
+        rocksDBMemoryStats,
         bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
         serverConfig,

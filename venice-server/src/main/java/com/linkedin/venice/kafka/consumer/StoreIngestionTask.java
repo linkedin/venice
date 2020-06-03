@@ -44,6 +44,7 @@ import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.chunking.ChunkingUtils;
 import com.linkedin.venice.storage.chunking.GenericRecordChunkingAdapter;
@@ -163,6 +164,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   protected final DiskUsage diskUsage;
 
+  protected final Optional<RocksDBMemoryStats> rocksDBMemoryStats;
+
   /** Message bytes consuming interval before persisting offset in offset db for transactional mode database. */
   protected final long databaseSyncBytesIntervalForTransactionalMode;
   /** Message bytes consuming interval before persisting offset in offset db for deferred-write database. */
@@ -222,6 +225,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
   private final Set<String> everSubscribedTopics = new HashSet<>();
   private boolean orderedWritesOnly = true;
 
+  private Optional<RocksDBMemorryEnforcement> rocksDBMemoryEnforcer;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -245,6 +250,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       boolean isIncrementalPushEnabled,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
+      RocksDBMemoryStats rocksDBMemoryStats,
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService kafkaConsumerService,
       VeniceServerConfig serverConfig,
@@ -298,6 +304,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
     this.diskUsage = diskUsage;
 
+    this.rocksDBMemoryStats = Optional.ofNullable(
+        storageEngineRepository.hasLocalStorageEngine(kafkaVersionTopic)
+            && storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic).getType().equals(PersistenceType.ROCKS_DB) ?
+            rocksDBMemoryStats : null
+    );
+
     this.readOnlyForBatchOnlyStoreEnabled = storeConfig.isReadOnlyForBatchOnlyStoreEnabled();
 
     this.bufferReplayEnabledForHybrid = bufferReplayEnabledForHybrid;
@@ -319,6 +331,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.aggKafkaConsumerService = kafkaConsumerService;
 
     this.partitionId = partitionId;
+
+    buildRocksDBMemoryEnforcer();
   }
 
   protected void validateState() {
@@ -341,6 +355,21 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
           partitionConsumptionStateMap));
       this.storeRepository.registerStoreDataChangedListener(hybridQuotaEnforcer.get());
       this.subscribedPartitionToSize = Optional.of(new HashMap<>());
+    }
+  }
+
+  private void buildRocksDBMemoryEnforcer() {
+    AbstractStorageEngine storageEngine = storageEngineRepository.getLocalStorageEngine(kafkaVersionTopic);
+    if (rocksDBMemoryStats.isPresent() && storageEngine.getType().equals(PersistenceType.ROCKS_DB)) {
+      if (serverConfig.isSharedConsumerPoolEnabled()) {
+        // TODO: support memory limiter with shared consumer
+        throw new VeniceException("RocksDBMemoryEnforcement can not work with shared consumer.");
+      }
+      this.rocksDBMemoryEnforcer = Optional.of(new RocksDBMemorryEnforcement(
+         this
+      ));
+    } else {
+      this.rocksDBMemoryEnforcer = Optional.empty();
     }
   }
 
@@ -651,11 +680,22 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     boolean wasIdle = (recordCount == 0);
     List<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> records = consumerPoll(readCycleDelayMs);
     recordCount = 0;
+    long estimatedSize = 0;
     for (ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords : records) {
       recordCount += ((consumerRecords == null) ? 0 : consumerRecords.count());
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : consumerRecords) {
+        estimatedSize += Math.max(0, record.serializedKeySize()) + Math.max(0, record.serializedValueSize());
+      }
     }
 
     long afterPollingTimestamp = System.currentTimeMillis();
+
+    if (rocksDBMemoryEnforcer.isPresent()) {
+      rocksDBMemoryEnforcer.get().enforceMemory(estimatedSize);
+      if (rocksDBMemoryEnforcer.get().isIngestionPaused()) {
+        return;
+      }
+    }
 
     if (emitMetrics.get()) {
       storeIngestionStats.recordPollRequestLatency(storeName, afterPollingTimestamp - beforePollingTimestamp);
@@ -1023,7 +1063,6 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       return false;
     }
-
     return true;
   }
 
@@ -1073,9 +1112,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.incrementProcessedRecordSize(recordSize);
 
     if (diskUsage.isDiskFull(recordSize)) {
-      throw new VeniceException("Disk is full: throwing exception to error push: "
-          + storeName + " version " + versionNumber + ". "
-          + diskUsage.getDiskStatus());
+      throw new VeniceException(
+          "Disk is full: throwing exception to error push: " + storeName + " version " + versionNumber + ". " + diskUsage.getDiskStatus());
     }
 
     int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();

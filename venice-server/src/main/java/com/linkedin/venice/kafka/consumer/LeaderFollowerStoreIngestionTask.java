@@ -28,6 +28,7 @@ import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -134,6 +135,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       boolean isIncrementalPushEnabled,
       VeniceStoreConfig storeConfig,
       DiskUsage diskUsage,
+      RocksDBMemoryStats rocksDBMemoryStats,
       boolean bufferReplayEnabledForHybrid,
       AggKafkaConsumerService aggKafkaConsumerService,
       VeniceServerConfig serverConfig,
@@ -163,6 +165,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         isIncrementalPushEnabled,
         storeConfig,
         diskUsage,
+        rocksDBMemoryStats,
         bufferReplayEnabledForHybrid,
         aggKafkaConsumerService,
         serverConfig,

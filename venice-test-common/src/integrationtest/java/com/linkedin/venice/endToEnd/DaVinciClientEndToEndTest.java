@@ -51,7 +51,8 @@ public class DaVinciClientEndToEndTest {
         params -> params.setPartitionerClass(ConstantVenicePartitioner.class.getName())
         .setPartitionerParams(
             Collections.singletonMap(ConstantVenicePartitioner.CONSTANT_PARTITION, String.valueOf(partitionId))
-        );
+        )
+        .setPartitionCount(3);
     setUpStore(storeName, paramsConsumer,
         properties -> properties.setProperty(VENICE_PARTITIONERS_PROP, ConstantVenicePartitioner.class.getName()));
     try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster)) {

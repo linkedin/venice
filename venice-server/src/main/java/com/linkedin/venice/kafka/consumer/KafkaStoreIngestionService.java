@@ -26,6 +26,7 @@ import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.stats.ParticipantStoreConsumptionStats;
+import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -119,6 +120,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     ReadOnlyStoreRepository metadataRepo,
                                     ReadOnlySchemaRepository schemaRepo,
                                     MetricsRepository metricsRepository,
+                                    RocksDBMemoryStats rocksDBMemoryStats,
                                     Optional<SchemaReader> schemaReader,
                                     Optional<ClientConfig> clientConfig) {
     this.storageMetadataService = storageMetadataService;
@@ -247,6 +249,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setServerConfig(serverConfig)
         .setDiskUsage(diskUsage)
         .setAggKafkaConsumerService(aggKafkaConsumerService)
+        .setRocksDBMemoryStats(rocksDBMemoryStats)
         .build();
   }
 

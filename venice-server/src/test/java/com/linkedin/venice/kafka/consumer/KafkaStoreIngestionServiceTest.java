@@ -83,6 +83,7 @@ public class KafkaStoreIngestionServiceTest {
        mockmetadataRepo,
        mockSchemaRepo,
        new MetricsRepository(),
+       null,
        Optional.empty(),
        Optional.empty());
 
@@ -154,6 +155,7 @@ public class KafkaStoreIngestionServiceTest {
         mockmetadataRepo,
         mockSchemaRepo,
         new MetricsRepository(),
+        null,
         Optional.empty(),
         Optional.empty());
     String topic1 = "test-store_v1";

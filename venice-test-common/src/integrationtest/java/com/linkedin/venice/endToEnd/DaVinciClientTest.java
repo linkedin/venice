@@ -45,6 +45,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.testng.internal.thread.ThreadTimeoutException;
 
 import static com.linkedin.venice.integration.utils.VeniceClusterWrapper.*;
 import static org.testng.Assert.*;
@@ -69,6 +70,11 @@ public class DaVinciClientTest {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testBatchStore() throws Exception {
+    long memoryLimit = 1024 * 1024 * 1024; // 1GB
+
+    String storeName1 = cluster.createStore(KEY_COUNT);
+    String storeName2 = cluster.createStore(KEY_COUNT);
+
     String baseDataPath = TestUtils.getTempDataDirectory().getAbsolutePath();
     VeniceProperties backendConfig = new PropertyBuilder()
             .put(ConfigKeys.DATA_BASE_PATH, baseDataPath)
@@ -82,23 +88,30 @@ public class DaVinciClientTest {
             .build();
     D2ClientUtils.startClient(d2Client);
 
+    MetricsRepository metricsRepository = new MetricsRepository();
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRocksDBMemoryLimit(memoryLimit);
+
     // Test multiple clients sharing the same ClientConfig/MetricsRepository & base data path
-    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, new MetricsRepository(), backendConfig)) {
-      String storeName1 = cluster.createStore(KEY_COUNT);
-      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, new DaVinciConfig());
-
-      // Test non-existent key access
-      client1.subscribeAll().get();
-      assertNull(client1.get(KEY_COUNT + 1).get());
-
-      // Test single-get access
+    try (CachingDaVinciClientFactory factory = new CachingDaVinciClientFactory(d2Client, metricsRepository, backendConfig)) {
+      DaVinciClient<Integer, Object> client1 = factory.getAndStartGenericAvroClient(storeName1, daVinciConfig);
       Map<Integer, Integer> keyValueMap = new HashMap<>();
+      client1.subscribeAll().get();
+
+      double memoryUsage1 = metricsRepository.getMetric(".RocksDBMemoryStats--" + storeName1 + ".rocksdb.memory-usage.Gauge").value();
+      assertNotEquals(memoryUsage1, 0);
+
       for (int k = 0; k < KEY_COUNT; ++k) {
         assertEquals(client1.get(k).get(), 1);
         keyValueMap.put(k, 1);
       }
 
       // Test automatic new version ingestion
+      DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, daVinciConfig);
+      client2.subscribeAll().get();
+
+      assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
+
       for (int i = 0; i < 2; ++i) {
         // Test per-version partitioning parameters
         try (ControllerClient controllerClient = cluster.getControllerClient()) {
@@ -122,18 +135,18 @@ public class DaVinciClientTest {
       }
 
       // Test multiple client ingesting different stores concurrently
-      String storeName2 = cluster.createStore(KEY_COUNT);
-      DaVinciClient<Integer, Integer> client2 = factory.getAndStartGenericAvroClient(storeName2, new DaVinciConfig());
-      client2.subscribeAll().get();
-      assertEquals(client2.batchGet(keyValueMap.keySet()).get(), keyValueMap);
+      String storeName3 = cluster.createStore(KEY_COUNT);
+      DaVinciClient<Integer, Integer> client3 = factory.getAndStartGenericAvroClient(storeName3, new DaVinciConfig());
+      client3.subscribeAll().get();
+      assertEquals(client3.batchGet(keyValueMap.keySet()).get(), keyValueMap);
 
       // Test read from a store that is being deleted concurrently
       try (ControllerClient controllerClient = cluster.getControllerClient()) {
-        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName2);
+        ControllerResponse response = controllerClient.disableAndDeleteStore(storeName3);
         assertFalse(response.isError(), response.getError());
 
         TestUtils.waitForNonDeterministicAssertion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
-          assertThrows(VeniceNoStoreException.class, () -> client2.get(KEY_COUNT / 3).get());
+          assertThrows(VeniceNoStoreException.class, () -> client3.get(KEY_COUNT / 3).get());
         });
       }
 
@@ -141,6 +154,7 @@ public class DaVinciClientTest {
       assertNotEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
       client1.unsubscribeAll();
       client2.unsubscribeAll();
+      client3.unsubscribeAll();
       assertEquals(FileUtils.sizeOfDirectory(new File(baseDataPath)), 0);
     }
   }
@@ -322,6 +336,23 @@ public class DaVinciClientTest {
       client.subscribe(Collections.singleton(0)).get();
       // With QUERY_REMOTELY enabled, all key-value pairs should be found.
       assertEquals(client.batchGet(keyValueMap.keySet()).get().size(), keyValueMap.size());
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT / 2, expectedExceptions = ThreadTimeoutException.class)
+  // testRocksDBMemoryLimit will timeout since it can not ingest data due to memory limit
+  public void testRocksDBMemoryLimit() throws Exception {
+    String storeName = cluster.createStore(KEY_COUNT);
+
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(ConfigKeys.DATA_BASE_PATH, TestUtils.getTempDataDirectory().getAbsolutePath())
+        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .build();
+
+    DaVinciConfig daVinciConfig = new DaVinciConfig();
+    daVinciConfig.setRocksDBMemoryLimit(1L);
+    try (DaVinciClient<Object, Object> client = ServiceFactory.getGenericAvroDaVinciClient(storeName, cluster, daVinciConfig, backendConfig)) {
+      client.subscribeAll().get();
     }
   }
 
