@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Properties;
@@ -41,6 +42,11 @@ public class ServiceFactory {
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
   private static final boolean DEFAULT_SSL_TO_STORAGE_NODES = false;
   private static final boolean DEFAULT_SSL_TO_KAFKA = false;
+
+  // Wait time to make sure all the cluster services have been started.
+  // If this value is not large enough, i.e. some services have not been
+  // started before clients start to interact, please increase it.
+  private static final int DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S = 90;
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -277,6 +283,43 @@ public class ServiceFactory {
     return getVeniceCluster(1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, sslToStorageNodes, DEFAULT_SSL_TO_KAFKA);
   }
 
+  /**
+   * Start up a testing Venice cluster in another process.
+   *
+   * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
+   * when one wants to maximize its testing environment isolation.
+   * Example usage: {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
+   *
+   * @param clusterInfoFilePath works as IPC to pass back the needed information to the caller process
+   */
+  public static void startVeniceClusterInAnotherProcess(String clusterInfoFilePath) {
+    startVeniceClusterInAnotherProcess(clusterInfoFilePath, DEFAULT_WAIT_TIME_FOR_CLUSTER_START_S);
+  }
+
+  /**
+   * Start up a testing Venice cluster in another process.
+   *
+   * The reason to call this method instead of other {@link #getVeniceCluster()} methods is
+   * when one wants to maximize its testing environment isolation.
+   * Example usage: {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses}
+   *
+   * @param clusterInfoFilePath works as IPC to pass back the needed information to the caller process
+   * @param waitTimeInSeconds gives some wait time to make sure all the services have been started in the other process.
+   *                          The default wait time is an empirical value based on observations. If we have more
+   *                          components to start in the future, this value needs to be increased.
+   */
+  public static void startVeniceClusterInAnotherProcess(String clusterInfoFilePath, int waitTimeInSeconds) {
+    try {
+      VeniceClusterWrapper.generateServiceInAnotherProcess(clusterInfoFilePath, waitTimeInSeconds);
+    } catch (IOException | InterruptedException e) {
+      throw new VeniceException("Start Venice cluster in another process has failed", e);
+    }
+  }
+
+  public static void stopVeniceClusterInAnotherProcess() {
+    VeniceClusterWrapper.stopServiceInAnotherProcess();
+  }
+
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter) {
     return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR,
         DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_SSL_TO_STORAGE_NODES, DEFAULT_SSL_TO_KAFKA);
@@ -508,6 +551,22 @@ public class ServiceFactory {
         .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
         .setVeniceURL(cluster.getZk().getAddress());
     DaVinciClient<K, V> client = new AvroGenericDaVinciClientImpl<>(daVinciConfig, clientConfig, backendConfig);
+    client.start();
+    return client;
+  }
+
+  public static <K, V> DaVinciClient<K, V> getGenericAvroDaVinciClient(String storeName, String zkAddress, String dataBasePath) {
+    VeniceProperties backendConfig = new PropertyBuilder()
+        .put(ConfigKeys.DATA_BASE_PATH, dataBasePath)
+        .put(ConfigKeys.PERSISTENCE_TYPE, PersistenceType.ROCKS_DB)
+        .build();
+
+    ClientConfig clientConfig = ClientConfig
+        .defaultGenericClientConfig(storeName)
+        .setD2ServiceName(ClientConfig.DEFAULT_D2_SERVICE_NAME)
+        .setVeniceURL(zkAddress);
+
+    DaVinciClient<K, V> client = new AvroGenericDaVinciClientImpl<>(new DaVinciConfig(), clientConfig, backendConfig);
     client.start();
     return client;
   }

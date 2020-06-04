@@ -22,7 +22,10 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,8 +39,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.commons.io.IOUtils;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
@@ -51,7 +57,19 @@ import static com.linkedin.venice.integration.utils.VeniceServerWrapper.*;
  * - {@link VeniceServerWrapper}
  */
 public class VeniceClusterWrapper extends ProcessWrapper {
+  public static final Logger logger = Logger.getLogger(VeniceClusterWrapper.class);
   public static final String SERVICE_NAME = "VeniceCluster";
+
+  private static final int VALUE_LENGTH = 100;
+  private static final int NUM_RECORDS = 100_000;
+  private static final String FLOAT_VECTOR_VALUE_SCHEMA = "{" +
+          "  \"namespace\" : \"example.avro\",  " +
+          "  \"type\": \"record\",   " +
+          "  \"name\": \"FloatVector\",     " +
+          "  \"fields\": [           " +
+          "       { \"name\": \"value\", \"type\": {\"type\": \"array\", \"items\": \"float\"} }  " +
+          "  ] " +
+          " } ";
 
   private final String clusterName;
   private final ZkServerWrapper zkServerWrapper;
@@ -66,6 +84,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
   private final boolean sslToStorageNodes;
   private final boolean sslToKafka;
+  private static Process veniceClusterProcess;
 
   VeniceClusterWrapper(
       File dataDirectory,
@@ -249,6 +268,51 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
   }
 
+  static void generateServiceInAnotherProcess(String clusterInfoFilePath, int waitTimeInSeconds) throws IOException, InterruptedException {
+    if (veniceClusterProcess != null) {
+      logger.warn("Received a request to spawn a venice cluster in another process for testing" +
+              "but one has already been running. Will not spawn a new one.");
+      return;
+    }
+
+    veniceClusterProcess = ForkedJavaProcess.exec(
+        VeniceClusterWrapper.class, clusterInfoFilePath
+    );
+
+    try {
+      // wait some time to make sure all the services have started in the forked process
+      if (veniceClusterProcess.waitFor(waitTimeInSeconds, TimeUnit.SECONDS)) {
+        veniceClusterProcess.destroy();
+        throw new VeniceException("Venice cluster exited unexpectedly with the code " + veniceClusterProcess.exitValue());
+      }
+    } catch (InterruptedException e) {
+      logger.warn("Waiting for veniceClusterProcess to start is interrupted", e);
+      Thread.currentThread().interrupt();
+      return;
+    }
+    logger.info("Venice cluster is started in a remote process!");
+  }
+
+  static void stopServiceInAnotherProcess() {
+    veniceClusterProcess.destroy();
+    veniceClusterProcess = null;
+  }
+
+  private static String buildFloatVectorStore(VeniceClusterWrapper cluster) {
+    Schema schema = Schema.parse(FLOAT_VECTOR_VALUE_SCHEMA);
+    GenericRecord record = new GenericData.Record(schema);
+    List<Float> floatVector = new ArrayList<>();
+    for (int i = 0; i < VALUE_LENGTH; i++) {
+      floatVector.add((float)(i * 1.0));
+    }
+    record.put("value", floatVector);
+    try {
+      return cluster.createStore(NUM_RECORDS, record);
+    } catch (Exception e) {
+      throw new VeniceException("Error in creating store", e);
+    }
+  }
+
   @Override
   protected void internalStart() throws Exception {
     // Everything should already be started. So this is a no-op.
@@ -266,6 +330,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         IOUtils.closeQuietly(brooklinWrapper);
       }
     });
+
+    if (veniceClusterProcess != null) {
+      veniceClusterProcess.destroy();
+    }
   }
 
   @Override
@@ -753,6 +821,38 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         writer.put(e.getKey(), e.getValue(), valueSchemaId).get();
       }
       writer.broadcastEndOfPush(Collections.emptyMap());
+    }
+  }
+
+  /**
+   * Having a main func here to be called by {@link #generateServiceInAnotherProcess}
+   * to spawn a testing cluster in another process if one wants an isolated environment, e.g. for benchmark
+   * @param args - args[0] (cluster info file path) is the only and must have parameter
+   *             to work as IPC to pass back needed cluster info
+   */
+  public static void main(String[] args) {
+    if (args.length != 1) {
+      throw new VeniceException("Need to provide a file path to write cluster info.");
+    }
+
+    Utils.thisIsLocalhost();
+    VeniceClusterWrapper veniceClusterWrapper = ServiceFactory.getVeniceCluster();
+
+    /**
+     * write some cluster info to a file, which will be used by another process to make connection to this cluster
+     * e.g. {@link com.linkedin.venice.benchmark.IngestionBenchmarkWithTwoProcesses#parseClusterInfoFile()}
+     */
+    String storeName = buildFloatVectorStore(veniceClusterWrapper);
+    String zkAddress = veniceClusterWrapper.getZk().getAddress();
+    File clusterInfoFile = new File(args[0]);
+    BufferedWriter bw;
+    try {
+      bw = new BufferedWriter(new FileWriter(clusterInfoFile));
+      bw.write("storeName " + storeName + "\n" );
+      bw.write("zkAddress " + zkAddress + "\n" );
+      bw.close();
+    } catch (IOException e) {
+      throw new VeniceException("Cannot write to file" + clusterInfoFile.getName(), e);
     }
   }
 }
