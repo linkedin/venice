@@ -25,6 +25,7 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -404,19 +405,20 @@ public class VeniceKafkaConsumerClient extends AbstractBaseKafkaConsumerClient {
               throw new VeniceException("No such type of message: " + MessageType.valueOf(value));
           }
         }
-        // the cases the last poll returns zero records or the polled records doesn't contain any real records
-        if (!hasRealMessages) {
-          polledEmptyRealRecordsCount++;
-        }
         /**
          * Break the loop if:
          * 1. already digested more than max offset;
          * 2. encounter real data records; this API will be invoked multiple times in extractor;
          * 3. couldn't consume any records for {@link MAX_ATTEMPTS_FOR_EMPTY_POLLING} times.
+         *
+         * {@link org.apache.kafka.clients.consumer.KafkaConsumer#endOffsets(Collection)} would return "the last
+         * successfully replicated message plus one"; so the real "endOffset" is (maxOffset - 1);
          */
-        if (lastRecordOffset >= maxOffset || hasRealMessages) {
+        if (lastRecordOffset >= (maxOffset - 1) || hasRealMessages) {
           break;
         }
+        // Otherwise, no data messages have been consumed and consumer hasn't reach max offset yet
+        polledEmptyRealRecordsCount++;
       } while (polledEmptyRealRecordsCount <= MAX_ATTEMPTS_FOR_EMPTY_POLLING);
     } catch (Throwable t) {
       logger.error("Exception on polling records", t);
