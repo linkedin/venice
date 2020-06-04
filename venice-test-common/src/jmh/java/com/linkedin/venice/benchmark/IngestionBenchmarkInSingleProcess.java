@@ -42,7 +42,7 @@ import static com.linkedin.venice.integration.utils.ServiceFactory.*;
 @Fork(value = 1)
 @Warmup(iterations = 1)
 @Measurement(iterations = 10)
-public class IngestionBenchmark {
+public class IngestionBenchmarkInSingleProcess {
   private static final int numRecords = 100_000;
   private static final String FLOAT_VECTOR_VALUE_SCHEMA = "{" +
       "  \"namespace\" : \"example.avro\",  " +
@@ -96,7 +96,7 @@ public class IngestionBenchmark {
 
   public static void main(String[] args) throws RunnerException {
     org.openjdk.jmh.runner.options.Options opt = new OptionsBuilder()
-        .include(IngestionBenchmark.class.getSimpleName())
+        .include(IngestionBenchmarkInSingleProcess.class.getSimpleName())
         .addProfiler(GCProfiler.class)
         .build();
     new Runner(opt).run();
