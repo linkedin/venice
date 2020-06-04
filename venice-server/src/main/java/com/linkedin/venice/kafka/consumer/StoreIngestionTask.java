@@ -717,9 +717,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         notificationDispatcher.reportError(partitionConsumptionStateMap.values(),
             "Caught InterruptException during ingestion.", interruptException);
         storeIngestionStats.recordIngestionFailure(storeName);
-        if (partitionConsumptionStateMap.values().stream().anyMatch(PartitionConsumptionState::isEndOfPushReceived)) {
-          versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
-        }
+        versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
       }
     } catch (Throwable t) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
