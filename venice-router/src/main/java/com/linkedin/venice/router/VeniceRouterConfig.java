@@ -103,7 +103,7 @@ public class VeniceRouterConfig {
   private long routerQuotaCheckWindow;
   private long maxRouterReadCapacityCu;
   private boolean helixCustomizedViewEnabled;
-
+  private int ioThreadCountInPoolMode;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -235,6 +235,7 @@ public class VeniceRouterConfig {
     routerQuotaCheckWindow = props.getLong(ROUTER_QUOTA_CHECK_WINDOW, 30000);
     earlyThrottleEnabled = props.getBoolean(ROUTER_EARLY_THROTTLE_ENABLED, false);
     helixCustomizedViewEnabled = props.getBoolean(HELIX_CUSTOMIZED_VIEW_ENABLED, false);
+    ioThreadCountInPoolMode = props.getInt(ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT, Runtime.getRuntime().availableProcessors());
   }
 
   public String getClusterName() {
@@ -561,6 +562,10 @@ public class VeniceRouterConfig {
   }
 
   public boolean isHelixCustomizedViewEnabled() { return helixCustomizedViewEnabled; }
+
+  public int getIoThreadCountInPoolMode() {
+    return ioThreadCountInPoolMode;
+  }
 
   /**
    * The expected config format is like the following:

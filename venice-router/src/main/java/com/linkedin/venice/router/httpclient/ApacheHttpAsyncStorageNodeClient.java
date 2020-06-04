@@ -80,7 +80,7 @@ public class ApacheHttpAsyncStorageNodeClient implements StorageNodeClient  {
       LiveInstanceMonitor monitor) {
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
 
-    int totalIOThreadNum = Runtime.getRuntime().availableProcessors();
+    int totalIOThreadNum = config.getIoThreadCountInPoolMode();
     int maxConnPerRoute = config.getMaxOutgoingConnPerRoute();
     int maxConn = config.getMaxOutgoingConn();
     this.perNodeClientEnabled = config.isPerNodeClientAllocationEnabled();
