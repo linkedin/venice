@@ -11,11 +11,13 @@ import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.Utils;
+
+import org.apache.avro.Schema;
+import org.apache.log4j.Logger;
+
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.avro.Schema;
-import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -37,7 +39,7 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
   public void execute(String clusterToInit) {
     String intendedCluster = multiClusterConfigs.getSystemSchemaClusterName();
     if (intendedCluster.equals(clusterToInit)) {
-      String systemStoreName = getSystemStoreName(protocolDefinition);
+      String systemStoreName = protocolDefinition.getSystemStoreName();
       Map<Integer, Schema> protocolSchemaMap = Utils.getAllSchemasFromResources(protocolDefinition);
 
       // Sanity check to make sure the store is not already created in another cluster.
@@ -127,9 +129,5 @@ public class SystemSchemaInitializationRoutine implements ClusterLeaderInitializ
         }
       }
     }
-  }
-
-  public static String getSystemStoreName(AvroProtocolDefinition protocolDefinition) {
-    return String.format(Store.SYSTEM_STORE_FORMAT, protocolDefinition.name());
   }
 }
