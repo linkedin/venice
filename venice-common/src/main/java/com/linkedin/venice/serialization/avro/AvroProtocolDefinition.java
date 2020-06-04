@@ -2,17 +2,23 @@ package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.kafka.protocol.*;
-import com.linkedin.venice.kafka.protocol.state.*;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.status.protocol.PushJobDetails;
-import com.linkedin.venice.storage.protocol.*;
+import com.linkedin.venice.storage.protocol.ChunkedKeySuffix;
+import com.linkedin.venice.storage.protocol.ChunkedValueManifest;
+
+import org.apache.avro.Schema;
+import org.apache.avro.specific.SpecificData;
+import org.apache.avro.specific.SpecificRecord;
+
 import java.nio.ByteBuffer;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
-import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificData;
-import org.apache.avro.specific.SpecificRecord;
 
 /**
  * This enum lays out the basic specs of the various stateful protocols used in Venice.
@@ -198,5 +204,9 @@ public enum AvroProtocolDefinition {
 
   public String getClassName() {
     return className;
+  }
+
+  public String getSystemStoreName() {
+    return String.format(Store.SYSTEM_STORE_FORMAT, name());
   }
 }

@@ -9,7 +9,6 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.D2ServiceDiscovery;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -342,7 +341,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
     SchemaReader schemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(
-            SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE)));
+            AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
     kafkaStoreIngestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),

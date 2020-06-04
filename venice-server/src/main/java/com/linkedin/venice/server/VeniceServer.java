@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
-import com.linkedin.venice.controller.init.SystemSchemaInitializationRoutine;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
@@ -51,8 +50,6 @@ import io.tehuti.metrics.MetricsRepository;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -174,7 +171,7 @@ public class VeniceServer {
     storageService.getRocksDBAggregatedStatistics().ifPresent( stat -> new AggRocksDBStats(metricsRepository, stat));
 
     Optional<SchemaReader> schemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
-        cc.setStoreName(SystemSchemaInitializationRoutine.getSystemStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE))));
+        cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
 
     // create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService = new KafkaStoreIngestionService(
