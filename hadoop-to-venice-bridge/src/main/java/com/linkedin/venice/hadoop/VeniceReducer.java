@@ -1,28 +1,15 @@
 package com.linkedin.venice.hadoop;
 
-import com.github.luben.zstd.Zstd;
 import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.compression.CompressorFactory;
-import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.kafka.KafkaClientFactory;
-import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
-import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
-import com.linkedin.venice.kafka.protocol.StartOfPush;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -33,7 +20,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -52,14 +38,8 @@ import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.Progressable;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 
 import javax.xml.bind.DatatypeConverter;
@@ -109,8 +89,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
    */
   private final boolean checkDupKey;
   private DuplicateKeyPrinter duplicateKeyPrinter;
-
-  private VeniceCompressor compressor;
 
   private Exception sendException = null;
 
@@ -184,13 +162,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if (null == previousReporter || !previousReporter.equals(reporter)) {
       callback = new KafkaMessageCallback(reporter);
       previousReporter = reporter;
-    }
-
-    try {
-      valueBytes = compressor.compress(valueBytes);
-    } catch (IOException e) {
-      throw new VeniceException("Caught an IO exception while trying to to use compression strategy: " +
-          compressor.getCompressionStrategy().name(), e);
     }
 
     veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
@@ -273,78 +244,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
     }
 
-    if (CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)) == CompressionStrategy.ZSTD_WITH_DICT) {
-      ByteBuffer compressionDictionary = readDictionaryFromKafka();
-      int compressionLevel = props.getInt(ZSTD_COMPRESSION_LEVEL, Zstd.maxCompressionLevel());
-
-      if (compressionDictionary != null && compressionDictionary.limit() > 0) {
-        String topicName = props.getString(TOPIC_PROP);
-        this.compressor =
-            CompressorFactory.createVersionSpecificCompressorIfNotExist(CompressionStrategy.ZSTD_WITH_DICT, topicName, compressionDictionary.array(), compressionLevel);
-      }
-    } else {
-      this.compressor =
-          CompressorFactory.getCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
-    }
-
     this.telemetryMessageInterval = props.getInt(TELEMETRY_MESSAGE_INTERVAL, 10000);
     this.kafkaMetricsToReportAsMrCounters = props.getList(KAFKA_METRICS_TO_REPORT_AS_MR_COUNTERS, Collections.emptyList());
-  }
-
-  /**
-   * This function reads the kafka topic for the store version for the Start Of Push message which contains the
-   * compression dictionary. Once the Start of Push message has been read, the consumer stops.
-   * @return The compression dictionary wrapped in a ByteBuffer, or null if no dictionary was present in the
-   * Start Of Push message.
-   */
-  private ByteBuffer readDictionaryFromKafka() {
-    KafkaClientFactory kafkaClientFactory = new VeniceAdminToolConsumerFactory(props);
-
-    try (KafkaConsumer<byte[], byte[]> consumer = kafkaClientFactory.getKafkaConsumer(getKafkaConsumerProps())) {
-      String topicName = props.getString(TOPIC_PROP);
-      List<TopicPartition> partitions = Collections.singletonList(new TopicPartition(topicName, 0));
-      LOGGER.info("Consuming from topic: " + topicName + " till StartOfPush");
-      consumer.assign(partitions);
-      consumer.seekToBeginning(partitions);
-      while (true) {
-        ConsumerRecords<byte[], byte[]> records = consumer.poll(10 * Time.MS_PER_SECOND);
-        for (final ConsumerRecord<byte[], byte[]> record : records) {
-          KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-          KafkaKey kafkaKey = keySerializer.deserialize(topicName, record.key());
-
-          KafkaValueSerializer valueSerializer = new KafkaValueSerializer();
-          KafkaMessageEnvelope kafkaValue = valueSerializer.deserialize(topicName, record.value());
-          if (kafkaKey.isControlMessage()) {
-            ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-            ControlMessageType type = ControlMessageType.valueOf(controlMessage);
-            LOGGER.info(
-                "Consumed ControlMessage: " + type.name() + " from topic = " + record.topic() + " and partition = " + record.partition());
-            if (type == ControlMessageType.START_OF_PUSH) {
-              ByteBuffer compressionDictionary = ((StartOfPush) controlMessage.controlMessageUnion).compressionDictionary;
-              if (compressionDictionary == null || !compressionDictionary.hasRemaining()) {
-                LOGGER.warn(
-                    "No dictionary present in Start of Push message from topic = " + record.topic() + " and partition = " + record.partition());
-                return null;
-              }
-              return compressionDictionary;
-            }
-          } else {
-            LOGGER.error(
-                "Consumed non Control Message before Start of Push from topic = " + record.topic() + " and partition = " + record.partition());
-            return null;
-          }
-        }
-      }
-    }
-  }
-
-  private Properties getKafkaConsumerProps() {
-    Properties props = new Properties();
-    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
-    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
-    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-    return props;
   }
 
   private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {
