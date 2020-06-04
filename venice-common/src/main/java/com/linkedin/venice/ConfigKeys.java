@@ -1095,4 +1095,9 @@ public class ConfigKeys {
    * Turns on early router throttling before allocating most of the router resources.
    */
   public static final String ROUTER_EARLY_THROTTLE_ENABLED = "router.early.throttle.enabled";
+
+  /**
+   * Number of IO threads used for AHAC client.
+   */
+  public static final String ROUTER_HTTPASYNCCLIENT_CLIENT_POOL_THREAD_COUNT = "router.httpasyncclient.client.pool.io.thread.count";
 }
