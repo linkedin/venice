@@ -1,6 +1,5 @@
 package com.linkedin.venice.store.rocksdb;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStoragePartition;
@@ -16,8 +15,6 @@ import java.util.List;
 import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
-import org.rocksdb.ColumnFamilyDescriptor;
-import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.EnvOptions;
 import org.rocksdb.FlushOptions;
 import org.rocksdb.IngestExternalFileOptions;
@@ -27,6 +24,8 @@ import org.rocksdb.RocksDB;
 import org.rocksdb.RocksDBException;
 import org.rocksdb.SstFileWriter;
 import org.rocksdb.WriteOptions;
+
+import static com.linkedin.venice.store.AbstractStorageEngine.*;
 
 
 /**
@@ -263,7 +262,13 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         currentSSTFileWriter.put(key, value);
         ++recordNumInCurrentSSTFile;
       } else {
-        rocksDB.put(DISABLE_WAL_OPTIONS, key, value);
+        // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
+        // if WAL is disabled (DISABLE_WAL_OPTIONS) then all ingestion progress made would be lost in case of non-graceful shutdown of server.
+        if (partitionId == METADATA_PARTITION_ID) {
+          rocksDB.put(key, value);
+        } else {
+          rocksDB.put(DISABLE_WAL_OPTIONS, key, value);
+        }
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);

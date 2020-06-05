@@ -339,8 +339,8 @@ public class VeniceServer {
       }
     }
     // start the helix participant service and ingestion service only after offset store bootstrap.
-    helixParticipationService.start();
     kafkaStoreIngestionService.start();
+    helixParticipationService.start();
     long end = System.currentTimeMillis();
     logger.info("Startup completed in " + (end - start) + " ms.");
   }
