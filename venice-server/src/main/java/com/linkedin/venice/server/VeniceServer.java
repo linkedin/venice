@@ -76,6 +76,7 @@ public class VeniceServer {
   private StorageEngineMetadataService storageEngineMetadataService;
   private BdbStorageMetadataService bdbMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
+  private HelixParticipationService helixParticipationService;
   private LeakedResourceCleaner leakedResourceCleaner;
   private DiskHealthCheckService diskHealthCheckService;
   private MetricsRepository metricsRepository;
@@ -205,7 +206,7 @@ public class VeniceServer {
     });
 
     /**
-     * Fast schema lookup implmentation for read compute path.
+     * Fast schema lookup implementation for read compute path.
      */
     StoreValueSchemasCacheService storeValueSchemasCacheService = new StoreValueSchemasCacheService(metadataRepo, schemaRepo);
     services.add(storeValueSchemasCacheService);
@@ -219,7 +220,7 @@ public class VeniceServer {
      * Helix participator service should start last since we need to make sure current Storage Node is ready to take
      * read requests if it claims to be available in Helix.
      */
-    HelixParticipationService helixParticipationService =
+    this.helixParticipationService =
         new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader, metadataRepo,
             metricsRepository, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
             veniceConfigLoader.getVeniceServerConfig().getListenerPort(), managerFuture);
@@ -298,6 +299,10 @@ public class VeniceServer {
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
     for (AbstractVeniceService service : services) {
+      // Skip the participant and ingestions service only after offset bootstrap.
+      if (service == kafkaStoreIngestionService || service == helixParticipationService) {
+        continue;
+      }
       service.start();
     }
 
@@ -333,6 +338,9 @@ public class VeniceServer {
         }
       }
     }
+    // start the helix participant service and ingestion service only after offset store bootstrap.
+    helixParticipationService.start();
+    kafkaStoreIngestionService.start();
     long end = System.currentTimeMillis();
     logger.info("Startup completed in " + (end - start) + " ms.");
   }
