@@ -191,6 +191,9 @@ public class RocksDBStorageEngineFactory extends StorageEngineFactory {
     options.setMaxTotalWalSize(rocksDBServerConfig.getRocksDBMaxTotalWalSizeInBytes());
     options.setMaxBytesForLevelBase(rocksDBServerConfig.getRocksDBMaxBytesForLevelBase());
     options.setMemtableHugePageSize(rocksDBServerConfig.getMemTableHugePageSize());
+    options.setLevel0FileNumCompactionTrigger(rocksDBServerConfig.getLevel0FileNumCompactionTrigger());
+    options.setLevel0SlowdownWritesTrigger(rocksDBServerConfig.getLevel0SlowdownWritesTrigger());
+    options.setLevel0StopWritesTrigger(rocksDBServerConfig.getLevel0StopWritesTrigger());
 
     storageEngineOptions.put(storeName, options);
     return options;
