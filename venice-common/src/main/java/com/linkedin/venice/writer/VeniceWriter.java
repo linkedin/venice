@@ -351,9 +351,9 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
    * speed up the performance. If this is called, VeniceWriter will also reuse the existing DIV data (producer
    * metadata). It's the "pass-through" mode.
    */
-  public Future<RecordMetadata> put(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaMessageEnvelope, Callback callback, long upstreamOffset) {
+  public Future<RecordMetadata> put(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaMessageEnvelope, Callback callback,
+      int upstreamPartition, long upstreamOffset) {
     byte[] serializedKey = kafkaKey.getKey();
-    int partition = getPartition(serializedKey);
 
     LeaderMetadata leaderMetadata = new LeaderMetadata();
     leaderMetadata.upstreamOffset = upstreamOffset;
@@ -364,7 +364,7 @@ public class VeniceWriter<K, V, U> extends AbstractVeniceWriter<K, V, U> {
       ((ChunkAwareCallback) callback).setChunkingInfo(serializedKey, null, null);
     }
 
-    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelope, partition, callback, false);
+    return sendMessage(producerMetadata -> kafkaKey, kafkaMessageEnvelope, upstreamPartition, callback, false);
   }
 
   @Override

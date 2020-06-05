@@ -1333,7 +1333,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          */
         if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
           produceAndWriteToDatabase(consumerRecord, WriteToStorageEngine.NO_OP, (callback, sourceTopicOffset) ->
-            getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, sourceTopicOffset));
+            getVeniceWriter().put(consumerRecord.key(), consumerRecord.value(), callback, partition, sourceTopicOffset));
         }
         break;
       case START_OF_BUFFER_REPLAY:
@@ -1655,7 +1655,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                */
 
               if (!partitionConsumptionStateMap.get(partition).isEndOfPushReceived()) {
-                return getVeniceWriter().put(kafkaKey, kafkaValue, callback, sourceTopicOffset);
+                return getVeniceWriter().put(kafkaKey, kafkaValue, callback, partition, sourceTopicOffset);
               }
 
               return getVeniceWriter().put(keyBytes, ByteUtils.extractByteArray(putValue),
