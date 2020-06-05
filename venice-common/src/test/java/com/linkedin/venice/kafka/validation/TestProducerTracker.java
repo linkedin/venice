@@ -15,6 +15,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Optional;
 import org.apache.avro.specific.FixedSize;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.common.record.TimestampType;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -86,7 +88,8 @@ public class TestProducerTracker {
     int partitionId = 0;
     GUID guid = new GUID();
     guid.bytes(testGuid.getBytes());
-    ProducerTracker producerTracker = new ProducerTracker(guid, "test-topic-name");
+    String topic = "test-topic-name";
+    ProducerTracker producerTracker = new ProducerTracker(guid, topic);
     Segment currentSegment = new Segment(partitionId, 0, CheckSumType.NONE);
 
     ProducerTracker.DIVErrorMetricCallback mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
@@ -95,8 +98,12 @@ public class TestProducerTracker {
 
     KafkaMessageEnvelope startOfSegmentMessage = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE,
         guid, currentSegment, Optional.empty(), startOfSegment);
-    producerTracker.addMessage(partitionId, getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage,
-        true, Optional.of(mockCallback));
+    long offset = 10;
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> controlMessageConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE,
+        getControlMessageKey(startOfSegmentMessage), startOfSegmentMessage);
+    producerTracker.addMessage(controlMessageConsumerRecord, true, Optional.of(mockCallback));
     verify(mockCallback, never()).execute(any());
 
     mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
@@ -104,7 +111,10 @@ public class TestProducerTracker {
     KafkaMessageEnvelope firstMessage = getKafkaMessageEnvelope(MessageType.PUT,
         guid, currentSegment, Optional.empty(), firstPut);
     KafkaKey firstMessageKey = getPutMessageKey("first_key".getBytes());
-    producerTracker.addMessage(partitionId, firstMessageKey, firstMessage, true, Optional.of(mockCallback));
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> firstConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, firstMessageKey, firstMessage);
+    producerTracker.addMessage(firstConsumerRecord, true, Optional.of(mockCallback));
 
     // Message with gap
     mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
@@ -112,7 +122,10 @@ public class TestProducerTracker {
     KafkaMessageEnvelope secondMessage = getKafkaMessageEnvelope(MessageType.PUT,
         guid, currentSegment, Optional.of(100), secondPut);
     KafkaKey secondMessageKey = getPutMessageKey("second_key".getBytes());
-    producerTracker.addMessage(partitionId, secondMessageKey, secondMessage, true, Optional.of(mockCallback));
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> secondConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, secondMessageKey, secondMessage);
+    producerTracker.addMessage(secondConsumerRecord, true, Optional.of(mockCallback));
     verify(mockCallback, times(1)).execute(any());
 
     // third message without gap
@@ -121,7 +134,10 @@ public class TestProducerTracker {
     KafkaMessageEnvelope thirdMessage = getKafkaMessageEnvelope(MessageType.PUT,
         guid, currentSegment, Optional.of(101), thirdPut);
     KafkaKey thirdMessageKey = getPutMessageKey("third_key".getBytes());
-    producerTracker.addMessage(partitionId, thirdMessageKey, thirdMessage, true, Optional.of(mockCallback));
+    ConsumerRecord<KafkaKey, KafkaMessageEnvelope> thirdConsumerRecord = new ConsumerRecord<>(
+        topic, partitionId, offset++, System.currentTimeMillis() + 1000, TimestampType.NO_TIMESTAMP_TYPE,
+        ConsumerRecord.NULL_CHECKSUM, ConsumerRecord.NULL_SIZE, ConsumerRecord.NULL_SIZE, thirdMessageKey, thirdMessage);
+    producerTracker.addMessage(thirdConsumerRecord, true, Optional.of(mockCallback));
     verify(mockCallback, never()).execute(any());
   }
 }

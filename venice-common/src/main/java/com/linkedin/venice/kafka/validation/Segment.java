@@ -49,6 +49,7 @@ public class Segment {
   private boolean started;
   private boolean ended;
   private boolean finalSegment;
+  private long lastSuccessfulOffset;
 
   public Segment(
       int partition,
@@ -142,6 +143,14 @@ public class Segment {
 
   public boolean isEnded() {
     return this.ended;
+  }
+
+  public long getLastSuccessfulOffset() {
+    return lastSuccessfulOffset;
+  }
+
+  public void setLastSuccessfulOffset(long lastSuccessfulOffset) {
+    this.lastSuccessfulOffset = lastSuccessfulOffset;
   }
 
   public void start() {

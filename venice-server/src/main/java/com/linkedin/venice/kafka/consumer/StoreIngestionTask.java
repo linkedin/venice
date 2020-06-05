@@ -698,7 +698,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
          * If the checkpointing happens in different threads concurrently, there is no guarantee the atomicity of
          * offset and checksum, since the checksum could change in another thread, but the corresponding offset change
          * hasn't been applied yet, when checkpointing happens in current thread; and you can check the returned
-         * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)},
+         * {@link OffsetRecordTransformer} of {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)},
          * where `segment` could be changed by another message independent from current `offsetRecord`;
          */
         this.consumer.unSubscribe(kafkaTopic, partitionConsumptionState.getPartition());
@@ -1106,7 +1106,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     /**
      * The reason to transform the internal state only during checkpointing is that
      * the intermediate checksum generation is an expensive operation.
-     * See {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+     * See {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
      * to find more details.
      */
     offsetRecord.transform();
@@ -1384,7 +1384,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       FatalDataValidationException e = null;
       boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
       try {
-        offsetRecordTransformer = validateMessage(consumerRecord.topic(), consumerRecord.partition(), kafkaKey, kafkaValue, endOfPushReceived);
+        offsetRecordTransformer = validateMessage(consumerRecord, endOfPushReceived);
         versionedDIVStats.recordSuccessMsg(storeName, versionNumber);
       } catch (FatalDataValidationException fatalException) {
         divErrorMetricCallback.get().execute(fatalException);
@@ -1463,7 +1463,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
         /**
          * The reason to transform the internal state only during checkpointing is that
          * the intermediate checksum generation is an expensive operation.
-         * See {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+         * See {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
          * to find more details.
          */
         offsetRecord.addOffsetRecordTransformer(kafkaValue.producerMetadata.producerGUID, offsetRecordTransformer.get());
@@ -1494,42 +1494,44 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * The {@param topicName} maybe different from the store version topic, since in {@link LeaderFollowerStoreIngestionTask},
    * the topic could be other topics, such as RT topic or stream reprocessing topic.
    **/
-  private Optional<OffsetRecordTransformer> validateMessage(String topicName, int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
-    final GUID producerGUID = message.producerMetadata.producerGUID;
+  private Optional<OffsetRecordTransformer> validateMessage(
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+      boolean endOfPushReceived) {
+    final GUID producerGUID = consumerRecord.value().producerMetadata.producerGUID;
     ProducerTracker producerTracker = producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerCreator);
     Optional<ProducerTracker.DIVErrorMetricCallback> errorCallback = divErrorMetricCallback;
     try {
       boolean tolerateMissingMessage = endOfPushReceived;
-      if (topicWithLogCompaction.contains(topicName)) {
+      if (topicWithLogCompaction.contains(consumerRecord.topic())) {
         /**
          * For log-compacted topic, no need to report error metric when message missing issue happens.
          */
         errorCallback = Optional.empty();
         tolerateMissingMessage = true;
       }
-      return Optional.of(producerTracker.addMessage(partition, key, message, tolerateMissingMessage, errorCallback));
+      return Optional.of(producerTracker.addMessage(consumerRecord, tolerateMissingMessage, errorCallback));
     } catch (FatalDataValidationException e) {
       /**
        * Check whether Kafka compaction is enabled in current topic.
-       * This function shouldn't be invoked very frequently since {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+       * This function shouldn't be invoked very frequently since {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
        * will update the sequence id if it could tolerate the missing messages.
        *
        * If it is not this case, we need to revisit this logic since this operation is expensive.
        */
-      if (! topicManager.isTopicCompactionEnabled(topicName)) {
+      if (! topicManager.isTopicCompactionEnabled(consumerRecord.topic())) {
         /**
          * Not enabled, then bubble up the exception.
          * We couldn't cache this in {@link topicWithLogCompaction} since the log compaction could be enabled in the same topic later.
          */
-        logger.error("Encountered DIV error when topic: " + topicName + " doesn't enable log compaction");
+        logger.error("Encountered DIV error when topic: " + consumerRecord.topic() + " doesn't enable log compaction");
         throw e;
       }
-      topicWithLogCompaction.add(topicName);
+      topicWithLogCompaction.add(consumerRecord.topic());
       /**
        * Since Kafka compaction is enabled, DIV will start tolerating missing messages.
        */
-      logger.info("Encountered DIV exception when consuming from topic: " + topicName, e);
-      logger.info("Kafka compaction is enabled in topic: " + topicName + ", so DIV will tolerate missing message in the future");
+      logger.info("Encountered DIV exception when consuming from topic: " + consumerRecord.topic(), e);
+      logger.info("Kafka compaction is enabled in topic: " + consumerRecord.topic() + ", so DIV will tolerate missing message in the future");
       if (e instanceof ImproperlyStartedSegmentException) {
         /**
          * ImproperlyStartedSegmentException is not retriable since internally it has already updated the sequence id of current
@@ -1540,11 +1542,11 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       } else {
         /**
          * Verify the message again.
-         * The assumption here is that {@link ProducerTracker#addMessage(int, KafkaKey, KafkaMessageEnvelope, boolean, Optional)}
+         * The assumption here is that {@link ProducerTracker#addMessage(ConsumerRecord, boolean, Optional)}
          * won't update the sequence id of the current segment if it couldn't tolerate missing messages.
          * In this case, no need to report error metric.
          */
-        return Optional.of(producerTracker.addMessage(partition, key, message, true, Optional.empty()));
+        return Optional.of(producerTracker.addMessage(consumerRecord, true, Optional.empty()));
       }
     }
   }
