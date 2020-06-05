@@ -411,6 +411,7 @@ public class TestHybrid {
     // Create empty store
     admin.addStore(clusterName, storeName, "tester", "\"string\"", "\"string\"");
     admin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setPartitionCount(2)
         .setHybridRewindSeconds(streamingRewindSeconds)
         .setHybridOffsetLagThreshold(streamingMessageLag)
         .setLeaderFollowerModel(isLeaderFollowerModelEnabled)
