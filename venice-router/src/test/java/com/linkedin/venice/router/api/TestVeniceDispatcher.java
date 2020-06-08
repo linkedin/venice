@@ -127,6 +127,7 @@ public class TestVeniceDispatcher {
 
     doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupPollIntervalMs();
     doReturn(TimeUnit.MINUTES.toMillis(1)).when(routerConfig).getLeakedFutureCleanupThresholdMs();
+    doReturn(24).when(routerConfig).getIoThreadCountInPoolMode();
     ReadOnlyStoreRepository mockStoreRepo = mock(ReadOnlyStoreRepository.class);
     MetricsRepository mockMetricsRepo = new MetricsRepository();
     RouterStats mockRouterStats = mock(RouterStats.class);
