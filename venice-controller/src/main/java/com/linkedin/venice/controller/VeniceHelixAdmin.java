@@ -40,6 +40,7 @@ import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.BackupStrategy;
@@ -1687,11 +1688,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
          * Kafka Broker yet.
          */
         if (getTopicManager().containsTopic(kafkaTopicName)) {
-            if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs)) {
-                // Retention time is updated to "deprecatedJobTopicRetentionMs"; log this topic config changes
-                logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
-                return true;
-            } // otherwise, the retention time config for this topic has already been updated before
+            try {
+                if (getTopicManager().updateTopicRetention(kafkaTopicName, deprecatedJobTopicRetentionMs)) {
+                    // Retention time is updated to "deprecatedJobTopicRetentionMs"; log this topic config changes
+                    logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + deprecatedJobTopicRetentionMs);
+                    return true;
+                } // otherwise, the retention time config for this topic has already been updated before
+            } catch (TopicDoesNotExistException e) {
+                // Since topic deletion is asynchronous, it's possible that the topic gets deleted as we update its
+                // retention.
+                logger.info("Unable to update the retention for topic: " + kafkaTopicName
+                    + " because the topic doesn't exist in Kafka Zookeeper anymore, will skip the truncation");
+            }
         } else {
             logger.info("Topic: " + kafkaTopicName + " doesn't exist in Kafka Zookeeper, will skip the truncation");
         }
