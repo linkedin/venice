@@ -55,7 +55,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
    * Here RocksDB disables WAL, but relies on the 'flush', which will be invoked through {@link #sync()}
    * to avoid data loss during recovery.
    */
-  private static final WriteOptions DISABLE_WAL_OPTIONS = new WriteOptions().setDisableWAL(true);
+  private final WriteOptions writeOptions;
 
 
   private int lastFinishedSSTFileNo = -1;
@@ -105,6 +105,11 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
     // Create the folder for storage partition if it doesn't exist
     this.storeName = storagePartitionConfig.getStoreName();
     this.partitionId = storagePartitionConfig.getPartitionId();
+
+    // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
+    // if WAL is disabled then all ingestion progress made would be lost in case of non-graceful shutdown of server.
+    this.writeOptions = new WriteOptions().setDisableWAL(this.partitionId != METADATA_PARTITION_ID);
+
     if (options.tableFormatConfig() instanceof PlainTableConfig) {
       this.deferredWrite = false;
     } else {
@@ -262,13 +267,7 @@ class RocksDBStoragePartition extends AbstractStoragePartition {
         currentSSTFileWriter.put(key, value);
         ++recordNumInCurrentSSTFile;
       } else {
-        // If writing to offset metadata partition METADATA_PARTITION_ID enable WAL write to sync up offset on server restart,
-        // if WAL is disabled (DISABLE_WAL_OPTIONS) then all ingestion progress made would be lost in case of non-graceful shutdown of server.
-        if (partitionId == METADATA_PARTITION_ID) {
-          rocksDB.put(key, value);
-        } else {
-          rocksDB.put(DISABLE_WAL_OPTIONS, key, value);
-        }
+        rocksDB.put(writeOptions, key, value);
       }
     } catch (RocksDBException e) {
       throw new VeniceException("Failed to put key/value pair to store: " + storeName + ", partition id: " + partitionId, e);
