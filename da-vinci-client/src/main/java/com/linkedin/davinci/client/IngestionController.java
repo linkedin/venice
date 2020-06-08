@@ -92,7 +92,7 @@ public class IngestionController implements Closeable {
       }
     }
 
-    private synchronized boolean isReadyToServe(Set<Integer> partitions) {
+    public synchronized boolean isReadyToServe(Set<Integer> partitions) {
       for (Integer id : partitions) {
         CompletableFuture future = partitionFutures.get(id);
         if (future == null || !future.isDone()) {

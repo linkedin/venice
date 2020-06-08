@@ -48,6 +48,7 @@ import com.linkedin.avroutil1.compatibility.AvroCompatibilityHelper;
 
 import io.tehuti.metrics.MetricsRepository;
 
+import java.util.Collections;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.BinaryEncoder;
@@ -207,17 +208,31 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     // TODO: refactor IngestionController to use StoreBackend directly
     try (ReferenceCounted<IngestionController.VersionBackend> versionRef =
               ingestionController.getStoreOrThrow(getStoreName()).getCurrentVersion()) {
-      if (null == versionRef.get()) {
+      IngestionController.VersionBackend versionBackend = versionRef.get();
+      if (null == versionBackend) {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
-      Version version = versionRef.get().getVersion();
+      Version version = versionBackend.getVersion();
+      AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
+      byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+      int subPartitionId = getSubPartitionId(version, keyBytes);
 
-      V value = getValue(version, key, reusedValue);
-      if (value == null && isRemoteQueryAllowed()) {
-        // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
-        return veniceClient.get(key);
+      if (!storageEngine.containsPartition(subPartitionId)) {
+        if (isRemoteQueryAllowed()) {
+          return veniceClient.get(key);
+        }
+        throw new VeniceClientException("Da Vinci client does not contain partition " + subPartitionId + " in version " + version.getNumber());
+      } else if (!versionBackend.isReadyToServe(Collections.singleton(subPartitionId))) {
+        // For not-ready partition, it will issue a remote query if allowed, otherwise, it will return null.
+        if (isRemoteQueryAllowed()) {
+          return veniceClient.get(key);
+        }
+        return null;
+      } else {
+        V value = getValueFromStorageEngine(storageEngine, version, subPartitionId, keyBytes, reusableObjects, reusedValue);
+        return CompletableFuture.completedFuture(value);
       }
-      return CompletableFuture.completedFuture(value);
     }
   }
 
@@ -230,22 +245,38 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     // TODO: refactor IngestionController to use StoreBackend directly
     try (ReferenceCounted<IngestionController.VersionBackend> versionRef =
               ingestionController.getStoreOrThrow(getStoreName()).getCurrentVersion()) {
-      if (null == versionRef.get()) {
+      IngestionController.VersionBackend versionBackend = versionRef.get();
+      if (null == versionBackend) {
         throw new VeniceClientException("Failed to find a ready store version.");
       }
-      Version version = versionRef.get().getVersion();
+      Version version = versionBackend.getVersion();
+      AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
+      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
 
       Set<K> nonLocalKeys = new HashSet<>();
       Map<K, V> result = new HashMap<>();
       for (K key : keys) {
-        // TODO: Consider supporting object re-use for batch get as well.
-        V value = getValue(version, key, null);
-        if (value != null) {
-          // The returned map will only contain entries for the keys which have a value associated with them
-          result.put(key, value);
+        byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
+        int subPartitionId = getSubPartitionId(version, keyBytes);
+
+        if (!storageEngine.containsPartition(subPartitionId)) {
+          if (isRemoteQueryAllowed()) {
+            nonLocalKeys.add(key);
+            continue;
+          }
+          throw new VeniceClientException("Da Vinci client does not contain partition " + subPartitionId + " in version " + version.getNumber());
+        } else if (!versionBackend.isReadyToServe(Collections.singleton(subPartitionId))) {
+          // For not-ready partition, it will issue a remote query if allowed, otherwise, it will skip this key as batchGet only includes not-null values.
+          if (isRemoteQueryAllowed()) {
+            nonLocalKeys.add(key);
+          }
         } else {
-          // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
-          nonLocalKeys.add(key);
+          // TODO: Consider supporting object re-use for batch get as well.
+          V value = getValueFromStorageEngine(storageEngine, version, subPartitionId, keyBytes, reusableObjects, null);
+          // The returned map will only contain entries for the keys which have a value associated with them
+          if (value != null) {
+            result.put(key, value);
+          }
         }
       }
 
@@ -254,7 +285,6 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
       }
 
       return veniceClient.batchGet(nonLocalKeys).thenApply(remoteResult -> {
-        // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
         result.putAll(remoteResult);
         return result;
       });
@@ -275,23 +305,15 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     return storageEngine;
   }
 
-  private V getValue(Version version, K key, V reusedValue) {
-      ReusableObjects reusableObjects = threadLocalReusableObjects.get();
-      byte[] keyBytes = keySerializer.serialize(key, reusableObjects.binaryEncoder, reusableObjects.byteArrayOutputStream);
-      // TODO: Align the implementation with the design, which expects the following sub partition calculation:
-      // int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()) * version.getPartitionerConfig().getAmplificationFactor()
-      //    + partitioner.getPartitionId(keyBytes, version.getPartitionerConfig().getAmplificationFactor());
-    int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount() *
+  private int getSubPartitionId(Version version, byte[] keyBytes) {
+    // TODO: Align the implementation with the design, which expects the following sub partition calculation:
+    // int subPartitionId = partitioner.getPartitionId(keyBytes, version.getPartitionCount()) * version.getPartitionerConfig().getAmplificationFactor()
+    //    + partitioner.getPartitionId(keyBytes, version.getPartitionerConfig().getAmplificationFactor());
+    return partitioner.getPartitionId(keyBytes, version.getPartitionCount() *
         version.getPartitionerConfig().getAmplificationFactor());
-    AbstractStorageEngine<?> storageEngine = getStorageEngine(version);
-    if (!storageEngine.containsPartition(subPartitionId)) {
-      if (isRemoteQueryAllowed()) {
-        // TODO: Refactor this... using null as a sentinel value is not good, because if the partition is local but the value is truly null, we would do a useless remote call...
-        return null;
-      }
-      throw new VeniceClientException("Da Vinci client does not contain partition " + subPartitionId + " in version " + version.getNumber());
-    }
+  }
 
+  private V getValueFromStorageEngine(AbstractStorageEngine<?> storageEngine, Version version, int subPartitionId, byte[] keyBytes, ReusableObjects reusableObjects, V reusedValue) {
     return getChunkingAdapter().get(
         clientConfig.getStoreName(),
         storageEngine,
