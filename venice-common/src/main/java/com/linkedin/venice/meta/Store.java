@@ -513,10 +513,16 @@ public class Store {
     Store.DEFAULT_READ_QUOTA = readQuota;
   }
 
+  /**
+   * @deprecated The store level accessControlled flag is no longer valid to be used to skip ACL checks.
+   */
   public boolean isAccessControlled() {
     return accessControlled;
   }
 
+  /**
+   * @deprecated The store level accessControlled flag is no longer valid to be used to skip ACL checks.
+   */
   public void setAccessControlled(boolean accessControlled) {
     this.accessControlled = accessControlled;
   }
