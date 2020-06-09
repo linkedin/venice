@@ -13,7 +13,7 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
  * Class stores replica status and history.
  */
 public class ReplicaStatus {
-  public static final int MAX_HISTORY_LENGTH = 100;
+  public static final int MAX_HISTORY_LENGTH = 50;
   private final String instanceId;
   private ExecutionStatus currentStatus = STARTED;
   private long currentProgress = 0;
