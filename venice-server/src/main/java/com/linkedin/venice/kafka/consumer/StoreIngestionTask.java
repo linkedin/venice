@@ -36,9 +36,7 @@ import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
@@ -96,7 +94,6 @@ import static java.util.concurrent.TimeUnit.*;
 
 
 /**
- * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
 public abstract class StoreIngestionTask implements Runnable, Closeable {
@@ -492,6 +489,12 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
    * Measure the hybrid offset lag for partition being tracked in `partitionConsumptionState`.
    */
   protected abstract long measureHybridOffsetLag(PartitionConsumptionState partitionConsumptionState, boolean shouldLogLag);
+
+  /**
+   * Check if the ingestion progress has reached to the end of the version topic. This is currently only
+   * used {@link LeaderFollowerStoreIngestionTask}.
+   */
+  protected abstract void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState partitionConsumptionState);
 
   /**
    * This function is in charge of producing the consumer records to the writer buffers maintained by {@link StoreBufferService}.
@@ -1091,6 +1094,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       recordsProcessedAboveSyncIntervalThreshold = true;
       syncOffset(kafkaTopic, partitionConsumptionState);
     }
+
+    reportIfCatchUpBaseTopicOffset(partitionConsumptionState);
 
     // Check whether it's ready to serve
     defaultReadyToServeChecker.apply(partitionConsumptionState, recordsProcessedAboveSyncIntervalThreshold);
@@ -1985,6 +1990,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 + partitionConsumptionState.getOffsetRecord().getOffset());
           } else {
             notificationDispatcher.reportCompleted(partitionConsumptionState);
+
             logger.info(consumerTaskId + " Partition " + partitionConsumptionState.getPartition() + " is ready to serve");
           }
         } else {

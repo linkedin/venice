@@ -64,6 +64,8 @@ public enum ExecutionStatus {
   /** Job/task met error when processing the data. */
   ERROR(true, true, false, true),
 
+  CATCH_UP_BASE_TOPIC_OFFSET_LAG(false, true, true, false),
+
   /**
    * Job is terminated and be removed from repository. Should be archived to historic data storage.
    * Only be used for Job

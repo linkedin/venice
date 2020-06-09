@@ -2,6 +2,8 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import java.util.concurrent.atomic.AtomicLong;
@@ -10,6 +12,24 @@ import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModelInfo;
 import org.apache.helix.participant.statemachine.Transition;
 
+
+/**
+ * Venice partition's state model to manage Leader/Follower(Standby) state transitions.
+ *
+ * Offline (Initial State) -> Follower (ideal state) -> Leader (ideal state)
+ *
+ * There is only at most one leader at a time and it is elected from the follower. At present,
+ * Followers and Leader behave the same in the read path. However, in the write path, leader
+ * will take extra work. See {@link com.linkedin.venice.kafka.consumer.LeaderFollowerStoreIngestionTask}
+ * for more details.
+ *
+ * There is an optional latch between Offline to Follower transition. The latch is only placed if the
+ * version state model served is the current version. (During cluster rebalancing or SN rebouncing)
+ * Since Helix rebalancer only refers to state model to determine the rebalancing time. The latch is
+ * a safe guard to prevent Helix "over-rebalancing" the cluster and failing the read traffic. The
+ * latch is released when ingestion has caught up the lag or the ingestion has reached the last known
+ * offset of VT.
+ */
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.LEADER_STATE, HelixState.STANDBY_STATE})
 public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
   /**
@@ -26,44 +46,50 @@ public class LeaderFollowerParticipantModel extends AbstractParticipantModel {
    */
   private AtomicLong leaderSessionId = new AtomicLong(0l);
 
+  private final LeaderFollowerStateModelNotifier notifier;
+
   public LeaderFollowerParticipantModel(StoreIngestionService storeIngestionService, StorageService storageService,
-      VeniceStoreConfig storeConfig, int partition) {
-    super(storeIngestionService, storageService, storeConfig, partition, new SystemTime());
+      VeniceStoreConfig storeConfig, int partition, LeaderFollowerStateModelNotifier notifier,
+      ReadOnlyStoreRepository metadataRepo) {
+    super(storeIngestionService, metadataRepo, storageService, storeConfig, partition, new SystemTime());
+    this.notifier = notifier;
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeStandbyFromOffline(Message message, NotificationContext context) {
     executeStateTransition(message, context, () -> {
       setupNewStorePartition(true);
+
+      String storeName = Version.parseStoreFromKafkaTopicName(message.getResourceName());
+      int version = Version.parseVersionFromKafkaTopicName(message.getResourceName());
+      if (getMetaDataRepo().getStore(storeName).getCurrentVersion() == version) {
+        waitConsumptionCompleted(message.getResourceName(), notifier);
+      }
     });
   }
 
   @Transition(to = HelixState.LEADER_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeLeaderFromStandby(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () -> {
-      getStoreIngestionService().promoteToLeader(getStoreConfig(), getPartition(), checker);
-    });
+    executeStateTransition(message, context, () ->
+      getStoreIngestionService().promoteToLeader(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.STANDBY_STATE, from = HelixState.LEADER_STATE)
   public void onBecomeStandbyFromLeader(Message message, NotificationContext context) {
     LeaderSessionIdChecker checker = new LeaderSessionIdChecker(leaderSessionId.incrementAndGet(), leaderSessionId);
-    executeStateTransition(message, context, () -> {
-      getStoreIngestionService().demoteToStandby(getStoreConfig(), getPartition(), checker);
-    });
+    executeStateTransition(message, context, () ->
+      getStoreIngestionService().demoteToStandby(getStoreConfig(), getPartition(), checker));
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.STANDBY_STATE)
   public void onBecomeOfflineFromStandby(Message message, NotificationContext context) {
-    executeStateTransition(message, context, ()-> {
-      stopConsumption();
-    });
+    executeStateTransition(message, context, () -> stopConsumption());
   }
 
   @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
-    executeStateTransition(message, context, ()-> removePartitionFromStoreGracefully());
+    executeStateTransition(message, context, () -> removePartitionFromStoreGracefully());
   }
 
   @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.DROPPED_STATE)

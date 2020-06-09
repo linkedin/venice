@@ -19,7 +19,6 @@ import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +29,6 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.model.LeaderStandbySMD;
-import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
@@ -128,7 +126,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             veniceConfigLoader.getVeniceServerConfig().getMaxLeaderFollowerStateTransitionThreadNumber(),
             "venice-L/F-state-transition",
             metricsRepository,
-            "Venice_L/F_ST_thread_pool"));
+            "Venice_L/F_ST_thread_pool"),
+            helixReadOnlyStoreRepository);
 
     logger.info("Attempting to start HelixParticipation service");
     manager = new SafeHelixManager(

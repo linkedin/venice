@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +20,7 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
   private final StoreIngestionService storeIngestionService;
   private final StorageService storageService;
   private final VeniceConfigLoader configService;
+  private final ReadOnlyStoreRepository metadataRepo;
 
   //a dedicated thread pool for state transition execution that all state model created by the
   //same factory would share. If it's null, Helix would use a shared thread pool.
@@ -27,12 +29,14 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
   public AbstractParticipantModelFactory(StoreIngestionService storeIngestionService,
       StorageService storageService,
       VeniceConfigLoader configService,
-      ExecutorService executorService ) {
+      ExecutorService executorService,
+      ReadOnlyStoreRepository metadataRepo) {
 
     this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
     this.configService = configService;
     this.executorService = executorService;
+    this.metadataRepo = metadataRepo;
   }
 
   @Override
@@ -63,5 +67,13 @@ public abstract class AbstractParticipantModelFactory extends StateModelFactory<
 
   public ExecutorService getExecutorService() {
     return executorService;
+  }
+
+  public ReadOnlyStoreRepository getMetadataRepo() {
+    return metadataRepo;
+  }
+
+  public static String getStateModelIdentification(String resourceName, int partitionId) {
+    return resourceName + "_" + partitionId;
   }
 }
