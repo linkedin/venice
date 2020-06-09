@@ -124,7 +124,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private final int partitionGracefulDropDelaySeconds;
 
-  private final long storageLeakedResourceCleanUpIntervalInMS;
+  private final long leakedResourceCleanUpIntervalInMS;
 
   private final boolean readOnlyForBatchOnlyStoreEnabled;
 
@@ -192,6 +192,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final long ssdHealthCheckShutdownTimeMs;
   private final boolean sharedConsumerPoolEnabled;
   private final int consumerPoolSizePerKafkaCluster;
+  private final boolean leakedResourceCleanupEnabled;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -220,7 +221,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     databaseSyncBytesIntervalForDeferredWriteMode = serverProperties.getSizeInBytes(SERVER_DATABASE_SYNC_BYTES_INTERNAL_FOR_DEFERRED_WRITE_MODE, 60 * 1024 * 1024); // 60MB
     diskFullThreshold = serverProperties.getDouble(SERVER_DISK_FULL_THRESHOLD, 0.90);
     partitionGracefulDropDelaySeconds = serverProperties.getInt(SERVER_PARTITION_GRACEFUL_DROP_DELAY_IN_SECONDS, 30); // 30 seconds
-    storageLeakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 6 * 60)); // 6 hours by default
+    leakedResourceCleanUpIntervalInMS = TimeUnit.MINUTES.toMillis(serverProperties.getLong(SERVER_LEAKED_RESOURCE_CLEAN_UP_INTERVAL_IN_MINUTES, 10)); // 10 mins by default
     readOnlyForBatchOnlyStoreEnabled = serverProperties.getBoolean(SERVER_DB_READ_ONLY_FOR_BATCH_ONLY_STORE_ENABLED, true);
     quotaEnforcementEnabled = serverProperties.getBoolean(SERVER_QUOTA_ENFORCEMENT_ENABLED, false);
     //June 2018, venice-6 nodes were hitting ~20k keys per second. August 2018, no cluster has nodes above 3.5k keys per second
@@ -283,6 +284,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       throw new VeniceException(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER + " shouldn't be less than: " +
           MINIMUM_CONSUMER_NUM_IN_CONSUMER_POOL_PER_KAFKA_CLUSTER + ", but it is " + consumerPoolSizePerKafkaCluster);
     }
+    leakedResourceCleanupEnabled = serverProperties.getBoolean(SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED, true);
   }
 
   public int getListenerPort() {
@@ -379,8 +381,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return partitionGracefulDropDelaySeconds;
   }
 
-  public long getStorageLeakedResourceCleanUpIntervalInMS() {
-    return storageLeakedResourceCleanUpIntervalInMS;
+  public long getLeakedResourceCleanUpIntervalInMS() {
+    return leakedResourceCleanUpIntervalInMS;
   }
 
   public boolean isReadOnlyForBatchOnlyStoreEnabled() {
@@ -512,5 +514,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getConsumerPoolSizePerKafkaCluster() {
     return consumerPoolSizePerKafkaCluster;
+  }
+
+  public boolean isLeakedResourceCleanupEnabled() {
+    return leakedResourceCleanupEnabled;
   }
 }

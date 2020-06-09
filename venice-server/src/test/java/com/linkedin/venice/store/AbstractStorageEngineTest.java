@@ -46,7 +46,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(LISTENER_PORT , 7072)
         .put(ADMIN_PORT , 7073)
         .put(DATA_BASE_PATH, databasePath)
-        .put(BDB_DROPPED_DB_CLEAN_UP_ENABLED, true)
         .build();
   }
 

@@ -57,9 +57,14 @@ public interface StoreIngestionService {
   void addNotifier(VeniceNotifier notifier);
 
   /**
-   * Judge whether there is a running consumption task for given store.
+   * Check whether there is a running consumption task for given store.
    */
   boolean containsRunningConsumption(VeniceStoreConfig veniceStore);
+
+  /**
+   * Check whether there is a running consumption task for given store version topic.
+   */
+  boolean containsRunningConsumption(String topic);
 
   /**
    * Check whether the specified partition is still being consumed

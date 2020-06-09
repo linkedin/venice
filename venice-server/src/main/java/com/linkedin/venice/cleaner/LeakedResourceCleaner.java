@@ -1,45 +1,43 @@
 package com.linkedin.venice.cleaner;
 
-import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.LeakedResourceCleanerStats;
+import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.bdb.BdbStorageEngine;
-import com.linkedin.venice.utils.LatencyUtils;
-import com.sleepycat.je.CheckpointConfig;
-import com.sleepycat.je.Environment;
-import java.util.HashSet;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
-
-import static com.linkedin.venice.store.bdb.BdbStoragePartition.*;
-
 
 /**
  * LeakedResourceCleaner is a background thread which wakes up regularly
- * to check whether some BDB databases are removed recently; if so, do a checkpoint
- * to release disk space.
+ * to release leaked resources from local disk.
  */
 public class LeakedResourceCleaner extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(LeakedResourceCleaner.class);
 
-  private long pollIntervalMs;
+  private final long pollIntervalMs;
   private LeakedResourceCleanerRunnable cleaner;
   private Thread runner;
-  private StorageEngineRepository storageEngineRepository;
+  private final StorageEngineRepository storageEngineRepository;
+  private final ReadOnlyStoreRepository storeRepository;
+  private final StoreIngestionService ingestionService;
+  private final StorageService storageService;
+  private final LeakedResourceCleanerStats stats;
 
-  private long checkpointDelayInMinutes = 60;
-
-  public LeakedResourceCleaner(StorageEngineRepository storageEngineRepository, long pollIntervalMs) {
+  public LeakedResourceCleaner(StorageEngineRepository storageEngineRepository, long pollIntervalMs,
+      ReadOnlyStoreRepository storeRepository, StoreIngestionService ingestionService, StorageService storageService,
+      MetricsRepository metricsRepository) {
     this.storageEngineRepository = storageEngineRepository;
     this.pollIntervalMs = pollIntervalMs;
-  }
-
-  public void setCheckpointDelayInMinutes(long checkpointDelayInMinutes) {
-    this.checkpointDelayInMinutes = checkpointDelayInMinutes;
+    this.storeRepository = storeRepository;
+    this.ingestionService = ingestionService;
+    this.storageService = storageService;
+    this.stats = new LeakedResourceCleanerStats(metricsRepository);
   }
 
   @Override
@@ -56,6 +54,7 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
   @Override
   public void stopInner() {
     cleaner.setStop();
+    runner.interrupt();
   }
 
   private class LeakedResourceCleanerRunnable implements Runnable {
@@ -69,7 +68,6 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
       stop = true;
     }
 
-
     @Override
     public void run() {
       while (!stop) {
@@ -78,65 +76,46 @@ public class LeakedResourceCleaner extends AbstractVeniceService {
 
           List<AbstractStorageEngine> storageEngines = storageEngineRepository.getAllLocalStorageEngines();
           for (AbstractStorageEngine storageEngine : storageEngines) {
-            // only do checkpoint for BDB stores
-            if (storageEngine.getType() == PersistenceType.BDB) {
-              Environment bdbEnvironment = ((BdbStorageEngine)storageEngine).getBdbEnvironment();
-              List<String> databaseNames = bdbEnvironment.getDatabaseNames();
-              Set<String> deletedDatabaseFlags = new HashSet<>();
-              for (String databaseName : databaseNames) {
-                if (databaseName.endsWith(DELETE_FLAG_SUFFIX)) {
-                  deletedDatabaseFlags.add(databaseName);
-                }
+            String resourceName = storageEngine.getName();
+            try {
+              String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+              int version = Version.parseVersionFromKafkaTopicName(resourceName);
+              Store store = storeRepository.getStore(storeName);
+              if (store.getVersions().isEmpty()) {
+                /**
+                 * Defensive code, and if the version list in this store is empty, but we found a resource to clean up,
+                 * and it might be caused by Zookeeper issue in the extreme scenario, and we will skip the resource cleanup
+                 * for this store.
+                 */
+                logger.warn("Found no version for store: " + storeName + ", but a lingering resource: " + resourceName +
+                    ", which is suspicious, so here will skip the cleanup.");
+                continue;
               }
-              databaseNames.clear();
-
-              /**
-               * Check whether all databases are deleted recently; if so, skip the checkpoint.
-               *
-               * The reason for this check is to avoid unnecessary checkpoints due to version deletion;
-               * version deletion will remove the entire directory of the store at the end, so it's not
-               * necessary to do checkpoint within the directory during version deletion.
-               *
-               */
-              long currentTime = System.nanoTime();
-              boolean hasOldDeletion = false;
-              for (String databaseName : deletedDatabaseFlags) {
-                String nameAndTimestamp = databaseName.substring(0, databaseName.lastIndexOf(DELETE_FLAG_SUFFIX));
-                long timestamp = Long.valueOf(nameAndTimestamp.substring(nameAndTimestamp.lastIndexOf(DELETE_TIMESTAMP_SEPARATOR) + 1));
-                long latencyInMinute = TimeUnit.NANOSECONDS.toMinutes(currentTime - timestamp);
-                if (latencyInMinute > checkpointDelayInMinutes) {
-                  hasOldDeletion = true;
-                  break;
-                }
+              if (!store.getVersion(version).isPresent() &&  // The version has already been deleted
+                  /**
+                   * This is to avoid the race condition since Version will be deleted in Controller first and the
+                   * actual cleanup in storage node is being handled in {@link com.linkedin.venice.kafka.consumer.ParticipantStoreConsumptionTask}.
+                   *
+                   * If there is no version existed in ZK and no running ingestion task for current resource, it
+                   * is safe to be deleted.
+                   */
+                  !ingestionService.containsRunningConsumption(resourceName)) {
+                logger.info("Resource: " + resourceName + " doesn't have either the corresponding version stored in ZK, or a running ingestion task, so it will be cleaned up.");
+                storageService.removeStorageEngine(resourceName);
+                logger.info("Resource: " + resourceName + " has been cleaned up.");
+                stats.recordLeakedVersion();
               }
-
-              if (hasOldDeletion) {
-                logger.info("Start BDB checkpoint to release disk space. Databases deleted in the last "
-                    + TimeUnit.MILLISECONDS.toMinutes(pollIntervalMs) + " minutes: "
-                    + deletedDatabaseFlags.stream().map(databaseName -> {
-                      String nameAndTimestamp = databaseName.substring(0, databaseName.lastIndexOf(DELETE_FLAG_SUFFIX));
-                      return nameAndTimestamp.substring(0, nameAndTimestamp.lastIndexOf(DELETE_TIMESTAMP_SEPARATOR));
-                }).collect(Collectors.toList()));
-                long checkpointStartTimeInNS = System.nanoTime();
-                bdbEnvironment.cleanLog();
-                CheckpointConfig ckptConfig = new CheckpointConfig();
-                ckptConfig.setMinimizeRecoveryTime(true);
-                ckptConfig.setForce(true);
-                bdbEnvironment.checkpoint(ckptConfig);
-                double latency = LatencyUtils.getLatencyInMS(checkpointStartTimeInNS);
-                logger.info("One BDB checkpoint completes which took " + latency + "ms");
-
-                // remove the deleted database flag
-                for (String databaseName : deletedDatabaseFlags) {
-                  bdbEnvironment.removeDatabase(null, databaseName);
-                }
-              }
+            } catch (Exception e) {
+              logger.error("Received exception while verifying/cleaning up resource: " + resourceName);
             }
-          }
+          } //~for
+        } catch (InterruptedException e)  {
+          logger.info("Received interruptedException, will exit");
+          break;
         } catch (Exception e) {
-          logger.error(e.getMessage());
+          logger.error("Received exception while cleaning up resources", e);
         }
-      }
+      } //~while
     }
   }
 }
