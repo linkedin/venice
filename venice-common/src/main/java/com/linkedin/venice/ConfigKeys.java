@@ -355,6 +355,12 @@ public class ConfigKeys {
    */
   public static final String SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER = "server.consumer.pool.size.per.kafka.cluster";
 
+  /**
+   * Whether to enable leaked resource cleanup in storage node.
+   * Right now, it only covers leaked storage partitions on disk.
+   */
+  public static final String SERVER_LEAKED_RESOURCE_CLEANUP_ENABLED = "server.leaked.resource.cleanup.enabled";
+
   // Router specific configs
   // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
   // TODO with controller and server.

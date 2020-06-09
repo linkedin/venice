@@ -231,11 +231,11 @@ public class VeniceServer {
     services.add(kafkaStoreIngestionService);
 
     /**
-     * Create and add storage resource clean up service;
-     * the cleanup service can be extended to clean up any resources, but for now, we only use it to do BDB clean up.
+     * Resource cleanup service
      */
-    if (serverConfig.getBdbServerConfig().isBdbDroppedDbCleanUpEnabled()) {
-      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStorageEngineRepository(), serverConfig.getStorageLeakedResourceCleanUpIntervalInMS());
+    if (serverConfig.isLeakedResourceCleanupEnabled()) {
+      this.leakedResourceCleaner = new LeakedResourceCleaner(storageService.getStorageEngineRepository(), serverConfig.getLeakedResourceCleanUpIntervalInMS(),
+          metadataRepo, kafkaStoreIngestionService, storageService, metricsRepository);
       services.add(leakedResourceCleaner);
     }
 

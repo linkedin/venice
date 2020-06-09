@@ -577,7 +577,11 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   @Override
   public synchronized boolean containsRunningConsumption(VeniceStoreConfig veniceStore) {
-    String topic = veniceStore.getStoreName();
+    return containsRunningConsumption(veniceStore.getStoreName());
+  }
+
+  @Override
+  public synchronized boolean containsRunningConsumption(String topic) {
     StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
     if (consumerTask != null && consumerTask.isRunning()) {
       return true;
