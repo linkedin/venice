@@ -276,6 +276,14 @@ public class VeniceServer {
     }
   }
 
+  public StorageMetadataService getStorageMetadataService() {
+    if (isStarted()) {
+      return storageMetadataService;
+    } else {
+      throw new VeniceException("Cannot get storage metadata service if server is not started");
+    }
+  }
+
   /**
    * @return true if the {@link VeniceServer} and all of its inner services are fully started
    *         false if the {@link VeniceServer} was not started or if any of its inner services
