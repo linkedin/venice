@@ -1,6 +1,10 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -20,10 +24,12 @@ import java.util.function.Supplier;
  * If you need to pass a deep copy parameter to other functions, you can modify this class accordingly.
  */
 public class DeepCopyStorageEngine extends AbstractStorageEngine<AbstractStoragePartition> {
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+  private final static InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
   private final AbstractStorageEngine delegate;
 
   public DeepCopyStorageEngine(AbstractStorageEngine delegate) {
-    super(delegate.getName());
+    super(delegate.getName(), storeVersionStateSerializer, partitionStateSerializer);
     this.delegate = delegate;
     restoreStoragePartitions();
   }

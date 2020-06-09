@@ -8,6 +8,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.zookeeper.data.Stat;
@@ -119,20 +120,20 @@ public class TestAdminOffsetManager {
 
   @Test (expectedExceptions = IllegalArgumentException.class)
   public void testFilterOldStatesWithNegativeKeepNum() {
-    OffsetRecord record = new OffsetRecord();
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     AdminOffsetManager.filterOldStates(record, -1);
   }
 
   @Test
   public void testFilterOldStatesWithEmptyProducerStates() {
-    OffsetRecord record = new OffsetRecord();
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     AdminOffsetManager.filterOldStates(record, 3);
     Assert.assertEquals(record.getProducerPartitionStateMap().size(), 0);
   }
 
   @Test
   public void testFilterOldStatesWithFewerProducerStates() {
-    OffsetRecord record = new OffsetRecord();
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Map<CharSequence, ProducerPartitionState> producerStates = record.getProducerPartitionStateMap();
     producerStates.put("test_guid1", getProducerPartitionState(200));
     producerStates.put("test_guid2", getProducerPartitionState(201));
@@ -146,7 +147,7 @@ public class TestAdminOffsetManager {
 
   @Test
   public void testFilterOldStatesWithDuplicateTimestamp() {
-    OffsetRecord record = new OffsetRecord();
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Map<CharSequence, ProducerPartitionState> producerStates = record.getProducerPartitionStateMap();
 
     // Generate multiple ProducerPartitionState
@@ -169,7 +170,7 @@ public class TestAdminOffsetManager {
 
   @Test
   public void testFilterOldStates() {
-    OffsetRecord record = new OffsetRecord();
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     Map<CharSequence, ProducerPartitionState> producerStates = record.getProducerPartitionStateMap();
 
     // Generate multiple ProducerPartitionState
@@ -208,13 +209,13 @@ public class TestAdminOffsetManager {
     byte[] guidBytes = new byte[]{-26, -57, -66, 25, 26, -123, 65, -127, -83, -51, 3, -63, -89, -89, -54, 14};
     GUID guid = new GUID();
     guid.bytes(guidBytes);
-    OffsetRecord offsetRecord = new OffsetRecord();
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     offsetRecord.setOffset(782);
     ProducerPartitionState oldPPState = getProducerPartitionStateByMessageSeqNum(0);
     offsetRecord.setProducerPartitionState(guid, oldPPState);
 
     byte[] serializedOffsetRecord = offsetRecord.toBytes();
-    OffsetRecord newOffsetRecord = new OffsetRecord(serializedOffsetRecord);
+    OffsetRecord newOffsetRecord = new OffsetRecord(serializedOffsetRecord, AvroProtocolDefinition.PARTITION_STATE.getSerializer());
 
     ProducerPartitionState newPPState = getProducerPartitionStateByMessageSeqNum(10);
     newOffsetRecord.setProducerPartitionState(guid, newPPState);

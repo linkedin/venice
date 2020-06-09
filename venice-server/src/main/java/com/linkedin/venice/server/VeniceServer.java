@@ -18,12 +18,15 @@ import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.listener.StoreValueSchemasCacheService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggRocksDBStats;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
@@ -134,6 +137,16 @@ public class VeniceServer {
     // Create jvm metrics object
     jvmStats = new VeniceJVMStats(metricsRepository, "VeniceJVMStats");
 
+    Optional<SchemaReader> partitionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
+        cc.setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName())));
+    Optional<SchemaReader> storeVersionStateSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
+        cc.setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName())));
+    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    partitionStateSchemaReader.ifPresent(r -> partitionStateSerializer.setSchemaReader(r));
+    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    storeVersionStateSchemaReader.ifPresent(r -> storeVersionStateSerializer.setSchemaReader(r));
+
+    // Create and add Offset Service.
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
 
     // Create ReadOnlyStore/SchemaRepository
@@ -147,10 +160,11 @@ public class VeniceServer {
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", plainTableEnabled) : null;
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats);
+    storageService = new StorageService(veniceConfigLoader, storageEngineStats, rocksDBMemoryStats,
+        storeVersionStateSerializer, partitionStateSerializer);
 
     logger.info("Server will start with RocksDB offset store enabled");
-    storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+    storageEngineMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     services.add(storageEngineMetadataService);
     storageMetadataService = storageEngineMetadataService;
 
@@ -159,7 +173,7 @@ public class VeniceServer {
     // Create stats for RocksDB
     storageService.getRocksDBAggregatedStatistics().ifPresent( stat -> new AggRocksDBStats(metricsRepository, stat));
 
-    Optional<SchemaReader> schemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
+    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader = clientConfigForConsumer.map(cc -> ClientFactory.getSchemaReader(
         cc.setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())));
 
     // create and add KafkaSimpleConsumerService
@@ -171,8 +185,9 @@ public class VeniceServer {
         schemaRepo,
         metricsRepository,
         null,
-        schemaReader,
-        clientConfigForConsumer);
+        kafkaMessageEnvelopeSchemaReader,
+        clientConfigForConsumer,
+        partitionStateSerializer);
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     this.diskHealthCheckService = new DiskHealthCheckService(

@@ -7,6 +7,8 @@ import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
 import io.netty.bootstrap.ServerBootstrap;
@@ -60,7 +62,7 @@ public class IngestionReportListener extends AbstractVeniceService {
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-  public IngestionReportListener(int applicationPort, int ingestionServicePort) {
+  public IngestionReportListener(int applicationPort, int ingestionServicePort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.applicationPort = applicationPort;
     this.ingestionServicePort = ingestionServicePort;
 
@@ -70,7 +72,7 @@ public class IngestionReportListener extends AbstractVeniceService {
     workerGroup = new NioEventLoopGroup();
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(serverSocketChannelClass)
-            .childHandler(new IngestionReportChannelInitializer(this))
+            .childHandler(new IngestionReportChannelInitializer(this, partitionStateSerializer))
             .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
             .childOption(ChannelOption.SO_KEEPALIVE, true)
             .option(ChannelOption.SO_REUSEADDR, true)

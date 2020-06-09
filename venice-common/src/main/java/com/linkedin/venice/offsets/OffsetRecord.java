@@ -20,31 +20,38 @@ import java.util.Optional;
 import static com.linkedin.venice.writer.VeniceWriter.*;
 
 
+/**
+ * If OffsetRecord is initialized with a serializer that contains SchemaReader, old version of server codes
+ * will be able to deserialize OffsetRecord that is serialized with a newer protocol version, which can happen
+ * after rolling back a server release with new protocol version to an old server release with old protocol version.
+ */
 public class OffsetRecord {
 
   // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
   public static final long LOWEST_OFFSET = -1;
 
-  private static final InternalAvroSpecificSerializer<PartitionState> serializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private static final String PARTITION_STATE_STRING = "PartitionState";
 
   private final PartitionState partitionState;
+  private final InternalAvroSpecificSerializer<PartitionState> serializer;
 
   private Map<GUID, OffsetRecordTransformer> offsetRecordTransformers = new VeniceConcurrentHashMap<>();
 
-  public OffsetRecord(PartitionState partitionState) {
+  public OffsetRecord(PartitionState partitionState, InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.partitionState = partitionState;
+    this.serializer = serializer;
   }
 
-  public OffsetRecord() {
-    this(getEmptyPartitionState());
+  public OffsetRecord(InternalAvroSpecificSerializer<PartitionState> serializer) {
+    this(getEmptyPartitionState(), serializer);
   }
 
   /**
    * @param bytes to deserialize from
    */
-  public OffsetRecord(byte[] bytes) {
-    this(deserializePartitionState(bytes));
+  public OffsetRecord(byte[] bytes, InternalAvroSpecificSerializer<PartitionState> serializer) {
+    this.serializer = serializer;
+    this.partitionState = deserializePartitionState(bytes);
   }
 
   private static PartitionState getEmptyPartitionState() {
@@ -59,7 +66,7 @@ public class OffsetRecord {
     return emptyPartitionState;
   }
 
-  private static PartitionState deserializePartitionState(byte[] bytes) {
+  private PartitionState deserializePartitionState(byte[] bytes) {
     return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 

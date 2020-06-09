@@ -41,6 +41,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
@@ -497,7 +498,7 @@ public class TestAdminConsumptionTask {
         GuidUtils.getCharSequenceFromGuid(veniceWriter.getProducerGUID()),
         ppState);
 
-    return new OffsetRecord(partitionState);
+    return new OffsetRecord(partitionState, AvroProtocolDefinition.PARTITION_STATE.getSerializer());
   }
 
   @Test (timeOut = TIMEOUT)

@@ -1,6 +1,9 @@
 package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import org.apache.log4j.Logger;
 
 /**
@@ -9,6 +12,8 @@ import org.apache.log4j.Logger;
  */
 public class DeepCopyOffsetManager implements OffsetManager {
   private static final Logger LOGGER = Logger.getLogger(DeepCopyOffsetManager.class);
+
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   private final OffsetManager delegate;
 
@@ -22,7 +27,7 @@ public class DeepCopyOffsetManager implements OffsetManager {
         ", partitionId: " + partitionId + ", record: " + record);
 
     // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing verify() semantics
-    OffsetRecord deepCopy = new OffsetRecord(record.toBytes());
+    OffsetRecord deepCopy = new OffsetRecord(record.toBytes(), partitionStateSerializer);
     delegate.put(topicName, partitionId, deepCopy);
   }
 

@@ -40,6 +40,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.avro.DirectionalSchemaCompatibilityType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.DataProviderUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Pair;
@@ -588,7 +589,7 @@ public class TestVeniceParentHelixAdmin extends AbstractTestVeniceParentHelixAdm
         .when(veniceWriter).put(any(), any(), anyInt());
 
     when(zkClient.readData(zkMetadataNodePath, null))
-        .thenReturn(new OffsetRecord())
+        .thenReturn(new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer()))
         .thenReturn(AdminTopicMetadataAccessor.generateMetadataMap(1, 1));
 
     parentAdmin.start(clusterName);

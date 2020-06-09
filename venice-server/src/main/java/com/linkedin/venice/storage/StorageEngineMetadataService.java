@@ -2,8 +2,11 @@ package com.linkedin.venice.storage;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -20,9 +23,15 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   private static final Logger logger = Logger.getLogger(StorageEngineMetadataService.class);
 
   private final StorageEngineRepository storageEngineRepository;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   public StorageEngineMetadataService(StorageEngineRepository storageEngineRepository) {
+    this(storageEngineRepository, AvroProtocolDefinition.PARTITION_STATE.getSerializer());
+  }
+
+  public StorageEngineMetadataService(StorageEngineRepository storageEngineRepository, InternalAvroSpecificSerializer<PartitionState> serializer) {
     this.storageEngineRepository = storageEngineRepository;
+    this.partitionStateSerializer = serializer;
   }
 
   @Override
@@ -43,7 +52,7 @@ public class StorageEngineMetadataService extends AbstractVeniceService implemen
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
     Optional<OffsetRecord> record = getStorageEngine(topicName).getPartitionOffset(partitionId);
-    return record.orElseGet(OffsetRecord::new);
+    return record.orElseGet(() -> new OffsetRecord(partitionStateSerializer));
   }
 
   @Override

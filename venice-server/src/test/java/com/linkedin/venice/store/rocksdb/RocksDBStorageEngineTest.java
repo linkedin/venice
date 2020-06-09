@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -39,7 +40,9 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     storageService = new StorageService(
         AbstractStorageEngineTest.getVeniceConfigLoader(serverProps),
         mock(AggVersionedStorageEngineStats.class),
-        null);
+        null,
+        AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     clusterConfig = new VeniceClusterConfig(serverProps);
     storeConfig = new VeniceStoreConfig(storeName, serverProps, PersistenceType.ROCKS_DB);
     testStoreEngine = storageService.openStoreForNewPartition(storeConfig , PARTITION_ID);
@@ -67,7 +70,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     AbstractStorageEngine testStorageEngine = getTestStoreEngine();
     Assert.assertEquals(testStorageEngine.getType(), PersistenceType.ROCKS_DB);
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
-    OffsetRecord offsetRecord = new OffsetRecord();
+    OffsetRecord offsetRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     offsetRecord.setOffset(666L);
     rocksDBStorageEngine.putPartitionOffset(PARTITION_ID, offsetRecord);
     Assert.assertEquals(rocksDBStorageEngine.getPartitionOffset(PARTITION_ID).get().getOffset(), 666L);
@@ -100,7 +103,7 @@ public class RocksDBStorageEngineTest extends AbstractStorageEngineTest {
     RocksDBStorageEngine rocksDBStorageEngine = (RocksDBStorageEngine)testStorageEngine;
 
     Assert.assertThrows(IllegalArgumentException.class,
-        () -> rocksDBStorageEngine.putPartitionOffset(-1, new OffsetRecord()));
+        () -> rocksDBStorageEngine.putPartitionOffset(-1, new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer())));
 
     Assert.assertThrows(IllegalArgumentException.class,
         () -> rocksDBStorageEngine.getPartitionOffset(-1));

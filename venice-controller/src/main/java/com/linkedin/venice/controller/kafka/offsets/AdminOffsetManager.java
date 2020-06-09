@@ -3,9 +3,12 @@ package com.linkedin.venice.controller.kafka.offsets;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
 import org.apache.helix.AccessOption;
@@ -41,11 +44,13 @@ public class AdminOffsetManager implements OffsetManager {
    */
   private static final int ZK_UPDATE_RETRY = 3;
 
+  private static final InternalAvroSpecificSerializer<PartitionState> serializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+
   private ZkBaseDataAccessor<OffsetRecord> dataAccessor;
 
   public AdminOffsetManager(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
     // Register serializer
-    adapterSerializer.registerSerializer(ADMIN_TOPIC_OFFSET_NODE_PATH_PATTERN, new OffsetRecordSerializer());
+    adapterSerializer.registerSerializer(ADMIN_TOPIC_OFFSET_NODE_PATH_PATTERN, new OffsetRecordSerializer(serializer));
     zkClient.setZkSerializer(adapterSerializer);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
@@ -128,7 +133,7 @@ public class AdminOffsetManager implements OffsetManager {
     String nodePath = getAdminTopicOffsetNodePathForCluster(clusterName);
     OffsetRecord offsetRecord = dataAccessor.get(nodePath, null, AccessOption.PERSISTENT);
     if (null == offsetRecord) {
-      offsetRecord = new OffsetRecord();
+      offsetRecord = new OffsetRecord(serializer);
     }
     String logPrefix = "Looked up last offset record from ZK for topic: '" + topicName
         + "', partition id: " + partitionId + ", ";

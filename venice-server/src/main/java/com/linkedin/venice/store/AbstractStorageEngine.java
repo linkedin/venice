@@ -4,11 +4,10 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.serialization.VeniceKafkaSerializer;
-import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.utils.SparseConcurrentList;
 
@@ -46,8 +45,6 @@ import java.util.stream.Collectors;
  */
 public abstract class AbstractStorageEngine<Partition extends AbstractStoragePartition> implements Closeable {
   private static final Logger logger = Logger.getLogger(AbstractStorageEngine.class);
-  private static final VeniceKafkaSerializer<StoreVersionState> versionStateSerializer =
-      AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
 
   private static final byte[] VERSION_METADATA_KEY = "VERSION_METADATA".getBytes();
   private static final byte[] METADATA_MIGRATION_KEY = "METADATA_MIGRATION".getBytes();
@@ -60,9 +57,16 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
   private final List<Partition> partitionList = new SparseConcurrentList<>();
   private Partition metadataPartition = null;
   private final AtomicReference<StoreVersionState> versionStateCache = new AtomicReference<>();
+  private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  public AbstractStorageEngine(String storeName) {
+  public AbstractStorageEngine(String storeName,
+                               InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+                               InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.storeName = storeName;
+    this.metadataPartition = null;
+    this.storeVersionStateSerializer = storeVersionStateSerializer;
+    this.partitionStateSerializer = partitionStateSerializer;
   }
 
   public String getName() {
@@ -369,7 +373,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (null == value) {
       return Optional.empty();
     }
-    return Optional.of(new OffsetRecord(value));
+    return Optional.of(new OffsetRecord(value, partitionStateSerializer));
   }
 
   /**
@@ -396,7 +400,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
       throw new StorageInitializationException("Metadata partition not created!");
     }
     versionStateCache.set(versionState);
-    metadataPartition.put(VERSION_METADATA_KEY, versionStateSerializer.serialize(getName(), versionState));
+    metadataPartition.put(VERSION_METADATA_KEY, storeVersionStateSerializer.serialize(getName(), versionState));
   }
 
   /**
@@ -411,7 +415,7 @@ public abstract class AbstractStorageEngine<Partition extends AbstractStoragePar
     if (null == value) {
       return Optional.empty();
     }
-    versionState = versionStateSerializer.deserialize(storeName, value);
+    versionState = storeVersionStateSerializer.deserialize(storeName, value);
     versionStateCache.set(versionState);
     return Optional.of(versionState);
   }

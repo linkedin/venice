@@ -16,6 +16,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -33,6 +34,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -134,7 +137,7 @@ public class StoreIngestionTaskTest {
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
     StoreIngestionTask.OFFSET_REPORTING_INTERVAL = 1;
-    TEST_TIMEOUT = 500 * READ_CYCLE_DELAY_MS;
+    TEST_TIMEOUT = 1000 * READ_CYCLE_DELAY_MS;
   }
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
@@ -343,9 +346,10 @@ public class StoreIngestionTaskTest {
     doReturn(null).when(mockWriterFactory).createBasicVeniceWriter(any());
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
+    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
       for (int partition : partitions) {
-        doReturn(new OffsetRecord()).when(mockStorageMetadataService).getLastOffset(topic, partition);
+        doReturn(new OffsetRecord(partitionStateSerializer)).when(mockStorageMetadataService).getLastOffset(topic, partition);
         if(hybridStoreConfig.isPresent()){
           doReturn(Optional.of(new StoreVersionState())).when(mockStorageMetadataService).getStoreVersionState(topic);
         }else {
@@ -411,6 +415,7 @@ public class StoreIngestionTaskTest {
         .setServerConfig(veniceServerConfig)
         .setDiskUsage(diskUsage)
         .setCacheWarmingThreadPool(Executors.newFixedThreadPool(1))
+        .setPartitionStateSerializer(partitionStateSerializer)
         .build();
     storeIngestionTaskUnderTest = ingestionTaskFactory.getNewIngestionTask(isLeaderFollowerModelEnabled, kafkaProps,
         isCurrentVersion, hybridStoreConfig, incrementalPushEnabled, storeConfig, true,

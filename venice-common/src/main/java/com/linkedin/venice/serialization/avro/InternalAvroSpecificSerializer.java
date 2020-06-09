@@ -8,6 +8,7 @@ import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 
+import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.Decoder;
@@ -142,7 +143,9 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   }
 
   /**
-   * Configure this class.
+   * Configure this class. {@link org.apache.kafka.clients.consumer.KafkaConsumer#KafkaConsumer(Properties)} would
+   * eventually call {@link #configure(Map, boolean)} which would pass in the customized Kafka config map with schema
+   * reader.
    *
    * @param configMap configs in key/value pairs
    * @param isKey     whether is for key or value
@@ -156,6 +159,10 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     if (configMap.containsKey(VENICE_SCHEMA_READER_CONFIG)) {
       this.schemaReader = (SchemaReader) configMap.get(VENICE_SCHEMA_READER_CONFIG);
     }
+  }
+
+  public void setSchemaReader(SchemaReader schemaReader) {
+    this.schemaReader = schemaReader;
   }
 
   /**
