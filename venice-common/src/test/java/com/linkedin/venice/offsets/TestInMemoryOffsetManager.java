@@ -1,5 +1,6 @@
 package com.linkedin.venice.offsets;
 
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.utils.TestUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -12,11 +13,11 @@ public class TestInMemoryOffsetManager {
     String topic = TestUtils.getUniqueString("topic");
 
     OffsetManager om = new InMemoryOffsetManager();
-    OffsetRecord record = new OffsetRecord();
+    OffsetRecord record = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     record.setOffset(1234);
-    OffsetRecord oldRecord = new OffsetRecord();
+    OffsetRecord oldRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     oldRecord.setOffset(234);
-    OffsetRecord newRecord = new OffsetRecord();
+    OffsetRecord newRecord = new OffsetRecord(AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     newRecord.setOffset(11234);
 
     om.put(topic, 0, record);

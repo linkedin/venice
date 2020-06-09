@@ -4,10 +4,12 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -79,7 +81,8 @@ public class StoreIngestionTaskFactory {
           nativeReplicationSourceAddress,
           partitionId,
           builder.cacheWarmingThreadPool,
-          builder.startReportingReadyToServeTimestamp);
+          builder.startReportingReadyToServeTimestamp,
+          builder.partitionStateSerializer);
     } else {
       return new OnlineOfflineStoreIngestionTask(
           builder.veniceWriterFactory,
@@ -110,7 +113,8 @@ public class StoreIngestionTaskFactory {
           builder.serverConfig,
           partitionId,
           builder.cacheWarmingThreadPool,
-          builder.startReportingReadyToServeTimestamp);
+          builder.startReportingReadyToServeTimestamp,
+          builder.partitionStateSerializer);
     }
   }
 
@@ -151,6 +155,7 @@ public class StoreIngestionTaskFactory {
     private RocksDBMemoryStats rocksDBMemoryStats;
     private ExecutorService cacheWarmingThreadPool;
     private long startReportingReadyToServeTimestamp;
+    private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
     public StoreIngestionTaskFactory build() {
       // flip the build flag to true
@@ -315,6 +320,13 @@ public class StoreIngestionTaskFactory {
     public Builder setStartReportingReadyToServeTimestamp(long timestamp) {
       if (!built) {
         this.startReportingReadyToServeTimestamp =  timestamp;
+      }
+      return this;
+    }
+
+    public Builder setPartitionStateSerializer(InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+      if (!built) {
+        this.partitionStateSerializer = partitionStateSerializer;
       }
       return this;
     }

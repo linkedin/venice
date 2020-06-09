@@ -1,6 +1,7 @@
 package com.linkedin.venice.store.blackhole;
 
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
 import java.util.Collections;
@@ -9,7 +10,7 @@ import java.util.Set;
 
 public class BlackHoleStorageEngine extends AbstractStorageEngine<BlackHoleStorageEnginePartition> {
   public BlackHoleStorageEngine(String storeName) {
-    super(storeName);
+    super(storeName, AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     restoreStoragePartitions();
   }
 

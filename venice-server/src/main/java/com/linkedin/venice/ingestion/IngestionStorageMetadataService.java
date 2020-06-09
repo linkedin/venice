@@ -3,10 +3,12 @@ package com.linkedin.venice.ingestion;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.protocol.IngestionStorageMetadata;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.utils.concurrent.VeniceConcurrentHashMap;
@@ -30,11 +32,13 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
   private static final Logger logger = Logger.getLogger(IngestionStorageMetadataService.class);
 
   private final IngestionRequestClient client;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
   private final Map<String, Map<Integer, OffsetRecord>> topicPartitionOffsetRecordMap = new VeniceConcurrentHashMap<>();
   private final Map<String, StoreVersionState> topicStoreVersionStateMap = new VeniceConcurrentHashMap<>();
 
-  public IngestionStorageMetadataService(int targetPort) {
+  public IngestionStorageMetadataService(int targetPort, InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.client = new IngestionRequestClient(targetPort);
+    this.partitionStateSerializer = partitionStateSerializer;
   }
 
   @Override
@@ -114,9 +118,9 @@ public class IngestionStorageMetadataService extends AbstractVeniceService imple
     logger.info("Getting OffsetRecord for " + topicName + " " + partitionId);
     if (topicPartitionOffsetRecordMap.containsKey(topicName)) {
       Map<Integer, OffsetRecord> partitionOffsetRecordMap = topicPartitionOffsetRecordMap.get(topicName);
-      return partitionOffsetRecordMap.getOrDefault(partitionId, new OffsetRecord());
+      return partitionOffsetRecordMap.getOrDefault(partitionId, new OffsetRecord(partitionStateSerializer));
     }
-    return new OffsetRecord();
+    return new OffsetRecord(partitionStateSerializer);
   }
 
   /**

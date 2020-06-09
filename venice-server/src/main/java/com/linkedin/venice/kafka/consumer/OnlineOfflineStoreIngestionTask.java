@@ -10,6 +10,7 @@ import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.StartOfBufferReplay;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -17,6 +18,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -71,7 +73,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
       VeniceServerConfig serverConfig,
       int partitionId,
       ExecutorService cacheWarmingThreadPool,
-      long startReportingReadyToServeTimestamp) {
+      long startReportingReadyToServeTimestamp,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     super(
         writerFactory,
         consumerFactory,
@@ -101,7 +104,8 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
         serverConfig,
         partitionId,
         cacheWarmingThreadPool,
-        startReportingReadyToServeTimestamp);
+        startReportingReadyToServeTimestamp,
+        partitionStateSerializer);
   }
 
   @Override

@@ -2,6 +2,7 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.stats.StatsErrorCode;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -16,7 +17,7 @@ import java.util.Set;
 public class InMemoryStorageEngine extends AbstractStorageEngine<InMemoryStoragePartition> {
 
   public InMemoryStorageEngine(VeniceStoreConfig storeDef) {
-    super(storeDef.getStoreName());
+    super(storeDef.getStoreName(), AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer(), AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     restoreStoragePartitions();
   }
 

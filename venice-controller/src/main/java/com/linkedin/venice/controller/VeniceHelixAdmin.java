@@ -325,6 +325,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         List<ClusterLeaderInitializationRoutine> initRoutines = new ArrayList<>();
         initRoutines.add(new SystemSchemaInitializationRoutine(
             AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE, multiClusterConfigs, this));
+        initRoutines.add(new SystemSchemaInitializationRoutine(
+            AvroProtocolDefinition.PARTITION_STATE, multiClusterConfigs, this));
+        initRoutines.add(new SystemSchemaInitializationRoutine(
+            AvroProtocolDefinition.STORE_VERSION_STATE, multiClusterConfigs, this));
         ClusterLeaderInitializationRoutine controllerInitialization = new ClusterLeaderInitializationManager(initRoutines);
 
         // Create the controller cluster if required.

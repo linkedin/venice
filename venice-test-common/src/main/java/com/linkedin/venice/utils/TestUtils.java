@@ -13,6 +13,7 @@ import com.linkedin.venice.kafka.admin.ScalaAdminUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -23,6 +24,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
@@ -52,6 +55,8 @@ public class TestUtils {
   /** In milliseconds */
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = Time.MS_PER_SECOND / 5;
   private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 60 * Time.MS_PER_SECOND;
+
+  private final static InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
 
   public static final String TEMP_DIRECTORY_SYSTEM_PROPERTY = "java.io.tmpdir";
 
@@ -216,7 +221,7 @@ public class TestUtils {
   }
 
   public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
-    OffsetRecord offsetRecord = new OffsetRecord();
+    OffsetRecord offsetRecord = new OffsetRecord(partitionStateSerializer);
     offsetRecord.setOffset(currentOffset);
     if (endOfPushOffset.isPresent()) {
       offsetRecord.endOfPushReceived(endOfPushOffset.get());

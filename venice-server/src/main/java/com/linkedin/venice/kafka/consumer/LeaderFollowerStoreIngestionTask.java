@@ -14,6 +14,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.TopicSwitch;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -25,6 +26,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.ChunkedValueManifestSerializer;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -146,7 +148,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String nativeReplicationSourceAddress,
       int partitionId,
       ExecutorService cacheWarmingThreadPool,
-      long startReportingReadyToServeTimestamp) {
+      long startReportingReadyToServeTimestamp,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     super(
         writerFactory,
         consumerFactory,
@@ -176,7 +179,8 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
         serverConfig,
         partitionId,
         cacheWarmingThreadPool,
-        startReportingReadyToServeTimestamp);
+        startReportingReadyToServeTimestamp,
+        partitionStateSerializer);
     newLeaderInactiveTime = serverConfig.getServerPromotionToLeaderReplicaDelayMs();
     this.isNativeReplicationEnabled = isNativeReplicationEnabled;
     this.nativeReplicationSourceAddress = nativeReplicationSourceAddress;

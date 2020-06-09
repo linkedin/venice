@@ -28,6 +28,7 @@ import com.linkedin.venice.kafka.protocol.Update;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.protocol.state.IncrementalPush;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.kafka.validation.KafkaDataIntegrityValidator;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
@@ -42,6 +43,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -244,6 +246,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
 
   int writeComputeFailureCode = 0;
 
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
   public StoreIngestionTask(
       VeniceWriterFactory writerFactory,
       KafkaClientFactory consumerFactory,
@@ -273,7 +277,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       VeniceServerConfig serverConfig,
       int errorPartitionId,
       ExecutorService cacheWarmingThreadPool,
-      long startReportingReadyToServeTimestamp) {
+      long startReportingReadyToServeTimestamp,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.readCycleDelayMs = storeConfig.getKafkaReadCycleDelayMs();
     this.emptyPollSleepMs = storeConfig.getKafkaEmptyPollSleepMs();
     this.databaseSyncBytesIntervalForTransactionalMode = storeConfig.getDatabaseSyncBytesIntervalForTransactionalMode();
@@ -353,6 +358,8 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
     this.startReportingReadyToServeTimestamp = startReportingReadyToServeTimestamp;
 
     buildRocksDBMemoryEnforcer();
+
+    this.partitionStateSerializer = partitionStateSerializer;
   }
 
   protected void validateState() {
@@ -1098,7 +1105,7 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
                 + "on resetting offset for Topic: " + topic + " Partition Id: " + partition);
           }
           partitionConsumptionStateMap.put(partition,
-              new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
+              new PartitionConsumptionState(partition, new OffsetRecord(partitionStateSerializer), hybridStoreConfig.isPresent(), isIncrementalPushEnabled));
         } else {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);

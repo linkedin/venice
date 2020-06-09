@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.store.rocksdb.RocksDBServerConfig;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -60,7 +61,7 @@ public class IngestionServiceTest {
     cluster = ServiceFactory.getVeniceCluster(1, 1, 1);
     testStoreName = cluster.createStore(KEY_COUNT);
     forkedIngestionServiceListenerProcess = ForkedJavaProcess.exec(IngestionService.class, String.valueOf(SERVICE_PORT));
-    ingestionReportListener = new IngestionReportListener(APPLICATION_PORT, SERVICE_PORT);
+    ingestionReportListener = new IngestionReportListener(APPLICATION_PORT, SERVICE_PORT, AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     ingestionReportListener.startInner();
     waitPortBinding(SERVICE_PORT, MAX_ATTEMPT);
     waitPortBinding(APPLICATION_PORT, MAX_ATTEMPT);

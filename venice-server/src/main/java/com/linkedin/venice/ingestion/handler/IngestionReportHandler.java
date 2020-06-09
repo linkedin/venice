@@ -4,8 +4,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.ingestion.IngestionReportListener;
 import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -18,10 +20,13 @@ import static com.linkedin.venice.ingestion.IngestionUtils.*;
 public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionReportHandler.class);
   private final IngestionReportListener ingestionReportListener;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
-  public IngestionReportHandler(IngestionReportListener ingestionReportListener) {
+  public IngestionReportHandler(IngestionReportListener ingestionReportListener,
+                                InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     logger.info("IngestionReportHandler created.");
     this.ingestionReportListener = ingestionReportListener;
+    this.partitionStateSerializer = partitionStateSerializer;
   }
 
   @Override
@@ -51,7 +56,7 @@ public class IngestionReportHandler extends SimpleChannelInboundHandler<FullHttp
 
     if (ingestionReportListener.getStorageMetadataService() != null) {
       if (report.offsetRecord != null) {
-        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array());
+        OffsetRecord offsetRecord = new OffsetRecord(report.offsetRecord.array(), partitionStateSerializer);
         ingestionReportListener.getStorageMetadataService().putOffsetRecord(topicName, partitionId, offsetRecord);
         logger.info("Updated offsetRecord for (topic, partition): " + topicName + " " + partitionId + " " + offsetRecord.toString());
       }

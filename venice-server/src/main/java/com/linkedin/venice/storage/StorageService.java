@@ -4,7 +4,11 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -22,7 +26,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
 import org.apache.log4j.Logger;
 import org.rocksdb.Statistics;
 
@@ -44,11 +47,16 @@ public class StorageService extends AbstractVeniceService {
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final AggVersionedStorageEngineStats aggVersionedStorageEngineStats;
   private final RocksDBMemoryStats rocksDBMemoryStats;
+  private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+
 
   public StorageService(
       VeniceConfigLoader configLoader,
       AggVersionedStorageEngineStats storageEngineStats,
-      RocksDBMemoryStats rocksDBMemoryStats) {
+      RocksDBMemoryStats rocksDBMemoryStats,
+      InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+      InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
 
     String dataPath = configLoader.getVeniceServerConfig().getDataBasePath();
     if (!Utils.directoryExists(dataPath)) {
@@ -69,12 +77,10 @@ public class StorageService extends AbstractVeniceService {
     this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.aggVersionedStorageEngineStats = storageEngineStats;
     this.rocksDBMemoryStats = rocksDBMemoryStats;
+    this.storeVersionStateSerializer = storeVersionStateSerializer;
+    this.partitionStateSerializer = partitionStateSerializer;
     initInternalStorageEngineFactories();
     restoreAllStores(configLoader);
-  }
-
-  public StorageService(VeniceConfigLoader configLoader, AggVersionedStorageEngineStats storageEngineStats) {
-    this(configLoader, storageEngineStats, null);
   }
 
   /**
@@ -83,7 +89,8 @@ public class StorageService extends AbstractVeniceService {
    */
   private void initInternalStorageEngineFactories() {
     persistenceTypeToStorageEngineFactoryMap.put(IN_MEMORY, new InMemoryStorageEngineFactory(serverConfig));
-    persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig, rocksDBMemoryStats));
+    persistenceTypeToStorageEngineFactoryMap.put(ROCKS_DB, new RocksDBStorageEngineFactory(serverConfig, rocksDBMemoryStats,
+        storeVersionStateSerializer, partitionStateSerializer));
     persistenceTypeToStorageEngineFactoryMap.put(BLACK_HOLE, new BlackHoleStorageEngineFactory());
   }
 

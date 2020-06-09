@@ -2,7 +2,10 @@ package com.linkedin.venice.store.rocksdb;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -32,9 +35,15 @@ class RocksDBStorageEngine extends AbstractStorageEngine<RocksDBStoragePartition
   private final VeniceStoreConfig storeConfig;
 
 
-  public RocksDBStorageEngine(VeniceStoreConfig storeConfig, RocksDBStorageEngineFactory factory, String rocksDbPath,
-      RocksDBMemoryStats rocksDBMemoryStats, RocksDBThrottler rocksDbThrottler, RocksDBServerConfig rocksDBServerConfig) {
-    super(storeConfig.getStoreName());
+  public RocksDBStorageEngine(VeniceStoreConfig storeConfig,
+                              RocksDBStorageEngineFactory factory,
+                              String rocksDbPath,
+                              RocksDBMemoryStats rocksDBMemoryStats,
+                              RocksDBThrottler rocksDbThrottler,
+                              RocksDBServerConfig rocksDBServerConfig,
+                              InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer,
+                              InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
+    super(storeConfig.getStoreName(), storeVersionStateSerializer, partitionStateSerializer);
     this.storeConfig = storeConfig;
     this.rocksDbPath = rocksDbPath;
     this.memoryStats = rocksDBMemoryStats;

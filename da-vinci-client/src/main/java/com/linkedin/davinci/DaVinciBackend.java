@@ -3,6 +3,7 @@ package com.linkedin.davinci;
 import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -15,6 +16,8 @@ import com.linkedin.venice.ingestion.IngestionStorageMetadataService;
 import com.linkedin.venice.ingestion.IngestionUtils;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Store;
@@ -23,6 +26,7 @@ import com.linkedin.venice.meta.SubscriptionBasedReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
@@ -49,7 +53,6 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.zookeeper.impl.client.ZkClient;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.client.store.ClientFactory.*;
 import static java.lang.Thread.*;
 
 
@@ -98,20 +101,30 @@ public class DaVinciBackend implements Closeable {
       schemaRepository = new HelixReadOnlySchemaRepository(storeRepository, zkClient, adapter, clusterName, 3, 1000);
       schemaRepository.refresh();
     }
+
+    SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+    SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+    final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
+    final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
+
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
     rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
-    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats);
+    storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
     storageService.start();
 
-    SchemaReader schemaReader = getSchemaReader(
+    SchemaReader kafkaMessageEnvelopeSchemaReader = ClientFactory.getSchemaReader(
         ClientConfig.cloneConfig(clientConfig)
             .setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName()));
 
     // TODO: May need to reorder the object to make it looks cleaner.
     storageMetadataService = configLoader.getVeniceServerConfig().getIngestionIsolationMode().equals(IngestionIsolationMode.PARENT_CHILD)
-        ? new IngestionStorageMetadataService(configLoader.getVeniceServerConfig().getIngestionServicePort())
-        : new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+        ? new IngestionStorageMetadataService(configLoader.getVeniceServerConfig().getIngestionServicePort(), partitionStateSerializer)
+        : new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
 
     ingestionService = new KafkaStoreIngestionService(
         storageService.getStorageEngineRepository(),
@@ -121,8 +134,9 @@ public class DaVinciBackend implements Closeable {
         schemaRepository,
         metricsRepository,
         rocksDBMemoryStats,
-        Optional.of(schemaReader),
-        Optional.of(clientConfig));
+        Optional.of(kafkaMessageEnvelopeSchemaReader),
+        Optional.of(clientConfig),
+        partitionStateSerializer);
     ingestionService.start();
     ingestionService.addCommonNotifier(ingestionListener);
     Map<String, Pair<Version, Set<Integer>>> bootstrapStoreNameToVersionPartitionsMap = new HashMap<>();
@@ -155,7 +169,7 @@ public class DaVinciBackend implements Closeable {
 
 
       try {
-        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort);
+        ingestionReportListener = new IngestionReportListener(ingestionListenerPort, ingestionServicePort, partitionStateSerializer);
         ingestionReportListener.setIngestionNotifier(isolatedIngestionListener);
         ingestionReportListener.setMetricsRepository(metricsRepository);
         ingestionReportListener.setStorageMetadataService((IngestionStorageMetadataService) storageMetadataService);

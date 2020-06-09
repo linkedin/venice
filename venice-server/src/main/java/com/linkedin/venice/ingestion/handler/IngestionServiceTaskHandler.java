@@ -6,6 +6,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.MetadataStoreBasedStoreRepository;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -22,6 +23,8 @@ import com.linkedin.venice.ingestion.protocol.IngestionTaskReport;
 import com.linkedin.venice.ingestion.protocol.InitializationConfigs;
 import com.linkedin.venice.ingestion.protocol.enums.IngestionCommandType;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.IngestionAction;
 import com.linkedin.venice.meta.IngestionIsolationMode;
 import com.linkedin.venice.meta.IngestionMetadataUpdateType;
@@ -31,6 +34,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.stats.AggVersionedStorageEngineStats;
 import com.linkedin.venice.stats.RocksDBMemoryStats;
@@ -61,6 +65,10 @@ import static com.linkedin.venice.ingestion.IngestionUtils.*;
 public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final Logger logger = Logger.getLogger(IngestionServiceTaskHandler.class);
   private final IngestionService ingestionService;
+
+  // PartitionState and StoreVersionState serializers are lazily constructed after receiving the init configs
+  private InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
+  private InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
 
   public IngestionServiceTaskHandler(IngestionService ingestionService) {
     super();
@@ -177,22 +185,31 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
     }
     ingestionService.setStoreRepository(storeRepository);
 
+    SchemaReader partitionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.PARTITION_STATE.getSystemStoreName()));
+    SchemaReader storeVersionStateSchemaReader = ClientFactory.getSchemaReader(
+        ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.STORE_VERSION_STATE.getSystemStoreName()));
+    partitionStateSerializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
+    partitionStateSerializer.setSchemaReader(partitionStateSchemaReader);
+    storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
+    storeVersionStateSerializer.setSchemaReader(storeVersionStateSchemaReader);
+
     // Create RocksDBMemoryStats
     RocksDBMemoryStats rocksDBMemoryStats = configLoader.getVeniceServerConfig().isDatabaseMemoryStatsEnabled() ?
         new RocksDBMemoryStats(metricsRepository, "RocksDBMemoryStats", configLoader.getVeniceServerConfig().getRocksDBServerConfig().isRocksDBPlainTableFormatEnabled()) : null;
 
     // Create StorageService
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeRepository);
-    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats);
+    StorageService storageService = new StorageService(configLoader, storageEngineStats, rocksDBMemoryStats, storeVersionStateSerializer, partitionStateSerializer);
     storageService.start();
     ingestionService.setStorageService(storageService);
 
     // Create SchemaReader
-    SchemaReader schemaReader = getSchemaReader(
+    SchemaReader kafkaMessageEnvelopeSchemaReader = getSchemaReader(
         ClientConfig.cloneConfig(clientConfig).setStoreName(AvroProtocolDefinition.KAFKA_MESSAGE_ENVELOPE.getSystemStoreName())
     );
 
-    StorageMetadataService storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository());
+    StorageMetadataService storageMetadataService = new StorageEngineMetadataService(storageService.getStorageEngineRepository(), partitionStateSerializer);
     ingestionService.setStorageMetadataService(storageMetadataService);
 
     // Create KafkaStoreIngestionService
@@ -204,8 +221,9 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
         schemaRepository,
         metricsRepository,
         rocksDBMemoryStats,
-        Optional.of(schemaReader),
-        Optional.of(clientConfig));
+        Optional.of(kafkaMessageEnvelopeSchemaReader),
+        Optional.of(clientConfig),
+        partitionStateSerializer);
     storeIngestionService.start();
     storeIngestionService.addCommonNotifier(ingestionListener);
     ingestionService.setStoreIngestionService(storeIngestionService);
@@ -313,7 +331,7 @@ public class IngestionServiceTaskHandler extends SimpleChannelInboundHandler<Ful
       switch (IngestionMetadataUpdateType.valueOf(ingestionStorageMetadata.metadataUpdateType)) {
         case PUT_OFFSET_RECORD:
           logger.info("Put OffsetRecord");
-          ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array()));
+          ingestionService.getStorageMetadataService().put(topicName, partitionId, new OffsetRecord(ingestionStorageMetadata.payload.array(), partitionStateSerializer));
           break;
         case CLEAR_OFFSET_RECORD:
           logger.info("Clear OffsetRecord");

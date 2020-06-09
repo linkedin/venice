@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.StorageEngineRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageMetadataService;
@@ -85,7 +86,8 @@ public class KafkaStoreIngestionServiceTest {
        new MetricsRepository(),
        null,
        Optional.empty(),
-       Optional.empty());
+       Optional.empty(),
+       AvroProtocolDefinition.PARTITION_STATE.getSerializer());
 
    String mockStoreName = "test";
    String mockSimilarStoreName = "testTest";
@@ -157,7 +159,8 @@ public class KafkaStoreIngestionServiceTest {
         new MetricsRepository(),
         null,
         Optional.empty(),
-        Optional.empty());
+        Optional.empty(),
+        AvroProtocolDefinition.PARTITION_STATE.getSerializer());
     String topic1 = "test-store_v1";
     String topic2 = "test-store_v2";
     String invalidTopic = "invalid-store_v1";

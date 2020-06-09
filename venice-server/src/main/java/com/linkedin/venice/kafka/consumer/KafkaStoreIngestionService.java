@@ -8,6 +8,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -17,6 +18,7 @@ import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.serialization.avro.OptimizedKafkaValueSerializer;
 import com.linkedin.venice.server.StorageEngineRepository;
@@ -100,7 +102,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    * for consuming messages and making changes to the local store accordingly.
    */
   private final NavigableMap<String, StoreIngestionTask> topicNameToIngestionTaskMap;
-  private final Optional<SchemaReader> schemaReader;
+  private final Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader;
+  private final InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer;
 
   private final ExecutorService participantStoreConsumerExecutorService = Executors.newSingleThreadExecutor();
 
@@ -126,10 +129,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
                                     ReadOnlySchemaRepository schemaRepo,
                                     MetricsRepository metricsRepository,
                                     RocksDBMemoryStats rocksDBMemoryStats,
-                                    Optional<SchemaReader> schemaReader,
-                                    Optional<ClientConfig> clientConfig) {
+                                    Optional<SchemaReader> kafkaMessageEnvelopeSchemaReader,
+                                    Optional<ClientConfig> clientConfig,
+                                    InternalAvroSpecificSerializer<PartitionState> partitionStateSerializer) {
     this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
+    this.partitionStateSerializer = partitionStateSerializer;
 
     this.topicNameToIngestionTaskMap = new ConcurrentSkipListMap<>();
     this.isRunning = new AtomicBoolean(false);
@@ -187,7 +192,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         serverConfig.getStoreWriterNumber(),
         serverConfig.getStoreWriterBufferMemoryCapacity(),
         serverConfig.getStoreWriterBufferNotifyDelta());
-    this.schemaReader = schemaReader;
+    this.kafkaMessageEnvelopeSchemaReader = kafkaMessageEnvelopeSchemaReader;
     /**
      * Collect metrics for {@link #storeBufferService}.
      * Since all the metrics will be collected passively, there is no need to
@@ -279,6 +284,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         .setRocksDBMemoryStats(rocksDBMemoryStats)
         .setCacheWarmingThreadPool(cacheWarmingExecutorService)
         .setStartReportingReadyToServeTimestamp(System.currentTimeMillis() + serverConfig.getDelayReadyToServeMS())
+        .setPartitionStateSerializer(partitionStateSerializer)
         .build();
   }
 
@@ -398,7 +404,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       notifier.close();
     }
 
-    schemaReader.ifPresent(sr -> sr.close());
+    kafkaMessageEnvelopeSchemaReader.ifPresent(sr -> sr.close());
     logger.info("Shut down complete");
   }
 
@@ -713,8 +719,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         String.valueOf(serverConfig.getKafkaPollRetryTimes()));
     kafkaConsumerProperties.setProperty(ApacheKafkaConsumer.CONSUMER_POLL_RETRY_BACKOFF_MS_CONFIG,
         String.valueOf(serverConfig.getKafkaPollRetryBackoffMs()));
-    if (schemaReader.isPresent()) {
-      kafkaConsumerProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, schemaReader.get());
+    if (kafkaMessageEnvelopeSchemaReader.isPresent()) {
+      kafkaConsumerProperties.put(InternalAvroSpecificSerializer.VENICE_SCHEMA_READER_CONFIG, kafkaMessageEnvelopeSchemaReader.get());
     }
 
     return kafkaConsumerProperties;
