@@ -13,7 +13,6 @@ import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponseV2;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.ZkClientFactory;
 import com.linkedin.venice.kafka.admin.KafkaAdminClient;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
@@ -94,7 +93,7 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
 
   // TODO: refactor the code and move these to DaVinciBackend
   private ZkClient zkClient;
-  private ReadOnlyStoreRepository storeReposotory;
+  private DaVinciStoreRepository storeReposotory;
   private ReadOnlySchemaRepository schemaRepository;
   private StorageService storageService;
   private StorageEngineMetadataService storageMetadataService;
@@ -326,10 +325,10 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
     zkClient = ZkClientFactory.newZkClient(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress());
     zkClient.subscribeStateChanges(new ZkClientStatusStats(metricsRepository, "davinci-zk-client"));
 
-    storeReposotory = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,3, 1000);
+    storeReposotory = new DaVinciStoreRepository(zkClient, adapter, clusterName);
     storeReposotory.refresh();
 
-    schemaRepository = new HelixReadOnlySchemaRepository(storeReposotory, zkClient, adapter, clusterName,3, 1000);
+    schemaRepository = new HelixReadOnlySchemaRepository(storeReposotory, zkClient, adapter, clusterName, 3, 1000);
     schemaRepository.refresh();
 
     AggVersionedStorageEngineStats storageEngineStats = new AggVersionedStorageEngineStats(metricsRepository, storeReposotory);
@@ -353,10 +352,11 @@ public class AvroGenericDaVinciClientImpl<K, V> implements DaVinciClient<K, V> {
         Optional.of(schemaReader),
         Optional.of(clientConfig));
     services.add(kafkaStoreIngestionService);
+
+    storeReposotory.subscribe(getStoreName());
     this.keySerializer = clientConfig.isUseFastAvro()
         ? FastSerializerDeserializerFactory.getFastAvroGenericSerializer(getKeySchema(), false)
         : SerializerDeserializerFactory.getAvroGenericSerializer(getKeySchema(), false);
-
 
     // TODO: initiate ingestion service. pass in ingestionService as null to make it compile.
     PartitionerConfig partitionerConfig = storeReposotory.getStore(getStoreName()).getPartitionerConfig();

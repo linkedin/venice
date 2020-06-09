@@ -184,8 +184,9 @@ public class IngestionController implements Closeable {
     private VersionBackend futureVersion;
 
     private StoreBackend(String storeName) {
-      storeRepository.getStoreOrThrow(storeName);
       this.storeName = storeName;
+      storeRepository.subscribe(storeName);
+      storeRepository.getStoreOrThrow(storeName);
       storeRepository.registerStoreDataChangedListener(storeChangeListener);
     }
 
@@ -351,7 +352,7 @@ public class IngestionController implements Closeable {
   private static final Logger logger = Logger.getLogger(IngestionController.class);
 
   private final VeniceConfigLoader configLoader;
-  private final ReadOnlyStoreRepository storeRepository;
+  private final DaVinciStoreRepository storeRepository;
   private final StorageService storageService;
   private final StoreIngestionService ingestionService;
   private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -360,7 +361,7 @@ public class IngestionController implements Closeable {
 
   public IngestionController(
       VeniceConfigLoader configLoader,
-      ReadOnlyStoreRepository storeRepository,
+      DaVinciStoreRepository storeRepository,
       StorageService storageService,
       StoreIngestionService ingestionService) {
     this.configLoader = configLoader;
@@ -381,6 +382,7 @@ public class IngestionController implements Closeable {
         continue;
       }
 
+      storeRepository.subscribe(storeName);
       Version version = getLatestVersion(storeName).orElse(null);
       if (version == null || version.kafkaTopicName().equals(kafkaTopicName) == false) {
         // If the version is not the latest, it should be removed.

@@ -1,6 +1,5 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.common.VeniceSystemStoreUtils;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -17,7 +16,6 @@ import org.apache.log4j.Logger;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -173,8 +171,9 @@ public class CachedReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   protected Store putStore(Store newStore) {
     updateLock.lock();
     try {
-      // Make sure every version in this store has partitionerConfig and partitionCount.
+      // Workaround to make old metadata compatible with new fields
       newStore.fixMissingFields();
+
       Store oldStore = storeMap.put(getZkStoreName(newStore.getName()), newStore);
       if (oldStore == null) {
         totalStoreReadQuota.addAndGet(newStore.getReadQuotaInCU());
