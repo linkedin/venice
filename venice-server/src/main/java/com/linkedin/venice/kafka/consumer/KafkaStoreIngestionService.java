@@ -610,6 +610,16 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return result;
   }
 
+  @Override
+  public AggStoreIngestionStats getAggStoreIngestionStats() {
+    return ingestionStats;
+  }
+
+  @Override
+  public AggVersionedStorageIngestionStats getAggVersionedStorageIngestionStats() {
+    return versionedStorageIngestionStats;
+  }
+
   /**
    * @return Group Id for kafka consumer.
    */

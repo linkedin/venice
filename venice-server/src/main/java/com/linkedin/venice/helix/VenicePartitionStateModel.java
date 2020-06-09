@@ -9,17 +9,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.function.Supplier;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
-import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelInfo;
-import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.apache.helix.participant.statemachine.Transition;
 import org.apache.log4j.Logger;
 
@@ -79,7 +73,12 @@ public class VenicePartitionStateModel extends AbstractParticipantModel {
                         + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
                     bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
                 }
-                notifier.waitConsumptionCompleted(message.getResourceName(), getPartition(), bootstrapToOnlineTimeoutInHours);
+                StoreIngestionService storeIngestionService = getStoreIngestionService();
+                notifier.waitConsumptionCompleted(message.getResourceName(),
+                    getPartition(),
+                    bootstrapToOnlineTimeoutInHours,
+                    storeIngestionService.getAggStoreIngestionStats(),
+                    storeIngestionService.getAggVersionedStorageIngestionStats());
             } catch (InterruptedException e) {
                 String errorMsg =
                     "Can not complete consumption for resource:" + message.getResourceName() + " partition:" + getPartition();
