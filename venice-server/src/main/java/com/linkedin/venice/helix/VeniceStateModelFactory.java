@@ -3,8 +3,11 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.stats.AggStoreIngestionStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.concurrent.ConcurrentHashMap;
@@ -75,7 +78,8 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
      * @param partitionId
      * @throws InterruptedException
      */
-    void waitConsumptionCompleted(String resourceName, int partitionId, int bootstrapToOnlineTimeoutInHours)
+    void waitConsumptionCompleted(String resourceName, int partitionId, int bootstrapToOnlineTimeoutInHours,
+        AggStoreIngestionStats storeIngestionStats, AggVersionedStorageIngestionStats versionedStorageIngestionStats)
         throws InterruptedException {
       String stateModeId = getStateModelIdentification(resourceName , partitionId);
       CountDownLatch latch = stateModelToLatchMap.get(stateModeId);
@@ -90,6 +94,11 @@ public class VeniceStateModelFactory extends AbstractParticipantModelFactory {
               "After waiting " + bootstrapToOnlineTimeoutInHours + " hours, resource:" + resourceName + " partition:"
                   + partitionId + " still can not become online from bootstrap.";
           logger.error(errorMsg);
+          // Report ingestion_failure and ingestion_task_errored_gauge
+          String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+          int versionNumber = Version.parseVersionFromKafkaTopicName(resourceName);
+          storeIngestionStats.recordIngestionFailure(storeName);
+          versionedStorageIngestionStats.setIngestionTaskErroredGauge(storeName, versionNumber);
           throw new VeniceException(errorMsg);
         }
         stateModelToLatchMap.remove(stateModeId);

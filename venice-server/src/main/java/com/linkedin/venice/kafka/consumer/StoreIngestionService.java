@@ -3,6 +3,8 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.helix.LeaderFollowerParticipantModel;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.stats.AggStoreIngestionStats;
+import com.linkedin.venice.stats.AggVersionedStorageIngestionStats;
 import java.util.Set;
 
 
@@ -77,4 +79,16 @@ public interface StoreIngestionService {
    * @return a {@link Set} of topic names.
    */
   Set<String> getIngestingTopicsWithVersionStatusNotOnline();
+
+  /**
+   * Get AggStoreIngestionStats
+   * @return an instance of {@link AggStoreIngestionStats}
+   */
+  AggStoreIngestionStats getAggStoreIngestionStats();
+
+  /**
+   * Get AggVersionedStorageIngestionStats
+   * @return an instance of {@link AggVersionedStorageIngestionStats}
+   */
+  AggVersionedStorageIngestionStats getAggVersionedStorageIngestionStats();
 }
