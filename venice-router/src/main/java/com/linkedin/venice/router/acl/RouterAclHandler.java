@@ -3,6 +3,7 @@ package com.linkedin.venice.router.acl;
 import com.linkedin.venice.acl.AclCreationDeletionListener;
 import com.linkedin.venice.acl.AclException;
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -71,10 +72,10 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       ctx.fireChannelRead(req);
       return;
     }
-
-    if (metadataRepository.hasStore(storeName)) {
-      if (!metadataRepository.getStore(storeName).isAccessControlled()) {
-        // Ignore permission. Proceed
+    try {
+      Store store = metadataRepository.getStoreOrThrow(storeName);
+      if (store.isSystemStore()) {
+        // Ignore ACL for Venice system stores. System stores should be world readable and only contain public information.
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
       } else {
@@ -154,7 +155,7 @@ public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
           }
         }
       }
-    } else {
+    } catch (VeniceNoStoreException noStoreException) {
       // If the store is migrated to another cluster, redirect the request
       Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
       if (config.isPresent()) {
