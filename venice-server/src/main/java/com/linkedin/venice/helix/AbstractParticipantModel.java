@@ -3,6 +3,9 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.controller.VeniceStateModel;
@@ -39,6 +42,7 @@ public abstract class AbstractParticipantModel extends StateModel {
   private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
 
   private final StoreIngestionService storeIngestionService;
+  private final ReadOnlyStoreRepository metaDataRepo;
   private final StorageService storageService;
   private final VeniceStoreConfig storeConfig;
   private final int partition;
@@ -46,9 +50,11 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   private final String storePartitionDescription;
 
-  public AbstractParticipantModel(StoreIngestionService storeIngestionService, StorageService storageService,
+  public AbstractParticipantModel(StoreIngestionService storeIngestionService, ReadOnlyStoreRepository metaDataRepo,
+      StorageService storageService,
       VeniceStoreConfig storeConfig, int partition, Time time) {
     this.storeIngestionService = storeIngestionService;
+    this.metaDataRepo = metaDataRepo;
     this.storageService = storageService;
     this.storeConfig = storeConfig;
     this.partition = partition;
@@ -65,7 +71,7 @@ public abstract class AbstractParticipantModel extends StateModel {
     logEntry(from, to, message, context);
     // Change name to indicate which st is occupied this thread.
     Thread.currentThread()
-        .setName("Helix-ST-" + message.getResourceName() + "-" + getPartition() + "-" + from + "->" + to);
+        .setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
     try {
       handler.run();
       logCompletion(from, to, message, context);
@@ -77,13 +83,13 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   private void logEntry(String from, String to, Message message, NotificationContext context) {
     logger.info(getStorePartitionDescription() + " initiating transition from " + from + " to " + to + " for resource: "
-        + getStoreConfig().getStoreName() + " Partition " + getPartition() +
+        + getStoreConfig().getStoreName() + " Partition " + partition +
         " invoked with Message " + message + " and context " + context);
   }
 
   private void logCompletion(String from, String to, Message message, NotificationContext context) {
     logger.info(getStorePartitionDescription() + " completed transition from " + from + " to " + to + " for resource: "
-        + getStoreConfig().getStoreName() + " Partition " + getPartition() +
+        + getStoreConfig().getStoreName() + " Partition " + partition +
         " invoked with Message " + message + " and context " + context);
   }
 
@@ -168,14 +174,14 @@ public abstract class AbstractParticipantModel extends StateModel {
      * RESET_OFFSET only happens when we want to drop the corresponding database, and this is independent
      * from the topic partition unsubscription.
      */
-    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), getPartition());
+    getStoreIngestionService().resetConsumptionOffset(getStoreConfig(), partition);
 
     // Catch exception separately to ensure reset consumption offset would be executed for sure.
     try {
-      getStorageService().dropStorePartition(getStoreConfig(), getPartition());
+      getStorageService().dropStorePartition(getStoreConfig(), partition);
     } catch (Exception e) {
       logger.error(
-          "Error dropping the partition:" + getPartition() + " in store:" + getStoreConfig().getStoreName());
+          "Error dropping the partition:" + partition + " in store:" + getStoreConfig().getStoreName());
     }
   }
 
@@ -187,13 +193,37 @@ public abstract class AbstractParticipantModel extends StateModel {
     final int RETRY_NUM = 100; // 5 mins
     int current = 0;
     while (current++ < RETRY_NUM) {
-      if (!getStoreIngestionService().isPartitionConsuming(getStoreConfig(), getPartition())) {
+      if (!getStoreIngestionService().isPartitionConsuming(getStoreConfig(), partition)) {
         return;
       }
       getTime().sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
     }
-    throw new VeniceException("Partition: " + getPartition() + " of store: " + getStoreConfig().getStoreName() +
+    throw new VeniceException("Partition: " + partition + " of store: " + getStoreConfig().getStoreName() +
         " is still consuming after waiting for it to stop for " + RETRY_NUM * SLEEP_SECONDS + " seconds.");
+  }
+
+  protected void waitConsumptionCompleted(String resourceName, StateModelNotifier notifier) {
+    try {
+      int bootstrapToOnlineTimeoutInHours;
+      try {
+        bootstrapToOnlineTimeoutInHours = getMetaDataRepo()
+            .getStore(Version.parseStoreFromKafkaTopicName(resourceName))
+            .getBootstrapToOnlineTimeoutInHours();
+      } catch (Exception e) {
+        logger.warn("Failed to fetch bootstrapToOnlineTimeoutInHours from store config for resource "
+            + resourceName + ", using the default value of "
+            + Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS + " hours instead");
+        bootstrapToOnlineTimeoutInHours = Store.BOOTSTRAP_TO_ONLINE_TIMEOUT_IN_HOURS;
+      }
+      notifier.waitConsumptionCompleted(resourceName, partition, bootstrapToOnlineTimeoutInHours,
+          storeIngestionService.getAggStoreIngestionStats(), storeIngestionService.getAggVersionedStorageIngestionStats());
+    } catch (InterruptedException e) {
+      String errorMsg =
+          "Can not complete consumption for resource:" + resourceName + " partition:" + partition;
+      logger.error(errorMsg, e);
+      // Please note, after throwing this exception, this node will become ERROR for this resource.
+      throw new VeniceException(errorMsg, e);
+    }
   }
 
   protected void stopConsumption() {
@@ -207,6 +237,10 @@ public abstract class AbstractParticipantModel extends StateModel {
 
   public StoreIngestionService getStoreIngestionService() {
     return storeIngestionService;
+  }
+
+  public ReadOnlyStoreRepository getMetaDataRepo() {
+    return metaDataRepo;
   }
 
   public StorageService getStorageService() {

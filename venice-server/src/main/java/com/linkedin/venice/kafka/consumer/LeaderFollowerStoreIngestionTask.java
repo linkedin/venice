@@ -40,10 +40,12 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.Future;
 import java.util.function.BooleanSupplier;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -97,6 +99,16 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
    * some time after seeing the last messages in version topic.
    */
   public final long newLeaderInactiveTime;
+
+  /**
+   * A set of boolean that check if partitions owned by this task have released the latch.
+   * This is an optional field and is only used while ingesting a topic that currently
+   * served the traffic. The set is initialized as an empty set and will add partition
+   * numbers once the partition has caught up.
+   *
+   * See {@link LeaderFollowerParticipantModel} for the details why we need latch for
+   * certain resources.
+   */
 
   public LeaderFollowerStoreIngestionTask(
       VeniceWriterFactory writerFactory,
@@ -773,7 +785,7 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
       String leaderTopic = offsetRecord.getLeaderTopic();
       if (null == leaderTopic || !Version.isRealTimeTopic(leaderTopic)) {
         /**
-         * 1. Usually there is a batch-push or empty push for the bybrid store before replaying messages from real-time
+         * 1. Usually there is a batch-push or empty push for the hybrid store before replaying messages from real-time
          *    topic; since we need to wait for at least 5 minutes of inactivity since the last successful consumed message
          *    before promoting a replica to leader, the leader topic metadata may not be initialized yet (the first time
          *    when we initialize the leader topic is either when a replica is promoted to leader successfully or encounter
@@ -809,6 +821,42 @@ public class LeaderFollowerStoreIngestionTask extends StoreIngestionTask {
             consumerTaskId, partition, storeVersionTopicLatestOffset, versionTopicConsumedOffset, lag));
       }
       return lag;
+    }
+  }
+
+  @Override
+  protected void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+
+    if (pcs.isEndOfPushReceived() && !pcs.isLatchReleased()) {
+      if (cachedLatestOffsetGetter.getOffset(kafkaTopic, partition) - 1 <= pcs.getOffsetRecord().getOffset()) {
+        notificationDispatcher.reportCatchUpBaseTopicOffsetLag(pcs);
+
+        /**
+         * Relax to report completion
+         *
+         * There is a safe guard latch that is optionally replaced during Offline to Follower
+         * state transition in order to prevent "over-rebalancing". However, there is
+         * still an edge case that could make Venice lose all of the Online SNs.
+         *
+         * 1. Helix rebalances the leader replica of a partition; old leader shuts down,
+         * so no one is replicating data from RT topic to VT;
+         * 2. New leader is block while transisting to follower; after consuming the end
+         * of VT, the latch releases; new leader replica quickly transits to leader role
+         * from Helix's point of view; but actually it's waiting for 5 minutes before switching
+         * to RT;
+         * 3. After the new leader replica transition completes; Helix shutdowns the other 2 old
+         * follower replicas, and bootstrap 2 new followers one by one; however, in this case,
+         * even though the latches of the new followers have released; their push status is not
+         * completed yet, since the new leader hasn't caught up the end of RT;
+         * 4. The new leader replica is having the same issue; it hasn't caught up RT yet so its
+         * push status is not COMPLETED; from router point of view, there is no online replica after
+         * the rebalance.
+         */
+        if (isCurrentVersion.getAsBoolean()) {
+          notificationDispatcher.reportCompleted(pcs);
+        }
+      }
     }
   }
 

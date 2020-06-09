@@ -83,10 +83,19 @@ class IngestionNotificationDispatcher {
     report(pcs, ExecutionStatus.STARTED, notifier -> notifier.restarted(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
+  void reportCatchUpBaseTopicOffsetLag(PartitionConsumptionState pcs) {
+    report(pcs, ExecutionStatus.CATCH_UP_BASE_TOPIC_OFFSET_LAG,
+        notifier -> {
+          notifier.catchUpBaseTopicOffsetLag(topic, pcs.getPartition());
+          pcs.releaseLatch();
+        });
+  }
+
   void reportCompleted(PartitionConsumptionState pcs) {
     report(pcs, ExecutionStatus.COMPLETED,
         notifier -> {
           notifier.completed(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset());
+          pcs.releaseLatch();
           pcs.completionReported();
         }, () -> {
           if (pcs.isErrorReported()) {

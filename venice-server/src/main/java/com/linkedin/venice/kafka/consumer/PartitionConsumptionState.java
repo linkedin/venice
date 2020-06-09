@@ -22,6 +22,17 @@ class PartitionConsumptionState {
   private boolean completionReported;
   private LeaderFollowerStateType leaderState;
 
+  /**
+   * Only used in L/F model. Check if the partition has released the latch.
+   * In L/F ingestion task, Optionally, the state model holds a latch that
+   * is used to determine when it should transit from offline to follower.
+   * The latch is only placed if the Helix resource is serving the read traffic.
+   *
+   * See {@link com.linkedin.venice.helix.LeaderFollowerParticipantModel} for the
+   * details why we need latch for certain resources.
+   */
+  private boolean isLatchReleased = false;
+
   private volatile Future<RecordMetadata> lastLeaderProduceCallback = null;
 
   /**
@@ -100,6 +111,12 @@ class PartitionConsumptionState {
   }
   public void completionReported() {
     this.completionReported = true;
+  }
+  public boolean isLatchReleased() {
+    return isLatchReleased;
+  }
+  public void releaseLatch() {
+    this.isLatchReleased = true;
   }
   public void errorReported() {
     this.errorReported = true;

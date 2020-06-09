@@ -199,6 +199,11 @@ public class OnlineOfflineStoreIngestionTask extends StoreIngestionTask {
     }
   }
 
+  @Override
+  protected void reportIfCatchUpBaseTopicOffset(PartitionConsumptionState partitionConsumptionState) {
+    //No-op for Online/Offline ingestion task
+  }
+
   /**
    * For Online/Offline model, we should check whether the record is always from version topic;
    * besides, since the messages always comes from version topic, we don't need to process a message
