@@ -42,7 +42,7 @@ public enum VersionStatus {
      * job should NOT be deleted. Otherwise Kafka MM would crash. Attention: For streaming case, even version is ONLINE
      * or PUSHED, it might be not safe to delete kafka topic.
      */
-    public static boolean isBootstrapTerminated(VersionStatus status) {
+    public static boolean isBootstrapCompleted(VersionStatus status) {
         return status.equals(ONLINE) || status.equals(PUSHED);
     }
 }

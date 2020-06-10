@@ -1521,7 +1521,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
             deleteHelixResource(clusterName, resourceName);
             logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
-            killOfflinePush(clusterName, resourceName);
+            killOfflinePush(clusterName, resourceName, true);
 
             Store store = getVeniceHelixResource(clusterName).getMetadataRepository().getStore(storeName);
             if (!store.isLeaderFollowerModelEnabled() && onlineOfflineTopicReplicator.isPresent()) {
@@ -3273,7 +3273,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void killOfflinePush(String clusterName, String kafkaTopic) {
+    public void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
         if (!isResourceStillAlive(kafkaTopic)) {
             /**
              * To avoid sending kill job messages if the resource is already removed, and this
@@ -3302,7 +3302,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + " doesn't exist in cluster: " + clusterName);
             return;
         }
-        if (version.isPresent() && VersionStatus.isBootstrapTerminated(version.get().getStatus())) {
+        if (version.isPresent() && !isForcedKill && VersionStatus.isBootstrapCompleted(version.get().getStatus())) {
             /**
              * This is trying to avoid kill job entry in participant store if the version is already online.
              * This won't solve all the edge cases since the following race condition could still happen, but it is fine.

@@ -104,7 +104,7 @@ public class JobRoutes extends AbstractRoute {
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
 
 
-        admin.killOfflinePush(cluster, topic);
+        admin.killOfflinePush(cluster, topic, false);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

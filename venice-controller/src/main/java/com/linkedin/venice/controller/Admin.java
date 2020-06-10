@@ -400,7 +400,13 @@ public interface Admin extends AutoCloseable, Closeable {
 
     Set<String> getWhitelist(String clusterName);
 
-    void killOfflinePush(String clusterName, String kafkaTopic);
+    /**
+     * Kill an offline push if it ran into errors or the corresponding version is being retired.
+     * @param clusterName
+     * @param kafkaTopic
+     * @param isForcedKill should be set to true when killing the push job for retiring the corresponding version.
+     */
+    void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill);
 
     /**
      * Query and return the current status of the given storage node. The "storage node status" is composed by "status" of all

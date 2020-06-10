@@ -783,7 +783,7 @@ public class TestVeniceParentHelixAdmin {
         .when(internalAdmin).getStore(clusterName, Version.parseStoreFromKafkaTopicName(kafkaTopic));
 
     parentAdmin.start(clusterName);
-    parentAdmin.killOfflinePush(clusterName, kafkaTopic);
+    parentAdmin.killOfflinePush(clusterName, kafkaTopic, false);
 
     verify(internalAdmin)
         .checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
@@ -855,7 +855,7 @@ public class TestVeniceParentHelixAdmin {
     }
 
     @Override
-    public void killOfflinePush(String clusterName, String kafkaTopic) {
+    public void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
       storeVersionToKillJobStatus.put(kafkaTopic, true);
     }
 
@@ -1781,7 +1781,7 @@ public class TestVeniceParentHelixAdmin {
     store.deleteVersion(1);
     currentPush = mockParentAdmin.getTopicForCurrentPushJob(clusterName, storeName, false);
     Assert.assertFalse(currentPush.isPresent());
-    verify(mockParentAdmin).killOfflinePush(clusterName, latestTopic);
+    verify(mockParentAdmin).killOfflinePush(clusterName, latestTopic, true);
   }
 
   @Test
