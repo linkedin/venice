@@ -45,7 +45,6 @@ import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
-import org.testng.annotations.BeforeTest;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -137,7 +136,7 @@ public class TestHybrid {
   /**
    * N.B.: Non-L/F does not support chunking, so this permutation is skipped.
    */
-  @DataProvider(name = "testPermutations", parallel = true)
+  @DataProvider(name = "testPermutations")
   public static Object[][] testPermutations() {
     return new Object[][]{
         {false, false, false},
@@ -178,8 +177,15 @@ public class TestHybrid {
       extraProperties.setProperty(VeniceWriter.MAX_SIZE_FOR_USER_PAYLOAD_PER_MESSAGE_IN_BYTES, Integer.toString(maxMessageSizeInServer));
     }
     // N.B.: RF 2 with 2 servers is important, in order to test both the leader and follower code paths
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,
         2, 1000000, false, false, extraProperties);
+    // Added a server with shared consumer enabled.
+    Properties serverPropertiesWithSharedConsumer = new Properties();
+    serverPropertiesWithSharedConsumer.setProperty(SSL_TO_KAFKA, "false");
+    extraProperties.setProperty(SERVER_SHARED_CONSUMER_POOL_ENABLED, "true");
+    extraProperties.setProperty(SERVER_CONSUMER_POOL_SIZE_PER_KAFKA_CLUSTER, "3");
+    venice.addVeniceServer(serverPropertiesWithSharedConsumer, extraProperties);
+
     logger.info("Finished creating VeniceClusterWrapper");
 
     long streamingRewindSeconds = 10L;
