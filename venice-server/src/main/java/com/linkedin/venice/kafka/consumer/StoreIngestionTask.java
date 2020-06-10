@@ -1394,19 +1394,28 @@ public abstract class StoreIngestionTask implements Runnable, Closeable {
       }
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        processControlMessage(consumerRecord, controlMessage, consumerRecord.partition(),
+        ControlMessageType controlMessageType = processControlMessage(consumerRecord, controlMessage, consumerRecord.partition(),
             consumerRecord.offset(), partitionConsumptionState);
         /**
-         * Here, we want to sync offset/producer guid info whenever receiving any control message:
-         * 1. We want to keep the critical milestones.
-         * 2. We want to keep all the historical producer guid info since they could be used after. New producer guid
-         * is already coming with Control Message.
+         * We don't want to sync offset/database for every control message since it could trigger RocksDB to generate
+         * a lot of small level-0 SST files, which will make the compaction very inefficient.
+         * In hybrid mode, we know START_OF_SEGMENT and END_OF_SEGMENT could happen multiple times per partition since
+         * each Samza job could produce to every partition, and the situation could become even worse if the Samza jobs have been
+         * restarted many times.
+         * But we still want to checkpoint for those known infrequent control messages:
+         * 1. Easy testing;
+         * 2. Avoid unnecessary offset rewind when ungraceful shutdown happens.
          *
-         * If we don't sync offset this way, it is very possible to encounter
-         * {@link ProducerTracker.DataFaultType.UNREGISTERED_PRODUCER} since
-         * {@link syncOffset} is not being called for every message, we might miss some historical producer guids.
+         * TODO: if we know some other types of Control Messages are frequent as START_OF_SEGMENT and END_OF_SEGMENT in the future,
+         * we need to consider to exclude them to avoid the issue described above.
+         *
+         * We shouldn't encounter {@link ProducerTracker.DataFaultType.UNREGISTERED_PRODUCER} since the logic below is
+         * tracking {@link OffsetRecordTransformer} per producer GUID.
          */
-        syncOffset = true;
+        if (controlMessageType != ControlMessageType.START_OF_SEGMENT &&
+            controlMessageType != ControlMessageType.END_OF_SEGMENT) {
+          syncOffset = true;
+        }
       } else if (null == kafkaValue) {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());

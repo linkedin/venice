@@ -1170,14 +1170,13 @@ public class StoreIngestionTaskTest {
       veniceWriter.broadcastEndOfPush(new HashMap<>());
       veniceWriter.broadcastStartOfBufferReplay(offsets,"t", topic, new HashMap<>());
       /**
-       * Persist for every control message:
-       * START_OF_SEGMENT, START_OF_PUSH, END_OF_PUSH, END_OF_SEGMENT, START_OF_SEGMENT, START_OF_BUFFER_REPLAY
-
+       * Persist for every control message except START_OF_SEGMENT and END_OF_SEGMENT:
+       * START_OF_PUSH, END_OF_PUSH, START_OF_BUFFER_REPLAY
        */
       runHybridTest(
           getSet(PARTITION_FOO),
           () -> {
-            verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(6)).put(eq(topic), eq(PARTITION_FOO), any());
+            verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(3)).put(eq(topic), eq(PARTITION_FOO), any());
           },
           isLeaderFollowerModelEnabled);
     }finally {
@@ -1328,9 +1327,11 @@ public class StoreIngestionTaskTest {
         //sync the offset when receiving EndOfPush
         verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooOffset + 1, true)));
-        //sync the offset when receiving StartOfIncrementalPush
+        //sync the offset when receiving StartOfIncrementalPush and EndOfIncrementalPush
         verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
             .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset - 1, true, version)));
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).atLeastOnce())
+            .put(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooNewOffset + 1, true, version)));
 
         verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
 
