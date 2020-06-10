@@ -306,7 +306,7 @@ public class AdminExecutionTask implements Callable<Void> {
     }
     String clusterName = message.clusterName.toString();
     String kafkaTopic = message.kafkaTopic.toString();
-    admin.killOfflinePush(clusterName, kafkaTopic);
+    admin.killOfflinePush(clusterName, kafkaTopic, false);
 
     logger.info("Killed job with topic: " + kafkaTopic + " in cluster: " + clusterName);
   }

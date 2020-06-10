@@ -64,7 +64,7 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
     }
     // We focus on versions which already completed bootstrap. On-going push has under replicated partition for sure,
     // but it would not affect our operations.
-    if (!VersionStatus.isBootstrapTerminated(store.getVersionStatus(versionNumber))) {
+    if (!VersionStatus.isBootstrapCompleted(store.getVersionStatus(versionNumber))) {
       return;
     }
     for (Partition partition : partitionAssignment.getAllPartitions()) {

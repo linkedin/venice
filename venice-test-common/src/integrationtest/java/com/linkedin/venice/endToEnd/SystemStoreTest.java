@@ -119,7 +119,7 @@ public class SystemStoreTest {
 
   @Test
   public void testParticipantStoreKill() {
-    VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient);
+    VersionCreationResponse versionCreationResponse = getNewStoreVersion(parentControllerClient, true);
     assertFalse(versionCreationResponse.isError());
     String topicName = versionCreationResponse.getKafkaTopic();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
@@ -150,8 +150,8 @@ public class SystemStoreTest {
   @Test
   public void testKillWhenVersionIsOnline() {
     String storeName = TestUtils.getUniqueString("testKillWhenVersionIsOnline");
-    VersionCreationResponse versionCreationResponseForOnlineVersion = getNewStoreVersion(parentControllerClient, storeName);
-    String topicNameForOnlineVersion = versionCreationResponseForOnlineVersion.getKafkaTopic();
+    final VersionCreationResponse versionCreationResponseForOnlineVersion = getNewStoreVersion(parentControllerClient, storeName, true);
+    final String topicNameForOnlineVersion = versionCreationResponseForOnlineVersion.getKafkaTopic();
     parentControllerClient.writeEndOfPush(storeName, versionCreationResponseForOnlineVersion.getVersion());
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Verify the push job is COMPLETED and the version is online.
@@ -167,8 +167,8 @@ public class SystemStoreTest {
      * When the new version receives kill job, then it is safe to make an assertion about whether the previous
      * version receives a kill-job message or not.
      */
-    VersionCreationResponse versionCreationResponseForBootstrappingVersion = getNewStoreVersion(parentControllerClient, storeName);
-    String topicNameForBootstrappingVersion = versionCreationResponseForBootstrappingVersion.getKafkaTopic();
+    final VersionCreationResponse versionCreationResponseForBootstrappingVersion = getNewStoreVersion(parentControllerClient, storeName, false);
+    final String topicNameForBootstrappingVersion = versionCreationResponseForBootstrappingVersion.getKafkaTopic();
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, true, () -> {
       // Verify the push job is STARTED.
       assertEquals(controllerClient.queryJobStatus(topicNameForBootstrappingVersion).getStatus(), ExecutionStatus.STARTED.toString());
@@ -196,6 +196,15 @@ public class SystemStoreTest {
             expectedOnlineReplicaCount, "Not all replicas are ONLINE yet");
       }
     });
+
+    // Now, try to delete the version and the corresponding kill message should be present even for an ONLINE version
+    // Push a new version so the ONLINE version can be deleted to mimic retiring an old version.
+    VersionCreationResponse newVersionResponse = getNewStoreVersion(parentControllerClient, storeName, false);
+    parentControllerClient.writeEndOfPush(storeName, newVersionResponse.getVersion());
+    TestUtils.waitForNonDeterministicPushCompletion(newVersionResponse.getKafkaTopic(),
+        parentControllerClient, 30, TimeUnit.SECONDS, Optional.empty());
+    parentControllerClient.deleteOldVersion(storeName, Version.parseVersionFromKafkaTopicName(topicNameForOnlineVersion));
+    verifyKillMessageInParticipantStore(topicNameForOnlineVersion, true);
   }
 
   /**
@@ -337,14 +346,16 @@ public class SystemStoreTest {
     }
   }
 
-  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, String storeName) {
-    controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
+  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, String storeName, boolean newStore) {
+    if (newStore) {
+      controllerClient.createNewStore(storeName, "test-user", "\"string\"", "\"string\"");
+    }
     return parentControllerClient.requestTopicForWrites(storeName, 1024,
         Version.PushType.BATCH, Version.guidBasedDummyPushId(), true, true, Optional.empty(), Optional.empty());
   }
 
 
-  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient) {
-    return getNewStoreVersion(controllerClient, TestUtils.getUniqueString("test-kill"));
+  private VersionCreationResponse getNewStoreVersion(ControllerClient controllerClient, boolean newStore) {
+    return getNewStoreVersion(controllerClient, TestUtils.getUniqueString("test-kill"), newStore);
   }
 }

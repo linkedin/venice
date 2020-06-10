@@ -664,7 +664,7 @@ public class TestVeniceHelixAdminWithSharedEnvironment extends AbstractTestVenic
     });
     // Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
     Map<Integer, Long> participantTopicOffsets = veniceAdmin.getTopicManager().getLatestOffsets(participantStoreRTTopic);
-    veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName());
+    veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName(), false);
     // Verify the kill offline push message have been written to the participant message store RT topic.
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       Map<Integer, Long> newPartitionTopicOffsets =

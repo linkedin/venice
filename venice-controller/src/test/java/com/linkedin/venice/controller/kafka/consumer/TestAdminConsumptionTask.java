@@ -286,7 +286,7 @@ public class TestAdminConsumptionTask {
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema, false);
-    verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName);
+    verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName, false);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -517,7 +517,7 @@ public class TestAdminConsumptionTask {
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema, false);
     // Kill message is before persisted offset
-    verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
+    verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -665,7 +665,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), anyLong());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
+    verify(admin, never()).killOfflinePush(clusterName, storeTopicName, false);
   }
 
   @Test
@@ -973,7 +973,7 @@ public class TestAdminConsumptionTask {
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS,
         () -> Assert.assertEquals(getLastExecutionId(clusterName), 10L));
     // Duplicate messages from the rewind should be skipped.
-    verify(admin, times(10)).killOfflinePush(clusterName, topicName);
+    verify(admin, times(10)).killOfflinePush(clusterName, topicName, false);
     verify(stats, never()).recordFailedAdminConsumption();
     verify(stats, never()).recordAdminTopicDIVErrorReportCount();
     task.close();

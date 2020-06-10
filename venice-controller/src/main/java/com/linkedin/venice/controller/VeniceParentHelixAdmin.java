@@ -145,7 +145,7 @@ public class VeniceParentHelixAdmin implements Admin {
   /**
    * Here is the way how Parent Controller is keeping errored topics when {@link #maxErroredTopicNumToKeep} > 0:
    * 1. For errored topics, {@link #getOfflineJobProgress(String, String, Map)} won't truncate them;
-   * 2. For errored topics, {@link #killOfflinePush(String, String)} won't truncate them;
+   * 2. For errored topics, {@link #killOfflinePush(String, String, boolean)} won't truncate them;
    * 3. {@link #getTopicForCurrentPushJob(String, String, boolean)} will truncate the errored topics based on
    * {@link #maxErroredTopicNumToKeep};
    *
@@ -632,7 +632,7 @@ public class VeniceParentHelixAdmin implements Admin {
         Optional<Version> version = store.getVersion(Version.parseVersionFromKafkaTopicName(latestKafkaTopic.get()));
         if (! version.isPresent()) {
           // The corresponding version doesn't exist.
-          killOfflinePush(clusterName, latestKafkaTopic.get());
+          killOfflinePush(clusterName, latestKafkaTopic.get(), true);
           logger.info("Found topic: " + latestKafkaTopic.get() + " without the corresponding version, will kill it");
           return Optional.empty();
         }
@@ -756,7 +756,7 @@ public class VeniceParentHelixAdmin implements Admin {
           } else {
             // Kill the lingering version and allow the new push to start.
             logger.info("Found lingering topic: " + currentPushTopic.get() + " with push id: " + existingPushJobId + ". Killing the lingering version that was created at: " + version.get().getCreatedTime());
-            killOfflinePush(clusterName, currentPushTopic.get());
+            killOfflinePush(clusterName, currentPushTopic.get(), true);
           }
         } else {
           throw new VeniceException("Unable to start the push with pushJobId " + pushJobId + " for store " + storeName
@@ -1760,7 +1760,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void killOfflinePush(String clusterName, String kafkaTopic) {
+  public void killOfflinePush(String clusterName, String kafkaTopic, boolean isForcedKill) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     if (getStore(clusterName, storeName) == null) {
       throw new VeniceNoStoreException(storeName, clusterName);
