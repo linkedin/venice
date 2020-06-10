@@ -213,8 +213,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
        * {@link AggKafkaConsumerService#getKafkaConsumerService(Properties)}
        */
       aggKafkaConsumerService.getKafkaConsumerService(getCommonKafkaConsumerProperties(serverConfig));
+      logger.info("Shared consumer pool for ingestion is enabled");
     } else {
       aggKafkaConsumerService = null;
+      logger.info("Shared consumer pool for ingestion is disabled");
     }
 
     /**
