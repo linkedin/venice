@@ -5,6 +5,8 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
+import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.kafka.KafkaClientFactory;
 import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
@@ -121,7 +123,15 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
   @Override
   public void configure(JobConf job) {
-    VeniceProperties props = HadoopUtils.getVeniceProps(job);
+    VeniceProperties props;
+
+    SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
+    try {
+      Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
+      props = new VeniceProperties(javaProps);
+    } catch (IOException e) {
+      throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);
+    }
 
     configure(props);
 
