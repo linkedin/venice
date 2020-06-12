@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.acl;
 
 import com.linkedin.venice.acl.DynamicAccessController;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -22,7 +23,6 @@ import java.util.Optional;
 import javax.net.ssl.SSLEngine;
 import javax.net.ssl.SSLSession;
 import org.mockito.ArgumentMatcher;
-import org.mockito.stubbing.Answer;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -39,16 +39,15 @@ public class RouterAclHandlerTest {
   private RouterAclHandler aclHandler;
   private Store store;
 
-  private boolean[] _hasAccess = {false};
-  private boolean[] _hasAcl = {false};
-  private boolean[] _hasStore = {false};
-  private boolean[] _isAccessControlled = {false};
-  private boolean[] _isFailOpen = {false};
+  private boolean[] hasAccess = {false};
+  private boolean[] hasAcl = {false};
+  private boolean[] hasStore = {false};
+  private boolean[] isSystemStore = {false};
+  private boolean[] isFailOpen = {false};
 
   @BeforeMethod
   public void setup() throws Exception {
     accessController = mock(DynamicAccessController.class);
-    metadataRepo = mock(HelixReadOnlyStoreRepository.class);
     storeConfigRepo = mock(HelixReadOnlyStoreConfigRepository.class);
     clusterToD2Map = new HashMap<>();
     ctx = mock(ChannelHandlerContext.class);
@@ -56,9 +55,8 @@ public class RouterAclHandlerTest {
     store = mock(Store.class);
 
     when(accessController.init(any())).thenReturn(accessController);
-    aclHandler = spy(new RouterAclHandler(accessController, metadataRepo, storeConfigRepo, clusterToD2Map));
-
-    when(metadataRepo.getStore(any())).then((Answer<Store>) invocation -> metadataRepo.hasStore("storename") ? store : null);
+    // No redirect attempts by default
+    doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig(any());
 
     // Certificate
     ChannelPipeline pipe = mock(ChannelPipeline.class);
@@ -84,8 +82,8 @@ public class RouterAclHandlerTest {
 
   @Test
   public void accessGranted() throws Exception {
-    _hasAccess[0] = true;
-    enumerate(_hasAcl, _hasStore, _isAccessControlled, _isFailOpen);
+    hasAccess[0] = true;
+    enumerate(hasAcl, hasStore, isSystemStore, isFailOpen);
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
@@ -99,8 +97,8 @@ public class RouterAclHandlerTest {
 
   @Test
   public void accessDenied() throws Exception {
-    _hasAccess[0] = false;
-    enumerate(_hasAcl, _hasStore, _isAccessControlled, _isFailOpen);
+    hasAccess[0] = false;
+    enumerate(hasAcl, hasStore, isSystemStore, isFailOpen);
 
     // Store doesn't exist 8 times
     verify(ctx, times(8)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
@@ -117,8 +115,8 @@ public class RouterAclHandlerTest {
 
   @Test
   public void storeExists() throws Exception {
-    _hasStore[0] = true;
-    enumerate(_hasAccess, _hasAcl, _isFailOpen, _isAccessControlled);
+    hasStore[0] = true;
+    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
 
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.BAD_REQUEST)));
 
@@ -134,9 +132,9 @@ public class RouterAclHandlerTest {
 
   @Test
   public void storeMissing() throws Exception {
-    _hasStore[0] = false;
+    hasStore[0] = false;
     doReturn(Optional.empty()).when(storeConfigRepo).getStoreConfig("storename");
-    enumerate(_hasAccess, _hasAcl, _isFailOpen, _isAccessControlled);
+    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
 
     verify(ctx, never()).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
@@ -146,12 +144,12 @@ public class RouterAclHandlerTest {
 
   @Test
   public void storeMigrated() throws Exception {
-    _hasStore[0] = false;
+    hasStore[0] = false;
     StoreConfig storeConfig = new StoreConfig("storename");
     storeConfig.setCluster("destCluster");
     doReturn(Optional.of(storeConfig)).when(storeConfigRepo).getStoreConfig("storename");
     clusterToD2Map.put("destCluster", "d2Service");
-    enumerate(_hasAccess, _hasAcl, _isFailOpen, _isAccessControlled);
+    enumerate(hasAccess, hasAcl, isFailOpen, isSystemStore);
 
     verify(ctx, never()).fireChannelRead(req);
     verify(ctx, never()).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
@@ -160,10 +158,10 @@ public class RouterAclHandlerTest {
   }
 
   @Test
-  public void aclDisabled() throws Exception {
-    _isAccessControlled[0] = false;
-    _hasStore[0] = true;
-    enumerate(_hasAccess, _hasAcl, _isFailOpen);
+  public void aclDisabledForSystemStore() throws Exception {
+    isSystemStore[0] = true;
+    hasStore[0] = true;
+    enumerate(hasAccess, hasAcl, isFailOpen);
 
     verify(ctx, never()).writeAndFlush(any());
     verify(ctx, times(8)).fireChannelRead(req);
@@ -171,7 +169,7 @@ public class RouterAclHandlerTest {
 
   @Test
   public void aclMissing() throws Exception {
-    enumerate(_hasStore, _hasAcl, _hasAccess, _isAccessControlled, _isFailOpen);
+    enumerate(hasStore, hasAcl, hasAccess, isSystemStore, isFailOpen);
 
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.UNAUTHORIZED)));
 
@@ -180,11 +178,16 @@ public class RouterAclHandlerTest {
   }
 
   private void update() throws Exception {
-    when(accessController.hasAccess(any(), any(), any())).thenReturn(_hasAccess[0]);
-    when(accessController.hasAcl(any())).thenReturn(_hasAcl[0]);
-    when(accessController.isFailOpen()).thenReturn(_isFailOpen[0]);
-    when(metadataRepo.hasStore(any())).thenReturn(_hasStore[0]);
-    when(store.isAccessControlled()).thenReturn(_isAccessControlled[0]);
+    when(accessController.hasAccess(any(), any(), any())).thenReturn(hasAccess[0]);
+    when(accessController.hasAcl(any())).thenReturn(hasAcl[0]);
+    when(accessController.isFailOpen()).thenReturn(isFailOpen[0]);
+    when(metadataRepo.hasStore(any())).thenReturn(hasStore[0]);
+    if (hasStore[0]) {
+      when(metadataRepo.getStoreOrThrow(any())).thenReturn(store);
+    } else {
+      when(metadataRepo.getStoreOrThrow(any())).thenThrow(new VeniceNoStoreException("storename"));
+    }
+    when(store.isSystemStore()).thenReturn(isSystemStore[0]);
   }
 
   /**
@@ -204,6 +207,9 @@ public class RouterAclHandlerTest {
       for (int j = 0; j < len; j++) {
         conditions[j][0] = (i>>j) % 2 == 1;
       }
+      // New metadataRepo mock and aclHandler every update since thenThrow cannot be re-mocked.
+      metadataRepo = mock(HelixReadOnlyStoreRepository.class);
+      aclHandler = spy(new RouterAclHandler(accessController, metadataRepo, storeConfigRepo, clusterToD2Map));
       update();
       aclHandler.channelRead0(ctx, req);
     }
