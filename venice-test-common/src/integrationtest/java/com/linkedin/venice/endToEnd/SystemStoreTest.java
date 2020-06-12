@@ -342,16 +342,21 @@ public class SystemStoreTest {
       CharSequence keySchemaStr = keySchemaMap.get(Integer.toString(1));
       assertNotNull(keySchemaStr);
       assertEquals(keySchemaStr.toString(), STRING_SCHEMA);
+      assertEquals(storeRepository.getKeySchema(regularVeniceStoreName).getSchema().toString(), STRING_SCHEMA);
 
       Map<String, String> valueSchemaMap = Utils.getStringMapFromCharSequenceMap(storeValueSchemas.valueSchemaMap);
       CharSequence valueSchemaStr = valueSchemaMap.get(Integer.toString(1));
       assertNotNull(valueSchemaStr);
       // We need to reparse the schema string so it won't have field ordering issue.
-      assertEquals(valueSchemaStr.toString(), Schema.parse(USER_SCHEMA_STRING).toString());
+      String parsedSchemaStr = Schema.parse(USER_SCHEMA_STRING).toString();
+      assertEquals(valueSchemaStr.toString(), parsedSchemaStr);
+      assertEquals(storeRepository.getValueSchema(regularVeniceStoreName, 1).getSchema().toString(), parsedSchemaStr);
       // Check evolved value schema after we materialized the metadata store.
       valueSchemaStr = valueSchemaMap.get(Integer.toString(2));
       assertNotNull(valueSchemaStr);
-      assertEquals(valueSchemaStr.toString(), Schema.parse(USER_SCHEMA_STRING_WITH_DEFAULT).toString());
+      parsedSchemaStr = Schema.parse(USER_SCHEMA_STRING_WITH_DEFAULT).toString();
+      assertEquals(valueSchemaStr.toString(), parsedSchemaStr);
+      assertEquals(storeRepository.getValueSchema(regularVeniceStoreName, 2).getSchema().toString(), parsedSchemaStr);
     }
 
     // Verify deletion notification
